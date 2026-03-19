@@ -1,0 +1,51 @@
+# BGP Prefix Size Signatures
+# Format: prefix_size,score_type,points,comment
+# Smaller prefix = more dedicated/expensive infrastructure
+
+# Dedicated enterprise infrastructure (expensive)
+28,budget,5,/28 = 16 IPs (dedicated small block)
+28,web,3,Dedicated infrastructure
+29,budget,4,/29 = 8 IPs (dedicated micro block)
+29,web,3,Dedicated small
+30,budget,3,/30 = 4 IPs (point-to-point)
+30,web,2,Dedicated tiny
+
+# Small business dedicated
+27,budget,4,/27 = 32 IPs (small dedicated)
+27,web,2,Small dedicated block
+26,budget,3,/26 = 64 IPs (medium dedicated)
+26,web,2,Medium block
+
+# Mixed use / small hosting
+25,budget,2,/25 = 128 IPs (large block)
+25,web,1,Large block
+24,budget,1,/24 = 256 IPs (class C standard)
+24,web,1,Standard block
+
+# Shared hosting (hundreds of sites)
+23,budget,0,/23 = 512 IPs (likely shared)
+23,web,0,Shared likely
+22,budget,0,/22 = 1024 IPs (shared)
+22,web,0,Shared hosting
+21,budget,-1,/21 = 2048 IPs (definitely shared)
+21,web,-1,Definitely shared
+20,budget,-1,/20 = 4096 IPs (large shared)
+20,web,-1,Large shared provider
+
+# Massive shared hosting (cheap)
+19,budget,-2,/19 = 8192 IPs (massive shared)
+19,web,-2,Massive shared
+18,budget,-2,/18 = 16384 IPs (huge shared)
+18,web,-2,Huge shared
+17,budget,-2,/17 = 32768 IPs (very large ISP)
+17,web,-2,Very large provider
+16,budget,-2,/16 = 65536 IPs (ISP/cloud provider)
+16,web,-2,Cloud provider block
+
+# Security consideration
+28,security,2,Small dedicated (security through isolation)
+29,security,2,Micro dedicated (isolated)
+30,security,1,Tiny dedicated
+24,security,0,Standard (normal isolation)
+22,security,-1,Shared (less isolated)
+20,security,-1,Large shared (security risk)

@@ -1,0 +1,27 @@
+# HTTP Response Time Signatures
+# Format: max_ms,score_type,points,comment
+# Evaluated in order - first match wins
+
+# Excellent performance (CDN/optimized)
+50,web,5,Lightning fast (<50ms) - premium CDN
+100,web,4,Excellent (<100ms) - CDN or edge
+150,web,3,Very good (<150ms) - optimized
+200,web,2,Good (<200ms) - well configured
+
+# Acceptable performance
+300,web,1,Acceptable (<300ms)
+500,web,0,Average (<500ms)
+
+# Slow performance (cheap hosting)
+1000,web,-1,Slow (<1s) - shared hosting
+2000,web,-2,Very slow (<2s) - cheap host
+3000,web,-3,Terrible (<3s) - poor infrastructure
+5000,web,-4,Unusable (<5s) - serious issues
+
+# Budget scoring (faster = more investment)
+100,budget,3,Premium infrastructure (<100ms)
+200,budget,2,Good infrastructure (<200ms)
+500,budget,1,Decent infrastructure (<500ms)
+1000,budget,0,Basic infrastructure (<1s)
+2000,budget,-2,Cheap hosting (<2s)
+5000,budget,-3,Very cheap hosting (<5s)

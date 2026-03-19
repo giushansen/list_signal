@@ -1,29 +1,11 @@
 defmodule LSWeb do
-  @moduledoc """
-  The entrypoint for defining your web interface, such
-  as controllers, components, channels, and so on.
-
-  This can be used in your application as:
-
-      use LSWeb, :controller
-      use LSWeb, :html
-
-  The definitions below will be executed for every controller,
-  component, etc, so keep them short and clean, focused
-  on imports, uses and aliases.
-
-  Do NOT define functions inside the quoted expressions
-  below. Instead, define additional modules and import
-  those modules here.
-  """
+  @moduledoc "Web interface for ListSignal dashboard."
 
   def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
 
   def router do
     quote do
       use Phoenix.Router, helpers: false
-
-      # Import common connection and controller functions to use in pipelines
       import Plug.Conn
       import Phoenix.Controller
       import Phoenix.LiveView.Router
@@ -38,20 +20,15 @@ defmodule LSWeb do
 
   def controller do
     quote do
-      use Phoenix.Controller, formats: [:html, :json]
-
-      use Gettext, backend: LSWeb.Gettext
-
+      use Phoenix.Controller, formats: [:html, :json], layouts: [html: LSWeb.Layouts]
       import Plug.Conn
-
       unquote(verified_routes())
     end
   end
 
   def live_view do
     quote do
-      use Phoenix.LiveView
-
+      use Phoenix.LiveView, layout: {LSWeb.Layouts, :app}
       unquote(html_helpers())
     end
   end
@@ -59,7 +36,6 @@ defmodule LSWeb do
   def live_component do
     quote do
       use Phoenix.LiveComponent
-
       unquote(html_helpers())
     end
   end
@@ -67,31 +43,15 @@ defmodule LSWeb do
   def html do
     quote do
       use Phoenix.Component
-
-      # Import convenience functions from controllers
-      import Phoenix.Controller,
-        only: [get_csrf_token: 0, view_module: 1, view_template: 1]
-
-      # Include general helpers for rendering HTML
+      import Phoenix.Controller, only: [get_csrf_token: 0, view_module: 1, view_template: 1]
       unquote(html_helpers())
     end
   end
 
   defp html_helpers do
     quote do
-      # Translation
-      use Gettext, backend: LSWeb.Gettext
-
-      # HTML escaping functionality
       import Phoenix.HTML
-      # Core UI components
-      import LSWeb.CoreComponents
-
-      # Common modules used in templates
-      alias Phoenix.LiveView.JS
-      alias LSWeb.Layouts
-
-      # Routes generation with the ~p sigil
+      import Phoenix.Component
       unquote(verified_routes())
     end
   end
@@ -105,9 +65,6 @@ defmodule LSWeb do
     end
   end
 
-  @doc """
-  When used, dispatch to the appropriate controller/live_view/etc.
-  """
   defmacro __using__(which) when is_atom(which) do
     apply(__MODULE__, which, [])
   end

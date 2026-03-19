@@ -1,0 +1,89 @@
+# WAF/Blocking Detection - 2 column: pattern,waf_name
+# 60+ comprehensive patterns
+
+# Cloudflare blocking
+attention required,cloudflare
+checking your browser,cloudflare
+just a moment,cloudflare
+cloudflare-nginx,cloudflare
+ray id:,cloudflare
+cf-ray,cloudflare
+enable javascript and cookies,cloudflare
+cloudflare to restrict access,cloudflare
+
+# Imperva/Incapsula
+incapsula incident,imperva
+incapsula,imperva
+imperva,imperva
+x-iinfo,imperva
+_incapsula_resource,imperva
+access denied - incapsula,imperva
+
+# Akamai
+akamai reference,akamai
+akamai ghost,akamai
+request could not be satisfied,akamai
+
+# PerimeterX
+access to this page has been denied,perimeterx
+perimeterx,perimeterx
+_px,perimeterx
+_pxvid,perimeterx
+please verify you are a human,perimeterx
+
+# DataDome
+datadome,datadome
+please enable js and disable,datadome
+your request has been blocked,datadome
+
+# Sucuri
+sucuri website firewall,sucuri
+access denied - sucuri,sucuri
+x-sucuri-id,sucuri
+
+# AWS WAF
+x-amzn-waf,awswaf
+aws waf,awswaf
+request blocked by aws waf,awswaf
+
+# ModSecurity
+mod_security,modsecurity
+modsecurity,modsecurity
+not acceptable!,modsecurity
+
+# Shape Security
+shape security,shape
+_imp_apg,shape
+
+# Reblaze
+reblaze,reblaze
+rbzid,reblaze
+
+# Barracuda
+barracuda,barracuda
+bwaf,barracuda
+
+# F5 BIG-IP
+bigipserver,f5
+f5,f5
+ts=,f5
+
+# Radware
+radware,radware
+appwall,radware
+
+# Fortinet
+fortinet,fortinet
+fortiweb,fortinet
+
+# Generic WAF patterns
+access denied,waf
+forbidden,waf
+request blocked,waf
+security check,waf
+unusual traffic,waf
+captcha,captcha
+recaptcha,captcha
+hcaptcha,captcha
+rate limit exceeded,rate_limit
+too many requests,rate_limit

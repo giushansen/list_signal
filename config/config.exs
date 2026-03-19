@@ -1,18 +1,15 @@
-# This file is responsible for configuring your application
-# and its dependencies with the aid of the Config module.
-#
-# This configuration file is loaded before any dependency and
-# is restricted to this project.
-
-# General application configuration
 import Config
 
 config :ls,
-  namespace: LS,
   ecto_repos: [LS.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
-# Configures the endpoint
+config :ls, LS.Repo,
+  database: Path.expand("../ls_#{config_env()}.db", __DIR__),
+  pool_size: 5,
+  stacktrace: true,
+  show_sensitive_data_on_connection_error: true
+
 config :ls, LSWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
@@ -21,46 +18,37 @@ config :ls, LSWeb.Endpoint,
     layout: false
   ],
   pubsub_server: LS.PubSub,
-  live_view: [signing_salt: "1AYQx2C6"]
+  live_view: [signing_salt: "ls_salt_2026"]
 
-# Configures the mailer
-#
-# By default it uses the "Local" adapter which stores the emails
-# locally. You can see the emails in your browser, at "/dev/mailbox".
-#
-# For production it's recommended to configure a different adapter
-# at the `config/runtime.exs`.
 config :ls, LS.Mailer, adapter: Swoosh.Adapters.Local
 
-# Configure esbuild (the version is required)
-config :esbuild,
-  version: "0.25.4",
-  ls: [
-    args:
-      ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
-    cd: Path.expand("../assets", __DIR__),
-    env: %{"NODE_PATH" => [Path.expand("../deps", __DIR__), Mix.Project.build_path()]}
-  ]
-
-# Configure tailwind (the version is required)
-config :tailwind,
-  version: "4.1.7",
-  ls: [
-    args: ~w(
-      --input=assets/css/app.css
-      --output=priv/static/assets/css/app.css
-    ),
-    cd: Path.expand("..", __DIR__)
-  ]
-
-# Configures Elixir's Logger
-config :logger, :default_formatter,
-  format: "$time $metadata[$level] $message\n",
+config :logger, :console,
+  format: "$time [$level] $message\n",
   metadata: [:request_id]
 
-# Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# Import environment specific config. This must remain at the bottom
-# of this file so it overrides the configuration defined above.
+config :swoosh, :api_client, false
+
+config :ssl,
+  session_cache_server_max: 10_000,
+  session_cache_client_max: 50_000,
+  session_lifetime: 3600,
+  protocol_version: [:"tlsv1.3", :"tlsv1.2"]
+
+config :esbuild,
+  version: "0.17.11",
+  ls: [
+    args: ~w(js/app.js --bundle --target=es2017 --outdir=../priv/static/assets --external:/fonts/* --external:/images/*),
+    cd: Path.expand("../assets", __DIR__),
+    env: %{"NODE_PATH" => Path.expand("../deps", __DIR__)}
+  ]
+
+config :tailwind,
+  version: "3.4.3",
+  ls: [
+    args: ~w(--config=tailwind.config.js --input=css/app.css --output=../priv/static/assets/app.css),
+    cd: Path.expand("../assets", __DIR__)
+  ]
+
 import_config "#{config_env()}.exs"

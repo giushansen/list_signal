@@ -1,0 +1,232 @@
+# DNS MX Record Signatures
+# Format: pattern,score_type,points,comment
+# Most specific patterns first
+
+# Premium enterprise email (high budget)
+google.com,budget,4,Google Workspace ($6-18/user/mo)
+googlemail.com,budget,4,Google Workspace
+aspmx.l.google.com,budget,4,Google Workspace MX
+aspmx.googlemail.com,budget,4,Google Workspace MX
+outlook.com,budget,4,Microsoft 365 ($6-57/user/mo)
+protection.outlook.com,budget,4,Microsoft 365 Exchange
+mail.protection.outlook.com,budget,4,M365 Exchange Protection
+spf.protection.outlook.com,budget,4,M365 SPF Protection
+ppe-hosted.com,budget,4,Proofpoint ($3-12/user/mo)
+pphosted.com,budget,4,Proofpoint
+dispatch-us.ppe-hosted.com,budget,4,Proofpoint US
+spf-usg2.ppe-hosted.com,budget,4,Proofpoint USG2
+spf-usg1.ppe-hosted.com,budget,4,Proofpoint USG1
+spf.has.pphosted.com,budget,4,Proofpoint SPF
+mimecast.com,budget,5,Mimecast ($3-9/user/mo)
+messagelabs.com,budget,4,Symantec Email Security
+barracuda.com,budget,3,Barracuda Email Security
+barracudanetworks.com,budget,3,Barracuda Networks
+ess.barracudanetworks.com,budget,3,Barracuda ESS
+sophos.com,budget,3,Sophos Email
+ironport.com,budget,4,Cisco IronPort
+forcepoint.com,budget,3,Forcepoint Email
+hornetsecurity.com,budget,3,Hornetsecurity
+
+# Mid-tier email services
+zoho.com,budget,2,Zoho Mail ($1-8/user/mo)
+zohomail.com,budget,2,Zoho Mail
+zohomail.eu,budget,2,Zoho Mail EU
+zohomail.in,budget,2,Zoho Mail India
+zohomail.com.cn,budget,2,Zoho Mail China
+zohomail.com.au,budget,2,Zoho Mail Australia
+zoho.in,budget,2,Zoho India
+zoho.eu,budget,2,Zoho EU
+zoho.com.au,budget,2,Zoho Australia
+fastmail.com,budget,2,FastMail ($3-9/user/mo)
+messagingengine.com,budget,2,FastMail
+rackspace.com,budget,2,Rackspace Email
+emailsrvr.com,budget,2,Rackspace Email
+gandi.net,budget,1,Gandi email hosting
+mailgun.org,budget,1,Mailgun
+sendgrid.net,budget,1,SendGrid
+mailchimp.com,budget,1,Mailchimp
+servers.mcsv.net,budget,1,Mailchimp servers
+titan.email,budget,2,Titan Mail
+privateemail.com,budget,1,PrivateEmail (Namecheap)
+improvmx.com,budget,0,ImprovMX (free forwarding)
+migadu.com,budget,1,Migadu
+purelymail.com,budget,1,PurelyMail
+forward-email,budget,0,ForwardEmail (free)
+
+# Chinese/Asian providers
+mail.qq.com,budget,1,Tencent QQ Mail
+mxhichina.com,budget,1,Alibaba Cloud Mail
+qiye.aliyun.com,budget,1,Alibaba Enterprise
+163.com,budget,1,NetEase Mail
+mail.ru,budget,1,Mail.ru (Russian)
+yandex.net,budget,1,Yandex Mail (Russian)
+nicmail.ru,budget,1,NIC Mail (Russian)
+zmail300.cn,budget,1,Zmail China
+feishu.cn,budget,1,Lark/Feishu (ByteDance)
+hiworks.co.kr,budget,1,Hiworks Korea
+muumuu-mail.com,budget,1,Muumuu Mail Japan
+onamae.ne.jp,budget,1,Onamae Japan
+fsi.ne.jp,budget,1,FSI Japan
+conoha.ne.jp,budget,1,ConoHa Japan
+lolipop.jp,budget,1,Lolipop Japan
+makeshop.jp,budget,1,MakeShop Japan
+etius.jp,budget,1,Etius Japan
+kagoya.net,budget,1,Kagoya Japan
+
+# Hosting provider email (low-mid budget)
+secureserver.net,budget,0,GoDaddy email
+websitewelcome.com,budget,-1,GoDaddy parking
+web-hosting.com,budget,0,Generic hosting email
+efwd.registrar-servers.com,budget,0,Generic registrar forwarding
+mx.cloudflare.net,budget,1,Cloudflare Email Routing
+hosting.reg.ru,budget,0,Reg.ru hosting
+hostedemail.com,budget,0,Generic hosted email
+mailhostbox.com,budget,0,Generic mailbox hosting
+hostinger.com,budget,0,Hostinger email
+mail.hostinger.com,budget,0,Hostinger mail
+bluehost.com,budget,0,Bluehost email
+greengeeks.net,budget,0,GreenGeeks email
+dreamhost.com,budget,0,DreamHost email
+netblocks.dreamhost.com,budget,0,DreamHost
+ovh.com,budget,0,OVH email
+mx.ovh.com,budget,0,OVH MX
+a2hosting.com,budget,0,A2 Hosting
+ionos.com,budget,0,IONOS (1&1)
+spf-eu.ionos.com,budget,0,IONOS EU
+spf-us.ionos.com,budget,0,IONOS US
+hostmar.com,budget,0,HostMar
+mijndomeinhosting.nl,budget,0,Dutch hosting
+infomaniak.ch,budget,0,Infomaniak Swiss
+transip.email,budget,0,TransIP Dutch
+aruba.it,budget,0,Aruba IT
+timeweb.ru,budget,0,TimeWeb Russia
+jino.ru,budget,0,Jino Russia
+hoster.by,budget,0,Hoster Belarus
+beget.com,budget,0,Beget Russia
+beget.ru,budget,0,Beget Russia
+locaweb.com.br,budget,0,Locaweb Brazil
+dominioabsoluto.net,budget,0,Dominio Absoluto
+webempresa.eu,budget,0,WebEmpresa
+dondominio.com,budget,0,DonDominio Spain
+webhosting.systems,budget,0,Generic webhosting
+truehostcloud.com,budget,0,TrueHost Cloud
+supremebox.com,budget,0,Supremebox
+serveriai.lt,budget,0,Serveriai Lithuania
+doruk.net.tr,budget,0,Doruk Turkey
+natrohost.com,budget,0,NatroHost
+ogicom.pl,budget,0,OgiCom Poland
+zenbox.pl,budget,0,Zenbox Poland
+webd.pl,budget,0,Webd Poland
+tld.pl,budget,0,TLD Poland
+axspace.com,budget,0,AxSpace
+ds.network,budget,0,DS Network
+vali.email,budget,0,Vali Email
+arandomserver.com,budget,0,Random Server
+mysecurecloudhost.com,budget,0,Secure Cloud Host
+stackmail.com,budget,0,StackMail
+webapps.net,budget,0,WebApps
+webspacecontrol.com,budget,0,WebSpace Control
+mailcluster.com.au,budget,0,Mail Cluster Australia
+email-hosting.net.au,budget,0,Email Hosting Australia
+hostedmail.net.au,budget,0,Hosted Mail Australia
+server-he.de,budget,0,Server HE Germany
+serverdata.net,budget,0,ServerData
+antispamcloud.com,budget,0,AntiSpam Cloud
+spamexperts.axc.nl,budget,0,SpamExperts
+spambusters.email,budget,0,SpamBusters
+jabatus.fr,budget,0,Jabatus France
+domeneshop.no,budget,0,DomeneShop Norway
+perfora.net,budget,0,Perfora
+syrahost.com,budget,0,SyraHost
+
+# Budget/free email (negative signal)
+gmail.com,budget,-2,Free Gmail (not professional)
+yahoo.com,budget,-3,Yahoo Mail (very unprofessional)
+hotmail.com,budget,-3,Hotmail (outdated)
+aol.com,budget,-4,AOL (very outdated)
+mail.com,budget,-2,Free mail.com
+gmx.com,budget,-2,Free GMX
+yandex.ru,budget,-2,Yandex Mail
+protonmail.com,budget,1,ProtonMail (privacy focus)
+protonmail.ch,budget,1,ProtonMail Switzerland
+tutanota.com,budget,1,Tutanota (privacy focus)
+icloud.com,budget,0,Apple iCloud (consumer)
+
+# Transactional email (technical signal)
+mailchannels.net,budget,1,MailChannels (transactional)
+mailersend.net,budget,1,MailerSend
+elasticemail.com,budget,1,Elastic Email
+sendgrid.com,budget,1,SendGrid
+mandrillapp.com,budget,1,Mandrill (Mailchimp)
+mailjet.com,budget,1,Mailjet
+sparkpostmail.com,budget,1,SparkPost
+amazonses.com,budget,1,AWS SES
+mailgun.com,budget,1,Mailgun transactional
+sendersrv.com,budget,1,SenderSrv
+relay.k.io,budget,1,Relay K.io
+mailbaby.net,budget,1,MailBaby
+edgepilot.com,budget,1,EdgePilot
+zcsend.net,budget,1,ZCSend
+zcsend.in,budget,1,ZCSend India
+mlsend.com,budget,1,MailerLite Send
+createsend.com,budget,1,Campaign Monitor
+constantcontact.com,budget,1,Constant Contact
+getresponse.com,budget,1,GetResponse
+unisender.com,budget,1,UniSender
+ipzmarketing.com,budget,1,IPZ Marketing
+leadconnectorhq.com,budget,1,LeadConnector
+
+# Email security vendors (high security + budget)
+mxlogin.com,budget,2,MXLogin security
+authsmtp.com,budget,1,AuthSMTP
+emsd1.com,budget,1,Email security
+oxcs.net,budget,1,Open-Xchange
+dcsaas.net,budget,1,DC SaaS
+
+# Marketing platforms (budget signal)
+pardot.com,budget,3,Salesforce Pardot
+aspmx.pardot.com,budget,3,Pardot MX
+freshdesk.com,budget,2,Freshdesk
+email.freshdesk.com,budget,2,Freshdesk Email
+zendesk.com,budget,3,Zendesk
+mail.zendesk.com,budget,3,Zendesk Mail
+
+# Self-hosted/custom (technical sophistication)
+mail.,web,2,Self-hosted mail server
+smtp.,web,2,Custom SMTP server
+mx.,web,1,Custom MX setup
+mx1.,web,1,Multiple MX servers
+mx2.,web,1,MX redundancy
+
+# Email scoring (deliverability/reliability)
+google.com,email,4,Google Workspace (reliable)
+googlemail.com,email,4,Google reliable
+aspmx.l.google.com,email,4,Google MX
+outlook.com,email,4,Microsoft reliable
+protection.outlook.com,email,4,M365 reliable
+mimecast.com,email,5,Mimecast (excellent deliverability)
+pphosted.com,email,4,Proofpoint (excellent)
+ppe-hosted.com,email,4,Proofpoint (excellent)
+zoho.com,email,3,Zoho (good)
+zohomail.com,email,3,Zoho (good)
+sendgrid.net,email,2,SendGrid (transactional)
+mailgun.org,email,2,Mailgun (transactional)
+amazonses.com,email,2,AWS SES (transactional)
+gmail.com,email,-3,Free Gmail (poor for business)
+yahoo.com,email,-4,Yahoo (poor deliverability)
+hotmail.com,email,-4,Hotmail (poor)
+aol.com,email,-5,AOL (terrible)
+
+# Security scoring
+mimecast.com,security,4,Mimecast (security focus)
+ppe-hosted.com,security,4,Proofpoint (security)
+pphosted.com,security,4,Proofpoint (security)
+barracuda.com,security,3,Barracuda (security)
+barracudanetworks.com,security,3,Barracuda Networks
+ess.barracudanetworks.com,security,3,Barracuda ESS
+sophos.com,security,3,Sophos (security)
+ironport.com,security,3,Cisco IronPort (security)
+hornetsecurity.com,security,3,Hornetsecurity
+protonmail.com,security,3,ProtonMail (encrypted)
+protonmail.ch,security,3,ProtonMail (encrypted)
+tutanota.com,security,3,Tutanota (encrypted)

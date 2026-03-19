@@ -1,0 +1,760 @@
+pattern,name
+react,React
+data-react,React
+data-reactroot,React
+data-reactid,React
+__react,React
+_reactlistening,React
+react-,React
+__next,Next.js
+_next,Next.js
+next.js,Next.js
+nuxt,Nuxt
+__nuxt,Nuxt
+__NUXT__,Nuxt
+vue,Vue
+data-v-,Vue
+data-vue,Vue
+__vue,Vue
+vuepress,VuePress
+angular,Angular
+ng-version,Angular
+ng-app,Angular
+ng-controller,Angular
+data-ng-,Angular
+svelte,Svelte
+data-svelte,Svelte
+svelte-,Svelte
+htmx,HTMX
+alpine,Alpine.js
+@alpinejs,Alpine.js
+ember,Ember
+ember.js,Ember
+backbone,Backbone
+backbone.js,Backbone
+knockout,Knockout
+meteor,Meteor
+aurelia,Aurelia
+jquery,jQuery
+jquery.min.js,jQuery
+bootstrap,Bootstrap
+bootstrap.min.css,Bootstrap
+bootstrap.bundle,Bootstrap
+bulma,Bulma
+tailwind,Tailwind
+tailwindcss,Tailwind
+foundation,Foundation
+materialize,Materialize
+semantic-ui,Semantic UI
+uikit,UIKit
+milligram,Milligram
+skeleton,Skeleton
+tachyons,Tachyons
+wp-content,WordPress
+wp-includes,WordPress
+wordpress,WordPress
+/wp-json/,WordPress
+/wp-admin,WordPress
+/wp-login,WordPress
+woocommerce,WooCommerce
+wc-ajax,WooCommerce
+elementor,Elementor
+wp-rocket,WP Rocket
+yoast,Yoast SEO
+rank math,Rank Math
+all in one seo,All in One SEO
+shopify.com,Shopify
+cdn.shopify.com,Shopify
+myshopify.com,Shopify
+myshopify,Shopify
+cdn.shopify,Shopify
+shopify-features,Shopify
+shopify-buy,Shopify
+magento,Magento
+mage/,Magento
+mage/cookies,Magento
+prestashop,PrestaShop
+modules/prestashop,PrestaShop
+opencart,OpenCart
+catalog/view/theme,OpenCart
+bigcommerce,BigCommerce
+bigcommerce.com,BigCommerce
+volusion,Volusion
+3dcart,3dcart
+ecwid,Ecwid
+lightspeed,Lightspeed
+commercejs,CommerceJS
+snipcart,Snipcart
+foxy,FoxyCart
+foxycart,FoxyCart
+drupal,Drupal
+sites/default,Drupal
+/sites/default/files,Drupal
+/core/,Drupal
+joomla,Joomla
+/components/com_,Joomla
+option=com_,Joomla
+typo3,TYPO3
+contao,Contao
+craft cms,Craft CMS
+craftcms,Craft CMS
+concrete5,Concrete5
+dotcms,dotCMS
+kentico,Kentico
+sitefinity,Sitefinity
+umbraco,Umbraco
+episerver,Episerver
+sitecore,Sitecore
+akeneo,Akeneo
+wix.com,Wix
+wixstatic,Wix
+wix-code,Wix
+parastorage.com,Wix
+static.wixstatic.com,Wix
+wix-ecom,Wix
+squarespace,Squarespace
+sqsp.com,Squarespace
+ss-assets,Squarespace
+static1.squarespace.com,Squarespace
+squarespace-cdn,Squarespace
+squarespace-commerce,Squarespace
+weebly,Weebly
+webflow,Webflow
+uploads-ssl.webflow.com,Webflow
+framer,Framer
+sites.framer.com,Framer
+readymag,Readymag
+tilda,Tilda
+carrd,Carrd
+strikingly,Strikingly
+jimdo,Jimdo
+ionos,IONOS
+godaddy,GoDaddy
+yola,Yola
+duda,Duda
+ucraft,uCraft
+ghost,Ghost
+ghost.min.js,Ghost
+hugo,Hugo
+jekyll,Jekyll
+_layouts,Jekyll
+eleventy,Eleventy
+astro,Astro
+astro-island,Astro
+remix,Remix
+remix.run,Remix
+solidjs,SolidJS
+qwik,Qwik
+qwik.js,Qwik
+preact,Preact
+gatsby,Gatsby
+___gatsby,Gatsby
+gatsby-plugin,Gatsby
+gridsome,Gridsome
+vitepress,VitePress
+docusaurus,Docusaurus
+mkdocs,MkDocs
+django,Django
+csrfmiddlewaretoken,Django
+flask,Flask
+werkzeug,Flask
+fastapi,FastAPI
+/docs#/,FastAPI
+express,Express
+x-powered-by: express,Express
+koa,Koa
+x-powered-by: koa,Koa
+nestjs,NestJS
+@nestjs,NestJS
+laravel,Laravel
+laravel_session,Laravel
+symfony,Symfony
+symfony/,Symfony
+rails,Rails
+x-powered-by: phusion,Rails
+spring,Spring
+x-application-context,Spring
+asp.net,ASP.NET
+__viewstate,ASP.NET
+x-powered-by: asp.net,ASP.NET
+x-aspnet-version,ASP.NET
+graphql,GraphQL
+/graphql,GraphQL
+apollo,Apollo GraphQL
+hasura,Hasura
+swagger,Swagger
+swagger-ui,Swagger
+openapi,OpenAPI
+postman,Postman
+restful,REST API
+json api,JSON API
+webpack,Webpack
+webpack:///,Webpack
+vite,Vite
+/@vite/,Vite
+parcel,Parcel
+rollup,Rollup
+esbuild,ESBuild
+turbopack,Turbopack
+snowpack,Snowpack
+browserify,Browserify
+gulp,Gulp
+grunt,Grunt
+typescript,TypeScript
+babel,Babel
+eslint,ESLint
+prettier,Prettier
+jest,Jest
+__coverage__,Jest
+cypress,Cypress
+__cypress,Cypress
+playwright,Playwright
+@playwright,Playwright
+storybook,Storybook
+recharts,Recharts
+recharts.js,Recharts
+chart.js,Chart.js
+chartjs,Chart.js
+highcharts,Highcharts
+d3.js,D3.js
+d3.min.js,D3.js
+three.js,Three.js
+threejs,Three.js
+gsap,GSAP
+anime.js,Anime.js
+plotly,Plotly
+echarts,ECharts
+mapbox,Mapbox
+leaflet,Leaflet
+select2,Select2
+chosen,Chosen
+flatpickr,Flatpickr
+pikaday,Pikaday
+slick,Slick Carousel
+swiper,Swiper
+owl.carousel,Owl Carousel
+lightbox,Lightbox
+fancybox,Fancybox
+photoswipe,PhotoSwipe
+redis,Redis
+mongodb,MongoDB
+mongodb.com,MongoDB
+postgresql,PostgreSQL
+postgres,PostgreSQL
+mysql,MySQL
+mariadb,MariaDB
+cassandra,Cassandra
+elasticsearch,Elasticsearch
+elastic.co,Elasticsearch
+algolia,Algolia
+cdn.algolia.net,Algolia
+meilisearch,Meilisearch
+typesense,Typesense
+socket.io,Socket.IO
+socket.io.js,Socket.IO
+pusher,Pusher
+pusher.com,Pusher
+ably,Ably
+ably.io,Ably
+firebase,Firebase
+firebaseapp.com,Firebase
+__firebase,Firebase
+firebase.googleapis.com,Firebase
+supabase,Supabase
+supabase.co,Supabase
+planetscale,PlanetScale
+cockroachdb,CockroachDB
+appwrite,Appwrite
+pocketbase,PocketBase
+sanity,Sanity
+contentful,Contentful
+cdn.contentful.com,Contentful
+strapi,Strapi
+strapi.io,Strapi
+directus,Directus
+hygraph,Hygraph
+prismic,Prismic
+keystonejs,KeystoneJS
+payload,Payload CMS
+tina,TinaCMS
+builder.io,Builder.io
+auth0,Auth0
+auth0.com,Auth0
+clerk,Clerk
+clerk.com,Clerk
+clerk.dev,Clerk
+supertokens,SuperTokens
+lucia,Lucia
+next-auth,NextAuth
+nextauth,NextAuth
+keycloak,Keycloak
+okta,Okta
+okta.com,Okta
+cognito,AWS Cognito
+amazoncognito.com,AWS Cognito
+passport,Passport.js
+hello.js,Hello.js
+goth,Goth
+omniauth,OmniAuth
+devise,Devise
+authlogic,Authlogic
+clearance,Clearance
+sentinel,Sentinel
+jwt,JWT
+oauth,OAuth
+saml,SAML
+openid,OpenID
+ldap,LDAP
+kerberos,Kerberos
+casbin,Casbin
+casl,CASL
+pundit,Pundit
+cancancan,CanCanCan
+sentry,Sentry
+sentry-cdn.com,Sentry
+browser.sentry-cdn.com,Sentry
+bugsnag,Bugsnag
+rollbar,Rollbar
+cdn.rollbar.com,Rollbar
+datadog,Datadog
+datadoghq,Datadog
+datadoghq-browser-agent,Datadog
+newrelic,New Relic
+new relic,New Relic
+js-agent.newrelic.com,New Relic
+prometheus,Prometheus
+/metrics,Prometheus
+grafana,Grafana
+grafana.com,Grafana
+kibana,Kibana
+logstash,Logstash
+fluentd,Fluentd
+winston,Winston
+pino,Pino
+bunyan,Bunyan
+log4j,Log4j
+slf4j,SLF4J
+logback,Logback
+lodash,Lodash
+lodash.min.js,Lodash
+underscore,Underscore
+ramda,Ramda
+moment,Moment.js
+moment.js,Moment.js
+momentjs,Moment.js
+dayjs,Day.js
+luxon,Luxon
+date-fns,date-fns
+axios,Axios
+rxjs,RxJS
+zod,Zod
+yup,Yup
+joi,Joi
+ajv,AJV
+class-validator,Class Validator
+formik,Formik
+react-hook-form,React Hook Form
+final-form,Final Form
+react-select,React Select
+downshift,Downshift
+headless-ui,Headless UI
+radix-ui,Radix UI
+@radix-ui,Radix UI
+mui,Material UI
+@mui,Material UI
+material-ui,Material UI
+material icons,Material Icons
+ant-design,Ant Design
+antd,Ant Design
+chakra-ui,Chakra UI
+@chakra-ui,Chakra UI
+mantine,Mantine
+nextui,NextUI
+daisyui,DaisyUI
+shadcn,Shadcn UI
+aceternity,Aceternity UI
+preline,Preline
+flowbite,Flowbite
+ionic,Ionic
+capacitor,Capacitor
+cordova,Cordova
+react-native,React Native
+expo,Expo
+flutter,Flutter
+xamarin,Xamarin
+nativescript,NativeScript
+electron,Electron
+electronjs.org,Electron
+tauri,Tauri
+tauri.app,Tauri
+neutralino,Neutralino
+nwjs,NW.js
+pwa,PWA
+service-worker,PWA
+serviceworker,PWA
+workbox,Workbox
+webassembly,WebAssembly
+.wasm,WebAssembly
+emscripten,Emscripten
+google fonts,Google Fonts
+googleapis.com/css,Google Fonts
+typekit,Typekit
+fonts.com,Fonts.com
+cloud.typography,Cloud Typography
+font-awesome,Font Awesome
+fontawesome,Font Awesome
+fa-,Font Awesome
+ionicons,Ionicons
+feather,Feather Icons
+lucide,Lucide
+heroicons,Heroicons
+next/image,Next Image
+react-query,React Query
+tanstack,TanStack Query
+swr,SWR
+redux,Redux
+zustand,Zustand
+mobx,MobX
+recoil,Recoil
+jotai,Jotai
+valtio,Valtio
+xstate,XState
+immer,Immer
+stripe.js,Stripe
+js.stripe.com,Stripe
+checkout.stripe.com,Stripe
+stripe.com/v3,Stripe
+m.stripe.com,Stripe
+m.stripe.network,Stripe
+paypal.com/sdk,PayPal
+paypalobjects.com,PayPal
+www.paypalobjects.com,PayPal
+paypal.me,PayPal
+www.paypal.com/sdk,PayPal
+braintreepayments,Braintree
+js.braintreegateway.com,Braintree
+braintree-api,Braintree
+assets.braintreegateway.com,Braintree
+square.com,Square
+squareup.com,Square
+squareupsandbox.com,Square
+web.squarecdn.com,Square
+adyen.com,Adyen
+checkoutshopper,Adyen
+live.adyen.com,Adyen
+test.adyen.com,Adyen
+checkout.com,Checkout.com
+checkout,Checkout.com
+mollie.com,Mollie
+js.mollie.com,Mollie
+razorpay.com,Razorpay
+checkout.razorpay.com,Razorpay
+payu,PayU
+payu.in,PayU
+paddle.com,Paddle
+cdn.paddle.com,Paddle
+paddle.js,Paddle
+chargebee.com,Chargebee
+js.chargebee.com,Chargebee
+recurly.com,Recurly
+js.recurly.com,Recurly
+authorize.net,Authorize.Net
+authorizenet,Authorize.Net
+authorize,Authorize.Net
+worldpay.com,Worldpay
+secure.worldpay.com,Worldpay
+worldpay,Worldpay
+eway,eWay
+klarna.com,Klarna
+x.klarnacdn.net,Klarna
+klarna,Klarna
+afterpay.com,Afterpay
+static.afterpay.com,Afterpay
+afterpay,Afterpay
+clearpay.co.uk,Clearpay
+affirm.com,Affirm
+cdn1.affirm.com,Affirm
+affirm,Affirm
+sezzle.com,Sezzle
+widget.sezzle.com,Sezzle
+sezzle,Sezzle
+quadpay.com,Quadpay
+splitit.com,Splitit
+zip.co,Zip
+static.zip.co,Zip
+laybuy.com,Laybuy
+humm.com.au,Humm
+openpay.com.au,Openpay
+paybright,PayBright
+apple-pay,Apple Pay
+applepay,Apple Pay
+ApplePaySession,Apple Pay
+google-pay,Google Pay
+googlepay,Google Pay
+pay.google.com,Google Pay
+amazon-pay,Amazon Pay
+amazonpay,Amazon Pay
+static-na.payments-amazon.com,Amazon Pay
+shop-pay,Shop Pay
+shoppay,Shop Pay
+cdn.shopify.com/shopifycloud/checkout,Shop Pay
+venmo,Venmo
+venmo.com,Venmo
+cashapp,Cash App
+cash.app,Cash App
+zelle,Zelle
+coinbase-commerce,Coinbase Commerce
+commerce.coinbase.com,Coinbase Commerce
+bitpay.com,BitPay
+bitpay.com/invoice,BitPay
+crypto.com,Crypto.com
+pay.crypto.com,Crypto.com
+moonpay.com,MoonPay
+buy.moonpay.com,MoonPay
+simplex.com,Simplex
+wyre.com,Wyre
+ramp.network,Ramp
+banxa.com,Banxa
+mercuryo.io,Mercuryo
+sift.com,Sift
+cdn.sift.com,Sift
+ravelin.com,Ravelin
+forter.com,Forter
+signifyd.com,Signifyd
+cdn.signifyd.com,Signifyd
+kount.com,Kount
+riskified.com,Riskified
+cybersource.com,CyberSource
+3dsecure,3D Secure
+3ds,3D Secure
+verified-by-visa,Verified by Visa
+mastercard-securecode,Mastercard SecureCode
+amex-safekey,American Express SafeKey
+pci-dss,PCI DSS
+pci-compliant,PCI Compliant
+tokenization,Tokenization
+vault,Payment Vault
+alipay,Alipay
+alipayobjects.com,Alipay
+wechat-pay,WeChat Pay
+wxpay,WeChat Pay
+paytm,Paytm
+securegw.paytm.in,Paytm
+mercadopago,Mercado Pago
+mercadopago.com,Mercado Pago
+paystack.com,Paystack
+js.paystack.co,Paystack
+flutterwave.com,Flutterwave
+checkout.flutterwave.com,Flutterwave
+payfast.co.za,PayFast
+peach-payments,Peach Payments
+yoco.com,Yoco
+2checkout,2Checkout
+fastspring,FastSpring
+bluesnap,BlueSnap
+cloudflare,Cloudflare
+cdnjs.cloudflare.com,Cloudflare
+cloudflare.com,Cloudflare
+cf-ray,Cloudflare
+__cfduid,Cloudflare
+cf-cache-status,Cloudflare
+cf-request-id,Cloudflare
+__cf_bm,Cloudflare
+cf-edge-cache,Cloudflare
+fastly,Fastly
+fastly.net,Fastly
+fastlylb.net,Fastly
+x-fastly-request-id,Fastly
+fastly-debug-digest,Fastly
+fastly-debug-path,Fastly
+x-fastly-cache-status,Fastly
+akamai,Akamai
+akamaihd.net,Akamai
+edgesuite.net,Akamai
+x-akamai-request-id,Akamai
+x-check-cacheable,Akamai
+edge-control,Akamai
+x-cache-key,Akamai
+akamai-grn,Akamai
+x-akamai-transformed,Akamai
+cloudfront,CloudFront
+cloudfront.net,CloudFront
+d1.awsstatic.com,CloudFront
+x-amz-cf-id,CloudFront
+x-amz-cf-pop,CloudFront
+x-cache: Hit from cloudfront,CloudFront
+x-amz-request-id,CloudFront
+cdn77,CDN77
+cdn77.com,CDN77
+stackpath,StackPath
+stackpathcdn.com,StackPath
+x-sp-cache,StackPath
+bunnycdn,BunnyCDN
+bunny.net,BunnyCDN
+cdn-pullzone,BunnyCDN
+cdn-cachedat,BunnyCDN
+keycdn,KeyCDN
+keycdn.com,KeyCDN
+x-edge-location,KeyCDN
+gcore,G-Core Labs
+gcdn.co,G-Core Labs
+jsdelivr,jsDelivr
+cdn.jsdelivr.net,jsDelivr
+unpkg,unpkg
+unpkg.com,unpkg
+cdnjs,cdnjs
+bootstrapcdn,BootstrapCDN
+netlify,Netlify
+netlify.app,Netlify
+netlify.com,Netlify
+x-nf-request-id,Netlify
+netlify-cdn,Netlify
+x-nf-site-id,Netlify
+vercel,Vercel
+vercel.app,Vercel
+vercel-dns.com,Vercel
+x-vercel-id,Vercel
+x-vercel-cache,Vercel
+x-vercel-deployment-url,Vercel
+onrender.com,Render
+x-render-id,Render
+railway,Railway
+railway.app,Railway
+fly.io,Fly.io
+fly.dev,Fly.io
+deta.sh,Deta
+heroku,Heroku
+herokuapp.com,Heroku
+cloudflare pages,Cloudflare Pages
+github pages,GitHub Pages
+gitlab pages,GitLab Pages
+digitalocean,DigitalOcean
+digitaloceanspaces.com,DigitalOcean
+linode,Linode
+linodelabs.com,Linode
+vultr,Vultr
+vultr.com,Vultr
+hetzner,Hetzner
+hetzner.com,Hetzner
+ovh,OVH
+ovh.net,OVH
+scaleway,Scaleway
+scaleway.com,Scaleway
+contabo,Contabo
+contabo.net,Contabo
+aws,AWS
+amazon-aws,AWS
+amazonaws.com,AWS
+aws-amplify,AWS Amplify
+google cloud,Google Cloud
+googleapis.com,Google Cloud
+gcp,Google Cloud
+gfe,Google Cloud
+x-goog-gfe-backend-response-time,Google Cloud
+x-cloud-trace-context,Google Cloud
+via: 1.1 google,Google Cloud
+azure,Microsoft Azure
+azurewebsites.net,Azure
+windows.net,Azure
+x-azure-ref,Azure
+x-ec-debug,Azure
+x-azure-requestid,Azure
+oracle cloud,Oracle Cloud
+oci,Oracle Cloud
+ibm cloud,IBM Cloud
+bluemix.net,IBM Cloud
+nginx,Nginx
+server: nginx,Nginx
+openresty,OpenResty
+apache,Apache
+httpd,Apache
+server: apache,Apache
+caddy,Caddy
+server: caddy,Caddy
+traefik,Traefik
+envoy,Envoy
+litespeed,LiteSpeed
+server: litespeed,LiteSpeed
+x-litespeed-cache,LiteSpeed
+openlitespeed,OpenLiteSpeed
+iis,IIS
+microsoft-iis,IIS
+server: microsoft-iis,IIS
+x-powered-by: asp.net,IIS
+kestrel,Kestrel
+tomcat,Tomcat
+server: apache-tomcat,Tomcat
+jetty,Jetty
+jboss,JBoss
+wildfly,WildFly
+websphere,WebSphere
+weblogic,WebLogic
+glassfish,GlassFish
+undertow,Undertow
+gunicorn,Gunicorn
+server: gunicorn,Gunicorn
+uvicorn,Uvicorn
+server: uvicorn,Uvicorn
+puma,Puma
+server: puma,Puma
+passenger,Passenger
+x-powered-by: phusion passenger,Passenger
+x-powered-by: phusion,Passenger
+php,PHP
+x-powered-by: php,PHP
+python,Python
+ruby,Ruby
+nodejs,Node.js
+node.js,Node.js
+go,Go
+golang,Go
+rust,Rust
+java,Java
+.net,DotNet
+scala,Scala
+perl,Perl
+cloudinary,Cloudinary
+res.cloudinary.com,Cloudinary
+imgix,Imgix
+imgix.net,Imgix
+uploadcare,Uploadcare
+ucarecdn.com,Uploadcare
+imagekit,ImageKit
+ik.imagekit.io,ImageKit
+sirv,Sirv
+youtube,YouTube
+vimeo,Vimeo
+wistia,Wistia
+vidyard,Vidyard
+brightcove,Brightcove
+jwplayer,JW Player
+videojs,Video.js
+flowplayer,Flowplayer
+dailymotion,Dailymotion
+kaltura,Kaltura
+recaptcha,reCAPTCHA
+hcaptcha,hCaptcha
+cloudflare turnstile,Cloudflare Turnstile
+turnstile,Cloudflare Turnstile
+imperva,Imperva
+x-iinfo,Imperva
+incapsula,Imperva
+visid_incap,Imperva
+incap_ses,Imperva
+sucuri,Sucuri
+x-sucuri-id,Sucuri
+x-sucuri-cache,Sucuri
+sucuri-firewall,Sucuri
+wordfence,Wordfence
+ithemes security,iThemes Security
+schema.org,Schema.org
+schema,Schema.org
+structured data,Structured Data
+ahrefs,Ahrefs
+semrush,SEMrush
+screaming frog,Screaming Frog
+jenkins,Jenkins
+travis,Travis CI
+circleci,CircleCI
+github actions,GitHub Actions
+gitlab ci,GitLab CI

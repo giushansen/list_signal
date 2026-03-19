@@ -1,0 +1,46 @@
+# SSL Certificate Issuer Signatures
+# Format: pattern,score_type,points,comment
+
+# Premium commercial certificates (paid = budget signal)
+DigiCert,budget,4,DigiCert ($200-2000/yr)
+DigiCert,security,3,DigiCert (trusted CA)
+Sectigo,budget,3,Sectigo/Comodo ($50-500/yr)
+Comodo,budget,3,Comodo ($50-500/yr)
+GeoTrust,budget,3,GeoTrust ($150-800/yr)
+Thawte,budget,3,Thawte ($150-600/yr)
+RapidSSL,budget,2,RapidSSL ($15-100/yr)
+GlobalSign,budget,3,GlobalSign ($100-1000/yr)
+Entrust,budget,4,Entrust ($200-2000/yr)
+Symantec,budget,4,Symantec (legacy expensive)
+
+# Free certificates (no budget signal but secure)
+Let's Encrypt,budget,0,Let's Encrypt (free)
+Let's Encrypt,security,2,Let's Encrypt (automated)
+ZeroSSL,budget,0,ZeroSSL (free)
+ZeroSSL,security,2,ZeroSSL (free CA)
+
+# Cloud provider certificates
+Amazon,budget,2,AWS Certificate Manager (free)
+Amazon,web,2,AWS infrastructure
+Google Trust,budget,2,Google Trust Services
+Google,web,2,Google infrastructure
+Microsoft,budget,2,Microsoft certificates
+Azure,budget,2,Azure certificates
+
+# Extended validation (expensive)
+EV SSL,budget,5,Extended Validation ($200-1500/yr)
+Organization Validation,budget,3,OV certificate
+OV,budget,3,Organization validated
+
+# Security scoring
+DigiCert,security,4,DigiCert (very trusted)
+Sectigo,security,3,Sectigo trusted
+Comodo,security,3,Comodo trusted
+Let's Encrypt,security,2,Let's Encrypt (basic)
+GlobalSign,security,3,GlobalSign trusted
+Entrust,security,4,Entrust (high trust)
+
+# Web sophistication
+Let's Encrypt,web,1,Automated certificates
+Amazon,web,2,AWS certificate automation
+Google Trust,web,2,GCP automation

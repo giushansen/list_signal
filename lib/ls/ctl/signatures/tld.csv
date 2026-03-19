@@ -1,0 +1,60 @@
+# TLD Signatures
+# Format: tld,score_type,points,comment
+
+# Premium generic TLDs
+io,budget,3,.io tech startups
+ai,budget,4,.ai AI companies
+app,budget,2,.app Google
+dev,budget,2,.dev developers
+tech,budget,2,.tech
+cloud,budget,2,.cloud
+online,budget,1,.online
+site,budget,1,.site
+store,budget,1,.store e-commerce
+
+# High GDP countries
+com,budget,1,.com global
+us,budget,2,.us USA
+uk,budget,2,.uk United Kingdom
+de,budget,2,.de Germany
+ch,budget,3,.ch Switzerland
+se,budget,2,.se Sweden
+no,budget,2,.no Norway
+dk,budget,2,.dk Denmark
+nl,budget,2,.nl Netherlands
+fr,budget,1,.fr France
+ca,budget,2,.ca Canada
+au,budget,2,.au Australia
+nz,budget,2,.nz New Zealand
+jp,budget,2,.jp Japan
+sg,budget,2,.sg Singapore
+
+# ccTLDs high GDP
+co.uk,budget,2,.co.uk UK
+com.au,budget,2,.com.au Australia
+co.nz,budget,2,.co.nz New Zealand
+co.jp,budget,2,.co.jp Japan
+
+# Cheap/spam TLDs
+xyz,budget,-2,.xyz spam
+top,budget,-2,.top spam
+club,budget,-1,.club
+loan,budget,-3,.loan spam
+gq,budget,-3,.gq free
+tk,budget,-3,.tk free
+ml,budget,-3,.ml free
+ga,budget,-3,.ga free
+cf,budget,-3,.cf free
+
+# Professional TLDs
+law,budget,2,.law verified
+bank,budget,3,.bank verified
+insurance,budget,2,.insurance
+finance,budget,2,.finance
+
+# Web sophistication
+io,web,2,.io tech-savvy
+ai,web,3,.ai AI/ML
+dev,web,2,.dev developers
+app,web,2,.app applications
+tech,web,2,.tech technology

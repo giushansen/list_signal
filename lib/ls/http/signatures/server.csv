@@ -1,0 +1,51 @@
+# HTTP Server Header Signatures
+# Format: pattern,score_type,points,comment
+# Most specific patterns first
+
+# Modern web servers (technical sophistication)
+nginx,web,2,Nginx (modern, efficient)
+openresty,web,3,OpenResty (Nginx + Lua)
+caddy,web,3,Caddy (modern, Go-based)
+envoy,web,4,Envoy proxy (microservices)
+
+# Traditional web servers
+Apache,web,1,Apache (traditional)
+httpd,web,1,Apache httpd
+lighttpd,web,2,Lighttpd (lightweight)
+LiteSpeed,web,3,LiteSpeed (premium)
+
+# Cloud provider load balancers (high budget)
+awselb,budget,4,AWS Elastic Load Balancer
+awsalb,budget,4,AWS Application Load Balancer
+AmazonS3,budget,3,AWS S3 hosting
+Google Frontend,budget,4,Google Cloud LB
+cloudflare,budget,2,Cloudflare (free-$5000)
+cloudflare,web,2,Cloudflare edge
+Akamai,budget,5,Akamai (expensive)
+Akamai,web,4,Akamai CDN
+
+# Platform-specific servers
+Microsoft-IIS,web,1,IIS (Windows)
+Microsoft-HTTPAPI,web,1,Microsoft HTTP API
+kestrel,web,3,Kestrel (.NET Core)
+
+# Application servers
+Tomcat,web,2,Apache Tomcat (Java)
+Jetty,web,2,Jetty (Java)
+WildFly,web,2,WildFly (Java)
+Passenger,web,2,Phusion Passenger (Ruby/Node)
+Unicorn,web,2,Unicorn (Ruby)
+Puma,web,2,Puma (Ruby)
+Gunicorn,web,2,Gunicorn (Python)
+
+# Specialized/security
+AkamaiGHost,security,4,Akamai Ghost (security)
+BigIP,security,4,F5 Big-IP (enterprise LB)
+NetScaler,security,4,Citrix NetScaler (enterprise)
+
+# Web server scoring
+nginx,web,2,Modern server choice
+openresty,web,3,Advanced nginx
+caddy,web,3,Modern automated server
+Apache,web,1,Traditional but capable
+Microsoft-IIS,web,1,Windows stack

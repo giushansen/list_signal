@@ -1,0 +1,571 @@
+pattern,name
+google-analytics,Google Analytics
+ga.js,Google Analytics
+analytics.js,Google Analytics
+gtag,Google Tag Manager
+gtag.js,Google Tag Manager
+googletagmanager,Google Tag Manager
+google tag manager,Google Tag Manager
+GA4,Google Analytics 4
+google optimize,Google Optimize
+google_optimize,Google Optimize
+www.googleoptimize.com,Google Optimize
+firebase analytics,Firebase Analytics
+fbq,Facebook Pixel
+fbevents,Facebook Pixel
+_fbq,Facebook Pixel
+fb-root,Facebook
+connect.facebook,Facebook
+connect.facebook.net,Facebook Pixel
+_linkedin_,LinkedIn
+snap.licdn.com,LinkedIn Insight
+px.ads.linkedin.com,LinkedIn Insight
+analytics.twitter.com,Twitter Pixel
+static.ads-twitter.com,Twitter Pixel
+pintrk,Pinterest
+s.pinimg.com,Pinterest Tag
+tiktok,TikTok Pixel
+ttq,TikTok
+analytics.tiktok.com,TikTok Pixel
+sc-static.net,Snapchat Pixel
+rdt.js,Reddit Pixel
+alb.reddit.com,Reddit Pixel
+quora,Quora Pixel
+qp.js,Quora Pixel
+a.quora.com,Quora Pixel
+bat.bing.com,Microsoft Advertising
+uet.js,Microsoft Advertising
+criteo,Criteo
+static.criteo.net,Criteo
+taboola,Taboola
+cdn.taboola.com,Taboola
+outbrain,Outbrain
+widgets.outbrain.com,Outbrain
+adroll,AdRoll
+d.adroll.com,AdRoll
+perfect audience,Perfect Audience
+revcontent,RevContent
+media.net,Media.net
+sharethrough,Sharethrough
+nativo,Nativo
+zemanta,Zemanta
+mgid,MGID
+propeller ads,Propeller Ads
+popads,PopAds
+adsterra,Adsterra
+retargeter,Retargeter
+adsense,Google AdSense
+google adsense,Google AdSense
+doubleclick,DoubleClick
+amazon ads,Amazon Ads
+hotjar,Hotjar
+static.hotjar.com,Hotjar
+crazyegg,Crazy Egg
+script.crazyegg.com,Crazy Egg
+mouseflow,Mouseflow
+cdn.mouseflow.com,Mouseflow
+luckyorange,Lucky Orange
+lucky orange,Lucky Orange
+fullstory,FullStory
+fullstory.com/s/fs.js,FullStory
+logrocket,LogRocket
+cdn.logrocket.io,LogRocket
+heapanalytics,Heap Analytics
+cdn.heapanalytics.com,Heap Analytics
+mixpanel,Mixpanel
+cdn.mxpnl.com,Mixpanel
+amplitude,Amplitude
+cdn.amplitude.com,Amplitude
+segment,Segment
+cdn.segment.com,Segment
+api.segment.io,Segment
+posthog,PostHog
+june.so,June
+customerio,Customer.io
+customer_io,Customer.io
+assets.customer.io,Customer.io
+customer.io,Customer.io
+matomo,Matomo
+piwik,Matomo
+plausible,Plausible
+fathom,Fathom Analytics
+clicky,Clicky
+statcounter,StatCounter
+woopra,Woopra
+kissmetrics,Kissmetrics
+inspectlet,Inspectlet
+gauges,Gauges
+clarity.ms,Microsoft Clarity
+microsoft_clarity,Microsoft Clarity
+chartbeat,Chartbeat
+parsely,Parse.ly
+at internet,AT Internet
+intercom,Intercom
+widget.intercom.io,Intercom
+drift,Drift
+js.driftt.com,Drift
+zendesk,Zendesk
+static.zdassets.com,Zendesk
+freshdesk,Freshdesk
+freshchat,Freshchat
+wchat.freshchat.com,Freshchat
+livechat,LiveChat
+cdn.livechatinc.com,LiveChat
+tawk,Tawk.to
+tawk.to,Tawk.to
+embed.tawk.to,Tawk.to
+crisp,Crisp
+client.crisp.chat,Crisp
+olark,Olark
+static.olark.com,Olark
+purechat,Pure Chat
+pure chat,Pure Chat
+helpscout,HelpScout
+helpcrunch,HelpCrunch
+usercom,User.com
+smartsupp,Smartsupp
+jivochat,JivoChat
+tidio,Tidio
+chatra,Chatra
+liveagent,LiveAgent
+LiveAgent,LiveAgent
+respond.io,Respond.io
+respond,Respond.io
+gorgias,Gorgias
+chaport,Chaport
+comm100,Comm100
+hubspot,HubSpot
+js.hs-scripts.com,HubSpot
+js.hsforms.net,HubSpot
+js.hs-banner.com,HubSpot
+hubspot forms,HubSpot
+hubspot email,HubSpot
+marketo,Marketo
+munchkin.marketo.net,Marketo
+pardot,Pardot
+pi.pardot.com,Pardot
+eloqua,Eloqua
+img.en25.com,Eloqua
+salesforce,Salesforce
+zoho,Zoho
+pipedrive,Pipedrive
+freshsales,Freshsales
+copper,Copper
+insightly,Insightly
+nimble,Nimble
+close,Close
+salesflare,Salesflare
+capsule,Capsule
+vcita,vCita
+less annoying crm,Less Annoying CRM
+mailchimp,Mailchimp
+chimpstatic.com,Mailchimp
+list-manage.com,Mailchimp
+klaviyo,Klaviyo
+static.klaviyo.com,Klaviyo
+a.klaviyo.com,Klaviyo
+sendgrid,SendGrid
+cdn.sendgrid.net,SendGrid
+mailgun,Mailgun
+sendinblue,Sendinblue
+brevo,Brevo
+braze,Braze
+js.appboycdn.com,Braze
+iterable,Iterable
+links.iterable.com,Iterable
+activecampaign,ActiveCampaign
+trackcmp.net,ActiveCampaign
+constantcontact,Constant Contact
+constant contact,Constant Contact
+img.constantcontact.com,Constant Contact
+aweber,AWeber
+forms.aweber.com,AWeber
+getresponse,GetResponse
+app.getresponse.com,GetResponse
+convertkit,ConvertKit
+f.convertkit.com,ConvertKit
+drip,Drip
+tag.getdrip.com,Drip
+infusionsoft,Infusionsoft
+keap,Keap
+ontraport,Ontraport
+ontraport.net,Ontraport
+mailerlite,MailerLite
+moosend,Moosend
+emma,Emma
+campaign monitor,Campaign Monitor
+omnisend,Omnisend
+benchmark,Benchmark
+sendlane,Sendlane
+autopilot,Autopilot
+optimizely,Optimizely
+cdn.optimizely.com,Optimizely
+vwo,VWO
+dev.visualwebsiteoptimizer.com,VWO
+abtasty,AB Tasty
+ab tasty,AB Tasty
+try.abtasty.com,AB Tasty
+convert,Convert
+dynamic yield,Dynamic Yield
+dynamicyield,Dynamic Yield
+monetate,Monetate
+evergage,Evergage
+kameleoon,Kameleoon
+split.io,Split.io
+split,Split.io
+statsig,Statsig
+launchdarkly,LaunchDarkly
+growthbook,GrowthBook
+conductrics,Conductrics
+convertflow,ConvertFlow
+js.convertflow.co,ConvertFlow
+sumo,Sumo
+load.sumome.com,Sumo
+privy,Privy
+widget.privy.com,Privy
+optinmonster,OptinMonster
+a.omappapi.com,OptinMonster
+justuno,Justuno
+cdn.justuno.com,Justuno
+popup maker,Popup Maker
+popmake,Popup Maker
+hellobar,Hello Bar
+my.hellobar.com,Hello Bar
+wisepops,Wisepops
+exit monitor,Exit Monitor
+bounce exchange,Bounce Exchange
+sleeknote,Sleeknote
+picreel,Picreel
+recaptcha,reCAPTCHA
+google.com/recaptcha,reCAPTCHA
+hcaptcha,hCaptcha
+hcaptcha.com,hCaptcha
+turnstile,Cloudflare Turnstile
+challenges.cloudflare.com,Cloudflare Turnstile
+funcaptcha,FunCaptcha
+arkoselabs.com,FunCaptcha
+geetest,GeeTest
+geetest.com,GeeTest
+cloudinary,Cloudinary
+res.cloudinary.com,Cloudinary
+imgix,Imgix
+imgix.net,Imgix
+uploadcare,Uploadcare
+ucarecdn.com,Uploadcare
+imagekit,ImageKit
+ik.imagekit.io,ImageKit
+fastly-image,Fastly Image Optimizer
+fastly.net,Fastly
+sirv,Sirv
+sentry,Sentry
+browser.sentry-cdn.com,Sentry
+bugsnag,Bugsnag
+d2wy8f7a9ursnm.cloudfront.net,Bugsnag
+rollbar,Rollbar
+cdn.rollbar.com,Rollbar
+trackjs,TrackJS
+cdn.trackjs.com,TrackJS
+raygun,Raygun
+cdn.raygun.io,Raygun
+airbrake,Airbrake
+honeybadger,Honeybadger
+bugcrowd,Bugcrowd
+datadog,Datadog
+datadog-rum,Datadog RUM
+datadoghq-browser-agent,Datadog RUM
+newrelic,New Relic
+new_relic,New Relic
+js-agent.newrelic.com,New Relic
+appdynamics,AppDynamics
+cdn.appdynamics.com,AppDynamics
+dynatrace,Dynatrace
+cdn.dynatrace.com,Dynatrace
+instana,Instana
+elastic apm,Elastic APM
+elastic_apm,Elastic APM
+pingdom,Pingdom
+uptime robot,Uptime Robot
+uptimerobot,Uptime Robot
+statuspage,StatusPage
+stripe,Stripe
+stripe-js,Stripe.js
+js.stripe.com,Stripe.js
+paypal,PayPal
+paypal-sdk,PayPal SDK
+paypal.com/sdk,PayPal SDK
+square,Square
+square-sdk,Square SDK
+squareup.com,Square SDK
+braintree,Braintree
+braintree-sdk,Braintree SDK
+braintreegateway.com,Braintree SDK
+adyen,Adyen
+adyen-sdk,Adyen SDK
+checkout,Checkout.com
+checkout-com,Checkout.com
+cdn.checkout.com,Checkout.com
+razorpay,Razorpay
+payu,PayU
+mollie,Mollie
+klarna,Klarna
+afterpay,Afterpay
+affirm,Affirm
+sezzle,Sezzle
+2checkout,2Checkout
+authorize.net,Authorize.Net
+authorize,Authorize.Net
+worldpay,Worldpay
+eway,eWay
+paytm,Paytm
+recurly-js,Recurly.js
+js.recurly.com,Recurly.js
+chargebee-js,Chargebee.js
+js.chargebee.com,Chargebee.js
+paddle-js,Paddle.js
+cdn.paddle.com,Paddle.js
+lemonsqueezy,Lemon Squeezy
+assets.lemonsqueezy.com,Lemon Squeezy
+gumroad,Gumroad
+youtube,YouTube
+youtube-embed,YouTube Embed
+youtube.com/iframe_api,YouTube Embed
+vimeo,Vimeo
+vimeo-player,Vimeo Player
+player.vimeo.com,Vimeo Player
+wistia,Wistia
+fast.wistia.com,Wistia
+vidyard,Vidyard
+play.vidyard.com,Vidyard
+brightcove,Brightcove
+players.brightcove.net,Brightcove
+jwplayer,JW Player
+cdn.jwplayer.com,JW Player
+videojs,Video.js
+flowplayer,Flowplayer
+kaltura,Kaltura
+loom,Loom
+cdn.loom.com,Loom
+mux,Mux
+stream.mux.com,Mux
+cloudflare stream,Cloudflare Stream
+typeform,Typeform
+embed.typeform.com,Typeform
+jotform,JotForm
+cdn.jotfor.ms,JotForm
+wufoo,Wufoo
+formstack,Formstack
+cognitoforms,Cognito Forms
+gravityforms,Gravity Forms
+gravity forms,Gravity Forms
+contactform7,Contact Form 7
+contact form 7,Contact Form 7
+wpforms,WPForms
+ninjaforms,Ninja Forms
+ninja forms,Ninja Forms
+formidable,Formidable Forms
+caldera,Caldera Forms
+elementor forms,Elementor Forms
+elementor,Elementor
+leadpages,Leadpages
+unbounce,Unbounce
+instapage,Instapage
+divi,Divi Builder
+beaverbuilder,Beaver Builder
+oxygenbuilder,Oxygen Builder
+bricksbuilder,Bricks Builder
+generatepress,GeneratePress
+astra,Astra
+kadence,Kadence
+calendly,Calendly
+assets.calendly.com,Calendly
+acuity,Acuity Scheduling
+embed.acuityscheduling.com,Acuity Scheduling
+bookingkit,BookingKit
+simplybook,SimplyBook
+appointlet,Appointlet
+embed.appointlet.com,Appointlet
+youcanbook,YouCanBook.me
+setmore,Setmore
+schedulicity,Schedulicity
+picktime,Picktime
+tidycal,TidyCal
+cdn.tidycal.com,TidyCal
+cal-com,Cal.com
+embed.cal.com,Cal.com
+savvycal,SavvyCal
+chilipiper,Chili Piper
+js.chilipiper.com,Chili Piper
+koalendar,Koalendar
+yotpo,Yotpo
+staticw2.yotpo.com,Yotpo
+trustpilot,Trustpilot
+widget.trustpilot.com,Trustpilot
+judgeme,Judge.me
+cdn.judge.me,Judge.me
+reviewsio,Reviews.io
+widget.reviews.io,Reviews.io
+stamped,Stamped
+cdn.stamped.io,Stamped
+loox,Loox
+loox.io,Loox
+okendo,Okendo
+cdn.okendo.io,Okendo
+bazaarvoice,Bazaarvoice
+powerreviews,PowerReviews
+feefo,Feefo
+reevoo,Reevoo
+algolia,Algolia
+algolia-search,Algolia Search
+cdn.algolia.net,Algolia Search
+elasticsearch,Elasticsearch
+elastic.co,Elasticsearch
+doofinder,Doofinder
+searchspring,SearchSpring
+klevu,Klevu
+swiftype,Swiftype
+typesense,Typesense
+cloud.typesense.org,Typesense
+meilisearch,Meilisearch
+cdn.meilisearch.com,Meilisearch
+mapbox,Mapbox
+api.mapbox.com,Mapbox
+googlemaps,Google Maps
+google maps,Google Maps
+maps.googleapis.com,Google Maps
+leaflet,Leaflet
+cdn.leafletjs.com,Leaflet
+openstreetmap,OpenStreetMap
+openstreetmap.org,OpenStreetMap
+here,HERE Maps
+js.api.here.com,HERE Maps
+bing maps,Bing Maps
+dev.virtualearth.net,Bing Maps
+mapkit,Apple MapKit
+amplitude-cdp,Amplitude CDP
+rudderstack,RudderStack
+cdn.rudderlabs.com,RudderStack
+mparticle,mParticle
+static.mparticle.com,mParticle
+tealium,Tealium
+tags.tiqcdn.com,Tealium
+ensighten,Ensighten
+nexus.ensighten.com,Ensighten
+adobelaunch,Adobe Launch
+assets.adobedtm.com,Adobe Launch
+adobe analytics,Adobe Analytics
+observepoint,ObservePoint
+satismeter,SatisMeter
+app.satismeter.com,SatisMeter
+qualaroo,Qualaroo
+cl.qualaroo.com,Qualaroo
+usabilla,Usabilla
+survicate,Survicate
+survey.survicate.com,Survicate
+surveymonkey,SurveyMonkey
+qualtrics,Qualtrics
+google forms,Google Forms
+usersnap,Usersnap
+widget.usersnap.com,Usersnap
+userfeedback,UserFeedback
+cdn.userfeedback.com,UserFeedback
+pendo,Pendo
+cdn.pendo.io,Pendo
+appcues,Appcues
+fast.appcues.com,Appcues
+chameleon,Chameleon
+fast.chameleon.io,Chameleon
+userguiding,UserGuiding
+static.userguiding.com,UserGuiding
+userpilot,Userpilot
+js.userpilot.io,Userpilot
+walkme,WalkMe
+cdn.walkme.com,WalkMe
+whatfix,Whatfix
+introjs,Intro.js
+shepherd,Shepherd
+hopscotch,Hopscotch
+linkedin.github.io/hopscotch,Hopscotch
+commissionjunction,Commission Junction
+commission_junction,Commission Junction
+cj,Commission Junction
+cj affiliate,CJ Affiliate
+emjcd.com,Commission Junction
+rakuten,Rakuten Advertising
+rakuten-advertising,Rakuten Advertising
+impact,Impact Radius
+d3cxv97fi8q177.cloudfront.net,Impact Radius
+shareasale,ShareASale
+awin,Awin
+dwin1.com,Awin
+clickbank,ClickBank
+clickbank.net,ClickBank
+partnerstack,PartnerStack
+cdn.partnerstack.com,PartnerStack
+rewardful,Rewardful
+r.wdfl.co,Rewardful
+refersion,Refersion
+cdn.refersion.com,Refersion
+tapfiliate,Tapfiliate
+cdn.tapfiliate.com,Tapfiliate
+affiliatewp,AffiliateWP
+postaffiliatepro,Post Affiliate Pro
+everflow,Everflow
+hasoffers,HasOffers
+tune,TUNE
+cookiebot,CookieBot
+onetrust,OneTrust
+iubenda,Iubenda
+osano,Osano
+quantcast,Quantcast Choice
+trustarc,TrustArc
+usercentrics,Usercentrics
+termly,Termly
+cookiepro,CookiePro
+cookieyes,CookieYes
+addthis,AddThis
+sharethis,ShareThis
+shareaholic,Shareaholic
+memberful,Memberful
+memberpress,MemberPress
+restrict content,Restrict Content
+patreon,Patreon
+circle,Circle
+mighty networks,Mighty Networks
+discourse,Discourse
+onesignal,OneSignal
+pushwoosh,Pushwoosh
+pushcrew,PushCrew
+subscribers,Subscribers
+aimtell,Aimtell
+pushassist,PushAssist
+nosto,Nosto
+barilliance,Barilliance
+certona,Certona
+bloomreach,Bloomreach
+smile.io,Smile.io
+swell,Swell
+loyaltylion,LoyaltyLion
+loyalty_lion,LoyaltyLion
+zinrelo,Zinrelo
+netsuite,NetSuite
+sap,SAP
+oracle,Oracle
+microsoft dynamics,Microsoft Dynamics
+dynamics,Microsoft Dynamics
+acumatica,Acumatica
+brightpearl,Brightpearl
+cin7,Cin7
+dear,Dear Systems
+skubana,Skubana
+linnworks,Linnworks
+shipstation,ShipStation
+easyship,Easyship
+shippo,Shippo
+aftership,AfterShip
+returnly,Returnly
+loop,Loop Returns
+narvar,Narvar
+avalara,Avalara
+taxjar,TaxJar
+quaderno,Quaderno
+taxify,Taxify

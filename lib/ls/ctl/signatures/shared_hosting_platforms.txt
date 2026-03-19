@@ -1,0 +1,93 @@
+# Shared hosting platforms to filter out (create too many duplicates)
+# Format: one per line, no quotes
+# Updated: 2025-12-07
+
+# CDN & Hosting Platforms
+pages.dev
+workers.dev
+cloudflaressl.com
+cloudflare-dns.com
+trycloudflare.com
+herokuapp.com
+herokuapp.ssl.com
+azurewebsites.net
+cloudfront.net
+amazonaws.com
+s3.amazonaws.com
+elasticbeanstalk.com
+compute.amazonaws.com
+
+# Deployment Platforms
+vercel.app
+netlify.app
+github.io
+gitlab.io
+web.app
+firebaseapp.com
+appspot.com
+cloudfunctions.net
+run.app
+railway.app
+render.com
+fly.dev
+cyclic.app
+deta.dev
+repl.co
+glitch.me
+
+# Website Builders
+pantheonsite.io
+wpengine.com
+kinsta.cloud
+turbifycdn.com
+myshopify.com
+bigcartel.com
+squarespace.com
+wixsite.com
+weebly.com
+wordpress.com
+tumblr.com
+blogspot.com
+medium.com
+ghost.io
+webflow.io
+carrd.co
+notion.site
+airtableusercontent.com
+
+# Dynamic DNS
+loca.lt
+ngrok.io
+quickconnect.to
+duckdns.org
+freeddns.org
+no-ip.org
+dynu.net
+afraid.org
+nip.io
+xip.io
+sslip.io
+traefik.me
+localtest.me
+lvh.me
+vcap.me
+plex.direct
+
+# Streaming/Media
+nflxvideo.net
+
+# SaaS Platforms
+mongodb.net
+zendesk.com
+salesforce.com
+force.com
+hubspot.com
+mailchimp.com
+sendgrid.net
+mandrillapp.com
+sparkpostmail.com
+intercom.io
+segment.com
+amplitude.com
+mixpanel.com
+launchdarkly.com
