@@ -24,3 +24,18 @@ config :ls, LSWeb.Endpoint,
 config :swoosh, :api_client, false
 config :phoenix, :plug_init_mode, :runtime
 config :logger, level: :info
+
+# Suppress Erlang TLS noise from crawling random domains
+config :logger, :console,
+  format: "$time [$level] $message\n",
+  metadata: [:request_id]
+
+config :logger,
+  handle_otp_reports: true,
+  handle_sasl_reports: false
+
+# Filter out :notice level TLS alerts (normal when crawling)
+config :logger, compile_time_purge_matching: [
+  [module: :tls_record, level_lower_than: :warning],
+  [module: :tls_dtls_connection, level_lower_than: :warning]
+]

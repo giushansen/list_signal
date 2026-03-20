@@ -27,11 +27,16 @@ defmodule LS.Cluster.WorkQueue do
 
   @queue_table :work_queue
   @inflight_table :work_inflight
-  @max_queue_size 5_000_000
+  @counter_table :work_queue_counters
+  @max_queue_size 1_000_000
   @batch_timeout_ms 600_000        # 10 minutes
   @ttl_ms 86_400_000               # 24 hours
   @cleanup_interval_ms 3_600_000   # 1 hour
   @inflight_check_ms 60_000        # 1 minute
+
+  # Counter indices
+  @idx_enqueued 1
+  @idx_dropped 2
 
   # ==========================================================================
   # CLIENT API
@@ -46,11 +51,13 @@ defmodule LS.Cluster.WorkQueue do
     current_size = :ets.info(@queue_table, :size)
 
     if current_size >= @max_queue_size do
+      :counters.add(counter_ref(), @idx_dropped, 1)
       :queue_full
     else
       id = :erlang.unique_integer([:monotonic, :positive])
       now = System.system_time(:millisecond)
       :ets.insert(@queue_table, {id, domain_data, now})
+      :counters.add(counter_ref(), @idx_enqueued, 1)
       :ok
     end
   end
@@ -85,17 +92,19 @@ defmodule LS.Cluster.WorkQueue do
       read_concurrency: true, write_concurrency: true])
     :ets.new(@inflight_table, [:set, :public, :named_table])
 
+    # Atomic counters for enqueue/dropped (called outside GenServer)
+    ref = :counters.new(2, [:write_concurrency])
+    :persistent_term.put(@counter_table, ref)
+
     schedule_cleanup()
     schedule_inflight_check()
 
     Logger.info("📋 WorkQueue started (max: #{div(@max_queue_size, 1_000_000)}M, TTL: 24h)")
 
     {:ok, %{
-      total_enqueued: 0,
       total_dequeued: 0,
       total_completed: 0,
       total_requeued: 0,
-      total_dropped: 0,
       start_time: System.monotonic_time(:second)
     }}
   end
@@ -130,12 +139,17 @@ defmodule LS.Cluster.WorkQueue do
     queue_mem_words = :ets.info(@queue_table, :memory) || 0
     queue_mem_mb = Float.round(queue_mem_words * :erlang.system_info(:wordsize) / 1_048_576, 1)
 
+    # Read atomic counters
+    ref = counter_ref()
+    total_enqueued = :counters.get(ref, @idx_enqueued)
+    total_dropped = :counters.get(ref, @idx_dropped)
+
     drain_rate = if uptime > 0,
       do: Float.round(state.total_completed / uptime * 60, 1),
       else: 0.0
 
     enqueue_rate = if uptime > 0,
-      do: Float.round(state.total_enqueued / uptime * 60, 1),
+      do: Float.round(total_enqueued / uptime * 60, 1),
       else: 0.0
 
     stats = %{
@@ -143,11 +157,11 @@ defmodule LS.Cluster.WorkQueue do
       queue_pct: if(@max_queue_size > 0, do: Float.round(queue_size / @max_queue_size * 100, 1), else: 0.0),
       queue_memory_mb: queue_mem_mb,
       inflight_batches: inflight_count,
-      total_enqueued: state.total_enqueued,
+      total_enqueued: total_enqueued,
       total_dequeued: state.total_dequeued,
       total_completed: state.total_completed,
       total_requeued: state.total_requeued,
-      total_dropped: state.total_dropped,
+      total_dropped: total_dropped,
       enqueue_rate_per_min: enqueue_rate,
       drain_rate_per_min: drain_rate,
       uptime_seconds: uptime
@@ -195,7 +209,7 @@ defmodule LS.Cluster.WorkQueue do
     end
 
     schedule_cleanup()
-    {:noreply, %{state | total_dropped: state.total_dropped + dropped}}
+    {:noreply, state}
   end
 
   # Requeue timed-out in-flight batches
@@ -215,6 +229,10 @@ defmodule LS.Cluster.WorkQueue do
   # ==========================================================================
   # PRIVATE
   # ==========================================================================
+
+  defp counter_ref do
+    :persistent_term.get(@counter_table)
+  end
 
   defp take_batch(count) do
     take_batch(count, [])

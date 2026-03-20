@@ -40,9 +40,6 @@ cd ~/Projects/list_signal
 # Install deps and build assets
 mix setup
 
-# Port pipeline modules from KeyBloc (one-time)
-bash scripts/port_from_keybloc.sh ~/Projects/keybloc
-
 # Compile
 mix compile
 

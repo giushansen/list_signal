@@ -137,7 +137,7 @@ defmodule LS.CTL.Poller do
   def init(_opts) do
     :ets.new(@ets_work_queue, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
 
-    logs = Application.get_env(:keybloc, :ctl_logs, @log_configs)
+    logs = Application.get_env(:ls, :ctl_logs, @log_configs)
 
     log_states = Enum.map(logs, fn config ->
       case get_tree_size(config.url) do
@@ -305,28 +305,36 @@ defmodule LS.CTL.Poller do
   end
 
   defp worker_loop(log_config, manager_pid) do
-    case claim_next_batch(log_config.name, log_config.batch_size) do
-      {:ok, start_idx, end_idx} ->
-        case get_tree_size(log_config.url) do
-          {:ok, tree_size} when start_idx < tree_size ->
-            actual_end = min(end_idx, tree_size - 1)
-            stats = fetch_and_process(log_config, start_idx, actual_end)
-            send(manager_pid, {:work_done, log_config.name, stats})
+    # Check tree_size BEFORE claiming to avoid index racing
+    case get_tree_size(log_config.url) do
+      {:ok, tree_size} ->
+        [{_, current_index}] = :ets.lookup(@ets_work_queue, log_config.name)
+        cond do
+          # Caught up — wait for new entries
+          current_index >= tree_size ->
+            Process.sleep(5_000)
             worker_loop(log_config, manager_pid)
-
-          {:ok, tree_size} when start_idx >= tree_size ->
-            if start_idx > tree_size + 1000 do
-              Logger.warning("⚠️  #{log_config.name}: Resetting queue (was #{start_idx}, tree: #{tree_size})")
-              :ets.insert(@ets_work_queue, {log_config.name, tree_size})
+          # Index way ahead of tree (log shrank or reset) — fix once, quietly
+          current_index > tree_size + 1000 ->
+            Logger.info("🔄 #{log_config.name}: Index reset (was #{current_index}, tree: #{tree_size})")
+            :ets.insert(@ets_work_queue, {log_config.name, tree_size})
+            Process.sleep(5_000)
+            worker_loop(log_config, manager_pid)
+          # Behind — claim and process
+          true ->
+            case claim_next_batch(log_config.name, log_config.batch_size) do
+              {:ok, start_idx, end_idx} ->
+                actual_end = min(end_idx, tree_size - 1)
+                if start_idx < tree_size do
+                  stats = fetch_and_process(log_config, start_idx, actual_end)
+                  send(manager_pid, {:work_done, log_config.name, stats})
+                end
+                worker_loop(log_config, manager_pid)
+              {:error, _} ->
+                Process.sleep(5_000)
+                worker_loop(log_config, manager_pid)
             end
-            Process.sleep(5_000)
-            worker_loop(log_config, manager_pid)
-
-          {:error, _reason} ->
-            Process.sleep(5_000)
-            worker_loop(log_config, manager_pid)
         end
-
       {:error, _reason} ->
         Process.sleep(5_000)
         worker_loop(log_config, manager_pid)

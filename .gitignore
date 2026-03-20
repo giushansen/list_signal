@@ -41,3 +41,14 @@ npm-debug.log
 
 .DS_Store
 
+
+# ClickHouse local data
+data/
+metadata/
+preprocessed_configs/
+store/
+status
+uuid
+
+# HTTP performance log
+http_performance.log

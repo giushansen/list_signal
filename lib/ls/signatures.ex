@@ -21,32 +21,95 @@ defmodule LS.Signatures do
   }
 
   def load_all do
-    Enum.each(@signature_files, fn {type, filepath} ->
-      load_signature(type, filepath)
+    total = Enum.reduce(@signature_files, 0, fn {type, filepath}, acc ->
+      count = load_signature(type, filepath)
+      acc + count
     end)
-    Logger.info("✅ Loaded #{map_size(@signature_files)} signature tables")
+    Logger.info("✅ Loaded #{map_size(@signature_files)} signature tables (#{total} total entries)")
   end
 
   defp load_signature(type, filepath) do
     table = table_name(type)
-    :ets.new(table, [:bag, :public, :named_table, read_concurrency: true])
+
+    # Recreate table if it already exists (hot reload)
+    if :ets.whereis(table) != :undefined do
+      :ets.delete_all_objects(table)
+    else
+      :ets.new(table, [:bag, :public, :named_table, read_concurrency: true])
+    end
+
     case File.read(filepath) do
       {:ok, content} ->
-        content
-        |> String.split("\n", trim: true)
-        |> Enum.reject(&String.starts_with?(&1, "#"))
-        |> Enum.each(fn line ->
-          case String.split(line, ",", parts: 4) do
-            [p, st, pts, c] ->
-              :ets.insert(table, {String.trim(p) |> String.downcase(),
-                String.trim(st) |> String.to_atom(),
-                String.to_integer(String.trim(pts)),
-                String.trim(c)})
-            _ -> :ok
+        lines =
+          content
+          |> String.split("\n", trim: true)
+          |> Enum.reject(&String.starts_with?(&1, "#"))
+
+        # Skip header line if present (first line contains column names)
+        lines = skip_header(lines)
+
+        count = Enum.reduce(lines, 0, fn line, acc ->
+          case parse_csv_line(line) do
+            {:ok, tuple} ->
+              :ets.insert(table, tuple)
+              acc + 1
+            :skip ->
+              acc
           end
         end)
+
+        if count == 0 do
+          Logger.warning("⚠️  Signatures #{filepath}: file loaded but 0 entries parsed")
+        end
+
+        count
+
       {:error, reason} ->
         Logger.warning("⚠️  Signatures #{filepath}: #{inspect(reason)}")
+        0
+    end
+  end
+
+  # Skip header if first line looks like column names (no digits = not data)
+  defp skip_header([first | rest]) do
+    if String.match?(first, ~r/^[a-zA-Z_,\s]+$/) and not String.match?(first, ~r/\d/) do
+      rest
+    else
+      [first | rest]
+    end
+  end
+  defp skip_header([]), do: []
+
+  # Parse CSV line — handles both 2-column and 4-column formats
+  # 4-col: pattern,score_type,points,comment  → {pattern, score_type_atom, points_int, comment}
+  # 2-col: pattern,name                       → {pattern, :match, 0, name}
+  defp parse_csv_line(line) do
+    case String.split(line, ",", parts: 4) do
+      [p, st, pts, c] ->
+        case Integer.parse(String.trim(pts)) do
+          {points, _} ->
+            {:ok, {
+              String.trim(p) |> String.downcase(),
+              String.trim(st) |> String.to_atom(),
+              points,
+              String.trim(c)
+            }}
+          :error ->
+            # 4 fields but 3rd isn't a number — treat as malformed, skip
+            :skip
+        end
+
+      [p, name] ->
+        # 2-column format: pattern,name (used by tech.csv, tools.csv, cdn.csv, blocked.csv)
+        {:ok, {
+          String.trim(p) |> String.downcase(),
+          :match,
+          0,
+          String.trim(name)
+        }}
+
+      _ ->
+        :skip
     end
   end
 

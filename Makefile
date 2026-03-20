@@ -23,7 +23,8 @@ dev:
 		iex --name master@127.0.0.1 --cookie dev_cookie -S mix phx.server
 
 dev-worker:
-	LS_ROLE=worker LS_MASTER=master@127.0.0.1 LS_HTTP_CONCURRENCY=20 \
+	LS_ROLE=worker LS_MASTER=master@127.0.0.1 \
+		LS_BATCH_SIZE=100 LS_HTTP_CONCURRENCY=20 LS_DNS_CONCURRENCY=50 \
 		iex --name worker_dev@127.0.0.1 --cookie dev_cookie -S mix
 
 master:
@@ -31,7 +32,7 @@ master:
 		iex --name master@$$(hostname -I | awk '{print $$1}') --cookie $(COOKIE) -S mix phx.server
 
 worker:
-	LS_ROLE=worker LS_MASTER=$(MASTER) \
+	LS_ROLE=worker LS_MASTER=$(MASTER) LS_DNS_CONCURRENCY=500 \
 		iex --name worker_$$(hostname -s)@$$(hostname -I | awk '{print $$1}') --cookie $(COOKIE) -S mix
 
 clean:
