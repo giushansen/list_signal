@@ -7,3 +7,5 @@ config :ls, LSWeb.Endpoint,
 config :ls, LS.Mailer, adapter: Swoosh.Adapters.Test
 config :swoosh, :api_client, false
 config :logger, level: :warning
+# Suppress pipeline processes during tests
+config :ls, ls_role: "test"
