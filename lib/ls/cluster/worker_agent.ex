@@ -1,28 +1,18 @@
 defmodule LS.Cluster.WorkerAgent do
   @moduledoc """
-  Worker agent — runs on each worker node.
+  Worker agent — pulls batches, enriches domains, returns rows to master.
 
-  Connects to master, pulls domain batches, runs DNS → HTTP + BGP enrichment,
-  returns completed rows to master for ClickHouse insertion.
+  ## Pipeline per batch
 
-  No files. Everything in memory.
-
-  ## Key design: non-blocking GenServer
-
-  Enrichment runs in a spawned process, NOT inside handle_info.
-  This keeps the GenServer responsive for :stats, :detailed_stats, and :peek
-  calls from the dashboard (which would otherwise timeout during the 30-50s
-  enrichment cycle).
-
-  ## Flow per batch
-
-      1. Pull 1000 domains from master WorkQueue
-      2. DNS (all domains, 500 concurrent, ~5ms each)
-      3. HTTP (filtered domains only, 100 concurrent, ~5-25s each — the bottleneck)
-      4. BGP (domains with A records, batched via Team Cymru)
-      5. Merge into complete rows
-      6. Return to master
-      7. Loop
+      1. DNS  (all domains, 500 concurrent)
+      2. Parallel:
+         a. HTTP  (filtered, 100 concurrent — the bottleneck)
+         b. BGP   (batched via Team Cymru)
+         c. RDAP  (cache-filtered, 3 concurrent, per-server rate limited)
+      3. Reputation lookups at merge time (pure ETS reads):
+         - Tranco rank, Majestic rank + RefSubNets
+         - Blocklist flags (malware/phishing/disposable)
+      4. Merge -> return rows to master
   """
 
   use GenServer
@@ -32,6 +22,9 @@ defmodule LS.Cluster.WorkerAgent do
   alias LS.HTTP.{Client, DomainFilter, TechDetector, PageExtractor}
   alias LS.BGP.Resolver, as: BGPResolver
   alias LS.BGP.Scorer, as: BGPScorer
+  alias LS.RDAP.Client, as: RDAPClient
+  alias LS.RDAP.Scorer, as: RDAPScorer
+  alias LS.Reputation.{Tranco, Majestic, Blocklist}
   alias LS.Cache
 
   @http_timeout 25_000
@@ -44,270 +37,226 @@ defmodule LS.Cluster.WorkerAgent do
 
   @impl true
   def init(_opts) do
-    master_node = System.get_env("LS_MASTER", "master@10.0.0.1") |> String.to_atom()
-    http_concurrency = System.get_env("LS_HTTP_CONCURRENCY", "100") |> String.to_integer()
-    dns_concurrency = System.get_env("LS_DNS_CONCURRENCY", "500") |> String.to_integer()
-    batch_size = System.get_env("LS_BATCH_SIZE", "1000") |> String.to_integer()
-
+    master = System.get_env("LS_MASTER", "master@10.0.0.1") |> String.to_atom()
+    http_c = System.get_env("LS_HTTP_CONCURRENCY", "100") |> String.to_integer()
+    dns_c = System.get_env("LS_DNS_CONCURRENCY", "500") |> String.to_integer()
+    rdap_c = System.get_env("LS_RDAP_CONCURRENCY", "3") |> String.to_integer()
+    batch = System.get_env("LS_BATCH_SIZE", "1000") |> String.to_integer()
     LS.HTTP.DomainFilter.load_tlds()
-
     state = %{
-      master_node: master_node,
-      connected: false,
-      http_concurrency: http_concurrency,
-      dns_concurrency: dns_concurrency,
-      batch_size: batch_size,
-      total_enriched: 0,
-      total_batches: 0,
-      current_batch: nil,
+      master_node: master, connected: false,
+      http_concurrency: http_c, dns_concurrency: dns_c,
+      rdap_concurrency: rdap_c, batch_size: batch,
+      total_enriched: 0, total_batches: 0, current_batch: nil,
       start_time: System.monotonic_time(:second),
-      # Stage stats from last completed batch (for dashboard)
-      last_stages: nil,
-      # Sample rows per stage for peek (5 each, ~5KB total)
-      last_samples: %{},
-      # Error ring buffer (last N errors for dashboard)
-      errors: []
+      last_stages: nil, last_samples: %{}, errors: []
     }
-
     send(self(), :connect_and_work)
-    Logger.info("🔧 WorkerAgent starting (master: #{master_node}, batch: #{batch_size}, HTTP: #{http_concurrency}, DNS: #{dns_concurrency})")
+    Logger.info("WorkerAgent (master: #{master}, batch: #{batch}, HTTP: #{http_c}, DNS: #{dns_c}, RDAP: #{rdap_c})")
     {:ok, state}
   end
 
   # ==========================================================================
-  # STATS — always responsive (never blocked by enrichment)
+  # STATS
   # ==========================================================================
 
   @impl true
-  def handle_call(:stats, _from, state) do
-    {:reply, basic_stats(state), state}
+  def handle_call(:stats, _from, s) do
+    up = System.monotonic_time(:second) - s.start_time
+    {:reply, %{
+      connected: s.connected, master_node: s.master_node,
+      total_enriched: s.total_enriched, total_batches: s.total_batches,
+      current_batch: s.current_batch,
+      domains_per_sec: if(up > 0, do: Float.round(s.total_enriched / up, 1), else: 0.0),
+      http_concurrency: s.http_concurrency, dns_concurrency: s.dns_concurrency,
+      rdap_concurrency: s.rdap_concurrency, batch_size: s.batch_size,
+      last_stages: s.last_stages, error_count: length(s.errors),
+      uptime_seconds: up
+    }, s}
   end
 
   @impl true
-  def handle_call(:detailed_stats, _from, state) do
-    stats = basic_stats(state) |> Map.put(:last_stages, state.last_stages)
-    {:reply, stats, state}
+  def handle_call(:detailed_stats, _from, s) do
+    {:reply, %{
+      stats: elem(handle_call(:stats, nil, s), 1),
+      samples: s.last_samples, errors: s.errors
+    }, s}
   end
 
   @impl true
-  def handle_call({:peek, stage}, _from, state) do
-    samples = Map.get(state.last_samples, stage, [])
-    {:reply, samples, state}
+  def handle_call({:peek, stage}, _from, s) do
+    {:reply, Map.get(s.last_samples, stage, []), s}
   end
 
   @impl true
-  def handle_call(:errors, _from, state) do
-    {:reply, state.errors, state}
-  end
-
-  defp basic_stats(state) do
-    uptime = System.monotonic_time(:second) - state.start_time
-    %{
-      master_node: state.master_node,
-      connected: state.connected,
-      http_concurrency: state.http_concurrency,
-      dns_concurrency: state.dns_concurrency,
-      batch_size: state.batch_size,
-      total_enriched: state.total_enriched,
-      total_batches: state.total_batches,
-      current_batch: state.current_batch,
-      domains_per_sec: if(uptime > 0, do: Float.round(state.total_enriched / uptime, 2), else: 0.0),
-      uptime_seconds: uptime,
-      error_count: length(state.errors)
-    }
-  end
+  def handle_call(:errors, _from, s), do: {:reply, s.errors, s}
 
   # ==========================================================================
   # CONNECTION
   # ==========================================================================
 
   @impl true
-  def handle_info(:connect_and_work, state) do
-    case Node.connect(state.master_node) do
-      true ->
+  def handle_info(:connect_and_work, s) do
+    case Node.ping(s.master_node) do
+      :pong ->
+        Logger.info("Connected to master #{s.master_node}")
         send(self(), :pull_work)
-        {:noreply, %{state | connected: true}}
-      _ ->
-        Logger.warning("⏳ Cannot reach master #{state.master_node}, retrying in #{div(@reconnect_interval_ms, 1000)}s...")
+        {:noreply, %{s | connected: true}}
+      :pang ->
+        Logger.warning("Cannot reach master #{s.master_node}, retry #{div(@reconnect_interval_ms, 1000)}s")
         Process.send_after(self(), :connect_and_work, @reconnect_interval_ms)
-        {:noreply, %{state | connected: false}}
+        {:noreply, %{s | connected: false}}
     end
   end
 
   # ==========================================================================
-  # WORK LOOP — enrichment runs in a spawned process
+  # WORK LOOP
   # ==========================================================================
 
   @impl true
-  def handle_info(:pull_work, state) do
-    queue = {LS.Cluster.WorkQueue, state.master_node}
+  def handle_info(:pull_work, s) do
+    queue = {LS.Cluster.WorkQueue, s.master_node}
     parent = self()
-    http_concurrency = state.http_concurrency
-    dns_concurrency = state.dns_concurrency
-    batch_size = state.batch_size
-
-    # Spawn enrichment so GenServer stays responsive for stats/peek
+    %{http_concurrency: hc, dns_concurrency: dc, rdap_concurrency: rc, batch_size: bs} = s
     spawn_link(fn ->
       try do
-        case GenServer.call(queue, {:dequeue, batch_size}, 15_000) do
-          {:ok, batch_id, domains} ->
-            Logger.info("📦 Batch #{batch_id}: #{length(domains)} domains")
-            {results, stages, samples, errors} = enrich_batch(domains, http_concurrency, dns_concurrency)
-            send(parent, {:batch_done, batch_id, results, stages, samples, errors})
-
+        case GenServer.call(queue, {:dequeue, bs}, 15_000) do
+          {:ok, bid, domains} ->
+            Logger.info("Batch #{bid}: #{length(domains)} domains")
+            {results, stages, samples, errors} = enrich_batch(domains, hc, dc, rc)
+            send(parent, {:batch_done, bid, results, stages, samples, errors})
           {:empty, []} ->
             send(parent, :batch_empty)
         end
       catch
-        :exit, reason ->
-          send(parent, {:batch_error, reason})
+        :exit, reason -> send(parent, {:batch_error, reason})
       end
     end)
-
-    {:noreply, %{state | current_batch: :working}}
+    {:noreply, %{s | current_batch: :working}}
   end
 
   @impl true
-  def handle_info({:batch_done, batch_id, results, stages, samples, batch_errors}, state) do
-    queue = {LS.Cluster.WorkQueue, state.master_node}
-
-    Logger.info(
-      "✅ Batch #{batch_id}: #{length(results)} enriched " <>
-      "(DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms)"
-    )
-
-    GenServer.cast(queue, {:complete, batch_id, results})
-
-    # Merge batch errors into ring buffer
-    errors = (batch_errors ++ state.errors) |> Enum.take(@max_errors)
-
-    {:noreply, %{state |
-      total_enriched: state.total_enriched + length(results),
-      total_batches: state.total_batches + 1,
+  def handle_info({:batch_done, bid, results, stages, samples, batch_errors}, s) do
+    queue = {LS.Cluster.WorkQueue, s.master_node}
+    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms)")
+    GenServer.cast(queue, {:complete, bid, results})
+    errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
+    new_s = %{s |
+      total_enriched: s.total_enriched + length(results),
+      total_batches: s.total_batches + 1,
       current_batch: nil,
       last_stages: stages,
       last_samples: samples,
       errors: errors
-    } |> then(fn s -> send(self(), :pull_work); s end)}
+    }
+    send(self(), :pull_work)
+    {:noreply, new_s}
   end
 
   @impl true
-  def handle_info(:batch_empty, state) do
-    Logger.debug("📭 Queue empty, waiting #{div(@empty_queue_wait_ms, 1000)}s...")
+  def handle_info(:batch_empty, s) do
     Process.send_after(self(), :pull_work, @empty_queue_wait_ms)
-    {:noreply, %{state | current_batch: nil}}
+    {:noreply, %{s | current_batch: nil}}
   end
 
   @impl true
-  def handle_info({:batch_error, reason}, state) do
-    error = %{time: DateTime.utc_now() |> DateTime.to_iso8601(), msg: "Lost master: #{inspect(reason)}", stage: "connection"}
-    errors = [error | state.errors] |> Enum.take(@max_errors)
-
-    Logger.warning("⚠️  Lost connection to master: #{inspect(reason)}")
+  def handle_info({:batch_error, reason}, s) do
+    err = %{time: now_iso(), msg: "Lost master: #{inspect(reason)}", stage: "connection"}
+    errors = [err | s.errors] |> Enum.take(@max_errors)
     Process.send_after(self(), :connect_and_work, @reconnect_interval_ms)
-    {:noreply, %{state | connected: false, current_batch: nil, errors: errors}}
+    {:noreply, %{s | connected: false, current_batch: nil, errors: errors}}
   end
 
-  # Ignore unexpected messages from spawned processes
   @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(_msg, s), do: {:noreply, s}
 
   # ==========================================================================
-  # ENRICHMENT — all in-memory, no files
+  # ENRICHMENT
   # ==========================================================================
 
-  defp enrich_batch(domains, http_concurrency, dns_concurrency) do
-    worker_name = Node.self() |> Atom.to_string()
+  defp enrich_batch(domains, http_c, dns_c, rdap_c) do
+    worker = Node.self() |> Atom.to_string()
     errors = []
 
-    # 1. DNS (all domains)
-    {dns_us, dns_results} = :timer.tc(fn -> enrich_dns(domains, dns_concurrency) end)
-    dns_timeouts = length(domains) - map_size(dns_results)
-    errors = if dns_timeouts > 0,
-      do: [%{time: now_iso(), msg: "DNS: #{dns_timeouts}/#{length(domains)} timed out", stage: "dns"} | errors],
-      else: errors
+    # 1. DNS (must complete before parallel stage)
+    {dns_us, dns_results} = :timer.tc(fn -> enrich_dns(domains, dns_c) end)
+    dns_to = length(domains) - map_size(dns_results)
+    errors = if dns_to > 0 do
+      [%{time: now_iso(), msg: "DNS: #{dns_to}/#{length(domains)} timed out", stage: "dns"} | errors]
+    else
+      errors
+    end
 
-    # 2. Classify: which get HTTP, which get BGP
-    {http_candidates, bgp_candidates} = classify(dns_results)
+    # 2. Classify
+    {http_cands, bgp_cands} = classify(dns_results)
+    rdap_cands = classify_rdap(dns_results)
 
-    # 3. HTTP (filtered, slow)
-    {http_us, http_results} = :timer.tc(fn -> enrich_http(http_candidates, http_concurrency) end)
-    http_errors_count = length(http_candidates) - map_size(http_results)
-    errors = if http_errors_count > 0,
-      do: [%{time: now_iso(), msg: "HTTP: #{http_errors_count}/#{length(http_candidates)} failed", stage: "http"} | errors],
-      else: errors
+    # 3. Parallel: HTTP + BGP + RDAP
+    http_task = Task.async(fn -> enrich_http(http_cands, http_c) end)
+    bgp_task = Task.async(fn -> enrich_bgp(bgp_cands) end)
+    rdap_task = Task.async(fn -> enrich_rdap(rdap_cands, rdap_c) end)
 
-    # 4. BGP (batched)
-    {bgp_us, bgp_results} = :timer.tc(fn -> enrich_bgp(bgp_candidates) end)
-    bgp_missing = length(bgp_candidates) - map_size(bgp_results)
-    errors = if bgp_missing > length(bgp_candidates) * 0.5 and length(bgp_candidates) > 0,
-      do: [%{time: now_iso(), msg: "BGP: #{bgp_missing}/#{length(bgp_candidates)} missing", stage: "bgp"} | errors],
-      else: errors
+    {http_us, http_res} = :timer.tc(fn -> Task.await(http_task, 120_000) end)
+    {bgp_us, bgp_res} = :timer.tc(fn -> Task.await(bgp_task, 120_000) end)
+    {rdap_us, rdap_res} = :timer.tc(fn -> Task.await(rdap_task, 120_000) end)
 
-    # 5. Merge
-    merged = merge_results(domains, dns_results, http_results, bgp_results, worker_name)
+    http_err = length(http_cands) - map_size(http_res)
+    errors = if http_err > 0 do
+      [%{time: now_iso(), msg: "HTTP: #{http_err}/#{length(http_cands)} failed", stage: "http"} | errors]
+    else
+      errors
+    end
 
-    # 6. Stage stats
+    # 4. Merge (reputation lookups happen here)
+    merged = merge_results(domains, dns_results, http_res, bgp_res, rdap_res, worker)
+
     stages = %{
       dns: %{input: length(domains), output: map_size(dns_results), ms: div(dns_us, 1000)},
-      http: %{
-        input: length(http_candidates),
-        output: map_size(http_results),
-        ms: div(http_us, 1000),
-        filtered: length(domains) - length(http_candidates)
-      },
-      bgp: %{input: length(bgp_candidates), output: map_size(bgp_results), ms: div(bgp_us, 1000)},
+      http: %{input: length(http_cands), output: map_size(http_res), ms: div(http_us, 1000),
+              filtered: length(domains) - length(http_cands)},
+      bgp: %{input: length(bgp_cands), output: map_size(bgp_res), ms: div(bgp_us, 1000)},
+      rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
+              rate_limited: length(rdap_cands) - map_size(rdap_res)},
       total: length(merged)
     }
 
-    # 7. Samples for peek (5 from each stage — negligible cost)
     samples = %{
       dns: dns_results |> Enum.take(5) |> Enum.map(fn {d, v} -> Map.merge(flatten_dns(v), %{domain: d}) end),
-      http: http_results |> Enum.take(5) |> Enum.map(fn {d, v} -> Map.put(v, :domain, d) end),
-      bgp: bgp_results |> Enum.take(5) |> Enum.map(fn {d, v} -> Map.put(v, :domain, d) end),
+      http: http_res |> Enum.take(5) |> Enum.map(fn {d, v} -> Map.put(v, :domain, d) end),
+      bgp: bgp_res |> Enum.take(5) |> Enum.map(fn {d, v} -> Map.put(v, :domain, d) end),
+      rdap: rdap_res |> Enum.take(5) |> Enum.map(fn {d, v} -> Map.put(v, :domain, d) end),
       merged: Enum.take(merged, 5)
     }
 
     {merged, stages, samples, errors}
   end
 
-  defp flatten_dns(%{dns: dns, scores: scores}) do
-    %{
-      a: dns[:a] |> List.wrap() |> Enum.join(", "),
-      mx: dns[:mx] |> List.wrap() |> Enum.join(", "),
-      txt: dns[:txt] |> List.wrap() |> Enum.join(", ") |> String.slice(0, 100),
-      dns_web_scoring: scores[:dns_web_scoring] || 0,
-      dns_email_scoring: scores[:dns_email_scoring] || 0
-    }
-  end
-  defp flatten_dns(_), do: %{}
-
-  defp now_iso, do: DateTime.utc_now() |> DateTime.to_iso8601()
-
   # ==========================================================================
   # DNS
   # ==========================================================================
 
-  defp enrich_dns(domains, dns_concurrency) do
+  defp enrich_dns(domains, conc) do
     domains
     |> Task.async_stream(
-      fn domain_data ->
-        domain = domain_data.ctl_domain
+      fn d ->
+        domain = d.ctl_domain
         case Resolver.lookup(domain) do
-          {:ok, dns_data} ->
-            scores = Scorer.score(%{domain: domain, dns: dns_data})
-            {domain, %{dns: dns_data, scores: scores}}
+          {:ok, dns} ->
+            scores = Scorer.score(%{domain: domain, dns: dns})
+            {domain, %{dns: dns, scores: scores}}
           {:error, _} ->
-            {domain, %{dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []},
-                        scores: %{dns_web_scoring: 0, dns_email_scoring: 0,
-                                   dns_budget_scoring: 0, dns_security_scoring: 0}}}
+            {domain, %{
+              dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []},
+              scores: %{dns_web_scoring: 0, dns_email_scoring: 0,
+                        dns_budget_scoring: 0, dns_security_scoring: 0}
+            }}
         end
       end,
-      max_concurrency: dns_concurrency, timeout: 15_000,
+      max_concurrency: conc, timeout: 15_000,
       on_timeout: :kill_task, ordered: false
     )
     |> Enum.reduce(%{}, fn
-      {:ok, {domain, result}}, acc -> Map.put(acc, domain, result)
+      {:ok, {d, r}}, acc -> Map.put(acc, d, r)
       {:exit, _}, acc -> acc
     end)
   end
@@ -317,22 +266,30 @@ defmodule LS.Cluster.WorkerAgent do
   # ==========================================================================
 
   defp classify(dns_results) do
-    Enum.reduce(dns_results, {[], []}, fn {domain, data}, {http_acc, bgp_acc} ->
-      dns = data.dns
-      first_ip = dns[:a] |> List.wrap() |> List.first()
+    Enum.reduce(dns_results, {[], []}, fn {domain, data}, {ha, ba} ->
+      ip = data.dns[:a] |> List.wrap() |> List.first()
+      ba = if ip && ip != "", do: [{domain, ip} | ba], else: ba
+      mx = data.dns[:mx] |> List.wrap() |> Enum.join("|")
+      txt = data.dns[:txt] |> List.wrap() |> Enum.join(" ")
+      # Skip HTTP for blocklisted domains
+      ha = if ip && ip != "" && Cache.http_lookup(domain) == :miss &&
+              !Blocklist.blocked?(domain) && !LS.Reputation.TLDFilter.is_registry?(domain) && DomainFilter.should_crawl?(domain, mx, txt) do
+        [{domain, ip} | ha]
+      else
+        ha
+      end
+      {ha, ba}
+    end)
+  end
 
-      bgp_acc = if first_ip && first_ip != "",
-        do: [{domain, first_ip} | bgp_acc], else: bgp_acc
-
-      mx_str = dns[:mx] |> List.wrap() |> Enum.join("|")
-      txt_str = dns[:txt] |> List.wrap() |> Enum.join(" ")
-
-      http_acc = if first_ip && first_ip != "" &&
-                    Cache.http_lookup(domain) == :miss &&
-                    DomainFilter.should_crawl?(domain, mx_str, txt_str),
-        do: [{domain, first_ip} | http_acc], else: http_acc
-
-      {http_acc, bgp_acc}
+  defp classify_rdap(dns_results) do
+    Enum.reduce(dns_results, [], fn {domain, data}, acc ->
+      ip = data.dns[:a] |> List.wrap() |> List.first()
+      if ip && ip != "" && Cache.rdap_lookup(domain) == :miss && !Blocklist.blocked?(domain) && !LS.Reputation.TLDFilter.is_registry?(domain) && !LS.Reputation.TLDFilter.is_registry?(domain) do
+        [domain | acc]
+      else
+        acc
+      end
     end)
   end
 
@@ -341,41 +298,41 @@ defmodule LS.Cluster.WorkerAgent do
   # ==========================================================================
 
   defp enrich_http([], _), do: %{}
-  defp enrich_http(candidates, concurrency) do
-    candidates
+  defp enrich_http(cands, conc) do
+    cands
     |> Task.async_stream(
-      fn {domain, ip} ->
-        result = do_http(domain, ip)
-        Cache.http_insert(domain)
-        {domain, result}
+      fn {d, ip} ->
+        r = do_http(d, ip)
+        Cache.http_insert(d)
+        {d, r}
       end,
-      max_concurrency: concurrency, timeout: @http_timeout + 5_000,
+      max_concurrency: conc, timeout: @http_timeout + 5_000,
       on_timeout: :kill_task, ordered: false
     )
     |> Enum.reduce(%{}, fn
-      {:ok, {domain, result}}, acc -> Map.put(acc, domain, result)
+      {:ok, {d, r}}, acc -> Map.put(acc, d, r)
       {:exit, _}, acc -> acc
     end)
   end
 
   defp do_http(domain, ip) do
     case Client.fetch(domain, ip) do
-      {:ok, response} ->
-        tech = TechDetector.detect(response)
-        body = response.body || ""
+      {:ok, resp} ->
+        tech = TechDetector.detect(resp)
+        body = resp.body || ""
         {pages, emails} = PageExtractor.extract_all(body, domain)
         %{
-          http_status: response.status,
-          http_response_time: response[:elapsed_ms],
-          http_server: get_header(response, "server"),
+          http_status: resp.status,
+          http_response_time: resp[:elapsed_ms],
+          http_server: gh(resp, "server"),
           http_cdn: tech[:cdn] || "",
           http_blocked: tech[:blocked] || "",
-          http_content_type: get_header(response, "content-type"),
+          http_content_type: gh(resp, "content-type"),
           http_tech: tech[:tech] |> List.wrap() |> Enum.join("|"),
           http_tools: tech[:tools] |> List.wrap() |> Enum.join("|"),
           http_is_js_site: to_string(tech[:is_js_site] || false),
           http_title: extract_title(body),
-          http_meta_description: extract_meta_description(body),
+          http_meta_description: extract_meta_desc(body),
           http_pages: pages || "",
           http_emails: emails || "",
           http_error: ""
@@ -387,63 +344,58 @@ defmodule LS.Cluster.WorkerAgent do
     e -> %{http_error: "crash:#{Exception.message(e)}"}
   end
 
-  defp extract_title(body) when is_binary(body) do
-    case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, body) do
-      [_, title] -> title |> String.trim() |> String.slice(0, 200)
-      _ -> ""
-    end
-  rescue
-    _ -> ""
-  end
-  defp extract_title(_), do: ""
+  # ==========================================================================
+  # RDAP
+  # ==========================================================================
 
-  defp extract_meta_description(body) when is_binary(body) do
-    case Regex.run(~r/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']{1,1000})["']/is, body) do
-      [_, desc] -> desc |> String.trim() |> String.slice(0, 500)
-      _ ->
-        # Try reverse order (content before name)
-        case Regex.run(~r/<meta[^>]*content\s*=\s*["']([^"']{1,1000})["'][^>]*name\s*=\s*["']description["']/is, body) do
-          [_, desc] -> desc |> String.trim() |> String.slice(0, 500)
-          _ -> ""
+  defp enrich_rdap([], _), do: %{}
+  defp enrich_rdap(cands, conc) do
+    cands
+    |> Task.async_stream(
+      fn d ->
+        case RDAPClient.lookup(d) do
+          {:ok, data} ->
+            Cache.rdap_insert(d)
+            {d, Map.merge(data, RDAPScorer.score(data))}
+          {:error, :rate_limited} ->
+            {d, :skip}
+          {:error, _} ->
+            Cache.rdap_insert(d)
+            {d, :skip}
         end
-    end
-  rescue
-    _ -> ""
+      end,
+      max_concurrency: conc, timeout: 15_000,
+      on_timeout: :kill_task, ordered: false
+    )
+    |> Enum.reduce(%{}, fn
+      {:ok, {_, :skip}}, acc -> acc
+      {:ok, {d, r}}, acc -> Map.put(acc, d, r)
+      {:exit, _}, acc -> acc
+    end)
   end
-  defp extract_meta_description(_), do: ""
-
-  defp get_header(%{headers: h}, name) when is_map(h), do: Map.get(h, name, "")
-  defp get_header(%{headers: h}, name) when is_list(h) do
-    case List.keyfind(h, name, 0) do
-      {_, v} -> v
-      nil -> ""
-    end
-  end
-  defp get_header(_, _), do: ""
 
   # ==========================================================================
   # BGP
   # ==========================================================================
 
   defp enrich_bgp([]), do: %{}
-  defp enrich_bgp(candidates) do
-    ips = Enum.map(candidates, fn {_, ip} -> ip end) |> Enum.uniq()
+  defp enrich_bgp(cands) do
+    ips = Enum.map(cands, fn {_, ip} -> ip end) |> Enum.uniq()
     asn_map = case GenServer.call(BGPResolver, {:lookup_batch, ips}, 60_000) do
-      {:ok, map} -> map
+      {:ok, m} -> m
       {:error, _} -> %{}
     end
-
-    Enum.reduce(candidates, %{}, fn {domain, ip}, acc ->
+    Enum.reduce(cands, %{}, fn {d, ip}, acc ->
       case Map.get(asn_map, ip) do
         nil -> acc
-        asn_data ->
-          scores = BGPScorer.score(asn_data)
-          Map.put(acc, domain, %{
+        a ->
+          scores = BGPScorer.score(a)
+          Map.put(acc, d, %{
             bgp_ip: ip,
-            bgp_asn_number: asn_data.asn || "",
-            bgp_asn_org: asn_data.org || "",
-            bgp_asn_country: asn_data.country || "",
-            bgp_asn_prefix: asn_data.prefix || "",
+            bgp_asn_number: a.asn || "",
+            bgp_asn_org: a.org || "",
+            bgp_asn_country: a.country || "",
+            bgp_asn_prefix: a.prefix || "",
             bgp_web_scoring: scores.bgp_web_scoring,
             bgp_budget_scoring: scores.bgp_budget_scoring
           })
@@ -457,18 +409,26 @@ defmodule LS.Cluster.WorkerAgent do
   # MERGE
   # ==========================================================================
 
-  defp merge_results(domains, dns_results, http_results, bgp_results, worker_name) do
+  defp merge_results(domains, dns_res, http_res, bgp_res, rdap_res, worker) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
-
     Enum.map(domains, fn d ->
       domain = d.ctl_domain
-      dns = Map.get(dns_results, domain, %{dns: %{}, scores: %{}})
-      http = Map.get(http_results, domain, %{})
-      bgp = Map.get(bgp_results, domain, %{})
+      dns = Map.get(dns_res, domain, %{dns: %{}, scores: %{}})
+      http = Map.get(http_res, domain, %{})
+      bgp = Map.get(bgp_res, domain, %{})
+      rdap = Map.get(rdap_res, domain, %{})
+
+      # Reputation lookups - pure ETS reads
+      tranco = Tranco.lookup(domain)
+      maj = Majestic.lookup(domain)
+      bl = Blocklist.lookup(domain)
+
+      dns_d = dns[:dns] || %{}
+      sc = dns[:scores] || %{}
 
       %{
         enriched_at: now,
-        worker: worker_name,
+        worker: worker,
         domain: domain,
         ctl_tld: d[:ctl_tld] || "",
         ctl_issuer: d[:ctl_issuer] || "",
@@ -477,15 +437,15 @@ defmodule LS.Cluster.WorkerAgent do
         ctl_web_scoring: d[:ctl_web_scoring],
         ctl_budget_scoring: d[:ctl_budget_scoring],
         ctl_security_scoring: d[:ctl_security_scoring],
-        dns_a: dns.dns[:a] |> List.wrap() |> Enum.join("|"),
-        dns_aaaa: dns.dns[:aaaa] |> List.wrap() |> Enum.join("|"),
-        dns_mx: dns.dns[:mx] |> List.wrap() |> Enum.join("|"),
-        dns_txt: dns.dns[:txt] |> List.wrap() |> Enum.join("|"),
-        dns_cname: dns.dns[:cname] |> List.wrap() |> Enum.join("|"),
-        dns_web_scoring: dns.scores[:dns_web_scoring] || 0,
-        dns_email_scoring: dns.scores[:dns_email_scoring] || 0,
-        dns_budget_scoring: dns.scores[:dns_budget_scoring] || 0,
-        dns_security_scoring: dns.scores[:dns_security_scoring] || 0,
+        dns_a: dns_d[:a] |> List.wrap() |> Enum.join("|"),
+        dns_aaaa: dns_d[:aaaa] |> List.wrap() |> Enum.join("|"),
+        dns_mx: dns_d[:mx] |> List.wrap() |> Enum.join("|"),
+        dns_txt: dns_d[:txt] |> List.wrap() |> Enum.join("|"),
+        dns_cname: dns_d[:cname] |> List.wrap() |> Enum.join("|"),
+        dns_web_scoring: sc[:dns_web_scoring] || 0,
+        dns_email_scoring: sc[:dns_email_scoring] || 0,
+        dns_budget_scoring: sc[:dns_budget_scoring] || 0,
+        dns_security_scoring: sc[:dns_security_scoring] || 0,
         http_status: http[:http_status],
         http_response_time: http[:http_response_time],
         http_server: http[:http_server] || "",
@@ -506,8 +466,79 @@ defmodule LS.Cluster.WorkerAgent do
         bgp_asn_country: bgp[:bgp_asn_country] || "",
         bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
         bgp_web_scoring: bgp[:bgp_web_scoring] || 0,
-        bgp_budget_scoring: bgp[:bgp_budget_scoring] || 0
+        bgp_budget_scoring: bgp[:bgp_budget_scoring] || 0,
+        rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
+        rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
+        rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),
+        rdap_registrar: rdap[:registrar] || "",
+        rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
+        rdap_nameservers: rdap[:nameservers] || "",
+        rdap_status: rdap[:status] || "",
+        rdap_dnssec: rdap[:dnssec] || "",
+        rdap_age_scoring: rdap[:rdap_age_scoring] || 0,
+        rdap_registrar_scoring: rdap[:rdap_registrar_scoring] || 0,
+        rdap_error: "",
+        tranco_rank: tranco,
+        majestic_rank: if(maj, do: maj.rank, else: nil),
+        majestic_ref_subnets: if(maj, do: maj.ref_subnets, else: nil),
+        is_malware: if(bl == :malware, do: "true", else: ""),
+        is_phishing: if(bl == :phishing, do: "true", else: ""),
+        is_disposable_email: if(bl == :disposable, do: "true", else: "")
       }
     end)
   end
+
+  # ==========================================================================
+  # HELPERS
+  # ==========================================================================
+
+  defp fmt_dt(nil), do: nil
+  defp fmt_dt(dt) when is_binary(dt) do
+    dt |> String.replace("T", " ") |> String.replace("Z", "") |> String.slice(0, 19)
+  end
+  defp fmt_dt(_), do: nil
+
+  defp flatten_dns(%{dns: d, scores: s}) do
+    %{
+      a: d[:a] |> List.wrap() |> Enum.join(", "),
+      mx: d[:mx] |> List.wrap() |> Enum.join(", "),
+      dns_web_scoring: s[:dns_web_scoring] || 0
+    }
+  end
+  defp flatten_dns(_), do: %{}
+
+  defp now_iso, do: DateTime.utc_now() |> DateTime.to_iso8601()
+
+  defp extract_title(b) when is_binary(b) do
+    case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
+      [_, t] -> String.trim(t) |> String.slice(0, 200)
+      _ -> ""
+    end
+  rescue
+    _ -> ""
+  end
+  defp extract_title(_), do: ""
+
+  defp extract_meta_desc(b) when is_binary(b) do
+    case Regex.run(~r/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']{1,1000})["']/is, b) do
+      [_, d] -> String.trim(d) |> String.slice(0, 500)
+      _ ->
+        case Regex.run(~r/<meta[^>]*content\s*=\s*["']([^"']{1,1000})["'][^>]*name\s*=\s*["']description["']/is, b) do
+          [_, d] -> String.trim(d) |> String.slice(0, 500)
+          _ -> ""
+        end
+    end
+  rescue
+    _ -> ""
+  end
+  defp extract_meta_desc(_), do: ""
+
+  defp gh(%{headers: h}, n) when is_map(h), do: Map.get(h, n, "")
+  defp gh(%{headers: h}, n) when is_list(h) do
+    case List.keyfind(h, n, 0) do
+      {_, v} -> v
+      nil -> ""
+    end
+  end
+  defp gh(_, _), do: ""
 end

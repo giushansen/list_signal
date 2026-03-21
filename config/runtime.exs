@@ -19,3 +19,19 @@ if config_env() == :prod do
 
   config :ls, :dns_rewrite_on_redirect, host
 end
+
+# Filter noisy TLS alerts from Erlang SSL module
+:logger.add_primary_filter(:tls_filter, {
+  fn
+    %{msg: {:report, %{description: ~c"TLS" ++ _}}}, _extra -> :stop
+    %{msg: {:string, msg}}, _extra when is_list(msg) ->
+      if :string.find(msg, ~c"SERVER ALERT") != :nomatch, do: :stop, else: :ignore
+    _, _ -> :ignore
+  end,
+  %{}
+})
+
+if config_env() != :test do
+  :logger.add_primary_filter(:tls_filter, {fn _, _ -> :ignore end, %{}})
+end
+

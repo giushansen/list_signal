@@ -1,0 +1,24 @@
+# RDAP Registrar Scoring — pattern,score_type,points,comment
+markmonitor,rdap_registrar,15,Enterprise brand protection (Fortune 500)
+csc corporate,rdap_registrar,15,Enterprise domain management
+csc digital,rdap_registrar,15,Enterprise domain management
+corporation service company,rdap_registrar,15,CSC full name
+safenames,rdap_registrar,12,Enterprise UK registrar
+comlaude,rdap_registrar,12,Enterprise brand registrar
+com laude,rdap_registrar,12,Enterprise brand registrar
+networksolutions,rdap_registrar,3,Legacy enterprise
+network solutions,rdap_registrar,3,Legacy enterprise
+godaddy,rdap_registrar,0,Standard mass-market
+namecheap,rdap_registrar,0,Standard developer-friendly
+google domains,rdap_registrar,0,Standard tech-savvy
+cloudflare,rdap_registrar,1,Slightly technical
+amazon registrar,rdap_registrar,1,AWS ecosystem
+gandi,rdap_registrar,1,Tech-savvy European
+hover,rdap_registrar,0,Standard
+ionos,rdap_registrar,0,Standard European
+ovh,rdap_registrar,0,Standard European
+freenom,rdap_registrar,-5,Free domains (spam magnet)
+dynadot,rdap_registrar,-1,Budget
+porkbun,rdap_registrar,0,Budget but legit
+hostinger,rdap_registrar,-1,Budget hosting
+namesilo,rdap_registrar,-1,Budget bulk

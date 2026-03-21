@@ -52,3 +52,13 @@ config :tailwind,
   ]
 
 import_config "#{config_env()}.exs"
+
+# Suppress noisy TLS/SSL warnings from Erlang during HTTP crawling
+config :logger,
+  handle_otp_reports: true,
+  handle_sasl_reports: false
+
+config :logger, :console,
+  metadata: [:request_id],
+  format: "$time $metadata[$level] $message\n"
+config :logger, level: :info

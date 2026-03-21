@@ -17,7 +17,8 @@ defmodule LS.Signatures do
     http_response_time: "lib/ls/http/signatures/response_time.csv",
     bgp_asn_org: "lib/ls/bgp/signatures/asn_org.csv",
     bgp_country: "lib/ls/bgp/signatures/country.csv",
-    bgp_prefix: "lib/ls/bgp/signatures/prefix.csv"
+    bgp_prefix: "lib/ls/bgp/signatures/prefix.csv",
+    rdap_registrar: "lib/ls/rdap/signatures/registrar.csv"
   }
 
   def load_all do
@@ -30,86 +31,39 @@ defmodule LS.Signatures do
 
   defp load_signature(type, filepath) do
     table = table_name(type)
-
-    # Recreate table if it already exists (hot reload)
-    if :ets.whereis(table) != :undefined do
-      :ets.delete_all_objects(table)
-    else
-      :ets.new(table, [:bag, :public, :named_table, read_concurrency: true])
-    end
+    if :ets.whereis(table) != :undefined, do: :ets.delete_all_objects(table),
+    else: :ets.new(table, [:bag, :public, :named_table, read_concurrency: true])
 
     case File.read(filepath) do
       {:ok, content} ->
-        lines =
-          content
-          |> String.split("\n", trim: true)
-          |> Enum.reject(&String.starts_with?(&1, "#"))
-
-        # Skip header line if present (first line contains column names)
+        lines = content |> String.split("\n", trim: true) |> Enum.reject(&String.starts_with?(&1, "#"))
         lines = skip_header(lines)
-
-        count = Enum.reduce(lines, 0, fn line, acc ->
+        Enum.reduce(lines, 0, fn line, acc ->
           case parse_csv_line(line) do
-            {:ok, tuple} ->
-              :ets.insert(table, tuple)
-              acc + 1
-            :skip ->
-              acc
+            {:ok, tuple} -> :ets.insert(table, tuple); acc + 1
+            :skip -> acc
           end
         end)
-
-        if count == 0 do
-          Logger.warning("⚠️  Signatures #{filepath}: file loaded but 0 entries parsed")
-        end
-
-        count
-
       {:error, reason} ->
         Logger.warning("⚠️  Signatures #{filepath}: #{inspect(reason)}")
         0
     end
   end
 
-  # Skip header if first line looks like column names (no digits = not data)
   defp skip_header([first | rest]) do
-    if String.match?(first, ~r/^[a-zA-Z_,\s]+$/) and not String.match?(first, ~r/\d/) do
-      rest
-    else
-      [first | rest]
-    end
+    if String.match?(first, ~r/^[a-zA-Z_,\s]+$/) and not String.match?(first, ~r/\d/), do: rest, else: [first | rest]
   end
   defp skip_header([]), do: []
 
-  # Parse CSV line — handles both 2-column and 4-column formats
-  # 4-col: pattern,score_type,points,comment  → {pattern, score_type_atom, points_int, comment}
-  # 2-col: pattern,name                       → {pattern, :match, 0, name}
   defp parse_csv_line(line) do
     case String.split(line, ",", parts: 4) do
       [p, st, pts, c] ->
         case Integer.parse(String.trim(pts)) do
-          {points, _} ->
-            {:ok, {
-              String.trim(p) |> String.downcase(),
-              String.trim(st) |> String.to_atom(),
-              points,
-              String.trim(c)
-            }}
-          :error ->
-            # 4 fields but 3rd isn't a number — treat as malformed, skip
-            :skip
+          {points, _} -> {:ok, {String.trim(p) |> String.downcase(), String.trim(st) |> String.to_atom(), points, String.trim(c)}}
+          :error -> :skip
         end
-
-      [p, name] ->
-        # 2-column format: pattern,name (used by tech.csv, tools.csv, cdn.csv, blocked.csv)
-        {:ok, {
-          String.trim(p) |> String.downcase(),
-          :match,
-          0,
-          String.trim(name)
-        }}
-
-      _ ->
-        :skip
+      [p, name] -> {:ok, {String.trim(p) |> String.downcase(), :match, 0, String.trim(name)}}
+      _ -> :skip
     end
   end
 
@@ -121,29 +75,16 @@ defmodule LS.Signatures do
       _ ->
         :ets.tab2list(table)
         |> Enum.filter(fn {pattern, _, _, _} -> String.contains?(lower, pattern) end)
-        |> Enum.reduce(%{}, fn {_, score_type, points, _}, acc ->
-          Map.update(acc, score_type, points, &(&1 + points))
-        end)
+        |> Enum.reduce(%{}, fn {_, score_type, points, _}, acc -> Map.update(acc, score_type, points, &(&1 + points)) end)
     end
   end
   def score(_, _), do: %{}
 
   def detect_http_tech(body, headers) when is_binary(body) do
-    header_str = headers
-    |> Enum.map(fn {k, v} -> "#{k}: #{v}" end)
-    |> Enum.join(" ")
+    header_str = headers |> Enum.map(fn {k, v} -> "#{k}: #{v}" end) |> Enum.join(" ")
     combined = String.downcase(body <> " " <> header_str)
-
-    tech = :ets.tab2list(table_name(:http_tech))
-    |> Enum.filter(fn {p, _, _, _} -> String.contains?(combined, p) end)
-    |> Enum.map(fn {_, _, _, c} -> c end)
-    |> Enum.uniq()
-
-    tools = :ets.tab2list(table_name(:http_tools))
-    |> Enum.filter(fn {p, _, _, _} -> String.contains?(combined, p) end)
-    |> Enum.map(fn {_, _, _, c} -> c end)
-    |> Enum.uniq()
-
+    tech = :ets.tab2list(table_name(:http_tech)) |> Enum.filter(fn {p, _, _, _} -> String.contains?(combined, p) end) |> Enum.map(fn {_, _, _, c} -> c end) |> Enum.uniq()
+    tools = :ets.tab2list(table_name(:http_tools)) |> Enum.filter(fn {p, _, _, _} -> String.contains?(combined, p) end) |> Enum.map(fn {_, _, _, c} -> c end) |> Enum.uniq()
     %{tech: tech, tools: tools}
   end
   def detect_http_tech(_, _), do: %{tech: [], tools: []}

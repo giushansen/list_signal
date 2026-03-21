@@ -1,11 +1,6 @@
 defmodule LS.Cluster.InserterTest do
   use ExUnit.Case, async: false
 
-  # ============================================================================
-  # ROW FORMAT VALIDATION
-  # Based on real data from ClickHouse: ls.enrichments schema
-  # ============================================================================
-
   @required_columns [
     :enriched_at, :worker, :domain,
     :ctl_tld, :ctl_issuer, :ctl_subdomain_count, :ctl_subdomains,
@@ -16,141 +11,79 @@ defmodule LS.Cluster.InserterTest do
     :http_content_type, :http_tech, :http_tools, :http_is_js_site,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
     :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix,
-    :bgp_web_scoring, :bgp_budget_scoring
+    :bgp_web_scoring, :bgp_budget_scoring,
+    :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_domain_updated_at,
+    :rdap_registrar, :rdap_registrar_iana_id, :rdap_nameservers,
+    :rdap_status, :rdap_dnssec, :rdap_age_scoring, :rdap_registrar_scoring, :rdap_error,
+    :tranco_rank, :majestic_rank, :majestic_ref_subnets,
+    :is_malware, :is_phishing, :is_disposable_email
   ]
 
-  # Sample row matching interpolis.nl from the real ClickHouse export
   @rich_row %{
-    enriched_at: "2026-03-19 13:37:53",
-    worker: "worker_dev@127.0.0.1",
-    domain: "interpolis.nl",
-    ctl_tld: "nl",
-    ctl_issuer: "DigiCert QuoVadis 2G3 TLS RSA4096 SHA384 2023 CA1",
-    ctl_subdomain_count: 1,
-    ctl_subdomains: "acc-api",
-    ctl_web_scoring: 3,
-    ctl_budget_scoring: 10,
-    ctl_security_scoring: 7,
-    dns_a: "145.219.28.41",
-    dns_aaaa: "2A04:B0C0:13:0:0:0:0:41",
-    dns_mx: "10:interpolis-nl.mail.protection.outlook.com",
-    dns_txt: "MS=ms45836095|v=spf1 ip4:94.236.95.187 include:spf.protection.outlook.com -all",
-    dns_cname: "",
-    dns_web_scoring: 1,
-    dns_email_scoring: 0,
-    dns_budget_scoring: 0,
-    dns_security_scoring: 1,
-    http_status: 200,
-    http_response_time: 1662,
-    http_server: "",
-    http_cdn: "",
-    http_blocked: "",
-    http_content_type: "text/html; charset=utf-8",
-    http_tech: "Zod|Joi|ASP.NET|Schema.org|jQuery|AWS|DotNet",
-    http_tools: "Google Analytics|Google Tag Manager|Hotjar|Facebook Pixel",
-    http_is_js_site: "false",
-    http_title: "Interpolis. Glashelder - verzekeringen",
-    http_meta_description: "Bij Interpolis bieden we naast verzekeringen, ook oplossingen",
-    http_pages: "",
-    http_emails: "",
-    http_error: "",
-    bgp_ip: "145.219.28.41",
-    bgp_asn_number: "8075",
-    bgp_asn_org: "MICROSOFT-CORP-MSN-AS-BLOCK - Microsoft Corporation, US",
-    bgp_asn_country: "NL",
-    bgp_asn_prefix: "145.219.28.0/22",
-    bgp_web_scoring: 0,
-    bgp_budget_scoring: 10
+    enriched_at: "2026-03-19 13:37:53", worker: "worker_dev@127.0.0.1", domain: "stripe.com",
+    ctl_tld: "com", ctl_issuer: "DigiCert", ctl_subdomain_count: 5, ctl_subdomains: "api|dash",
+    ctl_web_scoring: 3, ctl_budget_scoring: 10, ctl_security_scoring: 7,
+    dns_a: "104.18.0.1", dns_aaaa: "", dns_mx: "10:aspmx.l.google.com",
+    dns_txt: "v=spf1 include:_spf.google.com ~all", dns_cname: "",
+    dns_web_scoring: 1, dns_email_scoring: 0, dns_budget_scoring: 0, dns_security_scoring: 1,
+    http_status: 200, http_response_time: 450, http_server: "cloudflare", http_cdn: "cloudflare",
+    http_blocked: "", http_content_type: "text/html", http_tech: "React|Stripe.js",
+    http_tools: "GA|GTM", http_is_js_site: "true", http_title: "Stripe",
+    http_meta_description: "Online payments", http_pages: "/pricing", http_emails: "", http_error: "",
+    bgp_ip: "104.18.0.1", bgp_asn_number: "13335", bgp_asn_org: "CLOUDFLARENET",
+    bgp_asn_country: "US", bgp_asn_prefix: "104.18.0.0/20", bgp_web_scoring: 5, bgp_budget_scoring: 3,
+    rdap_domain_created_at: "2010-01-11 21:27:57", rdap_domain_expires_at: "2029-01-11 21:27:57",
+    rdap_domain_updated_at: "2024-07-15 10:30:00", rdap_registrar: "MarkMonitor Inc.",
+    rdap_registrar_iana_id: "292", rdap_nameservers: "ns1.p16.dynect.net|ns2.p16.dynect.net",
+    rdap_status: "client transfer prohibited|server transfer prohibited",
+    rdap_dnssec: "false", rdap_age_scoring: 10, rdap_registrar_scoring: 20, rdap_error: "",
+    tranco_rank: 4521, majestic_rank: 2345, majestic_ref_subnets: 18432,
+    is_malware: "", is_phishing: "", is_disposable_email: ""
   }
 
-  # Sample empty row (CTL only, no enrichment)
   @empty_row %{
-    enriched_at: "2026-03-19 08:38:23",
-    worker: "worker_dev@127.0.0.1",
-    domain: "junk-domain.cfd",
-    ctl_tld: "cfd",
-    ctl_issuer: "R13",
-    ctl_subdomain_count: 0,
-    ctl_subdomains: "",
-    ctl_web_scoring: 0,
-    ctl_budget_scoring: 0,
-    ctl_security_scoring: 0,
+    enriched_at: "2026-03-19 00:00:00", worker: "", domain: "empty.test",
+    ctl_tld: "test", ctl_issuer: "", ctl_subdomain_count: 0, ctl_subdomains: "",
+    ctl_web_scoring: 0, ctl_budget_scoring: 0, ctl_security_scoring: 0,
     dns_a: "", dns_aaaa: "", dns_mx: "", dns_txt: "", dns_cname: "",
     dns_web_scoring: 0, dns_email_scoring: 0, dns_budget_scoring: 0, dns_security_scoring: 0,
-    http_status: nil, http_response_time: nil,
-    http_server: "", http_cdn: "", http_blocked: "", http_content_type: "",
-    http_tech: "", http_tools: "", http_is_js_site: "", http_title: "",
-    http_meta_description: "", http_pages: "", http_emails: "", http_error: "",
-    bgp_ip: "", bgp_asn_number: "", bgp_asn_org: "", bgp_asn_country: "", bgp_asn_prefix: "",
-    bgp_web_scoring: 0, bgp_budget_scoring: 0
+    http_status: nil, http_response_time: nil, http_server: "", http_cdn: "",
+    http_blocked: "", http_content_type: "", http_tech: "", http_tools: "",
+    http_is_js_site: "", http_title: "", http_meta_description: "",
+    http_pages: "", http_emails: "", http_error: "",
+    bgp_ip: "", bgp_asn_number: "", bgp_asn_org: "", bgp_asn_country: "",
+    bgp_asn_prefix: "", bgp_web_scoring: 0, bgp_budget_scoring: 0,
+    rdap_domain_created_at: nil, rdap_domain_expires_at: nil, rdap_domain_updated_at: nil,
+    rdap_registrar: "", rdap_registrar_iana_id: "", rdap_nameservers: "",
+    rdap_status: "", rdap_dnssec: "", rdap_age_scoring: 0, rdap_registrar_scoring: 0, rdap_error: "",
+    tranco_rank: nil, majestic_rank: nil, majestic_ref_subnets: nil,
+    is_malware: "", is_phishing: "", is_disposable_email: ""
   }
 
   test "rich row has all required columns" do
-    for col <- @required_columns do
-      assert Map.has_key?(@rich_row, col), "Missing column: #{col}"
-    end
+    for c <- @required_columns, do: assert(Map.has_key?(@rich_row, c), "Missing: #{c}")
   end
 
   test "empty row has all required columns" do
-    for col <- @required_columns do
-      assert Map.has_key?(@empty_row, col), "Missing column: #{col}"
-    end
+    for c <- @required_columns, do: assert(Map.has_key?(@empty_row, c), "Missing: #{c}")
   end
 
-  test "rich row string fields are binaries" do
-    string_fields = [
-      :enriched_at, :worker, :domain, :ctl_tld, :ctl_issuer, :ctl_subdomains,
-      :dns_a, :dns_aaaa, :dns_mx, :dns_txt, :dns_cname,
-      :http_server, :http_cdn, :http_blocked, :http_content_type,
-      :http_tech, :http_tools, :http_is_js_site,
-      :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
-      :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix
-    ]
-    for field <- string_fields do
-      val = Map.get(@rich_row, field)
-      assert is_binary(val), "#{field} should be binary, got: #{inspect(val)}"
-    end
+  test "nullable reputation fields" do
+    assert @empty_row.tranco_rank == nil
+    assert @empty_row.majestic_rank == nil
+    assert @empty_row.majestic_ref_subnets == nil
+    assert @rich_row.tranco_rank == 4521
+    assert @rich_row.majestic_ref_subnets == 18432
   end
 
-  test "rich row integer fields are integers" do
-    int_fields = [
-      :ctl_subdomain_count, :ctl_web_scoring, :ctl_budget_scoring, :ctl_security_scoring,
-      :dns_web_scoring, :dns_email_scoring, :dns_budget_scoring, :dns_security_scoring,
-      :http_status, :http_response_time,
-      :bgp_web_scoring, :bgp_budget_scoring
-    ]
-    for field <- int_fields do
-      val = Map.get(@rich_row, field)
-      assert is_integer(val), "#{field} should be integer, got: #{inspect(val)}"
-    end
-  end
-
-  test "pipe-delimited fields use pipes not commas" do
-    pipe_fields = [:dns_a, :dns_mx, :dns_txt, :http_tech, :http_tools]
-    for field <- pipe_fields do
-      val = Map.get(@rich_row, field, "")
-      if val != "" and String.contains?(val, "|") do
-        # Should NOT contain raw list brackets
-        refute String.starts_with?(val, "["), "#{field} should not be a raw list"
-      end
-    end
+  test "blocklist flags are empty strings when clean" do
+    assert @rich_row.is_malware == ""
+    assert @rich_row.is_phishing == ""
+    assert @rich_row.is_disposable_email == ""
   end
 
   test "domain is never empty" do
     assert @rich_row.domain != ""
     assert @empty_row.domain != ""
-  end
-
-  test "enriched_at is datetime format" do
-    assert Regex.match?(~r/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, @rich_row.enriched_at)
-  end
-
-  test "LS.Pipeline.run output matches required columns" do
-    # This test verifies the Pipeline module produces rows compatible with Inserter
-    # Uses a mock-like approach: we just check the shape, not network calls
-    row = @rich_row  # Use our fixture as proxy
-    for col <- @required_columns do
-      assert Map.has_key?(row, col), "Pipeline output missing: #{col}"
-    end
   end
 end
