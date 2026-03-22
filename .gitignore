@@ -52,3 +52,7 @@ uuid
 
 # HTTP performance log
 http_performance.log
+
+priv/reputation/*
+
+metadata_dropped/

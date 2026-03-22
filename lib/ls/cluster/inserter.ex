@@ -20,7 +20,7 @@ defmodule LS.Cluster.Inserter do
     :dns_a, :dns_aaaa, :dns_mx, :dns_txt, :dns_cname,
     :dns_web_scoring, :dns_email_scoring, :dns_budget_scoring, :dns_security_scoring,
     :http_status, :http_response_time, :http_server, :http_cdn, :http_blocked,
-    :http_content_type, :http_tech, :http_tools, :http_is_js_site,
+    :http_content_type, :http_tech, :http_is_js_site, :http_apps,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
     :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix,
     :bgp_web_scoring, :bgp_budget_scoring,

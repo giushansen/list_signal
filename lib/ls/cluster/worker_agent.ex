@@ -318,19 +318,20 @@ defmodule LS.Cluster.WorkerAgent do
   defp do_http(domain, ip) do
     case Client.fetch(domain, ip) do
       {:ok, resp} ->
-        tech = TechDetector.detect(resp)
         body = resp.body || ""
+        tech_result = TechDetector.detect(resp)
+        app_result = LS.HTTP.AppDetector.detect(body, tech_result.tech)
         {pages, emails} = PageExtractor.extract_all(body, domain)
         %{
           http_status: resp.status,
           http_response_time: resp[:elapsed_ms],
           http_server: gh(resp, "server"),
-          http_cdn: tech[:cdn] || "",
-          http_blocked: tech[:blocked] || "",
+          http_cdn: tech_result.cdn,
+          http_blocked: "",
           http_content_type: gh(resp, "content-type"),
-          http_tech: tech[:tech] |> List.wrap() |> Enum.join("|"),
-          http_tools: tech[:tools] |> List.wrap() |> Enum.join("|"),
-          http_is_js_site: to_string(tech[:is_js_site] || false),
+          http_tech: tech_result.tech |> Enum.join("|"),
+          http_is_js_site: to_string(tech_result.is_js_site),
+          http_apps: app_result.apps |> Enum.join("|"),
           http_title: extract_title(body),
           http_meta_description: extract_meta_desc(body),
           http_pages: pages || "",
@@ -453,8 +454,8 @@ defmodule LS.Cluster.WorkerAgent do
         http_blocked: http[:http_blocked] || "",
         http_content_type: http[:http_content_type] || "",
         http_tech: http[:http_tech] || "",
-        http_tools: http[:http_tools] || "",
         http_is_js_site: http[:http_is_js_site] || "",
+        http_apps: http[:http_apps] || "",
         http_title: http[:http_title] || "",
         http_meta_description: http[:http_meta_description] || "",
         http_pages: http[:http_pages] || "",
