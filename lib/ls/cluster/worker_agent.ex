@@ -313,10 +313,12 @@ defmodule LS.Cluster.WorkerAgent do
   defp do_http(domain, ip) do
     case Client.fetch(domain, ip) do
       {:ok, resp} ->
-        body = resp.body || ""
+        body = resp.body
         tech_result = TechDetector.detect(resp)
         app_result = LS.HTTP.AppDetector.detect(body, tech_result.tech)
         {pages, emails} = PageExtractor.extract_all(body, domain)
+        title = extract_title(body)
+        meta_desc = extract_meta_desc(body)
         %{
           http_status: resp.status,
           http_response_time: resp[:elapsed_ms],
@@ -324,14 +326,14 @@ defmodule LS.Cluster.WorkerAgent do
           http_content_type: gh(resp, "content-type"),
           http_tech: tech_result.tech |> Enum.join("|"),
           http_apps: app_result.apps |> Enum.join("|"),
-          http_title: extract_title(body),
-          http_meta_description: extract_meta_desc(body),
+          http_language: LS.HTTP.LanguageDetector.detect(body, resp.headers, title, meta_desc),
+          http_title: title,
+          http_meta_description: meta_desc,
           http_pages: pages || "",
           http_emails: emails || "",
           http_error: ""
         }
       {:error, reason, _} -> %{http_error: to_string(reason)}
-      {:error, reason} -> %{http_error: to_string(reason)}
     end
   rescue
     e -> %{http_error: "crash:#{Exception.message(e)}"}
@@ -435,6 +437,7 @@ defmodule LS.Cluster.WorkerAgent do
         http_content_type: http[:http_content_type] || "",
         http_tech: http[:http_tech] || "",
         http_apps: http[:http_apps] || "",
+        http_language: http[:http_language] || "",
         http_title: http[:http_title] || "",
         http_meta_description: http[:http_meta_description] || "",
         http_pages: http[:http_pages] || "",

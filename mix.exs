@@ -42,6 +42,7 @@ defmodule LS.MixProject do
       {:finch, "~> 0.13"},
       # Pipeline
       {:req, "~> 0.5"},
+      {:paasaa, "~> 1.0"},
       {:x509, "~> 0.9"}
     ]
   end

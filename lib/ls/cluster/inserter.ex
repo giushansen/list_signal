@@ -18,7 +18,7 @@ defmodule LS.Cluster.Inserter do
     :ctl_tld, :ctl_issuer, :ctl_subdomain_count, :ctl_subdomains,
     :dns_a, :dns_aaaa, :dns_mx, :dns_txt, :dns_cname,
     :http_status, :http_response_time, :http_blocked,
-    :http_content_type, :http_tech, :http_apps,
+    :http_content_type, :http_tech, :http_apps, :http_language,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
     :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix,
     # RDAP

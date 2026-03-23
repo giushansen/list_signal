@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS ls.enrichments
     http_content_type LowCardinality(String) DEFAULT '',
     http_tech String DEFAULT '',
     http_apps String DEFAULT '',
+    http_language LowCardinality(String) DEFAULT '',
     http_title String DEFAULT '',
     http_meta_description String DEFAULT '',
     http_pages String DEFAULT '',
