@@ -508,7 +508,7 @@ defmodule LSWeb.DashboardLive do
   defp badge_text(_), do: "connected"
 
   defp pcols("dns"), do: ~w(domain a mx txt web_score email_score)
-  defp pcols("http"), do: ~w(domain status server tech title error)
+  defp pcols("http"), do: ~w(domain status tech http_apps title error)
   defp pcols("bgp"), do: ~w(domain ip asn org country)
   defp pcols("rdap"), do: ~w(domain registrar domain_created_at nameservers status rdap_age_scoring rdap_registrar_scoring)
   defp pcols("merged"), do: ~w(domain tld http_title http_tech bgp_asn_org tranco_rank majestic_ref_subnets dns_web http_status)
