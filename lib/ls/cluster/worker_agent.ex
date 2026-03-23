@@ -327,7 +327,7 @@ defmodule LS.Cluster.WorkerAgent do
           http_response_time: resp[:elapsed_ms],
           http_server: gh(resp, "server"),
           http_cdn: tech_result.cdn,
-          http_blocked: "",
+          http_blocked: tech_result.blocked,
           http_content_type: gh(resp, "content-type"),
           http_tech: tech_result.tech |> Enum.join("|"),
           http_is_js_site: to_string(tech_result.is_js_site),
