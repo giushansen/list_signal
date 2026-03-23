@@ -12,12 +12,11 @@ defmodule LS.Pipeline do
   """
 
   require Logger
-  alias LS.DNS.{Resolver, Scorer}
+  alias LS.DNS.Resolver
   alias LS.HTTP.{Client, TechDetector, PageExtractor, DomainFilter}
   alias LS.BGP.Resolver, as: BGPResolver
-  alias LS.BGP.Scorer, as: BGPScorer
   alias LS.RDAP.Client, as: RDAPClient
-  alias LS.RDAP.Scorer, as: RDAPScorer
+  
   alias LS.Reputation.{Tranco, Majestic, Blocklist}
 
   def run(domains, opts \\ []) when is_binary(domains) or is_list(domains) do
@@ -64,7 +63,7 @@ defmodule LS.Pipeline do
 
   def dns(domain) do
     case Resolver.lookup(domain) do
-      {:ok, d} -> {:ok, %{dns: d, scores: Scorer.score(%{domain: domain, dns: d})}}
+      {:ok, d} -> {:ok, %{dns: d, scores: %{}}}
       {:error, r} -> {:error, r}
     end
   end
@@ -76,7 +75,6 @@ defmodule LS.Pipeline do
       {:ok, resp} -> tech = TechDetector.detect(resp); body = resp.body || ""
         {pages, emails} = PageExtractor.extract_all(body, domain)
         %{http_status: resp.status, http_tech: tech[:tech] |> List.wrap() |> Enum.join("|"),
-          http_tools: tech[:tools] |> List.wrap() |> Enum.join("|"),
           http_title: extract_title(body), http_pages: pages || "", http_emails: emails || "", http_error: ""}
       {:error, r, _} -> %{http_error: to_string(r)}
       {:error, r} -> %{http_error: to_string(r)}
@@ -86,13 +84,13 @@ defmodule LS.Pipeline do
 
   def bgp(ip) when is_binary(ip) do
     case GenServer.call(BGPResolver, {:lookup, ip}, 30_000) do
-      {:ok, data} -> {:ok, Map.merge(data, BGPScorer.score(data))}; e -> e
+      {:ok, result} -> {:ok, result}; {:error, r} -> {:error, r}
     end
   end
 
   def rdap(domain) do
     case RDAPClient.lookup(domain) do
-      {:ok, data} -> {:ok, Map.merge(data, RDAPScorer.score(data))}; e -> e
+      {:ok, data} -> {:ok, data}; e -> e
     end
   end
 
@@ -119,8 +117,7 @@ defmodule LS.Pipeline do
   end
 
   defp empty_dns do
-    %{dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []},
-      scores: %{dns_web_scoring: 0, dns_email_scoring: 0, dns_budget_scoring: 0, dns_security_scoring: 0}}
+    %{dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []}}
   end
 
   defp classify(dns_res) do
@@ -142,10 +139,8 @@ defmodule LS.Pipeline do
           case Map.get(asn_map, ip) do
             nil -> acc
             a ->
-              sc = BGPScorer.score(a)
               Map.put(acc, d, %{bgp_ip: ip, bgp_asn_number: a.asn || "", bgp_asn_org: a.org || "",
-                bgp_asn_country: a.country || "", bgp_asn_prefix: a.prefix || "",
-                bgp_web_scoring: sc.bgp_web_scoring, bgp_budget_scoring: sc.bgp_budget_scoring})
+                bgp_asn_country: a.country || "", bgp_asn_prefix: a.prefix || ""})
           end
         end)
       _ -> %{}
@@ -154,32 +149,23 @@ defmodule LS.Pipeline do
 
   defp merge_row(domain, dns_data, http, bgp, rdap, worker, now) do
     d = dns_data[:dns] || %{}
-    sc = dns_data[:scores] || %{}
+    _sc = dns_data[:scores] || %{}
     maj = Majestic.lookup(domain)
     bl = Blocklist.lookup(domain)
     %{
       enriched_at: now, worker: worker, domain: domain,
       ctl_tld: domain |> String.split(".") |> List.last() || "", ctl_issuer: "",
       ctl_subdomain_count: 0, ctl_subdomains: "",
-      ctl_web_scoring: 0, ctl_budget_scoring: 0, ctl_security_scoring: 0,
       dns_a: d[:a] |> List.wrap() |> Enum.join("|"),
       dns_aaaa: d[:aaaa] |> List.wrap() |> Enum.join("|"),
       dns_mx: d[:mx] |> List.wrap() |> Enum.join("|"),
       dns_txt: d[:txt] |> List.wrap() |> Enum.join("|"),
       dns_cname: d[:cname] |> List.wrap() |> Enum.join("|"),
-      dns_web_scoring: sc[:dns_web_scoring] || 0,
-      dns_email_scoring: sc[:dns_email_scoring] || 0,
-      dns_budget_scoring: sc[:dns_budget_scoring] || 0,
-      dns_security_scoring: sc[:dns_security_scoring] || 0,
       http_status: http[:http_status],
       http_response_time: http[:http_response_time],
-      http_server: http[:http_server] || "",
-      http_cdn: http[:http_cdn] || "",
       http_blocked: http[:http_blocked] || "",
       http_content_type: http[:http_content_type] || "",
       http_tech: http[:http_tech] || "",
-      http_tools: http[:http_tools] || "",
-      http_is_js_site: http[:http_is_js_site] || "",
       http_title: http[:http_title] || "",
       http_meta_description: http[:http_meta_description] || "",
       http_pages: http[:http_pages] || "",
@@ -190,8 +176,6 @@ defmodule LS.Pipeline do
       bgp_asn_org: bgp[:bgp_asn_org] || "",
       bgp_asn_country: bgp[:bgp_asn_country] || "",
       bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
-      bgp_web_scoring: bgp[:bgp_web_scoring] || 0,
-      bgp_budget_scoring: bgp[:bgp_budget_scoring] || 0,
       rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
       rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
       rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),
@@ -199,9 +183,6 @@ defmodule LS.Pipeline do
       rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
       rdap_nameservers: rdap[:nameservers] || "",
       rdap_status: rdap[:status] || "",
-      rdap_dnssec: rdap[:dnssec] || "",
-      rdap_age_scoring: rdap[:rdap_age_scoring] || 0,
-      rdap_registrar_scoring: rdap[:rdap_registrar_scoring] || 0,
       rdap_error: "",
       tranco_rank: Tranco.lookup(domain),
       majestic_rank: if(maj, do: maj.rank, else: nil),

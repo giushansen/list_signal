@@ -3,15 +3,6 @@ defmodule LS.Signatures do
   require Logger
 
   @signature_files %{
-    ctl_tld: "lib/ls/ctl/signatures/tld.csv",
-    ctl_issuer: "lib/ls/ctl/signatures/issuer.csv",
-    ctl_subdomain: "lib/ls/ctl/signatures/subdomain.csv",
-    dns_txt: "lib/ls/dns/signatures/txt.csv",
-    dns_mx: "lib/ls/dns/signatures/mx.csv",
-    bgp_asn_org: "lib/ls/bgp/signatures/asn_org.csv",
-    bgp_country: "lib/ls/bgp/signatures/country.csv",
-    bgp_prefix: "lib/ls/bgp/signatures/prefix.csv",
-    rdap_registrar: "lib/ls/rdap/signatures/registrar.csv"
   }
 
   def load_all do

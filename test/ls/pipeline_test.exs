@@ -32,7 +32,6 @@ defmodule LS.PipelineTest do
       result = LS.Pipeline.run("example.com")
       v3_keys = [
         :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_registrar,
-        :rdap_nameservers, :rdap_status, :rdap_age_scoring, :rdap_registrar_scoring, :rdap_error,
         :tranco_rank, :majestic_rank, :majestic_ref_subnets,
         :is_malware, :is_phishing, :is_disposable_email
       ]

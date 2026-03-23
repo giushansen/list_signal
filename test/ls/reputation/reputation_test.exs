@@ -119,50 +119,6 @@ defmodule LS.Reputation.Test do
   # RDAP SCORER
   # ============================================================================
 
-  describe "RDAP Scorer" do
-    setup do
-      LS.Signatures.load_all()
-      :ok
-    end
-
-    test "old domain + MarkMonitor = high scores" do
-      scores = LS.RDAP.Scorer.score(%{
-        domain_created_at: "2010-01-11T21:27:57Z",
-        registrar: "MarkMonitor Inc.",
-        status: "server transfer prohibited|server delete prohibited"
-      })
-      assert scores.rdap_age_scoring == 10
-      assert scores.rdap_registrar_scoring > 10
-    end
-
-    test "brand new domain scores negatively" do
-      recent = NaiveDateTime.utc_now() |> NaiveDateTime.add(-10, :day) |> NaiveDateTime.to_string()
-      scores = LS.RDAP.Scorer.score(%{domain_created_at: recent, registrar: "", status: ""})
-      assert scores.rdap_age_scoring == -10
-    end
-
-    test "empty data returns zeros" do
-      assert LS.RDAP.Scorer.score(%{}) == %{rdap_age_scoring: 0, rdap_registrar_scoring: 0}
-    end
-
-    test "clientHold status scores very negatively" do
-      scores = LS.RDAP.Scorer.score(%{
-        domain_created_at: "2020-01-01T00:00:00Z",
-        registrar: "GoDaddy.com, LLC",
-        status: "clientHold"
-      })
-      assert scores.rdap_registrar_scoring == -15
-    end
-
-    test "Freenom registrar scores negatively" do
-      scores = LS.RDAP.Scorer.score(%{
-        domain_created_at: "2023-01-01T00:00:00Z",
-        registrar: "Freenom",
-        status: ""
-      })
-      assert scores.rdap_registrar_scoring < 0
-    end
-  end
 
   # ============================================================================
   # INSERTER COLUMNS — verify all v3 columns present
@@ -172,7 +128,7 @@ defmodule LS.Reputation.Test do
     @v3_columns [
       :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_domain_updated_at,
       :rdap_registrar, :rdap_registrar_iana_id, :rdap_nameservers,
-      :rdap_status, :rdap_dnssec, :rdap_age_scoring, :rdap_registrar_scoring, :rdap_error,
+      :rdap_status, :rdap_error,
       :tranco_rank, :majestic_rank, :majestic_ref_subnets,
       :is_malware, :is_phishing, :is_disposable_email
     ]

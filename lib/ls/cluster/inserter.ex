@@ -16,18 +16,15 @@ defmodule LS.Cluster.Inserter do
   @columns [
     :enriched_at, :worker, :domain,
     :ctl_tld, :ctl_issuer, :ctl_subdomain_count, :ctl_subdomains,
-    :ctl_web_scoring, :ctl_budget_scoring, :ctl_security_scoring,
     :dns_a, :dns_aaaa, :dns_mx, :dns_txt, :dns_cname,
-    :dns_web_scoring, :dns_email_scoring, :dns_budget_scoring, :dns_security_scoring,
-    :http_status, :http_response_time, :http_server, :http_cdn, :http_blocked,
-    :http_content_type, :http_tech, :http_is_js_site, :http_apps,
+    :http_status, :http_response_time, :http_blocked,
+    :http_content_type, :http_tech, :http_apps,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
     :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix,
-    :bgp_web_scoring, :bgp_budget_scoring,
     # RDAP
     :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_domain_updated_at,
     :rdap_registrar, :rdap_registrar_iana_id, :rdap_nameservers,
-    :rdap_status, :rdap_dnssec, :rdap_age_scoring, :rdap_registrar_scoring, :rdap_error,
+    :rdap_status, :rdap_error,
     # Reputation
     :tranco_rank, :majestic_rank, :majestic_ref_subnets,
     :is_malware, :is_phishing, :is_disposable_email

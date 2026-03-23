@@ -18,12 +18,9 @@ defmodule LS.Cluster.WorkerAgent do
   use GenServer
   require Logger
 
-  alias LS.DNS.{Resolver, Scorer}
   alias LS.HTTP.{Client, DomainFilter, TechDetector, PageExtractor}
   alias LS.BGP.Resolver, as: BGPResolver
-  alias LS.BGP.Scorer, as: BGPScorer
   alias LS.RDAP.Client, as: RDAPClient
-  alias LS.RDAP.Scorer, as: RDAPScorer
   alias LS.Reputation.{Tranco, Majestic, Blocklist}
   alias LS.Cache
 
@@ -240,15 +237,13 @@ defmodule LS.Cluster.WorkerAgent do
     |> Task.async_stream(
       fn d ->
         domain = d.ctl_domain
-        case Resolver.lookup(domain) do
+        case LS.DNS.Resolver.lookup(domain) do
           {:ok, dns} ->
-            scores = Scorer.score(%{domain: domain, dns: dns})
+            scores = %{}
             {domain, %{dns: dns, scores: scores}}
           {:error, _} ->
             {domain, %{
               dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []},
-              scores: %{dns_web_scoring: 0, dns_email_scoring: 0,
-                        dns_budget_scoring: 0, dns_security_scoring: 0}
             }}
         end
       end,
@@ -325,12 +320,9 @@ defmodule LS.Cluster.WorkerAgent do
         %{
           http_status: resp.status,
           http_response_time: resp[:elapsed_ms],
-          http_server: gh(resp, "server"),
-          http_cdn: tech_result.cdn,
           http_blocked: tech_result.blocked,
           http_content_type: gh(resp, "content-type"),
           http_tech: tech_result.tech |> Enum.join("|"),
-          http_is_js_site: to_string(tech_result.is_js_site),
           http_apps: app_result.apps |> Enum.join("|"),
           http_title: extract_title(body),
           http_meta_description: extract_meta_desc(body),
@@ -357,7 +349,7 @@ defmodule LS.Cluster.WorkerAgent do
         case RDAPClient.lookup(d) do
           {:ok, data} ->
             Cache.rdap_insert(d)
-            {d, Map.merge(data, RDAPScorer.score(data))}
+            {d, data}
           {:error, :rate_limited} ->
             {d, :skip}
           {:error, _} ->
@@ -390,15 +382,12 @@ defmodule LS.Cluster.WorkerAgent do
       case Map.get(asn_map, ip) do
         nil -> acc
         a ->
-          scores = BGPScorer.score(a)
           Map.put(acc, d, %{
             bgp_ip: ip,
             bgp_asn_number: a.asn || "",
             bgp_asn_org: a.org || "",
             bgp_asn_country: a.country || "",
             bgp_asn_prefix: a.prefix || "",
-            bgp_web_scoring: scores.bgp_web_scoring,
-            bgp_budget_scoring: scores.bgp_budget_scoring
           })
       end
     end)
@@ -425,7 +414,7 @@ defmodule LS.Cluster.WorkerAgent do
       bl = Blocklist.lookup(domain)
 
       dns_d = dns[:dns] || %{}
-      sc = dns[:scores] || %{}
+      _sc = dns[:scores] || %{}
 
       %{
         enriched_at: now,
@@ -435,26 +424,16 @@ defmodule LS.Cluster.WorkerAgent do
         ctl_issuer: d[:ctl_issuer] || "",
         ctl_subdomain_count: d[:ctl_subdomain_count],
         ctl_subdomains: d[:ctl_subdomains] || "",
-        ctl_web_scoring: d[:ctl_web_scoring],
-        ctl_budget_scoring: d[:ctl_budget_scoring],
-        ctl_security_scoring: d[:ctl_security_scoring],
         dns_a: dns_d[:a] |> List.wrap() |> Enum.join("|"),
         dns_aaaa: dns_d[:aaaa] |> List.wrap() |> Enum.join("|"),
         dns_mx: dns_d[:mx] |> List.wrap() |> Enum.join("|"),
         dns_txt: dns_d[:txt] |> List.wrap() |> Enum.join("|"),
         dns_cname: dns_d[:cname] |> List.wrap() |> Enum.join("|"),
-        dns_web_scoring: sc[:dns_web_scoring] || 0,
-        dns_email_scoring: sc[:dns_email_scoring] || 0,
-        dns_budget_scoring: sc[:dns_budget_scoring] || 0,
-        dns_security_scoring: sc[:dns_security_scoring] || 0,
         http_status: http[:http_status],
         http_response_time: http[:http_response_time],
-        http_server: http[:http_server] || "",
-        http_cdn: http[:http_cdn] || "",
         http_blocked: http[:http_blocked] || "",
         http_content_type: http[:http_content_type] || "",
         http_tech: http[:http_tech] || "",
-        http_is_js_site: http[:http_is_js_site] || "",
         http_apps: http[:http_apps] || "",
         http_title: http[:http_title] || "",
         http_meta_description: http[:http_meta_description] || "",
@@ -466,8 +445,6 @@ defmodule LS.Cluster.WorkerAgent do
         bgp_asn_org: bgp[:bgp_asn_org] || "",
         bgp_asn_country: bgp[:bgp_asn_country] || "",
         bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
-        bgp_web_scoring: bgp[:bgp_web_scoring] || 0,
-        bgp_budget_scoring: bgp[:bgp_budget_scoring] || 0,
         rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
         rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
         rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),
@@ -475,9 +452,6 @@ defmodule LS.Cluster.WorkerAgent do
         rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
         rdap_nameservers: rdap[:nameservers] || "",
         rdap_status: rdap[:status] || "",
-        rdap_dnssec: rdap[:dnssec] || "",
-        rdap_age_scoring: rdap[:rdap_age_scoring] || 0,
-        rdap_registrar_scoring: rdap[:rdap_registrar_scoring] || 0,
         rdap_error: "",
         tranco_rank: tranco,
         majestic_rank: if(maj, do: maj.rank, else: nil),
@@ -499,11 +473,10 @@ defmodule LS.Cluster.WorkerAgent do
   end
   defp fmt_dt(_), do: nil
 
-  defp flatten_dns(%{dns: d, scores: s}) do
+  defp flatten_dns(%{dns: d, scores: _s}) do
     %{
       a: d[:a] |> List.wrap() |> Enum.join(", "),
       mx: d[:mx] |> List.wrap() |> Enum.join(", "),
-      dns_web_scoring: s[:dns_web_scoring] || 0
     }
   end
   defp flatten_dns(_), do: %{}

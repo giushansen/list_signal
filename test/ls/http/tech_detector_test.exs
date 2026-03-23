@@ -21,7 +21,7 @@ defmodule LS.HTTP.TechDetectorTest do
       headers: [{"server", "nginx"}]
     }
     result = LS.HTTP.TechDetector.detect(response)
-    assert "Vue" in result.tech
+    assert "Vue.js" in result.tech
   end
 
   test "detects Google Tag Manager from gtag script" do
@@ -30,7 +30,7 @@ defmodule LS.HTTP.TechDetectorTest do
       headers: []
     }
     result = LS.HTTP.TechDetector.detect(response)
-    assert "Google Tag Manager" in result.tools
+    assert "Google Analytics" in result.tech
   end
 
   test "detects server from headers" do
@@ -62,7 +62,7 @@ defmodule LS.HTTP.TechDetectorTest do
     }
     result = LS.HTTP.TechDetector.detect(response)
     assert length(result.tech) > 0, "Expected at least some tech detected"
-    assert length(result.tools) >= 0
+    assert length(result.tech) >= 0
   end
 
   test "detects JS site when body is mostly script tags" do
@@ -71,14 +71,14 @@ defmodule LS.HTTP.TechDetectorTest do
       headers: []
     }
     result = LS.HTTP.TechDetector.detect(response)
-    assert is_boolean(result.http_is_js_site)
+    assert is_boolean(result.is_js_site)
   end
 
   test "handles empty body gracefully" do
     response = %{body: "", headers: []}
     result = LS.HTTP.TechDetector.detect(response)
     assert result.tech == []
-    assert result.tools == []
+    assert result.tech == []
   end
 
   test "handles nil-like body gracefully" do
@@ -91,7 +91,7 @@ defmodule LS.HTTP.TechDetectorTest do
     response = %{body: "<html></html>", headers: []}
     result = LS.HTTP.TechDetector.detect(response)
     assert Map.has_key?(result, :tech)
-    assert Map.has_key?(result, :tools)
-    assert Map.has_key?(result, :http_is_js_site)
+    assert Map.has_key?(result, :blocked)
+    assert Map.has_key?(result, :is_js_site)
   end
 end

@@ -22,7 +22,7 @@ defmodule LS.CTL.Poller do
   use GenServer
   require Logger
 
-  alias LS.CTL.{DomainParser, SharedHostingFilter, Scorer}
+  alias LS.CTL.{DomainParser, SharedHostingFilter}
   alias LS.Cache
 
   @ets_work_queue :ctl_work_queue
@@ -422,8 +422,8 @@ defmodule LS.CTL.Poller do
               %{acc | filtered: acc.filtered + 1}
             else
               if track_result == :new do
-                scores = Scorer.score(cert_data)
-                LS.Cluster.WorkQueue.enqueue(Map.merge(cert_data, scores))
+                
+                LS.Cluster.WorkQueue.enqueue(cert_data)
               end
               %{acc | written: acc.written + 1}
             end
