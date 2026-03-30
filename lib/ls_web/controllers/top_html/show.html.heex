@@ -1,0 +1,68 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight"><span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white">LS</span>ListSignal</a>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="/apps" class="text-sm font-medium text-white/60 hover:text-white">Apps</a></li>
+      <li><a href="/countries" class="text-sm font-medium text-white/60 hover:text-white">Countries</a></li>
+      <li><a href="/pricing" class="text-sm font-medium text-white/60 hover:text-white">Pricing</a></li>
+      <li><a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover">Start Free</a></li>
+    </ul>
+  </div>
+</nav>
+<main class="pt-[100px] pb-20"><div class="mx-auto max-w-[1000px] px-6">
+  <nav class="mb-6 text-sm text-white/40"><a href="/" class="hover:text-white">Home</a><span class="mx-2">&#8250;</span><span class="text-white/60"><%= @heading %></span></nav>
+
+  <h1 class="font-display text-[clamp(28px,4vw,40px)] font-bold tracking-tight mb-4"><%= @heading %></h1>
+  <div class="rounded-xl border border-accent/20 bg-accent/[0.05] p-5 mb-8">
+    <p class="text-[15px] text-white/80"><%= @subtext %></p>
+  </div>
+
+  <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden relative mb-10">
+    <div class="overflow-x-auto"><table class="w-full text-sm border-collapse min-w-[500px]">
+      <thead><tr>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07] w-8">#</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Store</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Title</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Country</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Rank</th>
+      </tr></thead>
+      <tbody><%= for {store, idx} <- Enum.with_index(@stores) do %>
+        <%= if idx < 10 do %>
+        <tr class="hover:bg-white/[0.015]">
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/40 text-xs"><%= idx + 1 %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium"><a href={"/store/#{store.domain |> String.replace(".", "-")}"} class="hover:text-accent"><%= store.domain %></a></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 truncate max-w-[200px]"><%= store.title %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.country %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/50 text-xs"><%= if store.rank, do: "##{store.rank}", else: "-" %></td>
+        </tr>
+        <% else %>
+        <tr class="[&>td]:blur-[5px] [&>td]:select-none [&>td]:pointer-events-none">
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/40"><%= idx + 1 %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white"><%= store.domain %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.title %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.country %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/50">-</td>
+        </tr>
+        <% end %>
+      <% end %></tbody>
+    </table></div>
+    <div class="absolute bottom-0 left-0 right-0 h-[180px] bg-gradient-to-b from-transparent to-[#111B33]/95 flex items-end justify-center pb-8 z-10">
+      <a href="/signup" class="flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_30px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all">Sign up free to see all stores & export CSV</a>
+    </div>
+  </div>
+
+  <section class="mb-10" itemscope itemtype="https://schema.org/FAQPage">
+    <h2 class="font-display text-xl font-semibold mb-4">FAQ</h2>
+    <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+      <h3 itemprop="name" class="font-medium text-white mb-2">How is this ranking determined?</h3>
+      <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+        <p itemprop="text" class="text-sm text-white/60">Stores are ranked by estimated traffic using the Tranco research-grade ranking list, which combines data from Chrome UX Report, Cloudflare Radar, and Majestic. Rankings are updated daily.</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="text-center py-8 border-t border-white/[0.07]">
+    <a href="/" class="inline-flex items-center gap-2 rounded-lg bg-accent px-6 py-3 font-display text-sm font-semibold text-white hover:bg-accent-hover">Search more on ListSignal</a>
+  </div>
+</div></main>
+<footer class="border-t border-white/[0.07] py-8 text-center text-[13px] text-white/35">&copy; 2026 ListSignal</footer>

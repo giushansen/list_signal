@@ -1,0 +1,318 @@
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight">
+      <span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white relative overflow-hidden">
+        LS<span class="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 to-transparent"></span>
+      </span>
+      ListSignal
+    </a>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="/features" class="text-sm font-medium text-white/60 hover:text-white transition-colors">Features</a></li>
+      <li><a href="/pricing" class="text-sm font-medium text-white/60 hover:text-white transition-colors">Pricing</a></li>
+      <li><a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px">Start Free</a></li>
+    </ul>
+  </div>
+</nav>
+
+<section class="relative overflow-hidden pt-[150px] pb-20 text-center">
+  <div class="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:64px_64px] pointer-events-none [mask-image:radial-gradient(ellipse_at_center,black_20%,transparent_70%)]"></div>
+  <div class="absolute -top-[200px] left-1/2 -translate-x-1/2 w-[1000px] h-[800px] bg-[radial-gradient(ellipse,rgba(16,185,129,0.07),rgba(59,130,246,0.03)_50%,transparent_70%)] pointer-events-none"></div>
+
+  <div class="relative mx-auto max-w-[1200px] px-6">
+    <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-7 animate-fade-in-down">
+      <span class="h-2 w-2 rounded-full bg-accent animate-pulse"></span>
+      <span id="liveCount"><%= @landing.total_domains %> sites indexed · <%= @landing.store_count %> Shopify stores · scanning <%= @landing.ctl_rate_per_sec %> sites/s</span>
+    </div>
+
+    <h1 class="font-display text-[clamp(38px,5.2vw,62px)] font-extrabold leading-[1.08] tracking-[-2px] mb-5 animate-fade-in-up">
+      Find any Shopify store.<br/>
+      <span class="bg-gradient-to-r from-accent to-emerald-300 bg-clip-text text-transparent">Know everything about it.</span>
+    </h1>
+
+    <p class="mx-auto max-w-[520px] text-lg text-white/60 leading-relaxed mb-10 animate-fade-in-up-delay">
+      Discover tech stack, installed apps, revenue signals and contact data for millions of Shopify stores — updated daily.
+    </p>
+
+    <div class="mx-auto max-w-[660px] mb-2 animate-fade-in-up-delay-2">
+      <form id="heroForm" action="/search" method="get" class="flex items-center rounded-[14px] bg-white p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.4),0_0_40px_rgba(16,185,129,0.2)] transition-shadow focus-within:shadow-[0_0_0_2px_#10B981,0_20px_60px_rgba(0,0,0,0.5),0_0_60px_rgba(16,185,129,0.25)]">
+        <div class="pl-4 pr-1 flex items-center text-slate-400">
+          <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="7"/><path d="M16 16l-4-4"/></svg>
+        </div>
+        <input type="text" name="q" id="heroSearch" placeholder="Enter a store URL or search an app name..." class="flex-1 border-none outline-none bg-transparent font-body text-base text-slate-900 px-3 py-3.5 placeholder:text-slate-400" autocomplete="off" />
+        <button type="submit" id="heroBtn" class="rounded-[10px] bg-accent px-7 py-3.5 font-display text-[15px] font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px whitespace-nowrap">Look up</button>
+      </form>
+    </div>
+
+    <%!-- Progress bar — hidden by default, shown during domain lookup --%>
+    <div id="searchProgress" class="mx-auto max-w-[660px] hidden mb-4">
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.03] px-5 py-3">
+        <%!-- Progress bar track --%>
+        <div class="h-1.5 rounded-full bg-white/[0.05] overflow-hidden mb-3">
+          <div id="progressBar" class="h-full rounded-full bg-accent transition-all duration-700 ease-out" style="width: 0%"></div>
+        </div>
+        <%!-- Step indicators --%>
+        <div class="flex items-center justify-between text-[11px] font-medium">
+          <span id="stepDns" class="text-white/25 transition-colors">DNS</span>
+          <span id="stepHttp" class="text-white/25 transition-colors">HTTP</span>
+          <span id="stepBgp" class="text-white/25 transition-colors">BGP</span>
+          <span id="stepRdap" class="text-white/25 transition-colors">RDAP</span>
+          <span id="stepReputation" class="text-white/25 transition-colors">Reputation</span>
+        </div>
+        <div id="progressStatus" class="text-xs text-white/40 mt-2 text-center">Resolving DNS...</div>
+      </div>
+    </div>
+
+    <%!-- Error message — hidden by default --%>
+    <div id="searchError" class="mx-auto max-w-[660px] hidden mb-4">
+      <div class="rounded-xl border border-red-500/20 bg-red-500/[0.05] px-5 py-3 text-sm text-red-400 text-center">
+        <span id="errorText"></span>
+        <button onclick="resetSearch()" class="ml-3 underline hover:text-red-300">Try again</button>
+      </div>
+    </div>
+
+    <p class="text-[13px] text-white/35 animate-fade-in-up-delay-3" id="searchHints">
+      Try: <button onclick="fillSearch('gymshark.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">gymshark.com</button> · <button onclick="fillSearch('Klaviyo')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Klaviyo</button> · <button onclick="fillSearch('allbirds.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">allbirds.com</button>
+    </p>
+  </div>
+</section>
+
+<section class="relative border-y border-white/[0.07] bg-accent/[0.03] overflow-hidden">
+  <div class="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-ls-dark to-transparent z-10 pointer-events-none"></div>
+  <div class="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-ls-dark to-transparent z-10 pointer-events-none"></div>
+  <div class="absolute left-0 top-0 bottom-0 z-20 flex items-center gap-2 px-5 bg-ls-dark border-r border-white/[0.07] text-xs font-semibold uppercase tracking-widest text-accent whitespace-nowrap">
+    <span class="h-1.5 w-1.5 rounded-full bg-accent animate-pulse"></span> Live Feed
+  </div>
+  <div class="flex animate-ticker py-3.5 pl-[140px]" id="tickerTrack"></div>
+</section>
+
+<section class="border-b border-white/[0.07] py-11">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+      <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.total_domains}>0</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Sites Indexed</div></div>
+      <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.store_count}>0</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Shopify Stores</div></div>
+      <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.ctl_rate_per_sec} data-decimals="1">0</span><span class="text-lg text-white/40">/s</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Sites Scanned</div></div>
+      <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.ch_insert_rate}>0</span><span class="text-lg text-white/40">/min</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Inserting to DB</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="py-20" id="data">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="text-center max-w-[600px] mx-auto mb-12 anim">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">Live Data Preview</div>
+      <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15] mb-3.5">Search any domain. Discover<br/>who uses what — and why.</h2>
+      <p class="text-base text-white/60 leading-relaxed">Look up a store to see its full profile, or search by app name to find every store using it.</p>
+    </div>
+
+    <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden relative anim">
+      <div class="flex items-center justify-between px-6 py-3.5 bg-white/[0.02] border-b border-white/[0.07] flex-wrap gap-3">
+        <div class="text-sm text-white/60">Stores using <strong class="text-white font-semibold">"Klaviyo"</strong> — <strong class="text-white font-semibold">284,739</strong> results</div>
+        <div class="flex gap-1">
+          <button class="rounded-md bg-accent border-accent text-white px-3.5 py-1 text-[13px] font-medium border">Stores</button>
+          <button class="rounded-md border border-white/[0.07] text-white/60 px-3.5 py-1 text-[13px] font-medium">Apps</button>
+          <button class="rounded-md border border-white/[0.07] text-white/60 px-3.5 py-1 text-[13px] font-medium">Trends</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm border-collapse min-w-[620px]">
+          <thead><tr>
+            <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Store</th>
+            <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Plan</th>
+            <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Category</th>
+            <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Country</th>
+            <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Est. Revenue</th>
+            <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Score</th>
+          </tr></thead>
+          <tbody>
+            <tr class="hover:bg-white/[0.015]"><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium"><a href="/shopify/gymshark-com" class="hover:text-accent">gymshark.com</a></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Plus</span></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">Fitness & Apparel</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">🇬🇧 UK</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">$500M+/yr</td><td class="px-5 py-3 border-b border-white/[0.07]"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-accent/10 text-accent">96</span></td></tr>
+            <tr class="hover:bg-white/[0.015]"><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium"><a href="/shopify/allbirds-com" class="hover:text-accent">allbirds.com</a></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Plus</span></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">Footwear</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">🇺🇸 US</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">$200M+/yr</td><td class="px-5 py-3 border-b border-white/[0.07]"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-accent/10 text-accent">93</span></td></tr>
+            <tr class="hover:bg-white/[0.015]"><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium"><a href="/shopify/bombas-com" class="hover:text-accent">bombas.com</a></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Plus</span></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">Apparel</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">🇺🇸 US</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">$100M+/yr</td><td class="px-5 py-3 border-b border-white/[0.07]"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-accent/10 text-accent">91</span></td></tr>
+            <tr class="[&>td]:blur-[5px] [&>td]:select-none [&>td]:pointer-events-none"><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">ridgewallet.com</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Plus</span></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">Accessories</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">🇺🇸 US</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">$80M+/yr</td><td class="px-5 py-3 border-b border-white/[0.07]"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-accent/10 text-accent">88</span></td></tr>
+            <tr class="[&>td]:blur-[5px] [&>td]:select-none [&>td]:pointer-events-none"><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">nativecos.com</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Shopify</span></td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">Beauty</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">🇺🇸 US</td><td class="px-5 py-3 border-b border-white/[0.07] text-white/60">$60M+/yr</td><td class="px-5 py-3 border-b border-white/[0.07]"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/12 text-amber-400">84</span></td></tr>
+            <tr class="[&>td]:blur-[5px] [&>td]:select-none [&>td]:pointer-events-none"><td class="px-5 py-3 text-white font-medium">brooklinen.com</td><td class="px-5 py-3 text-white/60"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Plus</span></td><td class="px-5 py-3 text-white/60">Home</td><td class="px-5 py-3 text-white/60">🇺🇸 US</td><td class="px-5 py-3 text-white/60">$50M+/yr</td><td class="px-5 py-3"><span class="inline-block px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/12 text-amber-400">82</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="absolute bottom-0 left-0 right-0 h-[200px] bg-gradient-to-b from-transparent to-[#111B33]/95 flex items-end justify-center pb-8 z-10">
+        <a href="/signup" class="flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_30px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="11" width="10" height="5" rx="1.5"/><path d="M6 11V7a3 3 0 016 0v4"/></svg>
+          Sign up free to see all 284,739 stores
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-20 bg-[#0C1429]">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="text-center max-w-[600px] mx-auto mb-12 anim">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">How It Works</div>
+      <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15]">From search to qualified leads<br/>in under 60 seconds</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-7 relative">
+      <div class="hidden md:block absolute top-10 left-[16.6%] right-[16.6%] h-0.5 bg-gradient-to-r from-accent to-blue-500 opacity-20"></div>
+      <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
+        <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">1</div>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Search a store or app</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Enter any Shopify store URL to see its profile — or search by app name to find every store running it.</p>
+      </div>
+      <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
+        <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">2</div>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Filter and qualify</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Narrow by country, revenue, tech stack, and growth score to find your ideal leads.</p>
+      </div>
+      <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
+        <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">3</div>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Export and close</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Download your filtered list as CSV with contact emails. No credits, no limits.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-20 text-center relative">
+  <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-[radial-gradient(ellipse,rgba(16,185,129,0.05),transparent_60%)] pointer-events-none"></div>
+  <div class="mx-auto max-w-[1200px] px-6 relative">
+    <h2 class="font-display text-[clamp(26px,3.2vw,38px)] font-bold tracking-tight mb-3.5 anim">Stop overpaying for stale data.</h2>
+    <p class="text-base text-white/60 mb-7 anim">Join hundreds of teams finding Shopify leads faster with ListSignal.</p>
+    <a href="/signup" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all anim">
+      Try it now — it's free
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</section>
+
+<footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white transition-colors mx-4">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-4">Pricing</a>
+      <a href="/blog" class="text-white/50 hover:text-white transition-colors mx-4">Blog</a>
+    </div>
+    <p>&copy; 2026 ListSignal</p>
+  </div>
+</footer>
+
+<script>
+// Animations
+const obs=new IntersectionObserver(e=>{e.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');e.target.querySelectorAll('.count').forEach(c=>{if(!c.dataset.done){c.dataset.done='1';animCount(c)}})}})},{threshold:0.12});
+document.querySelectorAll('.anim').forEach(el=>obs.observe(el));
+function animCount(el){const t=+el.dataset.target,dec=+(el.dataset.decimals||0),dur=1800,s=performance.now();(function u(now){const p=Math.min((now-s)/dur,1),v=(1-Math.pow(1-p,3))*t;el.textContent=dec?v.toFixed(dec):Math.floor(v).toLocaleString();if(p<1)requestAnimationFrame(u);else el.textContent=dec?t.toFixed(dec):t.toLocaleString()})(s)}
+
+// Ticker
+(function(){const stores=<%= raw(Jason.encode!(Enum.map(@landing.recent_stores, fn s -> %{n: s.domain, t: s.title, c: s.country, tech: s.tech} end)) |> String.replace("</", "<\\/")) %>;
+function cflag(c){if(!c||c.length!==2)return '';const o=0x1F1A5;return String.fromCodePoint(c.toUpperCase().charCodeAt(0)+o,c.toUpperCase().charCodeAt(1)+o)}
+const html=s=>`<div class="flex items-center gap-2.5 px-7 whitespace-nowrap text-[13px] text-white/60 border-r border-white/[0.07]"><a href="/shopify/${s.n.replace(/\./g,'-')}" class="text-white font-medium hover:text-accent transition-colors">${s.n}</a><span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Shopify</span>${s.c?`<span class="text-sm">${cflag(s.c)}</span>`:''}</div>`;
+const el=document.getElementById('tickerTrack');if(stores.length>0){el.innerHTML=stores.map(html).join('')+stores.map(html).join('')}else{el.innerHTML='<div class="px-7 text-[13px] text-white/40">Loading recent stores...</div>'}})();
+
+// ═══ INLINE SEARCH — the main thing ═══
+function fillSearch(t){document.getElementById('heroSearch').value=t;document.getElementById('heroSearch').focus()}
+
+function resetSearch(){
+  document.getElementById('searchProgress').classList.add('hidden');
+  document.getElementById('searchError').classList.add('hidden');
+  document.getElementById('searchHints').classList.remove('hidden');
+  document.getElementById('heroBtn').textContent='Look up';
+  document.getElementById('heroBtn').disabled=false;
+  document.getElementById('heroSearch').disabled=false;
+  document.getElementById('heroSearch').focus();
+}
+
+// Progress step animation
+const STEPS=[
+  {id:'stepDns',label:'Resolving DNS...',pct:15},
+  {id:'stepHttp',label:'Fetching HTTP & detecting tech...',pct:45},
+  {id:'stepBgp',label:'Looking up BGP/ASN...',pct:65},
+  {id:'stepRdap',label:'Querying RDAP/WHOIS...',pct:80},
+  {id:'stepReputation',label:'Checking reputation...',pct:95}
+];
+let stepTimer=null;
+let currentStep=0;
+
+function advanceProgress(){
+  if(currentStep>=STEPS.length)return;
+  const s=STEPS[currentStep];
+  document.getElementById('progressBar').style.width=s.pct+'%';
+  document.getElementById('progressStatus').textContent=s.label;
+  // Highlight current and past steps
+  STEPS.forEach((st,i)=>{
+    const el=document.getElementById(st.id);
+    if(i<currentStep)el.className='text-accent/60 transition-colors';
+    else if(i===currentStep)el.className='text-accent font-semibold transition-colors';
+    else el.className='text-white/25 transition-colors';
+  });
+  currentStep++;
+}
+
+document.getElementById('heroForm').addEventListener('submit',function(e){
+  const q=document.getElementById('heroSearch').value.trim();
+  if(!q)return e.preventDefault();
+
+  // If it's not a domain (no dot), let the form submit normally to /search (tech search)
+  const normalized=q.toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
+  if(!normalized.includes('.')){
+    // Tech search — let form submit to /search which redirects to /tech/:slug
+    return;
+  }
+
+  // It's a domain — intercept and do inline lookup
+  e.preventDefault();
+  const domain=normalized;
+  const slug=domain.replace(/\./g,'-');
+
+  // Show progress bar
+  document.getElementById('searchProgress').classList.remove('hidden');
+  document.getElementById('searchError').classList.add('hidden');
+  document.getElementById('searchHints').classList.add('hidden');
+  document.getElementById('heroBtn').textContent='Scanning...';
+  document.getElementById('heroBtn').disabled=true;
+  document.getElementById('heroSearch').disabled=true;
+
+  // Reset progress
+  currentStep=0;
+  document.getElementById('progressBar').style.width='5%';
+  STEPS.forEach(s=>{document.getElementById(s.id).className='text-white/25 transition-colors'});
+
+  // Animate steps on a timer (the server does them in ~parallel but we show sequentially for UX)
+  advanceProgress();
+  stepTimer=setInterval(function(){
+    if(currentStep<STEPS.length)advanceProgress();
+    else clearInterval(stepTimer);
+  },3000);
+
+  // Call the API
+  fetch('/api/tools/lookup?domain='+encodeURIComponent(domain))
+    .then(function(r){return r.json().then(function(d){return{status:r.status,data:d}})})
+    .then(function(res){
+      clearInterval(stepTimer);
+      if(res.data.ok){
+        // Success — complete the progress bar
+        document.getElementById('progressBar').style.width='100%';
+        STEPS.forEach(s=>{document.getElementById(s.id).className='text-accent/60 transition-colors'});
+        document.getElementById('progressStatus').textContent='Done! Redirecting...';
+
+        // Redirect to the right page
+        var path=res.data.data.is_shopify?'/shopify/':'/website/';
+        setTimeout(function(){window.location.href=path+slug},400);
+      }else{
+        // Error
+        document.getElementById('searchProgress').classList.add('hidden');
+        document.getElementById('searchError').classList.remove('hidden');
+        document.getElementById('errorText').textContent=res.data.error||'Lookup failed';
+        document.getElementById('heroBtn').textContent='Look up';
+        document.getElementById('heroBtn').disabled=false;
+        document.getElementById('heroSearch').disabled=false;
+      }
+    })
+    .catch(function(err){
+      clearInterval(stepTimer);
+      document.getElementById('searchProgress').classList.add('hidden');
+      document.getElementById('searchError').classList.remove('hidden');
+      document.getElementById('errorText').textContent='Network error — check your connection';
+      document.getElementById('heroBtn').textContent='Look up';
+      document.getElementById('heroBtn').disabled=false;
+      document.getElementById('heroSearch').disabled=false;
+    });
+});
+</script>

@@ -1,0 +1,89 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight"><span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white">LS</span>ListSignal</a>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="/tools/shopify-checker" class="text-sm font-medium text-white/60 hover:text-white">Free Tools</a></li>
+      <li><a href="/pricing" class="text-sm font-medium text-white/60 hover:text-white">Pricing</a></li>
+      <li><a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover">Start Free</a></li>
+    </ul>
+  </div>
+</nav>
+<main class="pt-[130px] pb-20"><div class="mx-auto max-w-[800px] px-6">
+  <div class="text-center mb-10">
+    <div class="text-5xl mb-4">&#128300;</div>
+    <h1 class="font-display text-[clamp(30px,4vw,44px)] font-bold tracking-tight leading-[1.1] mb-4">Tech Stack Lookup</h1>
+    <p class="text-lg text-white/60">Instantly detect 200+ technologies from DNS, HTTP, and network analysis. Free, no signup.</p>
+  </div>
+
+  <div class="mx-auto max-w-[620px] mb-4">
+    <div class="flex items-center rounded-[14px] bg-white p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.4)] transition-shadow focus-within:shadow-[0_0_0_2px_#10B981]" id="checkerForm">
+      <div class="pl-4 pr-1 flex items-center text-slate-400">
+        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="7"/><path d="M16 16l-4-4"/></svg>
+      </div>
+      <input type="text" id="domainInput" placeholder="Enter any domain..." class="flex-1 border-none outline-none bg-transparent font-body text-base text-slate-900 px-3 py-3.5 placeholder:text-slate-400" autocomplete="off" />
+      <button onclick="doLookup()" id="checkBtn" class="rounded-[10px] bg-accent px-7 py-3.5 font-display text-[15px] font-semibold text-white hover:bg-accent-hover transition-all whitespace-nowrap">Scan</button>
+    </div>
+  </div>
+
+  <div class="flex justify-center gap-6 text-[13px] text-white/30 mb-12">
+    <span>&#128225; DNS analysis</span>
+    <span>&#127760; HTTP fingerprinting</span>
+    <span>&#128268; Network/BGP intelligence</span>
+  </div>
+
+  <div id="results" class="hidden">
+    <div id="loadingState" class="hidden text-center py-10"><div class="inline-flex items-center gap-3 text-white/60"><svg class="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><span id="loadingText">Scanning...</span></div></div>
+    <div id="resultData" class="hidden"></div>
+    <div id="errorState" class="hidden text-center py-10 text-red-400"></div>
+  </div>
+
+  <div class="mt-12 text-center">
+    <a href="/signup" class="inline-flex items-center gap-2 rounded-xl bg-accent/10 border border-accent/20 px-6 py-3 font-display text-sm font-semibold text-accent hover:bg-accent/20 transition-all">
+      Get 50 free lookups/month &#8594;
+    </a>
+  </div>
+</div></main>
+<footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white mx-3">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white mx-3">Pricing</a>
+      <a href="/tools/shopify-checker" class="text-white/50 hover:text-white mx-3">Free Tools</a>
+      <a href="/new-stores" class="text-white/50 hover:text-white mx-3">New Stores</a>
+      <a href="/privacy" class="text-white/50 hover:text-white mx-3">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white mx-3">Terms</a>
+    </div>
+    <p>&copy; 2026 ListSignal</p>
+  </div>
+</footer>
+<script>
+const msgs=['Resolving DNS...','Scanning HTTP...','Detecting technologies...','Analyzing network...'];
+let mi=0,loadTimer;
+async function doLookup(){
+  const d=document.getElementById('domainInput').value.trim();if(!d)return;
+  document.getElementById('results').classList.remove('hidden');
+  document.getElementById('loadingState').classList.remove('hidden');
+  document.getElementById('resultData').classList.add('hidden');
+  document.getElementById('errorState').classList.add('hidden');
+  document.getElementById('checkBtn').textContent='Scanning...';document.getElementById('checkBtn').disabled=true;
+  mi=0;loadTimer=setInterval(()=>{mi=(mi+1)%msgs.length;document.getElementById('loadingText').textContent=msgs[mi]},1200);
+  try{
+    const r=await fetch('/api/tools/lookup?domain='+encodeURIComponent(d));const j=await r.json();clearInterval(loadTimer);
+    document.getElementById('loadingState').classList.add('hidden');
+    if(j.ok){
+      const data=j.data;
+      const techs=data.tech&&data.tech.length?data.tech.map(t=>'<a href="/tech/'+t.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'')+'" class="inline-block rounded-lg border border-white/[0.07] bg-white/[0.03] px-3 py-1.5 text-sm text-white/70 hover:border-accent/30 hover:text-accent transition-all">'+t+'</a>').join(''):'<span class="text-white/40 text-sm">No technologies detected</span>';
+      document.getElementById('resultData').innerHTML=`
+        <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] p-8">
+          <h2 class="font-display text-2xl font-bold mb-2">${data.domain}</h2>
+          ${data.title?'<p class="text-white/60 mb-6">'+data.title+'</p>':'<div class="mb-6"></div>'}
+          <div class="mb-4"><div class="text-xs uppercase tracking-wider text-white/35 font-semibold mb-3">&#128300; ${data.tech?data.tech.length:0} Technologies Detected</div><div class="flex flex-wrap gap-2">${techs}</div></div>
+          ${data.fresh?'<div class="flex items-center gap-2 text-xs text-accent mt-4"><span>&#9889;</span> Scanned live just now</div>':'<div class="flex items-center gap-2 text-xs text-white/40 mt-4">Cached from today</div>'}
+        </div>`;
+      document.getElementById('resultData').classList.remove('hidden');
+    }else{document.getElementById('errorState').textContent='Error: '+(j.error||'Unknown');document.getElementById('errorState').classList.remove('hidden');}
+  }catch(e){clearInterval(loadTimer);document.getElementById('loadingState').classList.add('hidden');document.getElementById('errorState').textContent='Network error.';document.getElementById('errorState').classList.remove('hidden');}
+  document.getElementById('checkBtn').textContent='Scan';document.getElementById('checkBtn').disabled=false;
+}
+document.getElementById('domainInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup()});
+</script>

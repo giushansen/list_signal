@@ -1,0 +1,110 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight"><span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white">LS</span>ListSignal</a>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="/tools/shopify-checker" class="text-sm font-medium text-white/60 hover:text-white">Free Tools</a></li>
+      <li><a href="/pricing" class="text-sm font-medium text-white/60 hover:text-white">Pricing</a></li>
+      <li><a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover">Start Free</a></li>
+    </ul>
+  </div>
+</nav>
+<main class="pt-[100px] pb-20"><div class="mx-auto max-w-[900px] px-6">
+  <nav class="mb-6 text-sm text-white/40"><a href="/" class="hover:text-white">Home</a><span class="mx-2">&#8250;</span><span class="text-white/60"><%= @comp.name %> Alternative</span></nav>
+
+  <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-6">
+    &#9889; <%= @store_count %>+ stores tracked daily
+  </div>
+
+  <h1 class="font-display text-[clamp(30px,4.5vw,46px)] font-bold tracking-tight leading-[1.1] mb-4">
+    Looking for a <%= @comp.name %> alternative?
+  </h1>
+  <p class="text-xl text-white/60 leading-relaxed mb-10 max-w-[700px]"><%= @comp.tagline %></p>
+
+  <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden mb-10">
+    <table class="w-full text-sm">
+      <thead><tr>
+        <th class="px-5 py-3.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]"></th>
+        <th class="px-5 py-3.5 text-center text-[11px] uppercase tracking-wider text-accent font-bold border-b border-white/[0.07] bg-accent/[0.04]">&#9889; ListSignal</th>
+        <th class="px-5 py-3.5 text-center text-[11px] uppercase tracking-wider text-white/40 font-semibold border-b border-white/[0.07]"><%= @comp.name %></th>
+      </tr></thead>
+      <tbody>
+        <tr><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">Price</td><td class="px-5 py-3 border-b border-white/[0.07] text-center bg-accent/[0.04] font-semibold text-accent"><%= @comp.ls_price %></td><td class="px-5 py-3 border-b border-white/[0.07] text-center text-white/50"><%= @comp.price %></td></tr>
+        <tr><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">Data freshness</td><td class="px-5 py-3 border-b border-white/[0.07] text-center bg-accent/[0.04] font-semibold text-white">&#9889; Hours</td><td class="px-5 py-3 border-b border-white/[0.07] text-center text-white/50">Days&#8211;weeks</td></tr>
+        <tr><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">Credits system</td><td class="px-5 py-3 border-b border-white/[0.07] text-center bg-accent/[0.04] font-semibold text-accent">&#10003; None</td><td class="px-5 py-3 border-b border-white/[0.07] text-center text-white/50">&#10005; Yes</td></tr>
+        <tr><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">CSV export</td><td class="px-5 py-3 border-b border-white/[0.07] text-center bg-accent/[0.04] font-semibold text-accent">&#10003; at $79/mo</td><td class="px-5 py-3 border-b border-white/[0.07] text-center text-white/50">$250+/mo</td></tr>
+        <tr><td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">Infrastructure data</td><td class="px-5 py-3 border-b border-white/[0.07] text-center bg-accent/[0.04] font-semibold text-accent">&#10003; DNS, BGP, SSL</td><td class="px-5 py-3 border-b border-white/[0.07] text-center text-white/50">&#10005;</td></tr>
+        <tr><td class="px-5 py-3 text-white font-medium">Contract</td><td class="px-5 py-3 text-center bg-accent/[0.04] font-semibold text-accent">Month-to-month</td><td class="px-5 py-3 text-center text-white/50">Annual lock-in</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="font-display text-2xl font-bold mb-6">Why teams switch from <%= @comp.name %></h2>
+  <div class="space-y-4 mb-10">
+    <%= for {icon, title, desc} <- @comp.ls_wins do %>
+      <div class="flex gap-4 p-5 rounded-xl border border-white/[0.07] bg-white/[0.02] hover:border-accent/20 transition-all">
+        <div class="text-2xl shrink-0 mt-0.5"><%= icon %></div>
+        <div>
+          <h3 class="font-display text-[15px] font-semibold text-white mb-1"><%= title %></h3>
+          <p class="text-sm text-white/60 leading-relaxed"><%= desc %></p>
+        </div>
+      </div>
+    <% end %>
+  </div>
+
+  <%= if Map.get(@comp, :honest_note) do %>
+    <div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] p-5 mb-10">
+      <div class="flex items-start gap-3">
+        <span class="text-xl">&#128172;</span>
+        <div>
+          <h3 class="font-display text-[15px] font-semibold text-amber-300 mb-1">Honest take</h3>
+          <p class="text-sm text-white/70 leading-relaxed"><%= @comp.honest_note %></p>
+        </div>
+      </div>
+    </div>
+  <% end %>
+
+  <h2 class="font-display text-2xl font-bold mb-4">What <%= @comp.name %> does well</h2>
+  <ul class="space-y-2 mb-10">
+    <%= for pro <- @comp.pros do %>
+      <li class="flex items-start gap-2.5 text-sm text-white/60"><span class="text-white/40 mt-0.5">&#8226;</span> <%= pro %></li>
+    <% end %>
+  </ul>
+
+  <h2 class="font-display text-2xl font-bold mb-4">Where <%= @comp.name %> falls short</h2>
+  <ul class="space-y-2 mb-10">
+    <%= for con <- @comp.cons do %>
+      <li class="flex items-start gap-2.5 text-sm text-white/60"><span class="text-red-400 mt-0.5">&#10005;</span> <%= con %></li>
+    <% end %>
+  </ul>
+
+  <section class="mb-10" itemscope itemtype="https://schema.org/FAQPage">
+    <h2 class="font-display text-xl font-semibold mb-4">FAQ</h2>
+    <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5 mb-4" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+      <h3 itemprop="name" class="font-medium text-white mb-2">Is ListSignal a good <%= @comp.name %> alternative?</h3>
+      <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer"><p itemprop="text" class="text-sm text-white/60">ListSignal offers real-time store detection, transparent data timestamps, infrastructure intelligence, and unlimited CSV exports at $79/mo — compared to <%= @comp.name %>'s <%= @comp.price %>. ListSignal is ideal for teams needing fresh Shopify data with infrastructure depth.</p></div>
+    </div>
+    <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+      <h3 itemprop="name" class="font-medium text-white mb-2">How does ListSignal detect stores faster than <%= @comp.name %>?</h3>
+      <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer"><p itemprop="text" class="text-sm text-white/60">ListSignal monitors SSL Certificate Transparency logs in real-time, processing ~15M certificates daily. New Shopify stores are detected within hours of launching, versus days or weeks for traditional web crawlers.</p></div>
+    </div>
+  </section>
+
+  <div class="text-center py-8 border-t border-white/[0.07]">
+    <h2 class="font-display text-2xl font-bold mb-3">Ready to switch?</h2>
+    <p class="text-white/50 mb-5">Start free — no credit card, no contract.</p>
+    <a href="/signup" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all">Try ListSignal Free</a>
+  </div>
+</div></main>
+<footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white mx-3">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white mx-3">Pricing</a>
+      <a href="/tools/shopify-checker" class="text-white/50 hover:text-white mx-3">Free Tools</a>
+      <a href="/new-stores" class="text-white/50 hover:text-white mx-3">New Stores</a>
+      <a href="/privacy" class="text-white/50 hover:text-white mx-3">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white mx-3">Terms</a>
+    </div>
+    <p>&copy; 2026 ListSignal</p>
+  </div>
+</footer>

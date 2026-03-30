@@ -21,43 +21,89 @@ defmodule LS.Pipeline do
 
   def run(domains, opts \\ []) when is_binary(domains) or is_list(domains) do
     domains = List.wrap(domains)
-    verbose = Keyword.get(opts, :verbose, false)
+    _verbose = Keyword.get(opts, :verbose, false)
     insert = Keyword.get(opts, :insert, false)
     worker = Node.self() |> Atom.to_string()
 
-    vlog(verbose, "⏳ DNS (#{length(domains)})...")
+    Logger.info("[PIPELINE] Starting for #{inspect(domains)}")
+
+    # Stage 1: DNS
+    Logger.info("[PIPELINE][DNS] Starting for #{length(domains)} domains")
     {dns_us, dns_res} = :timer.tc(fn ->
-      Enum.map(domains, fn d -> case dns(d) do {:ok, data} -> {d, data}; _ -> {d, empty_dns()} end end) |> Map.new()
+      Enum.map(domains, fn d ->
+        case dns(d) do
+          {:ok, data} ->
+            Logger.debug("[PIPELINE][DNS] #{d} OK — A:#{length(data.dns[:a] || [])} MX:#{length(data.dns[:mx] || [])}")
+            {d, data}
+          {:error, reason} ->
+            Logger.warning("[PIPELINE][DNS] #{d} FAILED: #{inspect(reason)}")
+            {d, empty_dns()}
+        end
+      end) |> Map.new()
     end)
-    vlog(verbose, "✅ DNS #{div(dns_us, 1000)}ms — #{map_size(dns_res)} resolved")
+    Logger.info("[PIPELINE][DNS] Done in #{div(dns_us, 1000)}ms — #{map_size(dns_res)} resolved")
 
     {http_cands, bgp_cands} = classify(dns_res)
     rdap_cands = dns_res |> Enum.filter(fn {_, d} -> d.dns[:a] |> List.wrap() |> List.first() end) |> Enum.map(fn {d, _} -> d end)
-    vlog(verbose, "   HTTP: #{length(http_cands)} | BGP: #{length(bgp_cands)} | RDAP: #{length(rdap_cands)}")
+    Logger.info("[PIPELINE] Candidates — HTTP:#{length(http_cands)} BGP:#{length(bgp_cands)} RDAP:#{length(rdap_cands)}")
 
-    vlog(verbose, "⏳ HTTP...")
-    {http_us, http_res} = :timer.tc(fn -> http_cands |> Enum.map(fn {d, ip} -> {d, http(d, ip)} end) |> Map.new() end)
-    vlog(verbose, "✅ HTTP #{div(http_us, 1000)}ms")
+    # Stage 2: HTTP + BGP + RDAP in parallel
+    Logger.info("[PIPELINE][HTTP] Starting for #{length(http_cands)} candidates")
+    http_task = Task.async(fn ->
+      http_cands |> Enum.map(fn {d, ip} ->
+        result = http(d, ip)
+        Logger.debug("[PIPELINE][HTTP] #{d} → status:#{result[:http_status]} tech:#{result[:http_tech] || "none"} error:#{result[:http_error] || "none"}")
+        {d, result}
+      end) |> Map.new()
+    end)
 
-    {bgp_us, bgp_res} = :timer.tc(fn -> run_bgp(bgp_cands) end)
-    vlog(verbose, "✅ BGP #{div(bgp_us, 1000)}ms")
+    Logger.info("[PIPELINE][BGP] Starting for #{length(bgp_cands)} IPs")
+    bgp_task = Task.async(fn ->
+      result = run_bgp(bgp_cands)
+      Logger.debug("[PIPELINE][BGP] Got #{map_size(result)} results")
+      result
+    end)
 
-    vlog(verbose, "⏳ RDAP...")
-    {rdap_us, rdap_res} = :timer.tc(fn ->
+    Logger.info("[PIPELINE][RDAP] Starting for #{length(rdap_cands)} domains")
+    rdap_task = Task.async(fn ->
       Enum.reduce(rdap_cands, %{}, fn d, acc ->
-        case rdap(d) do {:ok, data} -> Map.put(acc, d, data); _ -> acc end
+        case rdap(d) do
+          {:ok, data} ->
+            Logger.debug("[PIPELINE][RDAP] #{d} OK — registrar:#{data[:registrar] || "?"}")
+            Map.put(acc, d, data)
+          {:error, reason} ->
+            Logger.debug("[PIPELINE][RDAP] #{d} FAILED: #{inspect(reason)}")
+            acc
+        end
       end)
     end)
-    vlog(verbose, "✅ RDAP #{div(rdap_us, 1000)}ms — #{map_size(rdap_res)} resolved")
 
+    # Await all with timeouts
+    http_res = Task.await(http_task, 30_000)
+    Logger.info("[PIPELINE][HTTP] Done — #{map_size(http_res)} results")
+
+    bgp_res = Task.await(bgp_task, 30_000)
+    Logger.info("[PIPELINE][BGP] Done — #{map_size(bgp_res)} results")
+
+    rdap_res = Task.await(rdap_task, 20_000)
+    Logger.info("[PIPELINE][RDAP] Done — #{map_size(rdap_res)} results")
+
+    # Stage 3: Merge + Reputation
+    Logger.info("[PIPELINE][REPUTATION] Merging rows — http_keys:#{inspect(Map.keys(http_res |> Map.values() |> List.first() || %{}))} bgp_keys:#{inspect(Map.keys(bgp_res |> Map.values() |> List.first() || %{}))} rdap_keys:#{inspect(Map.keys(rdap_res |> Map.values() |> List.first() || %{}))}")
     now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
     rows = Enum.map(domains, fn d ->
       merge_row(d, Map.get(dns_res, d, empty_dns()), Map.get(http_res, d, %{}),
                 Map.get(bgp_res, d, %{}), Map.get(rdap_res, d, %{}), worker, now)
     end)
 
-    if insert, do: (vlog(verbose, "⏳ Inserting..."); LS.Cluster.Inserter.insert(rows); vlog(verbose, "✅ Inserted"))
-    if verbose, do: IO.puts("\n═══ DONE #{div(dns_us + http_us + bgp_us + rdap_us, 1000)}ms ═══")
+    if insert do
+      Logger.info("[PIPELINE][INSERT] Inserting #{length(rows)} rows")
+      LS.Cluster.Inserter.insert(rows)
+      Logger.info("[PIPELINE][INSERT] Done")
+    end
+
+    total_ms = div(dns_us, 1000)
+    Logger.info("[PIPELINE] COMPLETE for #{inspect(domains)} in #{total_ms}ms+parallel")
     case rows do [single] -> single; many -> many end
   end
 
@@ -152,6 +198,12 @@ defmodule LS.Pipeline do
     _sc = dns_data[:scores] || %{}
     maj = Majestic.lookup(domain)
     bl = Blocklist.lookup(domain)
+
+    # Enrich tech with DNS/IP signals when HTTP detection missed them
+    http_tech = http[:http_tech] || ""
+    dns_tech = dns_based_tech(d, bgp)
+    merged_tech = merge_tech(http_tech, dns_tech)
+
     %{
       enriched_at: now, worker: worker, domain: domain,
       ctl_tld: domain |> String.split(".") |> List.last() || "", ctl_issuer: "",
@@ -165,7 +217,7 @@ defmodule LS.Pipeline do
       http_response_time: http[:http_response_time],
       http_blocked: http[:http_blocked] || "",
       http_content_type: http[:http_content_type] || "",
-      http_tech: http[:http_tech] || "",
+      http_tech: merged_tech,
       http_title: http[:http_title] || "",
       http_meta_description: http[:http_meta_description] || "",
       http_pages: http[:http_pages] || "",
@@ -199,6 +251,45 @@ defmodule LS.Pipeline do
   end
   defp fmt_dt(_), do: nil
 
+  # Shopify IP ranges (23.227.38.0/23 and 23.227.36.0/23)
+  @shopify_prefixes ["23.227.38.", "23.227.39.", "23.227.36.", "23.227.37."]
+
+  defp dns_based_tech(dns, bgp) do
+    cnames = dns[:cname] |> List.wrap() |> Enum.join(" ") |> String.downcase()
+    ips = dns[:a] |> List.wrap()
+    txt = dns[:txt] |> List.wrap() |> Enum.join(" ") |> String.downcase()
+    mx = dns[:mx] |> List.wrap() |> Enum.join(" ") |> String.downcase()
+    asn_org = (bgp[:bgp_asn_org] || "") |> String.downcase()
+
+    techs = []
+    # Shopify: CNAME to shops.myshopify.com or Shopify IP ranges
+    techs = if String.contains?(cnames, "myshopify.com") or
+               Enum.any?(ips, fn ip -> Enum.any?(@shopify_prefixes, &String.starts_with?(ip, &1)) end),
+            do: ["Shopify" | techs], else: techs
+    # Cloudflare: common ASN org
+    techs = if String.contains?(asn_org, "cloudflare"), do: ["Cloudflare" | techs], else: techs
+    # Google Workspace: MX records
+    techs = if String.contains?(mx, "google") or String.contains?(mx, "googlemail"),
+            do: ["Google Workspace" | techs], else: techs
+    # Microsoft 365: MX records
+    techs = if String.contains?(mx, "outlook") or String.contains?(mx, "microsoft"),
+            do: ["Microsoft 365" | techs], else: techs
+    # SPF-based detection
+    techs = if String.contains?(txt, "spf.protection.outlook"), do: ["Microsoft 365" | techs], else: techs
+    # Verification TXT records
+    techs = if String.contains?(txt, "google-site-verification"), do: ["Google Search Console" | techs], else: techs
+    techs = if String.contains?(txt, "facebook-domain-verification"), do: ["Meta Pixel" | techs], else: techs
+
+    techs |> Enum.uniq()
+  end
+
+  defp merge_tech(http_tech_str, dns_techs) do
+    existing = http_tech_str |> String.split("|") |> Enum.reject(&(&1 == "")) |> MapSet.new(&String.downcase/1)
+    new = Enum.reject(dns_techs, fn t -> MapSet.member?(existing, String.downcase(t)) end)
+    all = (http_tech_str |> String.split("|") |> Enum.reject(&(&1 == ""))) ++ new
+    Enum.join(all, "|")
+  end
+
   defp extract_title(b) do
     case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
       [_, t] -> String.trim(t) |> String.slice(0, 200)
@@ -208,6 +299,4 @@ defmodule LS.Pipeline do
     _ -> ""
   end
 
-  defp vlog(true, msg), do: IO.puts(msg)
-  defp vlog(_, _), do: :ok
 end

@@ -1,0 +1,185 @@
+
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight">
+      <span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white relative overflow-hidden">LS<span class="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 to-transparent"></span></span>
+      ListSignal
+    </a>
+    <a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px">Start Free</a>
+  </div>
+</nav>
+
+<div class="min-h-screen flex items-center justify-center pt-[80px] pb-20">
+  <div class="max-w-[520px] w-full mx-auto px-6 text-center">
+    <%!-- Animated scanner icon --%>
+    <div class="mb-8 relative inline-flex items-center justify-center" id="spinnerWrap">
+      <div class="h-24 w-24 rounded-full border-2 border-accent/20 flex items-center justify-center relative">
+        <div class="absolute inset-0 rounded-full border-2 border-transparent border-t-accent animate-spin" id="spinner"></div>
+        <svg class="w-10 h-10 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+        </svg>
+      </div>
+    </div>
+
+    <h1 class="font-display text-2xl font-bold tracking-tight mb-2" id="scanTitle">Scanning <%= @domain %></h1>
+    <p class="text-white/50 text-sm mb-10" id="scanSubtitle">Running full enrichment pipeline in real time</p>
+
+    <%!-- Pipeline steps --%>
+    <div class="text-left space-y-3 mb-10" id="pipelineSteps">
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.07] bg-white/[0.02]" data-step="dns">
+        <div class="step-icon h-7 w-7 rounded-full bg-white/[0.05] flex items-center justify-center text-white/30 text-xs shrink-0">
+          <svg class="w-3.5 h-3.5 hidden check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <svg class="w-3.5 h-3.5 hidden fail" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          <div class="dot h-2 w-2 rounded-full bg-current"></div>
+        </div>
+        <span class="text-sm text-white/50 step-label">DNS Resolution</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.07] bg-white/[0.02]" data-step="http">
+        <div class="step-icon h-7 w-7 rounded-full bg-white/[0.05] flex items-center justify-center text-white/30 text-xs shrink-0">
+          <svg class="w-3.5 h-3.5 hidden check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <svg class="w-3.5 h-3.5 hidden fail" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          <div class="dot h-2 w-2 rounded-full bg-current"></div>
+        </div>
+        <span class="text-sm text-white/50 step-label">HTTP & Tech Detection</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.07] bg-white/[0.02]" data-step="bgp">
+        <div class="step-icon h-7 w-7 rounded-full bg-white/[0.05] flex items-center justify-center text-white/30 text-xs shrink-0">
+          <svg class="w-3.5 h-3.5 hidden check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <svg class="w-3.5 h-3.5 hidden fail" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          <div class="dot h-2 w-2 rounded-full bg-current"></div>
+        </div>
+        <span class="text-sm text-white/50 step-label">BGP / ASN Lookup</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.07] bg-white/[0.02]" data-step="rdap">
+        <div class="step-icon h-7 w-7 rounded-full bg-white/[0.05] flex items-center justify-center text-white/30 text-xs shrink-0">
+          <svg class="w-3.5 h-3.5 hidden check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <svg class="w-3.5 h-3.5 hidden fail" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          <div class="dot h-2 w-2 rounded-full bg-current"></div>
+        </div>
+        <span class="text-sm text-white/50 step-label">RDAP / WHOIS</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.07] bg-white/[0.02]" data-step="ctl">
+        <div class="step-icon h-7 w-7 rounded-full bg-white/[0.05] flex items-center justify-center text-white/30 text-xs shrink-0">
+          <svg class="w-3.5 h-3.5 hidden check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <svg class="w-3.5 h-3.5 hidden fail" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          <div class="dot h-2 w-2 rounded-full bg-current"></div>
+        </div>
+        <span class="text-sm text-white/50 step-label">Certificate Transparency</span>
+      </div>
+      <div class="flex items-center gap-3 px-4 py-3 rounded-xl border border-white/[0.07] bg-white/[0.02]" data-step="reputation">
+        <div class="step-icon h-7 w-7 rounded-full bg-white/[0.05] flex items-center justify-center text-white/30 text-xs shrink-0">
+          <svg class="w-3.5 h-3.5 hidden check" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <svg class="w-3.5 h-3.5 hidden fail" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          <div class="dot h-2 w-2 rounded-full bg-current"></div>
+        </div>
+        <span class="text-sm text-white/50 step-label">Reputation & Safety</span>
+      </div>
+    </div>
+
+    <div id="scanActions" class="hidden mb-6"></div>
+
+    <p class="text-white/25 text-xs" id="scanHint">This usually takes 5-15 seconds</p>
+  </div>
+</div>
+
+<style>
+@keyframes pulse-step { 0%,100% { opacity: .4 } 50% { opacity: 1 } }
+[data-step].active { border-color: rgba(16,185,129,0.3); background: rgba(16,185,129,0.04); }
+[data-step].active .step-icon { background: rgba(16,185,129,0.15); color: #10B981; }
+[data-step].active .step-label { color: #10B981; }
+[data-step].active .dot { animation: pulse-step 1s ease-in-out infinite; }
+[data-step].done { border-color: rgba(16,185,129,0.15); background: rgba(16,185,129,0.02); }
+[data-step].done .step-icon { background: rgba(16,185,129,0.15); color: #10B981; }
+[data-step].done .step-label { color: rgba(255,255,255,0.6); }
+[data-step].done .dot { display: none; }
+[data-step].done .check { display: block; }
+[data-step].failed { border-color: rgba(239,68,68,0.2); background: rgba(239,68,68,0.04); }
+[data-step].failed .step-icon { background: rgba(239,68,68,0.15); color: #EF4444; }
+[data-step].failed .step-label { color: rgba(239,68,68,0.8); }
+[data-step].failed .dot { display: none; }
+[data-step].failed .fail { display: block; }
+</style>
+
+<script>
+(function(){
+  const domain = "<%= @domain %>";
+  const slug = "<%= @slug %>";
+  const steps = ["dns","http","bgp","rdap","ctl","reputation"];
+  let stepIdx = 0;
+  let done = false;
+
+  function setStep(el, state) {
+    el.classList.remove('active','done','failed');
+    if (state) el.classList.add(state);
+  }
+
+  function activateStep(i) {
+    steps.forEach((s,j) => {
+      const el = document.querySelector('[data-step="'+s+'"]');
+      if (j < i) setStep(el, 'done');
+      else if (j === i) setStep(el, 'active');
+    });
+  }
+
+  function markAllDone() {
+    steps.forEach(s => setStep(document.querySelector('[data-step="'+s+'"]'), 'done'));
+  }
+
+  function markAllFailed() {
+    steps.forEach(s => {
+      const el = document.querySelector('[data-step="'+s+'"]');
+      if (!el.classList.contains('done')) setStep(el, 'failed');
+    });
+  }
+
+  activateStep(0);
+
+  const stepTimer = setInterval(() => {
+    if (!done && stepIdx < steps.length - 1) {
+      stepIdx++;
+      activateStep(stepIdx);
+    }
+  }, 2500);
+
+  function finish(success, errorMsg) {
+    done = true;
+    clearInterval(stepTimer);
+    document.getElementById('spinner').style.animation = 'none';
+
+    if (success) {
+      markAllDone();
+      document.getElementById('scanTitle').textContent = 'Scan complete';
+      document.getElementById('scanSubtitle').textContent = 'Redirecting to results...';
+      document.getElementById('scanHint').textContent = '';
+      setTimeout(() => {
+        window.location.href = "/store/" + slug + "?_scanned=1";
+      }, 600);
+    } else {
+      markAllFailed();
+      document.getElementById('scanTitle').textContent = 'Scan failed';
+      document.getElementById('scanSubtitle').textContent = errorMsg || 'Could not enrich this domain';
+      document.getElementById('scanHint').textContent = '';
+      const actions = document.getElementById('scanActions');
+      actions.innerHTML =
+        '<button onclick="location.reload()" class="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-all mr-3">Retry</button>' +
+        '<a href="/" class="rounded-lg border border-white/[0.12] px-6 py-2.5 text-sm font-medium text-white/60 hover:text-white transition-all">Back to search</a>';
+      actions.classList.remove('hidden');
+    }
+  }
+
+  fetch("/api/tools/lookup?domain=" + encodeURIComponent(domain))
+    .then(function(r) {
+      return r.json().then(function(data) { return {status: r.status, data: data}; });
+    })
+    .then(function(res) {
+      if (res.data.ok) {
+        finish(true);
+      } else {
+        finish(false, res.data.error || 'Enrichment returned an error');
+      }
+    })
+    .catch(function() {
+      finish(false, 'Network error — check your connection');
+    });
+})();
+</script>

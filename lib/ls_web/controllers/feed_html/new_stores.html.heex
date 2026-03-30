@@ -1,0 +1,61 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight"><span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white">LS</span>ListSignal</a>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="/tools/shopify-checker" class="text-sm font-medium text-white/60 hover:text-white">Free Tools</a></li>
+      <li><a href="/pricing" class="text-sm font-medium text-white/60 hover:text-white">Pricing</a></li>
+      <li><a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover">Start Free</a></li>
+    </ul>
+  </div>
+</nav>
+<main class="pt-[100px] pb-20"><div class="mx-auto max-w-[1000px] px-6">
+  <div class="flex items-center gap-3 mb-8">
+    <span class="h-2.5 w-2.5 rounded-full bg-accent animate-pulse"></span>
+    <h1 class="font-display text-[clamp(28px,4vw,40px)] font-bold tracking-tight">New Shopify Stores — Detected Today</h1>
+  </div>
+  <p class="text-lg text-white/60 mb-8 max-w-[600px]">Live feed of recently detected Shopify stores. Updated continuously via SSL Certificate Transparency monitoring.</p>
+
+  <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden relative">
+    <div class="overflow-x-auto"><table class="w-full text-sm border-collapse min-w-[500px]">
+      <thead><tr>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Store</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Title</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Country</th>
+        <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Detected</th>
+      </tr></thead>
+      <tbody><%= for {store, idx} <- Enum.with_index(@stores) do %>
+        <%= if idx < 15 do %>
+        <tr class="hover:bg-white/[0.015]">
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium"><a href={"/store/#{store.domain |> String.replace(".", "-")}"} class="hover:text-accent"><%= store.domain %></a></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 truncate max-w-[200px]"><%= store.title %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.country %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/40 text-xs"><%= store.enriched_at %></td>
+        </tr>
+        <% else %>
+        <tr class="[&>td]:blur-[5px] [&>td]:select-none">
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white"><%= store.domain %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.title %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.country %></td>
+          <td class="px-5 py-3 border-b border-white/[0.07] text-white/40 text-xs"><%= store.enriched_at %></td>
+        </tr>
+        <% end %>
+      <% end %></tbody>
+    </table></div>
+    <div class="absolute bottom-0 left-0 right-0 h-[160px] bg-gradient-to-b from-transparent to-[#111B33]/95 flex items-end justify-center pb-8 z-10">
+      <a href="/signup" class="flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_30px_rgba(16,185,129,0.25)] hover:bg-accent-hover">Sign up free for the full feed</a>
+    </div>
+  </div>
+</div></main>
+<footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white mx-3">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white mx-3">Pricing</a>
+      <a href="/tools/shopify-checker" class="text-white/50 hover:text-white mx-3">Free Tools</a>
+      <a href="/new-stores" class="text-white/50 hover:text-white mx-3">New Stores</a>
+      <a href="/privacy" class="text-white/50 hover:text-white mx-3">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white mx-3">Terms</a>
+    </div>
+    <p>&copy; 2026 ListSignal</p>
+  </div>
+</footer>

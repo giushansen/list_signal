@@ -1,0 +1,567 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight">
+      <span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white relative overflow-hidden">LS<span class="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 to-transparent"></span></span>
+      ListSignal
+    </a>
+    <a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all">Start Free</a>
+  </div>
+</nav>
+
+<main class="pt-[88px] pb-24" itemscope itemtype="https://schema.org/WebPage">
+  <div class="mx-auto max-w-[960px] px-6">
+
+    <%!-- Breadcrumb with Schema.org --%>
+    <nav aria-label="breadcrumb" class="mb-6 text-sm text-white/40" itemscope itemtype="https://schema.org/BreadcrumbList">
+      <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="/" itemprop="item" class="hover:text-white transition-colors"><span itemprop="name">Home</span></a>
+        <meta itemprop="position" content="1" />
+      </span>
+      <span class="mx-2">/</span>
+      <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="/apps" itemprop="item" class="hover:text-white transition-colors"><span itemprop="name">Stores</span></a>
+        <meta itemprop="position" content="2" />
+      </span>
+      <span class="mx-2">/</span>
+      <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="text-white/70">
+        <span itemprop="name"><%= @store.domain %></span>
+        <meta itemprop="position" content="3" />
+      </span>
+    </nav>
+
+    <article itemscope itemtype="https://schema.org/Organization">
+      <meta itemprop="url" content={"https://#{@store.domain}"} />
+
+      <%!-- ═══ HEADER ═══ --%>
+      <header class="mb-8">
+        <div class="flex flex-wrap items-start justify-between gap-4 mb-3">
+          <div>
+            <h1 class="font-display text-[clamp(22px,4vw,36px)] font-bold tracking-tight leading-[1.15] mb-2" itemprop="name">
+              <%= @store.title %>
+            </h1>
+            <div class="flex flex-wrap items-center gap-3 text-[13px] text-white/50">
+              <span>🌐 <a href={"https://#{@store.domain}"} target="_blank" rel="noopener noreferrer" class="hover:text-accent transition-colors"><%= @store.domain %></a></span>
+              <%= if @store.bgp_asn_country != "" do %>
+                <span class="inline-flex items-center gap-1"><span class="text-base"><%= @store.country_flag %></span> <%= @store.bgp_asn_country %></span>
+              <% end %>
+              <%= if @store.http_language != "" do %>
+                <span class="inline-flex items-center gap-1">
+                  <%= if @store.language_flag != "" do %><span class="text-base"><%= @store.language_flag %></span><% end %>
+                  <%= @store.http_language %>
+                </span>
+              <% end %>
+              <span class="rounded bg-white/[0.06] px-2 py-0.5 text-[11px] font-mono text-white/40">.<%= String.downcase(@store.tld) %></span>
+              <%= if @store.enriched_at != "" and @store.enriched_at != "just now" do %>
+                <span>📅 Analyzed <%= String.slice(@store.enriched_at, 0, 10) %></span>
+              <% else %>
+                <span class="text-accent">⚡ Just scanned live</span>
+              <% end %>
+            </div>
+          </div>
+          <%= if @store.http_status do %>
+            <div class={["rounded-full px-4 py-1.5 text-sm font-semibold border",
+              if(@store.http_status == 200,
+                do: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                else: "bg-amber-500/10 text-amber-400 border-amber-500/20")]}>
+              <%= if @store.http_status == 200, do: "🟢 Online", else: "⚠️ HTTP #{@store.http_status}" %>
+            </div>
+          <% end %>
+        </div>
+        <%= if @store.http_meta_description != "" do %>
+          <p class="text-white/60 text-base leading-relaxed max-w-[720px]" itemprop="description"><%= @store.http_meta_description %></p>
+        <% end %>
+      </header>
+
+      <%!-- ═══ QUICK STATS GRID — The prospecting gold ═══ --%>
+      <% stats = [
+        (@store.bgp_asn_country != "" && {"🏳️ Country", "#{@store.country_flag} #{@store.bgp_asn_country}", "Server location"}),
+        (@store.http_language != "" && {"🗣️ Language", "#{@store.language_flag} #{@store.http_language}", "Primary site language"}),
+        (@store.http_response_time && {"⚡ Response Time", "#{@store.http_response_time} ms", response_time_label(@store.http_response_time)}),
+        (@store.tranco_rank && {"📊 Traffic Rank", "##{@store.tranco_rank}", "Tranco global rank"}),
+        (@store.bgp_asn_org != "" && {"🖥️ Hosted By", @store.bgp_asn_org, "Hosting provider"}),
+        (@store.rdap_registrar != "" && {"📋 Registrar", @store.rdap_registrar, "Domain registrar"}),
+        (@store.domain_age && {"📆 Domain Age", @store.domain_age, "Since #{date_slice(@store.rdap_domain_created_at) || "registration"}"}),
+        (@store.mail_provider && {"📧 Mail Provider", @store.mail_provider, "Email service"}),
+        (@store.ctl_issuer != "" && {"🔒 SSL Issuer", @store.ctl_issuer, "Certificate authority"}),
+        (@store.ctl_subdomain_count && @store.ctl_subdomain_count > 0 && {"🌿 Subdomains", "#{@store.ctl_subdomain_count} found", "Via certificate transparency"}),
+        (@store.majestic_ref_subnets && {"🔗 Backlink Subnets", "#{@store.majestic_ref_subnets}", "Majestic referring subnets"}),
+        (@store.tld != "" && {"🏷️ TLD", ".#{String.downcase(@store.tld)}", "Top-level domain"})
+      ] |> Enum.reject(&(!&1)) %>
+      <%= if stats != [] do %>
+        <section class="mb-8" aria-label="Key metrics">
+          <h2 class="sr-only">Key Metrics for <%= @store.domain %></h2>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            <%= for {label, value, subtitle} <- stats do %>
+              <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 hover:border-white/[0.12] transition-colors">
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1"><%= label %></div>
+                <div class="font-medium text-white text-sm truncate"><%= value %></div>
+                <div class="text-[10px] text-white/25 mt-0.5 truncate"><%= subtitle %></div>
+              </div>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ TECHNOLOGY STACK ═══ --%>
+      <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Technology stack">
+        <h2 class="font-display text-lg font-semibold mb-1">🛍️ Technology Stack</h2>
+        <p class="text-[13px] text-white/40 mb-4"><%= length(@store.tech) %> technologies detected on <%= @store.domain %></p>
+        <%= if @store.tech != [] do %>
+          <div class="flex flex-wrap gap-2">
+            <%= for tech <- @store.tech do %>
+              <a href={"/tech/#{tech |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")}"}
+                 class="inline-block rounded-lg border border-white/[0.07] bg-white/[0.03] px-3.5 py-1.5 text-sm text-white/70 hover:border-accent/30 hover:text-accent transition-all">
+                <%= tech %>
+              </a>
+            <% end %>
+          </div>
+        <% else %>
+          <p class="text-white/40 text-sm">No technologies detected.</p>
+        <% end %>
+      </section>
+
+      <%!-- ═══ APPS (Shopify Apps) ═══ --%>
+      <%= if @store.http_apps != [] do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Detected apps">
+          <h2 class="font-display text-lg font-semibold mb-1">📱 Detected Apps</h2>
+          <p class="text-[13px] text-white/40 mb-4"><%= length(@store.http_apps) %> apps detected</p>
+          <div class="flex flex-wrap gap-2">
+            <%= for app <- @store.http_apps do %>
+              <span class="inline-block rounded-lg border border-white/[0.07] bg-white/[0.03] px-3.5 py-1.5 text-sm text-white/70">
+                <%= app %>
+              </span>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ DNS + HOSTING side by side ═══ --%>
+      <div class="grid md:grid-cols-2 gap-6 mb-6">
+
+        <%= if @store.dns_a != [] or @store.dns_mx != [] or @store.dns_cname != [] or @store.rdap_nameservers != [] or @store.dns_aaaa != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6" aria-label="DNS records">
+            <h2 class="font-display text-lg font-semibold mb-4">🌐 DNS Records</h2>
+            <dl class="space-y-4 text-sm">
+              <%= if @store.dns_a != [] do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">A Records (IPv4)</dt>
+                  <dd class="font-mono text-xs text-emerald-300/80 leading-relaxed"><%= Enum.join(@store.dns_a, " · ") %></dd>
+                </div>
+              <% end %>
+              <%= if @store.dns_aaaa != [] do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">AAAA Records (IPv6)</dt>
+                  <dd class="font-mono text-xs text-emerald-300/80 leading-relaxed"><%= Enum.join(@store.dns_aaaa, " · ") %></dd>
+                </div>
+              <% end %>
+              <%= if @store.dns_mx != [] do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">📧 Mail Servers (MX)</dt>
+                  <dd class="font-mono text-xs text-white/70 leading-relaxed"><%= Enum.join(@store.dns_mx, " · ") %></dd>
+                  <%= if @store.mail_provider do %>
+                    <dd class="mt-1 text-xs text-accent/80">→ <%= @store.mail_provider %></dd>
+                  <% end %>
+                </div>
+              <% end %>
+              <%= if @store.dns_cname != [] do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">CNAME</dt>
+                  <dd class="font-mono text-xs text-white/70"><%= Enum.join(@store.dns_cname, " · ") %></dd>
+                </div>
+              <% end %>
+              <%= if @store.rdap_nameservers != [] do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Nameservers</dt>
+                  <dd class="font-mono text-xs text-white/70 leading-relaxed"><%= Enum.join(@store.rdap_nameservers, " · ") %></dd>
+                </div>
+              <% end %>
+            </dl>
+          </section>
+        <% end %>
+
+        <%= if @store.bgp_asn_org != "" do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6" aria-label="Hosting and network">
+            <h2 class="font-display text-lg font-semibold mb-4">🖥️ Hosting & Network</h2>
+            <dl class="space-y-4 text-sm">
+              <div>
+                <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Provider</dt>
+                <dd class="text-white/80 font-medium"><%= @store.bgp_asn_org %></dd>
+              </div>
+              <%= if @store.bgp_ip != "" do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Server IP</dt>
+                  <dd class="font-mono text-xs text-emerald-300/80"><%= @store.bgp_ip %></dd>
+                </div>
+              <% end %>
+              <%= if @store.bgp_asn_number != "" do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">ASN</dt>
+                  <dd class="font-mono text-xs text-white/70">AS<%= @store.bgp_asn_number %></dd>
+                </div>
+              <% end %>
+              <%= if @store.bgp_asn_prefix != "" do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">IP Prefix</dt>
+                  <dd class="font-mono text-xs text-white/70"><%= @store.bgp_asn_prefix %></dd>
+                </div>
+              <% end %>
+              <%= if @store.bgp_asn_country != "" do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Network Country</dt>
+                  <dd class="text-white/80"><%= @store.country_flag %> <%= @store.bgp_asn_country %></dd>
+                </div>
+              <% end %>
+              <%= if @store.http_response_time do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Response Time</dt>
+                  <dd class={["font-mono text-xs font-semibold",
+                    cond do
+                      @store.http_response_time < 500 -> "text-emerald-400"
+                      @store.http_response_time < 1500 -> "text-amber-400"
+                      true -> "text-red-400"
+                    end]}><%= @store.http_response_time %> ms</dd>
+                </div>
+              <% end %>
+            </dl>
+          </section>
+        <% end %>
+
+      </div>
+
+      <%!-- ═══ SSL & CERTIFICATE TRANSPARENCY ═══ --%>
+      <%= if @store.ctl_issuer != "" or (@store.ctl_subdomain_count && @store.ctl_subdomain_count > 0) do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="SSL certificate">
+          <h2 class="font-display text-lg font-semibold mb-4">🔒 SSL & Certificate Transparency</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            <%= if @store.ctl_issuer != "" do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Certificate Issuer</div>
+                <div class="text-white/80 text-xs"><%= @store.ctl_issuer %></div>
+              </div>
+            <% end %>
+            <%= if @store.ctl_tld != "" do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">TLD</div>
+                <div class="text-white/80"><%= @store.ctl_tld %></div>
+              </div>
+            <% end %>
+            <%= if @store.ctl_subdomain_count && @store.ctl_subdomain_count > 0 do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Subdomains Found</div>
+                <div class="text-white/80 font-semibold"><%= @store.ctl_subdomain_count %></div>
+              </div>
+            <% end %>
+          </div>
+          <%= if @store.ctl_subdomains != [] do %>
+            <div class="mt-4 pt-4 border-t border-white/[0.07]">
+              <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-2">Known Subdomains</div>
+              <div class="flex flex-wrap gap-1.5">
+                <%= for sub <- Enum.take(@store.ctl_subdomains, 20) do %>
+                  <span class="font-mono text-[11px] rounded bg-white/[0.04] border border-white/[0.07] px-2 py-0.5 text-white/50"><%= sub %></span>
+                <% end %>
+                <%= if length(@store.ctl_subdomains) > 20 do %>
+                  <span class="text-[11px] text-white/30">+<%= length(@store.ctl_subdomains) - 20 %> more</span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </section>
+      <% end %>
+
+      <%!-- ═══ DOMAIN REGISTRATION ═══ --%>
+      <%= if @store.rdap_registrar != "" or @store.rdap_domain_created_at do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Domain registration">
+          <h2 class="font-display text-lg font-semibold mb-4">📋 Domain Registration</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+            <%= if @store.rdap_registrar != "" do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Registrar</div>
+                <div class="text-white/80 text-xs"><%= @store.rdap_registrar %></div>
+                <%= if @store.rdap_registrar_iana_id != "" do %>
+                  <div class="text-[10px] text-white/25 mt-0.5">IANA #<%= @store.rdap_registrar_iana_id %></div>
+                <% end %>
+              </div>
+            <% end %>
+            <%= if @store.rdap_domain_created_at do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Registered</div>
+                <div class="text-white/80"><%= String.slice(to_string(@store.rdap_domain_created_at), 0, 10) %></div>
+                <%= if @store.domain_age do %>
+                  <div class="text-[10px] text-accent/70 mt-0.5"><%= @store.domain_age %> ago</div>
+                <% end %>
+              </div>
+            <% end %>
+            <%= if @store.rdap_domain_expires_at do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Expires</div>
+                <div class="text-white/80"><%= String.slice(to_string(@store.rdap_domain_expires_at), 0, 10) %></div>
+              </div>
+            <% end %>
+            <%= if @store.rdap_status != "" do %>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">WHOIS Status</div>
+                <div class="text-white/70 text-xs"><%= @store.rdap_status %></div>
+              </div>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ WEB RANKINGS + EMAILS side by side ═══ --%>
+      <div class="grid md:grid-cols-2 gap-6 mb-6">
+
+        <%= if @store.tranco_rank || @store.majestic_rank do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6" aria-label="Web rankings">
+            <h2 class="font-display text-lg font-semibold mb-4">📊 Web Rankings & Authority</h2>
+            <dl class="space-y-4 text-sm">
+              <%= if @store.tranco_rank do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Tranco Global Rank</dt>
+                  <dd class="text-white/80 font-semibold">#<%= @store.tranco_rank %>
+                    <span class="text-white/35 font-normal text-xs ml-1">
+                      <%= cond do %>
+                        <% @store.tranco_rank <= 1000 -> %>🏆 Top 1K
+                        <% @store.tranco_rank <= 10_000 -> %>⭐ Top 10K
+                        <% @store.tranco_rank <= 100_000 -> %>Top 100K
+                        <% true -> %>among all websites
+                      <% end %>
+                    </span>
+                  </dd>
+                </div>
+              <% end %>
+              <%= if @store.majestic_rank do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Majestic Rank</dt>
+                  <dd class="text-white/80 font-semibold">#<%= @store.majestic_rank %></dd>
+                </div>
+              <% end %>
+              <%= if @store.majestic_ref_subnets do %>
+                <div>
+                  <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Referring Subnets</dt>
+                  <dd class="text-white/80"><%= @store.majestic_ref_subnets %> <span class="text-white/35 text-xs">unique networks linking here</span></dd>
+                </div>
+              <% end %>
+            </dl>
+          </section>
+        <% end %>
+
+        <%= if @store.emails != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6" aria-label="Contact emails">
+            <h2 class="font-display text-lg font-semibold mb-4">📧 Contact Emails</h2>
+            <ul class="space-y-2">
+              <%= for email <- @store.emails do %>
+                <li class="text-sm font-mono text-white/70 border border-white/[0.07] rounded-lg px-3 py-2 bg-white/[0.02] flex items-center gap-2">
+                  <span class="text-accent/60 text-xs">@</span>
+                  <%= email %>
+                </li>
+              <% end %>
+            </ul>
+            <%= if @store.is_disposable_email == "1" do %>
+              <div class="mt-3 text-xs text-amber-400/70 flex items-center gap-1">⚠️ Uses disposable email domain</div>
+            <% end %>
+          </section>
+        <% end %>
+
+      </div>
+
+      <%!-- ═══ REPUTATION & SAFETY ═══ --%>
+      <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Safety and reputation">
+        <h2 class="font-display text-lg font-semibold mb-4">🛡️ Reputation & Safety</h2>
+        <div class="flex flex-wrap gap-3 text-sm">
+          <span class={["rounded-full px-4 py-1.5 font-semibold border text-sm",
+            if(@store.is_malware == "1",
+              do: "bg-red-500/10 text-red-400 border-red-500/20",
+              else: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20")]}>
+            <%= if @store.is_malware == "1", do: "⚠️ Malware Detected", else: "✅ No Malware" %>
+          </span>
+          <span class={["rounded-full px-4 py-1.5 font-semibold border text-sm",
+            if(@store.is_phishing == "1",
+              do: "bg-red-500/10 text-red-400 border-red-500/20",
+              else: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20")]}>
+            <%= if @store.is_phishing == "1", do: "⚠️ Phishing Risk", else: "✅ Not Phishing" %>
+          </span>
+          <%= if @store.is_disposable_email == "1" do %>
+            <span class="rounded-full px-4 py-1.5 font-semibold border text-sm bg-amber-500/10 text-amber-400 border-amber-500/20">
+              ⚠️ Disposable Email
+            </span>
+          <% end %>
+          <%= if @store.http_status do %>
+            <span class="rounded-full px-4 py-1.5 font-semibold border text-sm bg-white/[0.03] text-white/60 border-white/[0.07]">
+              HTTP <%= @store.http_status %>
+            </span>
+          <% end %>
+          <%= if @store.http_content_type != "" do %>
+            <span class="rounded-full px-4 py-1.5 border text-sm bg-white/[0.03] text-white/40 border-white/[0.07] font-mono text-xs">
+              <%= @store.http_content_type %>
+            </span>
+          <% end %>
+        </div>
+      </section>
+
+      <%!-- ═══ PIPELINE ENRICHMENT STATUS ═══ --%>
+      <%= if @store.enriched_at != "" do %>
+        <section class="rounded-xl border border-white/[0.07] bg-white/[0.015] p-5 mb-6" aria-label="Enrichment pipeline">
+          <div class="flex items-center gap-3 mb-3">
+            <h2 class="font-display text-sm font-semibold text-white/60">🔬 Enrichment Pipeline</h2>
+            <%= if @store.enriched_at == "just now" do %>
+              <span class="rounded-full bg-accent/10 border border-accent/20 px-2.5 py-0.5 text-[10px] font-semibold text-accent">LIVE</span>
+            <% end %>
+          </div>
+          <div class="flex flex-wrap gap-x-6 gap-y-2 text-[12px] text-white/40">
+            <div class="flex items-center gap-1.5">
+              <span class={if(@store.dns_a != [] or @store.dns_mx != [], do: "text-emerald-400", else: "text-white/20")}>●</span>
+              DNS
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class={if(@store.http_status, do: "text-emerald-400", else: "text-white/20")}>●</span>
+              HTTP & Tech
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class={if(@store.bgp_asn_org != "", do: "text-emerald-400", else: "text-white/20")}>●</span>
+              BGP / ASN
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class={if(@store.rdap_registrar != "" or @store.rdap_domain_created_at, do: "text-emerald-400", else: "text-white/20")}>●</span>
+              RDAP / WHOIS
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class={if(@store.ctl_issuer != "", do: "text-emerald-400", else: "text-white/20")}>●</span>
+              CTL / SSL
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="text-emerald-400">●</span>
+              Ranking & Safety
+            </div>
+          </div>
+          <div class="mt-2 text-[11px] text-white/25">
+            <%= if @store.enriched_at != "just now" do %>
+              Last enriched: <%= @store.enriched_at %>
+              <%= if @store.worker != "" do %> · Worker: <%= @store.worker %><% end %>
+            <% else %>
+              Scanned on-demand just now
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ CRAWLED PAGES ═══ --%>
+      <%= if @store.http_pages != [] do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Crawled pages">
+          <h2 class="font-display text-lg font-semibold mb-3">🗂️ Crawled Pages</h2>
+          <div class="space-y-1.5">
+            <%= for page <- Enum.take(@store.http_pages, 15) do %>
+              <div class="font-mono text-xs text-white/50 truncate border-l-2 border-white/[0.07] pl-3 py-0.5">/<%= page %></div>
+            <% end %>
+            <%= if length(@store.http_pages) > 15 do %>
+              <div class="text-xs text-white/30 pl-3">+<%= length(@store.http_pages) - 15 %> more pages</div>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ FAQ — SEO + AI Crawling ═══ --%>
+      <section class="mb-8" itemscope itemtype="https://schema.org/FAQPage" aria-label={"Frequently asked questions about #{@store.domain}"}>
+        <h2 class="font-display text-xl font-semibold mb-4">Frequently Asked Questions</h2>
+        <div class="space-y-3">
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+            <h3 itemprop="name" class="font-medium text-white mb-2">What platform does <%= @store.domain %> use?</h3>
+            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+              <p itemprop="text" class="text-sm text-white/60">
+                <%= if "Shopify" in @store.tech do %>
+                  <%= @store.domain %> runs on Shopify, one of the world's leading e-commerce platforms. ListSignal detected <%= length(@store.tech) %> technologies powering this store.
+                <% else %>
+                  ListSignal detected <%= length(@store.tech) %> technologies on <%= @store.domain %><%= if @store.tech_summary != "", do: ", including #{@store.tech_summary}", else: "" %>.
+                <% end %>
+              </p>
+            </div>
+          </div>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+            <h3 itemprop="name" class="font-medium text-white mb-2">What technologies does <%= @store.domain %> use?</h3>
+            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+              <p itemprop="text" class="text-sm text-white/60">
+                <%= @store.domain %> uses <%= length(@store.tech) %> detected technologies<%= if @store.tech_summary != "", do: ", including #{@store.tech_summary}", else: "" %>.
+                <%= if @store.mail_provider, do: " Email is handled by #{@store.mail_provider}.", else: "" %>
+                <%= if @store.ctl_issuer != "", do: " SSL certificates are issued by #{@store.ctl_issuer}.", else: "" %>
+              </p>
+            </div>
+          </div>
+          <%= if @store.bgp_asn_country != "" do %>
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 itemprop="name" class="font-medium text-white mb-2">Where is <%= @store.domain %> hosted?</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p itemprop="text" class="text-sm text-white/60">
+                  <%= @store.domain %> is hosted in <%= @store.bgp_asn_country %><%= if @store.bgp_asn_org != "", do: " by #{@store.bgp_asn_org}", else: "" %><%= if @store.bgp_ip != "", do: " (IP: #{@store.bgp_ip})", else: "" %>.
+                  <%= if @store.http_response_time, do: " Server response time is #{@store.http_response_time}ms.", else: "" %>
+                </p>
+              </div>
+            </div>
+          <% end %>
+          <%= if @store.rdap_registrar != "" do %>
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 itemprop="name" class="font-medium text-white mb-2">When was <%= @store.domain %> registered and who is the registrar?</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p itemprop="text" class="text-sm text-white/60">
+                  <%= @store.domain %> is registered with <%= @store.rdap_registrar %><%= if @store.rdap_domain_created_at, do: ", first registered on #{String.slice(to_string(@store.rdap_domain_created_at), 0, 10)}", else: "" %><%= if @store.domain_age, do: " (#{@store.domain_age} ago)", else: "" %>.
+                  <%= if @store.rdap_domain_expires_at, do: " The domain expires on #{String.slice(to_string(@store.rdap_domain_expires_at), 0, 10)}.", else: "" %>
+                </p>
+              </div>
+            </div>
+          <% end %>
+          <%= if @store.mail_provider do %>
+            <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+              <h3 itemprop="name" class="font-medium text-white mb-2">What email provider does <%= @store.domain %> use?</h3>
+              <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                <p itemprop="text" class="text-sm text-white/60">
+                  <%= @store.domain %> uses <%= @store.mail_provider %> for email, as detected from their MX (mail exchange) DNS records.
+                </p>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </section>
+
+      <%!-- ═══ AI / LLM Summary Block (hidden visually, crawlable) ═══ --%>
+      <div class="sr-only" aria-hidden="false" data-ai-summary="true">
+        <h2>Summary of <%= @store.domain %></h2>
+        <p>
+          <%= @store.domain %> (<%= @store.title %>) is <%= if "Shopify" in @store.tech, do: "a Shopify e-commerce store", else: "a website" %>
+          <%= if @store.bgp_asn_country != "", do: "based in #{@store.bgp_asn_country}", else: "" %>
+          <%= if @store.http_language != "", do: ", primary language: #{@store.http_language}", else: "" %>.
+          Technologies: <%= @store.tech_summary %>.
+          <%= if @store.mail_provider, do: "Email provider: #{@store.mail_provider}.", else: "" %>
+          <%= if @store.bgp_asn_org != "", do: "Hosted by #{@store.bgp_asn_org}.", else: "" %>
+          <%= if @store.rdap_registrar != "", do: "Registered via #{@store.rdap_registrar}.", else: "" %>
+          <%= if @store.domain_age, do: "Domain age: #{@store.domain_age}.", else: "" %>
+          <%= if @store.tranco_rank, do: "Tranco rank: ##{@store.tranco_rank}.", else: "" %>
+        </p>
+      </div>
+
+      <div class="text-center py-8 border-t border-white/[0.07]">
+        <p class="text-white/40 text-sm mb-4">Explore more Shopify store intelligence</p>
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <a href="/" class="inline-flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+            Search more stores
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
+          </a>
+          <a href="/apps" class="inline-flex items-center gap-2 rounded-xl border border-white/[0.1] px-6 py-3.5 font-display text-sm font-semibold text-white/60 hover:text-white hover:border-white/20 transition-all">
+            Browse directory
+          </a>
+        </div>
+      </div>
+
+    </article>
+  </div>
+</main>
+
+<footer class="border-t border-white/[0.07] py-8 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white transition-colors mx-4">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-4">Pricing</a>
+      <a href="/apps" class="text-white/50 hover:text-white transition-colors mx-4">Directory</a>
+      <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-4">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white transition-colors mx-4">Terms</a>
+    </div>
+    <p>&copy; 2026 ListSignal — Shopify Store Intelligence</p>
+  </div>
+</footer>

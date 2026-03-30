@@ -1,0 +1,331 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight">
+      <span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white relative overflow-hidden">LS<span class="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 to-transparent"></span></span>
+      ListSignal
+    </a>
+    <a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all">Start Free</a>
+  </div>
+</nav>
+
+<main class="pt-[88px] pb-24" itemscope itemtype="https://schema.org/WebPage">
+  <div class="mx-auto max-w-[1060px] px-6">
+
+    <%!-- Breadcrumb --%>
+    <nav aria-label="breadcrumb" class="mb-6 text-sm text-white/40" itemscope itemtype="https://schema.org/BreadcrumbList">
+      <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="/" itemprop="item" class="hover:text-white transition-colors"><span itemprop="name">Home</span></a>
+        <meta itemprop="position" content="1" />
+      </span>
+      <span class="mx-2">/</span>
+      <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+        <a href="/apps" itemprop="item" class="hover:text-white transition-colors"><span itemprop="name">Technologies</span></a>
+        <meta itemprop="position" content="2" />
+      </span>
+      <span class="mx-2">/</span>
+      <span itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem" class="text-white/70">
+        <span itemprop="name"><%= @tech_name %></span>
+        <meta itemprop="position" content="3" />
+      </span>
+    </nav>
+
+    <%!-- ═══ HEADER ═══ --%>
+    <header class="mb-8">
+      <h1 class="font-display text-[clamp(28px,4vw,40px)] font-bold tracking-tight mb-3">
+        Shopify Stores Using <span class="text-accent"><%= @tech_name %></span>
+      </h1>
+      <p class="text-white/50 text-base max-w-[700px]">
+        Discover which Shopify stores use <%= @tech_name %> — see their hosting, countries, response times, registrars, and complete technology stacks. Data only available on ListSignal.
+      </p>
+    </header>
+
+    <%= if @store_count > 0 do %>
+
+      <%!-- ═══ KEY STATS ═══ --%>
+      <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8" aria-label="Technology statistics">
+        <div class="rounded-xl border border-accent/20 bg-accent/[0.05] px-4 py-3">
+          <div class="text-[10px] uppercase tracking-wider text-accent/60 font-semibold mb-1">📊 Total Stores</div>
+          <div class="font-display text-2xl font-bold text-accent"><%= @stats.total %>+</div>
+        </div>
+        <%= if @stats.avg_response_time do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+            <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">⚡ Avg Response</div>
+            <div class="font-display text-2xl font-bold text-white"><%= round(@stats.avg_response_time) %><span class="text-sm text-white/40 ml-0.5">ms</span></div>
+          </div>
+        <% end %>
+        <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+          <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">🟢 Online</div>
+          <div class="font-display text-2xl font-bold text-emerald-400"><%= @stats.online_count %></div>
+        </div>
+        <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+          <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">🏆 Top 100K Sites</div>
+          <div class="font-display text-2xl font-bold text-white"><%= @stats.top_100k_count %></div>
+        </div>
+      </section>
+
+      <%!-- ═══ DISTRIBUTIONS: Country + Language + Hosting ═══ --%>
+      <div class="grid md:grid-cols-3 gap-6 mb-8">
+
+        <%!-- Country distribution --%>
+        <%= if @countries != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-5" aria-label="Country distribution">
+            <h2 class="font-display text-sm font-semibold mb-3 text-white/80">🌍 Top Countries</h2>
+            <% max_country = (@countries |> List.first(%{count: 1})).count %>
+            <div class="space-y-2">
+              <%= for c <- @countries do %>
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="w-6 text-center shrink-0"><%= c.flag %></span>
+                  <span class="w-8 text-white/50 uppercase font-mono shrink-0"><%= c.country %></span>
+                  <div class="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                    <div class="h-full rounded-full bg-accent/60" style={"width: #{bar_width(c.count, max_country)}"}></div>
+                  </div>
+                  <span class="w-10 text-right text-white/40 font-mono shrink-0"><%= c.count %></span>
+                </div>
+              <% end %>
+            </div>
+          </section>
+        <% end %>
+
+        <%!-- Language distribution --%>
+        <%= if @languages != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-5" aria-label="Language distribution">
+            <h2 class="font-display text-sm font-semibold mb-3 text-white/80">🗣️ Top Languages</h2>
+            <% max_lang = (@languages |> List.first(%{count: 1})).count %>
+            <div class="space-y-2">
+              <%= for l <- @languages do %>
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="w-6 text-center shrink-0"><%= l.flag %></span>
+                  <span class="w-8 text-white/50 font-mono shrink-0"><%= l.language %></span>
+                  <div class="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                    <div class="h-full rounded-full bg-blue-500/60" style={"width: #{bar_width(l.count, max_lang)}"}></div>
+                  </div>
+                  <span class="w-10 text-right text-white/40 font-mono shrink-0"><%= l.count %></span>
+                </div>
+              <% end %>
+            </div>
+          </section>
+        <% end %>
+
+        <%!-- Hosting distribution --%>
+        <%= if @hosting != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-5" aria-label="Hosting distribution">
+            <h2 class="font-display text-sm font-semibold mb-3 text-white/80">🖥️ Top Hosting</h2>
+            <% max_host = (@hosting |> List.first(%{count: 1})).count %>
+            <div class="space-y-2">
+              <%= for h <- @hosting do %>
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="w-[90px] text-white/60 truncate shrink-0"><%= h.provider %></span>
+                  <div class="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                    <div class="h-full rounded-full bg-purple-500/60" style={"width: #{bar_width(h.count, max_host)}"}></div>
+                  </div>
+                  <span class="w-10 text-right text-white/40 font-mono shrink-0"><%= h.count %></span>
+                </div>
+              <% end %>
+            </div>
+          </section>
+        <% end %>
+
+      </div>
+
+      <%!-- ═══ REGISTRARS + CO-OCCURRING TECH ═══ --%>
+      <div class="grid md:grid-cols-2 gap-6 mb-8">
+
+        <%!-- Registrars --%>
+        <%= if @registrars != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-5" aria-label="Registrar distribution">
+            <h2 class="font-display text-sm font-semibold mb-3 text-white/80">📋 Top Registrars</h2>
+            <% max_reg = (@registrars |> List.first(%{count: 1})).count %>
+            <div class="space-y-2">
+              <%= for r <- @registrars do %>
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="w-[120px] text-white/60 truncate shrink-0"><%= r.registrar %></span>
+                  <div class="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
+                    <div class="h-full rounded-full bg-amber-500/60" style={"width: #{bar_width(r.count, max_reg)}"}></div>
+                  </div>
+                  <span class="w-10 text-right text-white/40 font-mono shrink-0"><%= r.count %></span>
+                </div>
+              <% end %>
+            </div>
+          </section>
+        <% end %>
+
+        <%!-- Co-occurring technologies --%>
+        <%= if @co_techs != [] do %>
+          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-5" aria-label="Related technologies">
+            <h2 class="font-display text-sm font-semibold mb-3 text-white/80">🔗 Commonly Used With</h2>
+            <div class="flex flex-wrap gap-1.5">
+              <%= for ct <- @co_techs do %>
+                <a href={"/tech/#{tech_slug(ct.tech)}"}
+                   class="inline-flex items-center gap-1 rounded-lg border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-xs text-white/60 hover:border-accent/30 hover:text-accent transition-all">
+                  <%= ct.tech %>
+                  <span class="text-[10px] text-white/30"><%= ct.count %></span>
+                </a>
+              <% end %>
+            </div>
+          </section>
+        <% end %>
+
+      </div>
+
+      <%!-- ═══ STORE TABLE ═══ --%>
+      <section class="mb-10" aria-label={"Stores using #{@tech_name}"}>
+        <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden relative">
+          <div class="px-6 py-3.5 bg-white/[0.02] border-b border-white/[0.07] flex items-center justify-between">
+            <div class="text-sm text-white/60"><strong class="text-white"><%= @store_count %></strong> stores found</div>
+            <div class="text-[11px] text-white/30">Sorted by traffic rank</div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm border-collapse min-w-[900px]">
+              <thead>
+                <tr>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Store</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Title</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🏳️</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🗣️</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">⚡ ms</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📊 Rank</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🖥️ Hosting</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📋 Registrar</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📆 Age</th>
+                </tr>
+              </thead>
+              <tbody>
+                <%= for {store, idx} <- Enum.with_index(Enum.take(@stores, 7)) do %>
+                  <%= if idx < 5 do %>
+                    <tr class="hover:bg-white/[0.015] transition-colors">
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-white font-medium">
+                        <a href={"/store/#{store_slug(store.domain)}"} class="hover:text-accent transition-colors"><%= store.domain %></a>
+                      </td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-white/60 truncate max-w-[180px]"><%= store.title %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07]" title={store.country}><%= store.country_flag %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07]" title={store.language}><%= store.language_flag %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] font-mono text-xs">
+                        <%= if store.response_time do %>
+                          <span class={cond do
+                            store.response_time < 500 -> "text-emerald-400"
+                            store.response_time < 1500 -> "text-amber-400"
+                            true -> "text-red-400"
+                          end}><%= store.response_time %></span>
+                        <% end %>
+                      </td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] font-mono text-xs text-white/50">
+                        <%= if store.tranco_rank, do: "##{store.tranco_rank}" %>
+                      </td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs text-white/50 truncate max-w-[120px]"><%= store.hosting %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs text-white/50 truncate max-w-[120px]"><%= store.registrar %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs text-white/40"><%= store.domain_age %></td>
+                    </tr>
+                  <% else %>
+                    <tr class="[&>td]:blur-[5px] [&>td]:select-none [&>td]:pointer-events-none">
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-white"><%= store.domain %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-white/60"><%= store.title %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07]"><%= store.country_flag %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07]"><%= store.language_flag %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.response_time %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.tranco_rank %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.hosting %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.registrar %></td>
+                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.domain_age %></td>
+                    </tr>
+                  <% end %>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+          <div class="absolute bottom-0 left-0 right-0 h-[100px] bg-gradient-to-b from-transparent to-[#111B33]/95 flex items-end justify-center pb-5 z-10">
+            <a href="/signup" class="flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_30px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+              Sign up free to see all <%= @store_count %> stores
+              <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
+            </a>
+          </div>
+        </div>
+      </section>
+
+    <% else %>
+      <%!-- No stores found --%>
+      <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] p-12 text-center mb-10">
+        <div class="text-4xl mb-4">🔍</div>
+        <h2 class="font-display text-xl font-semibold mb-2">No stores found yet using "<%= @tech_name %>"</h2>
+        <p class="text-white/50 text-sm mb-6">We may not have indexed stores with this technology yet, or try a different spelling.</p>
+        <form action="/search" method="get" class="inline-flex items-center rounded-xl bg-white p-1 max-w-[400px] w-full">
+          <input type="text" name="q" placeholder="Try another search..." class="flex-1 border-none outline-none bg-transparent text-sm text-slate-900 px-4 py-2.5 placeholder:text-slate-400" />
+          <button type="submit" class="rounded-lg bg-accent px-5 py-2.5 text-sm font-semibold text-white">Search</button>
+        </form>
+      </div>
+    <% end %>
+
+    <%!-- ═══ FAQ — SEO + AI friendly ═══ --%>
+    <section class="mb-10" itemscope itemtype="https://schema.org/FAQPage" aria-label={"Frequently asked questions about #{@tech_name}"}>
+      <h2 class="font-display text-xl font-semibold mb-4">Frequently Asked Questions</h2>
+      <div class="space-y-3">
+        <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+          <h3 itemprop="name" class="font-medium text-white mb-2">How many Shopify stores use <%= @tech_name %>?</h3>
+          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+            <p itemprop="text" class="text-sm text-white/60">ListSignal tracks <strong><%= @stats.total %>+</strong> Shopify stores currently using <%= @tech_name %>. Of these, <%= @stats.online_count %> are currently online and responding.</p>
+          </div>
+        </div>
+        <%= if @countries != [] do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+            <h3 itemprop="name" class="font-medium text-white mb-2">Which countries use <%= @tech_name %> the most?</h3>
+            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+              <p itemprop="text" class="text-sm text-white/60">The top countries using <%= @tech_name %> are <%= @countries |> Enum.take(5) |> Enum.map(fn c -> "#{c.flag} #{c.country} (#{c.count} stores)" end) |> Enum.join(", ") %>.</p>
+            </div>
+          </div>
+        <% end %>
+        <%= if @co_techs != [] do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+            <h3 itemprop="name" class="font-medium text-white mb-2">What technologies are commonly used alongside <%= @tech_name %>?</h3>
+            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+              <p itemprop="text" class="text-sm text-white/60">Stores using <%= @tech_name %> frequently also use <%= @co_techs |> Enum.take(5) |> Enum.map(fn ct -> ct.tech end) |> Enum.join(", ") %>.</p>
+            </div>
+          </div>
+        <% end %>
+        <%= if @stats.avg_response_time do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+            <h3 itemprop="name" class="font-medium text-white mb-2">What is the average response time of stores using <%= @tech_name %>?</h3>
+            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+              <p itemprop="text" class="text-sm text-white/60">Stores using <%= @tech_name %> have an average server response time of <strong><%= round(@stats.avg_response_time) %>ms</strong>.</p>
+            </div>
+          </div>
+        <% end %>
+      </div>
+    </section>
+
+    <%!-- AI / LLM Summary Block --%>
+    <div class="sr-only" aria-hidden="false" data-ai-summary="true">
+      <h2>Summary: <%= @tech_name %> usage on Shopify stores</h2>
+      <p>
+        <%= @tech_name %> is used by <%= @stats.total %>+ Shopify stores tracked by ListSignal.
+        <%= if @countries != [] do %>Top countries: <%= @countries |> Enum.take(3) |> Enum.map(fn c -> "#{c.country} (#{c.count})" end) |> Enum.join(", ") %>.<% end %>
+        <%= if @stats.avg_response_time do %>Average response time: <%= round(@stats.avg_response_time) %>ms.<% end %>
+        <%= if @co_techs != [] do %>Commonly used with: <%= @co_techs |> Enum.take(5) |> Enum.map(fn ct -> ct.tech end) |> Enum.join(", ") %>.<% end %>
+      </p>
+    </div>
+
+    <div class="text-center py-8 border-t border-white/[0.07]">
+      <div class="flex flex-wrap items-center justify-center gap-3">
+        <a href="/" class="inline-flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+          Search more technologies
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
+        </a>
+        <a href="/apps" class="inline-flex items-center gap-2 rounded-xl border border-white/[0.1] px-6 py-3.5 font-display text-sm font-semibold text-white/60 hover:text-white hover:border-white/20 transition-all">
+          Browse directory
+        </a>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<footer class="border-t border-white/[0.07] py-8 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white transition-colors mx-4">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-4">Pricing</a>
+      <a href="/apps" class="text-white/50 hover:text-white transition-colors mx-4">Directory</a>
+      <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-4">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white transition-colors mx-4">Terms</a>
+    </div>
+    <p>&copy; 2026 ListSignal — Shopify Store Intelligence</p>
+  </div>
+</footer>

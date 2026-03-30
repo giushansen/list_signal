@@ -27,7 +27,8 @@ config :logger, level: :info
 
 # Suppress Erlang TLS noise from crawling random domains
 config :logger, :console,
-  format: "$time [$level] $message\n",
+  level: :debug,
+  format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
 config :logger,

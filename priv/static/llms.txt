@@ -1,0 +1,30 @@
+# ListSignal
+
+> Shopify store intelligence platform. Discover tech stacks, installed apps, revenue signals and contact data for millions of Shopify stores. Updated daily.
+
+## Store Profiles
+Individual store analysis pages with tech stack, apps, scoring, and contact data.
+- [Store Directory](/store)
+
+## Technology Pages
+Pages for each tracked technology showing all stores using it.
+- [App Directory](/apps)
+
+## Comparison Pages
+Side-by-side comparisons of Shopify apps and technologies.
+- [Example: Klaviyo vs Mailchimp](/compare/klaviyo-vs-mailchimp)
+- [Example: ReCharge vs Bold Subscriptions](/compare/recharge-vs-bold-subscriptions)
+
+## Top Store Rankings
+Ranked lists of Shopify stores by country and technology.
+- [Top Shopify Stores US](/top/shopify-stores-us)
+- [Top Shopify Stores UK](/top/shopify-stores-gb)
+- [Top Stores Using Klaviyo](/top/shopify-stores-using-klaviyo)
+
+## Directories
+- [All Tracked Apps](/apps)
+- [All Countries](/countries)
+
+## Pricing
+- Explorer (Free): 50 lookups/month
+- Pro ($79/month): Unlimited lookups, full data, API, CSV exports

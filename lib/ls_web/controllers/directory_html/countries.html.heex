@@ -1,0 +1,25 @@
+<nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl">
+  <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+    <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight"><span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white">LS</span>ListSignal</a>
+    <ul class="hidden md:flex items-center gap-8">
+      <li><a href="/apps" class="text-sm font-medium text-white/60 hover:text-white">Apps</a></li>
+      <li><a href="/countries" class="text-sm font-medium text-white/60 hover:text-white">Countries</a></li>
+      <li><a href="/pricing" class="text-sm font-medium text-white/60 hover:text-white">Pricing</a></li>
+      <li><a href="/signup" class="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover">Start Free</a></li>
+    </ul>
+  </div>
+</nav>
+<main class="pt-[100px] pb-20"><div class="mx-auto max-w-[1200px] px-6">
+  <h1 class="font-display text-[clamp(28px,4vw,40px)] font-bold tracking-tight mb-4">Shopify Stores by Country</h1>
+  <p class="text-lg text-white/60 mb-10 max-w-[600px]">Browse Shopify stores across <%= length(@countries) %> countries. Click a country to see the top stores in that market.</p>
+
+  <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+    <%= for country <- @countries do %>
+      <a href={"/top/shopify-stores-#{String.downcase(country.code)}"} class="flex items-center justify-between rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3 hover:border-accent/25 hover:bg-accent/[0.03] transition-all group">
+        <span class="text-sm text-white/80 group-hover:text-accent font-medium"><%= country.code %></span>
+        <span class="text-xs text-white/30 ml-2"><%= country.count %> stores</span>
+      </a>
+    <% end %>
+  </div>
+</div></main>
+<footer class="border-t border-white/[0.07] py-8 text-center text-[13px] text-white/35">&copy; 2026 ListSignal</footer>

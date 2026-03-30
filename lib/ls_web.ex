@@ -1,7 +1,7 @@
 defmodule LSWeb do
-  @moduledoc "Web interface for ListSignal dashboard."
+  @moduledoc "Web interface for ListSignal."
 
-  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt)
+  def static_paths, do: ~w(assets fonts images favicon.ico robots.txt llms.txt)
 
   def router do
     quote do

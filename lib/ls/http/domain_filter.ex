@@ -87,18 +87,21 @@ defmodule LS.HTTP.DomainFilter do
 
   # 1) Check if domain ends with a high-value TLD
   defp has_high_value_tld?(domain) do
-    # Try matching against all loaded TLDs (sorted longest first for ccTLDs)
-    # For example, "example.co.uk" should match "co.uk" before "uk"
-    domain_lower = String.downcase(domain)
+    case :ets.whereis(:http_high_value_tlds) do
+      :undefined ->
+        # Table not loaded yet — allow the domain through
+        true
 
-    # Get all TLDs and sort by length (longest first)
-    tlds = :ets.tab2list(:http_high_value_tlds)
-    |> Enum.map(fn {tld, _} -> tld end)
-    |> Enum.sort_by(&String.length/1, :desc)
+      _tid ->
+        domain_lower = String.downcase(domain)
+        tlds = :ets.tab2list(:http_high_value_tlds)
+        |> Enum.map(fn {tld, _} -> tld end)
+        |> Enum.sort_by(&String.length/1, :desc)
 
-    Enum.any?(tlds, fn tld ->
-      String.ends_with?(domain_lower, "." <> tld)
-    end)
+        Enum.any?(tlds, fn tld ->
+          String.ends_with?(domain_lower, "." <> tld)
+        end)
+    end
   end
 
   # 2) Check domain is not obvious junk

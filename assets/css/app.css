@@ -1,1 +1,16 @@
-/* ListSignal - styles are inline in layouts.ex for simplicity */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+.animate-ticker:hover {
+  animation-play-state: paused;
+}
+
+::selection {
+  background: rgba(16, 185, 129, 0.3);
+  color: white;
+}
