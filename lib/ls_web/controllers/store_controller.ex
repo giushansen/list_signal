@@ -165,7 +165,11 @@ defmodule LSWeb.StoreController do
     tech = parse_pipe(Enum.at(row, 16))
     country = str(row, 27)
     mx_records = parse_pipe(Enum.at(row, 9))
+    dns_txt = parse_pipe(Enum.at(row, 10))
+    dns_txt_joined = Enum.join(dns_txt, " ")
+    nameservers = parse_pipe(Enum.at(row, 34))
     created_at = Enum.at(row, 29)
+    emails = parse_pipe(Enum.at(row, 22))
     tld = domain |> String.split(".") |> List.last() |> String.upcase()
     %{
       domain: domain,
@@ -183,9 +187,9 @@ defmodule LSWeb.StoreController do
       dns_a: parse_pipe(Enum.at(row, 7)),
       dns_aaaa: parse_pipe(Enum.at(row, 8)),
       dns_mx: mx_records,
-      dns_txt: parse_pipe(Enum.at(row, 10)),
+      dns_txt: dns_txt,
       dns_cname: parse_pipe(Enum.at(row, 11)),
-      emails: parse_pipe(Enum.at(row, 22)),
+      emails: emails,
       bgp_ip: str(row, 24),
       bgp_asn_number: str(row, 25),
       bgp_asn_org: str(row, 26),
@@ -202,7 +206,7 @@ defmodule LSWeb.StoreController do
       rdap_domain_updated_at: Enum.at(row, 31),
       rdap_registrar: str(row, 32),
       rdap_registrar_iana_id: str(row, 33),
-      rdap_nameservers: parse_pipe(Enum.at(row, 34)),
+      rdap_nameservers: nameservers,
       rdap_status: str(row, 35),
       tranco_rank: Enum.at(row, 37),
       majestic_rank: Enum.at(row, 38),
@@ -213,6 +217,11 @@ defmodule LSWeb.StoreController do
       tld: tld,
       domain_age: compute_domain_age(created_at),
       mail_provider: extract_mail_provider(mx_records),
+      dns_provider: extract_dns_provider(nameservers),
+      has_spf: String.contains?(dns_txt_joined, "v=spf1"),
+      has_dmarc: String.contains?(dns_txt_joined, "v=DMARC"),
+      email_count: length(emails),
+      subdomain_count: Enum.at(row, 5) || 0,
       language_flag: language_to_flag(str(row, 18)),
       enriched_at: str(row, 0),
       worker: str(row, 1)
@@ -294,6 +303,23 @@ defmodule LSWeb.StoreController do
       if String.contains?(primary, pattern), do: name
     end)
   end
+
+  @dns_providers %{
+    "cloudflare" => "Cloudflare", "awsdns" => "Amazon Route 53",
+    "google" => "Google Cloud DNS", "dynect" => "Oracle Dyn",
+    "domaincontrol" => "GoDaddy", "registrar-servers" => "Namecheap",
+    "nsone" => "NS1", "ultradns" => "UltraDNS",
+    "digitalocean" => "DigitalOcean", "vultr" => "Vultr"
+  }
+
+  defp extract_dns_provider([]), do: nil
+  defp extract_dns_provider(nameservers) when is_list(nameservers) do
+    primary = nameservers |> List.first("") |> String.downcase()
+    Enum.find_value(@dns_providers, fn {pattern, name} ->
+      if String.contains?(primary, pattern), do: name
+    end) || if primary != "", do: primary |> String.split(".") |> Enum.take(-2) |> Enum.join(".")
+  end
+  defp extract_dns_provider(_), do: nil
 
   @lang_flags %{
     "en" => "\u{1F1EC}\u{1F1E7}", "fr" => "\u{1F1EB}\u{1F1F7}", "de" => "\u{1F1E9}\u{1F1EA}",

@@ -44,7 +44,7 @@
       <%!-- ═══ KEY STATS ═══ --%>
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8" aria-label="Technology statistics">
         <div class="rounded-xl border border-accent/20 bg-accent/[0.05] px-4 py-3">
-          <div class="text-[10px] uppercase tracking-wider text-accent/60 font-semibold mb-1">📊 Total Stores</div>
+          <div class="text-[10px] uppercase tracking-wider text-accent/60 font-semibold mb-1">📊 Stores Using <%= @tech_name %></div>
           <div class="font-display text-2xl font-bold text-accent"><%= @stats.total %>+</div>
         </div>
         <%= if @stats.avg_response_time do %>
@@ -127,27 +127,8 @@
 
       </div>
 
-      <%!-- ═══ REGISTRARS + CO-OCCURRING TECH ═══ --%>
-      <div class="grid md:grid-cols-2 gap-6 mb-8">
-
-        <%!-- Registrars --%>
-        <%= if @registrars != [] do %>
-          <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-5" aria-label="Registrar distribution">
-            <h2 class="font-display text-sm font-semibold mb-3 text-white/80">📋 Top Registrars</h2>
-            <% max_reg = (@registrars |> List.first(%{count: 1})).count %>
-            <div class="space-y-2">
-              <%= for r <- @registrars do %>
-                <div class="flex items-center gap-2 text-xs">
-                  <span class="w-[120px] text-white/60 truncate shrink-0"><%= r.registrar %></span>
-                  <div class="flex-1 h-1.5 rounded-full bg-white/[0.05] overflow-hidden">
-                    <div class="h-full rounded-full bg-amber-500/60" style={"width: #{bar_width(r.count, max_reg)}"}></div>
-                  </div>
-                  <span class="w-10 text-right text-white/40 font-mono shrink-0"><%= r.count %></span>
-                </div>
-              <% end %>
-            </div>
-          </section>
-        <% end %>
+      <%!-- ═══ CO-OCCURRING TECH ═══ --%>
+      <div class="grid md:grid-cols-1 gap-6 mb-8">
 
         <%!-- Co-occurring technologies --%>
         <%= if @co_techs != [] do %>
@@ -178,15 +159,14 @@
             <table class="w-full text-sm border-collapse min-w-[900px]">
               <thead>
                 <tr>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Store</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Domain</th>
                   <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Title</th>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🏳️</th>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🗣️</th>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">⚡ ms</th>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📊 Rank</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🏳️ Country</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🗣️ Language</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">⚡ Speed</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📊 Traffic Rank</th>
                   <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">🖥️ Hosting</th>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📋 Registrar</th>
-                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📆 Age</th>
+                  <th class="px-4 py-2.5 text-left text-[10px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">📆 Domain Age</th>
                 </tr>
               </thead>
               <tbody>
@@ -212,7 +192,6 @@
                         <%= if store.tranco_rank, do: "##{store.tranco_rank}" %>
                       </td>
                       <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs text-white/50 truncate max-w-[120px]"><%= store.hosting %></td>
-                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs text-white/50 truncate max-w-[120px]"><%= store.registrar %></td>
                       <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs text-white/40"><%= store.domain_age %></td>
                     </tr>
                   <% else %>
@@ -224,7 +203,6 @@
                       <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.response_time %></td>
                       <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.tranco_rank %></td>
                       <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.hosting %></td>
-                      <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.registrar %></td>
                       <td class="px-4 py-2.5 border-b border-white/[0.07] text-xs"><%= store.domain_age %></td>
                     </tr>
                   <% end %>

@@ -30,7 +30,7 @@ defmodule LSWeb.AlternativesController do
         {"🔍", "Transparent timestamps", "Every data point shows exactly when it was collected. No guessing if data is fresh."},
         {"💰", "80% cheaper", "Full access at $79/mo vs BuiltWith's $295 minimum. Same store and tech data."},
         {"📤", "Clean exports", "CSV exports designed for CRM import. No cleaning needed."},
-        {"🏗️", "Infrastructure intelligence", "DNS, BGP, ASN, and network data that BuiltWith doesn't surface."},
+        {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data that BuiltWith doesn't surface."},
         {"🤖", "AI-ready data", "Structured data with API access designed for automation and AI workflows."}
       ]
     },
@@ -56,7 +56,7 @@ defmodule LSWeb.AlternativesController do
         {"⚡", "Server-side detection", "We scan from infrastructure level (DNS, HTTP, BGP), not just browser. Catches backend tech Wappalyzer misses."},
         {"💰", "68% cheaper", "$79/mo unlimited vs Wappalyzer's $250 minimum for useful access."},
         {"📊", "Shopify specialization", "Deep Shopify data: app detection, theme, plan tier, revenue signals."},
-        {"🏗️", "Infrastructure data", "ASN, hosting provider, SSL issuer, DNS records — data Wappalyzer doesn't have."},
+        {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data — data Wappalyzer doesn't have."},
         {"🕐", "Data freshness timestamps", "Know exactly when each domain was last scanned. Wappalyzer doesn't show this."}
       ]
     },
@@ -76,12 +76,12 @@ defmodule LSWeb.AlternativesController do
         "API access starts at $250/mo",
         "Data refreshes weekly (not daily)",
         "No infrastructure/network data",
-        "No DNS, BGP, or SSL intelligence"
+        "No hosting provider, email service, or server location data"
       ],
       ls_wins: [
         {"⚡", "Detected within hours, not days", "New stores appear in ListSignal within hours via CT log monitoring. StoreLeads updates weekly."},
         {"💰", "CSV exports at $79/mo", "StoreLeads charges $250/mo for CSV export. ListSignal includes unlimited exports at $79/mo."},
-        {"🏗️", "Infrastructure intelligence", "DNS records, BGP/ASN data, SSL details, hosting provider — data StoreLeads doesn't collect."},
+        {"🏗️", "Infrastructure insights competitors don't have", "Hosting provider, email service, server location, and domain age data — data StoreLeads doesn't collect."},
         {"🔬", "Transparent methodology", "We show exactly when and how each data point was collected. Full audit trail."},
         {"🤝", "Startup-level support", "Direct access to founders. Not a ticket queue."},
         {"🤖", "AI classification", "Automated industry classification and business summary powered by ML."}
@@ -111,7 +111,7 @@ defmodule LSWeb.AlternativesController do
         {"🎯", "Purpose-built for tech intelligence", "ZoomInfo is a contact database that happens to have tech data. ListSignal is built specifically for technology detection."},
         {"📅", "Month-to-month, cancel anytime", "No annual contracts. No lock-in. No 10-20% surprise renewals."},
         {"⚡", "Real-time detection", "New domains detected within hours via CT logs. ZoomInfo's tech data lags by weeks."},
-        {"🏗️", "Infrastructure depth", "DNS, BGP, SSL, ASN intelligence that ZoomInfo doesn't surface at all."},
+        {"🏗️", "Infrastructure insights competitors don't have", "Hosting provider, email service, server location, and domain age data that ZoomInfo doesn't surface at all."},
         {"🔓", "No sales call required", "Sign up and start using immediately. ZoomInfo requires a sales demo."}
       ]
     }
