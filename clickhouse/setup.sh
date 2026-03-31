@@ -40,7 +40,7 @@ echo -e "${GREEN}✓${NC} Old database dropped"
 
 # Create fresh
 $CH < "$SCRIPT_DIR/schema.sql"
-echo -e "${GREEN}✓${NC} Schema created (43 columns)"
+echo -e "${GREEN}✓${NC} Schema created (48 columns)"
 
 # Verify
 echo ""
@@ -53,4 +53,4 @@ echo "domains_current columns: $($CH --database=ls --query 'SELECT count() FROM 
 echo ""
 echo -e "${GREEN}✅ Ready. Pipeline inserts go to ls.enrichments${NC}"
 echo -e "   Latest state auto-maintained in ls.domains_current"
-echo -e "   Both tables have all 43 columns."
+echo -e "   Both tables have all 48 columns."

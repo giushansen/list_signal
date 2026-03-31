@@ -90,18 +90,7 @@ defmodule LS.Tools.Lookup do
         catch _, _ -> :ok
         end
 
-        tech = (row[:http_tech] || "") |> String.split("|") |> Enum.reject(&(&1 == ""))
-        is_shopify = Enum.any?(tech, &(String.downcase(&1) |> String.contains?("shopify")))
-
-        {:ok, %{
-          domain: domain,
-          title: row[:http_title] || domain,
-          tech: tech,
-          status: row[:http_status],
-          country: row[:bgp_asn_country] || "",
-          is_shopify: is_shopify,
-          fresh: true
-        }}
+        {:ok, row_to_response(row, domain, true)}
       rescue
         e ->
           Logger.error("[LOOKUP][PIPELINE] #{domain} — EXCEPTION: #{Exception.message(e)}\n#{Exception.format_stacktrace(__STACKTRACE__)}")
@@ -137,34 +126,35 @@ defmodule LS.Tools.Lookup do
     end
   end
 
+  # Convert row map to list in column order (for ETS cache)
   defp row_map_to_list(r) do
-    [
-      r[:enriched_at], r[:worker], r[:domain],
-      r[:ctl_tld], r[:ctl_issuer], r[:ctl_subdomain_count], r[:ctl_subdomains],
-      r[:dns_a], r[:dns_aaaa], r[:dns_mx], r[:dns_txt], r[:dns_cname],
-      r[:http_status], r[:http_response_time], r[:http_blocked], r[:http_content_type],
-      r[:http_tech], r[:http_apps] || "", r[:http_language] || "",
-      r[:http_title], r[:http_meta_description], r[:http_pages], r[:http_emails], r[:http_error],
-      r[:bgp_ip], r[:bgp_asn_number], r[:bgp_asn_org], r[:bgp_asn_country], r[:bgp_asn_prefix],
-      r[:rdap_domain_created_at], r[:rdap_domain_expires_at], r[:rdap_domain_updated_at],
-      r[:rdap_registrar], r[:rdap_registrar_iana_id], r[:rdap_nameservers],
-      r[:rdap_status], r[:rdap_error],
-      r[:tranco_rank], r[:majestic_rank], r[:majestic_ref_subnets],
-      r[:is_malware], r[:is_phishing], r[:is_disposable_email]
-    ]
+    Enum.map(LS.Cluster.Inserter.columns(), fn col -> r[col] end)
   end
 
-  defp parse_row(row, domain) do
-    tech = (Enum.at(row, 16) || "") |> String.split("|") |> Enum.reject(&(&1 == ""))
+  # Convert column-ordered list (from ClickHouse SELECT * or ETS) to response map
+  defp parse_row(row, domain) when is_list(row) do
+    col_idx = LS.Cluster.Inserter.columns() |> Enum.with_index() |> Map.new()
+    at = fn key -> Enum.at(row, Map.get(col_idx, key, -1)) end
+    row_to_response(at, domain, false)
+  end
+
+  # Shared response builder — works with both map access (fresh) and index fn (cached)
+  defp row_to_response(row, domain, fresh) when is_map(row) do
+    row_to_response(fn key -> row[key] end, domain, fresh)
+  end
+  defp row_to_response(at, domain, fresh) when is_function(at) do
+    tech = (at.(:http_tech) || "") |> String.split("|") |> Enum.reject(&(&1 == ""))
     is_shopify = Enum.any?(tech, &(String.downcase(&1) |> String.contains?("shopify")))
     %{
       domain: domain,
-      title: Enum.at(row, 19) || domain,
+      title: at.(:http_title) || domain,
       tech: tech,
-      status: Enum.at(row, 12),
-      country: Enum.at(row, 27) || "",
+      status: at.(:http_status),
+      country: at.(:bgp_asn_country) || "",
       is_shopify: is_shopify,
-      fresh: false
+      business_model: at.(:business_model) || "",
+      industry: at.(:industry) || "",
+      fresh: fresh
     }
   end
 end

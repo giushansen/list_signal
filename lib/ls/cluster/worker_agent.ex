@@ -18,10 +18,10 @@ defmodule LS.Cluster.WorkerAgent do
   use GenServer
   require Logger
 
-  alias LS.HTTP.{Client, DomainFilter, TechDetector, PageExtractor}
+  alias LS.HTTP.DomainFilter
   alias LS.BGP.Resolver, as: BGPResolver
   alias LS.RDAP.Client, as: RDAPClient
-  alias LS.Reputation.{Tranco, Majestic, Blocklist}
+  alias LS.Reputation.Blocklist
   alias LS.Cache
 
   @http_timeout 25_000
@@ -310,34 +310,7 @@ defmodule LS.Cluster.WorkerAgent do
     end)
   end
 
-  defp do_http(domain, ip) do
-    case Client.fetch(domain, ip) do
-      {:ok, resp} ->
-        body = resp.body
-        tech_result = TechDetector.detect(resp)
-        app_result = LS.HTTP.AppDetector.detect(body, tech_result.tech)
-        {pages, emails} = PageExtractor.extract_all(body, domain)
-        title = extract_title(body)
-        meta_desc = extract_meta_desc(body)
-        %{
-          http_status: resp.status,
-          http_response_time: resp[:elapsed_ms],
-          http_blocked: tech_result.blocked,
-          http_content_type: gh(resp, "content-type"),
-          http_tech: tech_result.tech |> Enum.join("|"),
-          http_apps: app_result.apps |> Enum.join("|"),
-          http_language: LS.HTTP.LanguageDetector.detect(body, resp.headers, title, meta_desc),
-          http_title: title,
-          http_meta_description: meta_desc,
-          http_pages: pages || "",
-          http_emails: emails || "",
-          http_error: ""
-        }
-      {:error, reason, _} -> %{http_error: to_string(reason)}
-    end
-  rescue
-    e -> %{http_error: "crash:#{Exception.message(e)}"}
-  end
+  defp do_http(domain, ip), do: LS.Pipeline.http(domain, ip)
 
   # ==========================================================================
   # RDAP
@@ -405,76 +378,19 @@ defmodule LS.Cluster.WorkerAgent do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
     Enum.map(domains, fn d ->
       domain = d.ctl_domain
+      ctl = %{ctl_tld: d[:ctl_tld], ctl_issuer: d[:ctl_issuer],
+              ctl_subdomain_count: d[:ctl_subdomain_count], ctl_subdomains: d[:ctl_subdomains]}
       dns = Map.get(dns_res, domain, %{dns: %{}, scores: %{}})
       http = Map.get(http_res, domain, %{})
       bgp = Map.get(bgp_res, domain, %{})
       rdap = Map.get(rdap_res, domain, %{})
-
-      # Reputation lookups - pure ETS reads
-      tranco = Tranco.lookup(domain)
-      maj = Majestic.lookup(domain)
-      bl = Blocklist.lookup(domain)
-
-      dns_d = dns[:dns] || %{}
-      _sc = dns[:scores] || %{}
-
-      %{
-        enriched_at: now,
-        worker: worker,
-        domain: domain,
-        ctl_tld: d[:ctl_tld] || "",
-        ctl_issuer: d[:ctl_issuer] || "",
-        ctl_subdomain_count: d[:ctl_subdomain_count],
-        ctl_subdomains: d[:ctl_subdomains] || "",
-        dns_a: dns_d[:a] |> List.wrap() |> Enum.join("|"),
-        dns_aaaa: dns_d[:aaaa] |> List.wrap() |> Enum.join("|"),
-        dns_mx: dns_d[:mx] |> List.wrap() |> Enum.join("|"),
-        dns_txt: dns_d[:txt] |> List.wrap() |> Enum.join("|"),
-        dns_cname: dns_d[:cname] |> List.wrap() |> Enum.join("|"),
-        http_status: http[:http_status],
-        http_response_time: http[:http_response_time],
-        http_blocked: http[:http_blocked] || "",
-        http_content_type: http[:http_content_type] || "",
-        http_tech: http[:http_tech] || "",
-        http_apps: http[:http_apps] || "",
-        http_language: http[:http_language] || "",
-        http_title: http[:http_title] || "",
-        http_meta_description: http[:http_meta_description] || "",
-        http_pages: http[:http_pages] || "",
-        http_emails: http[:http_emails] || "",
-        http_error: http[:http_error] || "",
-        bgp_ip: bgp[:bgp_ip] || "",
-        bgp_asn_number: bgp[:bgp_asn_number] || "",
-        bgp_asn_org: bgp[:bgp_asn_org] || "",
-        bgp_asn_country: bgp[:bgp_asn_country] || "",
-        bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
-        rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
-        rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
-        rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),
-        rdap_registrar: rdap[:registrar] || "",
-        rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
-        rdap_nameservers: rdap[:nameservers] || "",
-        rdap_status: rdap[:status] || "",
-        rdap_error: "",
-        tranco_rank: tranco,
-        majestic_rank: if(maj, do: maj.rank, else: nil),
-        majestic_ref_subnets: if(maj, do: maj.ref_subnets, else: nil),
-        is_malware: if(bl == :malware, do: "true", else: ""),
-        is_phishing: if(bl == :phishing, do: "true", else: ""),
-        is_disposable_email: if(bl == :disposable, do: "true", else: "")
-      }
+      LS.Pipeline.merge_row(domain, dns, http, bgp, rdap, worker, now, ctl)
     end)
   end
 
   # ==========================================================================
   # HELPERS
   # ==========================================================================
-
-  defp fmt_dt(nil), do: nil
-  defp fmt_dt(dt) when is_binary(dt) do
-    dt |> String.replace("T", " ") |> String.replace("Z", "") |> String.slice(0, 19)
-  end
-  defp fmt_dt(_), do: nil
 
   defp flatten_dns(%{dns: d, scores: _s}) do
     %{
@@ -486,36 +402,4 @@ defmodule LS.Cluster.WorkerAgent do
 
   defp now_iso, do: DateTime.utc_now() |> DateTime.to_iso8601()
 
-  defp extract_title(b) when is_binary(b) do
-    case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
-      [_, t] -> String.trim(t) |> String.slice(0, 200)
-      _ -> ""
-    end
-  rescue
-    _ -> ""
-  end
-  defp extract_title(_), do: ""
-
-  defp extract_meta_desc(b) when is_binary(b) do
-    case Regex.run(~r/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']{1,1000})["']/is, b) do
-      [_, d] -> String.trim(d) |> String.slice(0, 500)
-      _ ->
-        case Regex.run(~r/<meta[^>]*content\s*=\s*["']([^"']{1,1000})["'][^>]*name\s*=\s*["']description["']/is, b) do
-          [_, d] -> String.trim(d) |> String.slice(0, 500)
-          _ -> ""
-        end
-    end
-  rescue
-    _ -> ""
-  end
-  defp extract_meta_desc(_), do: ""
-
-  defp gh(%{headers: h}, n) when is_map(h), do: Map.get(h, n, "")
-  defp gh(%{headers: h}, n) when is_list(h) do
-    case List.keyfind(h, n, 0) do
-      {_, v} -> v
-      nil -> ""
-    end
-  end
-  defp gh(_, _), do: ""
 end

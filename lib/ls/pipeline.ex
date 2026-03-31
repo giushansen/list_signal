@@ -1,6 +1,7 @@
 defmodule LS.Pipeline do
   @moduledoc """
   Run pipeline stages independently or end-to-end.
+  Single source of truth for per-domain HTTP enrichment and row building.
 
       LS.Pipeline.run("stripe.com", verbose: true)
       LS.Pipeline.dns("stripe.com")
@@ -13,11 +14,15 @@ defmodule LS.Pipeline do
 
   require Logger
   alias LS.DNS.Resolver
-  alias LS.HTTP.{Client, TechDetector, PageExtractor, DomainFilter}
+  alias LS.HTTP.{Client, TechDetector, AppDetector, PageExtractor, DomainFilter,
+                  LanguageDetector, SchemaExtractor, TextExtractor, BusinessClassifier}
   alias LS.BGP.Resolver, as: BGPResolver
   alias LS.RDAP.Client, as: RDAPClient
-  
   alias LS.Reputation.{Tranco, Majestic, Blocklist}
+
+  # ===========================================================================
+  # END-TO-END
+  # ===========================================================================
 
   def run(domains, opts \\ []) when is_binary(domains) or is_list(domains) do
     domains = List.wrap(domains)
@@ -88,8 +93,7 @@ defmodule LS.Pipeline do
     rdap_res = Task.await(rdap_task, 20_000)
     Logger.info("[PIPELINE][RDAP] Done — #{map_size(rdap_res)} results")
 
-    # Stage 3: Merge + Reputation
-    Logger.info("[PIPELINE][REPUTATION] Merging rows — http_keys:#{inspect(Map.keys(http_res |> Map.values() |> List.first() || %{}))} bgp_keys:#{inspect(Map.keys(bgp_res |> Map.values() |> List.first() || %{}))} rdap_keys:#{inspect(Map.keys(rdap_res |> Map.values() |> List.first() || %{}))}")
+    # Stage 3: Merge + Reputation + Classification
     now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
     rows = Enum.map(domains, fn d ->
       merge_row(d, Map.get(dns_res, d, empty_dns()), Map.get(http_res, d, %{}),
@@ -107,6 +111,10 @@ defmodule LS.Pipeline do
     case rows do [single] -> single; many -> many end
   end
 
+  # ===========================================================================
+  # INDIVIDUAL STAGES
+  # ===========================================================================
+
   def dns(domain) do
     case Resolver.lookup(domain) do
       {:ok, d} -> {:ok, %{dns: d, scores: %{}}}
@@ -114,18 +122,55 @@ defmodule LS.Pipeline do
     end
   end
 
+  @doc """
+  Full HTTP enrichment for a single domain.
+  Returns a map with all http_* fields, schema, classification-ephemeral fields.
+  Used by both Pipeline.run and WorkerAgent.do_http.
+  """
   def http(domain, ip \\ nil) do
     ip = ip || (case Resolver.lookup(domain) do {:ok, %{a: [i | _]}} -> i; _ -> nil end)
-    unless ip, do: throw(%{http_error: "no_ip"})
-    case Client.fetch(domain, ip) do
-      {:ok, resp} -> tech = TechDetector.detect(resp); body = resp.body || ""
-        {pages, emails} = PageExtractor.extract_all(body, domain)
-        %{http_status: resp.status, http_tech: tech[:tech] |> List.wrap() |> Enum.join("|"),
-          http_title: extract_title(body), http_pages: pages || "", http_emails: emails || "", http_error: ""}
-      {:error, r, _} -> %{http_error: to_string(r)}
-      {:error, r} -> %{http_error: to_string(r)}
+    if is_nil(ip) do
+      %{http_error: "no_ip"}
+    else
+      case Client.fetch(domain, ip) do
+        {:ok, resp} ->
+          body = resp.body || ""
+          tech_result = TechDetector.detect(resp)
+          app_result = AppDetector.detect(body, tech_result.tech)
+          {pages, emails} = PageExtractor.extract_all(body, domain)
+          title = extract_title(body)
+          meta_desc = extract_meta_desc(body)
+          schema_type = SchemaExtractor.extract_schema_type(body)
+          og_type = SchemaExtractor.extract_og_type(body)
+          h1 = TextExtractor.extract_h1(body)
+          body_text = TextExtractor.extract_visible_text(body, 500)
+          nav_links = TextExtractor.extract_nav_links(body)
+          %{
+            http_status: resp.status,
+            http_response_time: resp[:elapsed_ms],
+            http_blocked: tech_result.blocked,
+            http_content_type: get_header(resp, "content-type"),
+            http_tech: tech_result.tech |> Enum.join("|"),
+            http_apps: app_result.apps |> Enum.join("|"),
+            http_language: LanguageDetector.detect(body, resp.headers, title, meta_desc),
+            http_title: title,
+            http_meta_description: meta_desc,
+            http_pages: pages || "",
+            http_emails: emails || "",
+            http_error: "",
+            http_schema_type: schema_type,
+            http_og_type: og_type,
+            # Ephemeral — used by classifier only, NOT stored in ClickHouse
+            _h1: h1,
+            _body_text: body_text,
+            _nav_links: nav_links
+          }
+        {:error, reason, _} -> %{http_error: to_string(reason)}
+        {:error, reason} -> %{http_error: to_string(reason)}
+      end
     end
-  catch val -> val
+  rescue
+    e -> %{http_error: "crash:#{Exception.message(e)}"}
   end
 
   def bgp(ip) when is_binary(ip) do
@@ -162,6 +207,99 @@ defmodule LS.Pipeline do
     end
   end
 
+  # ===========================================================================
+  # ROW BUILDING — single source of truth for all 48 columns
+  # ===========================================================================
+
+  @doc """
+  Build a complete enrichment row from DNS/HTTP/BGP/RDAP results.
+  Used by both Pipeline.run (ctl defaults to %{}) and WorkerAgent (passes CTL data).
+  """
+  def merge_row(domain, dns_data, http, bgp, rdap, worker, now, ctl \\ %{}) do
+    d = dns_data[:dns] || %{}
+
+    # DNS-based tech enrichment (CNAME/IP/TXT signals)
+    http_tech = http[:http_tech] || ""
+    dns_tech = dns_based_tech(d, bgp)
+    merged_tech = merge_tech(http_tech, dns_tech)
+
+    # Classification
+    tld = ctl[:ctl_tld] || (domain |> String.split(".") |> List.last() || "")
+    classify_result = BusinessClassifier.classify(%{
+      http_tech: merged_tech,
+      http_apps: http[:http_apps] || "",
+      http_title: http[:http_title] || "",
+      http_meta_description: http[:http_meta_description] || "",
+      http_pages: http[:http_pages] || "",
+      http_schema_type: http[:http_schema_type] || "",
+      http_og_type: http[:http_og_type] || "",
+      ctl_tld: tld,
+      dns_txt: d[:txt] |> List.wrap() |> Enum.join(" "),
+      h1: http[:_h1] || "",
+      body_text: http[:_body_text] || "",
+      nav_links: http[:_nav_links] || ""
+    })
+
+    # Reputation — pure ETS reads
+    maj = Majestic.lookup(domain)
+    bl = Blocklist.lookup(domain)
+
+    %{
+      enriched_at: now,
+      worker: worker,
+      domain: domain,
+      ctl_tld: tld,
+      ctl_issuer: ctl[:ctl_issuer] || "",
+      ctl_subdomain_count: ctl[:ctl_subdomain_count],
+      ctl_subdomains: ctl[:ctl_subdomains] || "",
+      dns_a: d[:a] |> List.wrap() |> Enum.join("|"),
+      dns_aaaa: d[:aaaa] |> List.wrap() |> Enum.join("|"),
+      dns_mx: d[:mx] |> List.wrap() |> Enum.join("|"),
+      dns_txt: d[:txt] |> List.wrap() |> Enum.join("|"),
+      dns_cname: d[:cname] |> List.wrap() |> Enum.join("|"),
+      http_status: http[:http_status],
+      http_response_time: http[:http_response_time],
+      http_blocked: http[:http_blocked] || "",
+      http_content_type: http[:http_content_type] || "",
+      http_tech: merged_tech,
+      http_apps: http[:http_apps] || "",
+      http_language: http[:http_language] || "",
+      http_title: http[:http_title] || "",
+      http_meta_description: http[:http_meta_description] || "",
+      http_pages: http[:http_pages] || "",
+      http_emails: http[:http_emails] || "",
+      http_error: http[:http_error] || "",
+      business_model: classify_result.business_model,
+      industry: classify_result.industry,
+      classification_confidence: classify_result.confidence,
+      http_schema_type: http[:http_schema_type] || "",
+      http_og_type: http[:http_og_type] || "",
+      bgp_ip: bgp[:bgp_ip] || "",
+      bgp_asn_number: bgp[:bgp_asn_number] || "",
+      bgp_asn_org: bgp[:bgp_asn_org] || "",
+      bgp_asn_country: bgp[:bgp_asn_country] || "",
+      bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
+      rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
+      rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
+      rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),
+      rdap_registrar: rdap[:registrar] || "",
+      rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
+      rdap_nameservers: rdap[:nameservers] || "",
+      rdap_status: rdap[:status] || "",
+      rdap_error: "",
+      tranco_rank: Tranco.lookup(domain),
+      majestic_rank: if(maj, do: maj.rank, else: nil),
+      majestic_ref_subnets: if(maj, do: maj.ref_subnets, else: nil),
+      is_malware: if(bl == :malware, do: "true", else: ""),
+      is_phishing: if(bl == :phishing, do: "true", else: ""),
+      is_disposable_email: if(bl == :disposable, do: "true", else: "")
+    }
+  end
+
+  # ===========================================================================
+  # PRIVATE — classification helpers
+  # ===========================================================================
+
   defp empty_dns do
     %{dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []}}
   end
@@ -193,63 +331,52 @@ defmodule LS.Pipeline do
     end
   end
 
-  defp merge_row(domain, dns_data, http, bgp, rdap, worker, now) do
-    d = dns_data[:dns] || %{}
-    _sc = dns_data[:scores] || %{}
-    maj = Majestic.lookup(domain)
-    bl = Blocklist.lookup(domain)
-
-    # Enrich tech with DNS/IP signals when HTTP detection missed them
-    http_tech = http[:http_tech] || ""
-    dns_tech = dns_based_tech(d, bgp)
-    merged_tech = merge_tech(http_tech, dns_tech)
-
-    %{
-      enriched_at: now, worker: worker, domain: domain,
-      ctl_tld: domain |> String.split(".") |> List.last() || "", ctl_issuer: "",
-      ctl_subdomain_count: 0, ctl_subdomains: "",
-      dns_a: d[:a] |> List.wrap() |> Enum.join("|"),
-      dns_aaaa: d[:aaaa] |> List.wrap() |> Enum.join("|"),
-      dns_mx: d[:mx] |> List.wrap() |> Enum.join("|"),
-      dns_txt: d[:txt] |> List.wrap() |> Enum.join("|"),
-      dns_cname: d[:cname] |> List.wrap() |> Enum.join("|"),
-      http_status: http[:http_status],
-      http_response_time: http[:http_response_time],
-      http_blocked: http[:http_blocked] || "",
-      http_content_type: http[:http_content_type] || "",
-      http_tech: merged_tech,
-      http_title: http[:http_title] || "",
-      http_meta_description: http[:http_meta_description] || "",
-      http_pages: http[:http_pages] || "",
-      http_emails: http[:http_emails] || "",
-      http_error: http[:http_error] || "",
-      bgp_ip: bgp[:bgp_ip] || "",
-      bgp_asn_number: bgp[:bgp_asn_number] || "",
-      bgp_asn_org: bgp[:bgp_asn_org] || "",
-      bgp_asn_country: bgp[:bgp_asn_country] || "",
-      bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
-      rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
-      rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
-      rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),
-      rdap_registrar: rdap[:registrar] || "",
-      rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
-      rdap_nameservers: rdap[:nameservers] || "",
-      rdap_status: rdap[:status] || "",
-      rdap_error: "",
-      tranco_rank: Tranco.lookup(domain),
-      majestic_rank: if(maj, do: maj.rank, else: nil),
-      majestic_ref_subnets: if(maj, do: maj.ref_subnets, else: nil),
-      is_malware: if(bl == :malware, do: "true", else: ""),
-      is_phishing: if(bl == :phishing, do: "true", else: ""),
-      is_disposable_email: if(bl == :disposable, do: "true", else: "")
-    }
-  end
+  # ===========================================================================
+  # PRIVATE — HTML helpers (shared by http/2)
+  # ===========================================================================
 
   defp fmt_dt(nil), do: nil
   defp fmt_dt(dt) when is_binary(dt) do
     dt |> String.replace("T", " ") |> String.replace("Z", "") |> String.slice(0, 19)
   end
   defp fmt_dt(_), do: nil
+
+  defp extract_title(b) when is_binary(b) do
+    case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
+      [_, t] -> String.trim(t) |> String.slice(0, 200)
+      _ -> ""
+    end
+  rescue
+    _ -> ""
+  end
+  defp extract_title(_), do: ""
+
+  defp extract_meta_desc(b) when is_binary(b) do
+    case Regex.run(~r/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']{1,1000})["']/is, b) do
+      [_, d] -> String.trim(d) |> String.slice(0, 500)
+      _ ->
+        case Regex.run(~r/<meta[^>]*content\s*=\s*["']([^"']{1,1000})["'][^>]*name\s*=\s*["']description["']/is, b) do
+          [_, d] -> String.trim(d) |> String.slice(0, 500)
+          _ -> ""
+        end
+    end
+  rescue
+    _ -> ""
+  end
+  defp extract_meta_desc(_), do: ""
+
+  defp get_header(%{headers: h}, n) when is_map(h), do: Map.get(h, n, "")
+  defp get_header(%{headers: h}, n) when is_list(h) do
+    case List.keyfind(h, n, 0) do
+      {_, v} -> v
+      nil -> ""
+    end
+  end
+  defp get_header(_, _), do: ""
+
+  # ===========================================================================
+  # PRIVATE — DNS-based tech enrichment
+  # ===========================================================================
 
   # Shopify IP ranges (23.227.38.0/23 and 23.227.36.0/23)
   @shopify_prefixes ["23.227.38.", "23.227.39.", "23.227.36.", "23.227.37."]
@@ -289,14 +416,4 @@ defmodule LS.Pipeline do
     all = (http_tech_str |> String.split("|") |> Enum.reject(&(&1 == ""))) ++ new
     Enum.join(all, "|")
   end
-
-  defp extract_title(b) do
-    case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
-      [_, t] -> String.trim(t) |> String.slice(0, 200)
-      _ -> ""
-    end
-  rescue
-    _ -> ""
-  end
-
 end

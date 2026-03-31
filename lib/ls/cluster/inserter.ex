@@ -20,6 +20,9 @@ defmodule LS.Cluster.Inserter do
     :http_status, :http_response_time, :http_blocked,
     :http_content_type, :http_tech, :http_apps, :http_language,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
+    # Classification
+    :business_model, :industry, :classification_confidence,
+    :http_schema_type, :http_og_type,
     :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix,
     # RDAP
     :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_domain_updated_at,
@@ -29,6 +32,8 @@ defmodule LS.Cluster.Inserter do
     :tranco_rank, :majestic_rank, :majestic_ref_subnets,
     :is_malware, :is_phishing, :is_disposable_email
   ]
+
+  def columns, do: @columns
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   def insert(rows) when is_list(rows), do: GenServer.cast(__MODULE__, {:insert, rows})
