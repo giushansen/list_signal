@@ -86,7 +86,9 @@
         (@store.bgp_asn_org != "" && {"🖥️ Hosting", @store.bgp_asn_org, "Infrastructure provider"}),
         (@store.rdap_registrar != "" && {"📋 Registrar", @store.rdap_registrar, "Domain registrar"}),
         (@store.domain_age && {"📆 Domain Age", @store.domain_age, "Since #{date_slice(@store.rdap_domain_created_at) || "registration"}"}),
-        (@store.mail_provider && {"📧 Email Provider", @store.mail_provider, "Business email service"})
+        (@store.mail_provider && {"📧 Email Provider", @store.mail_provider, "Business email service"}),
+        (@store.estimated_revenue != "" && {"💰 Est. Revenue", @store.estimated_revenue, "#{@store.estimated_employees} employees"}),
+        (@store.business_model != "" && {"🏢 Business Model", @store.business_model, @store.industry})
       ] |> Enum.reject(&(!&1)) %>
       <%= if stats != [] do %>
         <section class="mb-8" aria-label="Key metrics">
@@ -236,6 +238,40 @@
         </section>
       <% end %>
 
+      <%!-- ═══ REVENUE ESTIMATION ═══ --%>
+      <%= if @store.estimated_revenue != "" do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Revenue estimation">
+          <h2 class="font-display text-lg font-semibold mb-4">💰 Revenue Estimation</h2>
+          <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            <div>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Estimated Revenue</dt>
+              <dd class="text-white font-semibold text-lg"><%= @store.estimated_revenue %></dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Estimated Employees</dt>
+              <dd class="text-white font-semibold text-lg"><%= @store.estimated_employees %></dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Confidence</dt>
+              <dd class="text-white/80 font-semibold">
+                <% conf = if @store.revenue_confidence, do: round(@store.revenue_confidence * 100), else: 0 %>
+                <span class={"#{cond do
+                  conf >= 70 -> "text-green-400"
+                  conf >= 50 -> "text-yellow-400"
+                  true -> "text-white/60"
+                end}"}><%= conf %>%</span>
+              </dd>
+            </div>
+          </dl>
+          <%= if @store.revenue_evidence != "" do %>
+            <details class="mt-4">
+              <summary class="text-[11px] text-white/30 cursor-pointer hover:text-white/50">View scoring evidence</summary>
+              <div class="mt-2 text-[11px] text-white/25 font-mono break-all leading-relaxed"><%= @store.revenue_evidence %></div>
+            </details>
+          <% end %>
+        </section>
+      <% end %>
+
       <%!-- ═══ RANKINGS & AUTHORITY ═══ --%>
       <%= if @store.tranco_rank || @store.majestic_rank do %>
         <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Rankings and authority">
@@ -271,15 +307,15 @@
       <% end %>
 
       <%!-- ═══ SAFETY BADGES (only show warnings) ═══ --%>
-      <%= if @store.is_malware == "1" or @store.is_phishing == "1" or @store.is_disposable_email == "1" do %>
+      <%= if @store.is_malware == "true" or @store.is_phishing == "true" or @store.is_disposable_email == "true" do %>
         <section class="mb-6 space-y-2" aria-label="Safety warnings">
-          <%= if @store.is_malware == "1" do %>
+          <%= if @store.is_malware == "true" do %>
             <div class="rounded-xl border border-red-500/20 bg-red-500/[0.05] px-5 py-3 text-sm text-red-400 font-semibold">🚨 Warning: This domain is flagged as malware</div>
           <% end %>
-          <%= if @store.is_phishing == "1" do %>
+          <%= if @store.is_phishing == "true" do %>
             <div class="rounded-xl border border-red-500/20 bg-red-500/[0.05] px-5 py-3 text-sm text-red-400 font-semibold">🚨 Warning: This domain is flagged as phishing</div>
           <% end %>
-          <%= if @store.is_disposable_email == "1" do %>
+          <%= if @store.is_disposable_email == "true" do %>
             <div class="rounded-xl border border-amber-500/20 bg-amber-500/[0.05] px-5 py-3 text-sm text-amber-400 font-semibold">⚠️ Uses disposable email domain</div>
           <% end %>
         </section>

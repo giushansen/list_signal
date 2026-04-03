@@ -4,17 +4,7 @@ defmodule LSWeb.StoreController do
 
   plug :cache_headers
 
-  # Column positions from SELECT * (43-column schema):
-  # 0:enriched_at 1:worker 2:domain 3:ctl_tld 4:ctl_issuer 5:ctl_subdomain_count 6:ctl_subdomains
-  # 7:dns_a 8:dns_aaaa 9:dns_mx 10:dns_txt 11:dns_cname
-  # 12:http_status 13:http_response_time 14:http_blocked 15:http_content_type
-  # 16:http_tech 17:http_apps 18:http_language 19:http_title 20:http_meta_description
-  # 21:http_pages 22:http_emails 23:http_error
-  # 24:bgp_ip 25:bgp_asn_number 26:bgp_asn_org 27:bgp_asn_country 28:bgp_asn_prefix
-  # 29:rdap_domain_created_at 30:rdap_domain_expires_at 31:rdap_domain_updated_at
-  # 32:rdap_registrar 33:rdap_registrar_iana_id 34:rdap_nameservers 35:rdap_status 36:rdap_error
-  # 37:tranco_rank 38:majestic_rank 39:majestic_ref_subnets
-  # 40:is_malware 41:is_phishing 42:is_disposable_email
+  # Column positions derived dynamically from LS.Cluster.Inserter.columns/0 (52-column schema)
 
   # /shopify/:slug — expects a Shopify store. If not Shopify, 301 to /website/:slug
   def show_shopify(conn, %{"slug" => slug}) do
@@ -161,59 +151,69 @@ defmodule LSWeb.StoreController do
   # ── Parsing ──
 
   defp parse_store(row, domain) do
-    Logger.debug("[STORE] parse_store raw row for #{domain}: columns=#{length(row)} tech=#{inspect(Enum.at(row, 16))} bgp_org=#{inspect(Enum.at(row, 26))} rdap_registrar=#{inspect(Enum.at(row, 32))} tranco=#{inspect(Enum.at(row, 37))} country=#{inspect(Enum.at(row, 27))}")
-    tech = parse_pipe(Enum.at(row, 16))
-    country = str(row, 27)
-    mx_records = parse_pipe(Enum.at(row, 9))
-    dns_txt = parse_pipe(Enum.at(row, 10))
+    # Dynamic column lookup — always in sync with inserter schema
+    col_idx = LS.Cluster.Inserter.columns() |> Enum.with_index() |> Map.new()
+    at = fn key -> Enum.at(row, Map.get(col_idx, key, -1)) end
+    s = fn key -> at.(key) || "" end
+
+    tech = parse_pipe(at.(:http_tech))
+    country = s.(:bgp_asn_country)
+    mx_records = parse_pipe(at.(:dns_mx))
+    dns_txt = parse_pipe(at.(:dns_txt))
     dns_txt_joined = Enum.join(dns_txt, " ")
-    nameservers = parse_pipe(Enum.at(row, 34))
-    created_at = Enum.at(row, 29)
-    emails = parse_pipe(Enum.at(row, 22))
+    nameservers = parse_pipe(at.(:rdap_nameservers))
+    created_at = at.(:rdap_domain_created_at)
+    emails = parse_pipe(at.(:http_emails))
     tld = domain |> String.split(".") |> List.last() |> String.upcase()
     %{
       domain: domain,
-      title: decode_html(Enum.at(row, 19)) || domain,
+      title: decode_html(at.(:http_title)) || domain,
       tech: tech,
       tech_summary: tech |> Enum.take(5) |> Enum.join(", "),
-      http_status: Enum.at(row, 12),
-      http_response_time: Enum.at(row, 13),
-      http_language: str(row, 18),
-      http_meta_description: str(row, 20),
-      http_content_type: str(row, 15),
-      http_apps: parse_pipe(Enum.at(row, 17)),
-      http_pages: parse_pipe(Enum.at(row, 21)),
-      http_error: str(row, 23),
-      dns_a: parse_pipe(Enum.at(row, 7)),
-      dns_aaaa: parse_pipe(Enum.at(row, 8)),
+      http_status: at.(:http_status),
+      http_response_time: at.(:http_response_time),
+      http_language: s.(:http_language),
+      http_meta_description: s.(:http_meta_description),
+      http_content_type: s.(:http_content_type),
+      http_apps: parse_pipe(at.(:http_apps)),
+      http_pages: parse_pipe(at.(:http_pages)),
+      http_error: s.(:http_error),
+      dns_a: parse_pipe(at.(:dns_a)),
+      dns_aaaa: parse_pipe(at.(:dns_aaaa)),
       dns_mx: mx_records,
       dns_txt: dns_txt,
-      dns_cname: parse_pipe(Enum.at(row, 11)),
+      dns_cname: parse_pipe(at.(:dns_cname)),
       emails: emails,
-      bgp_ip: str(row, 24),
-      bgp_asn_number: str(row, 25),
-      bgp_asn_org: str(row, 26),
+      bgp_ip: s.(:bgp_ip),
+      bgp_asn_number: s.(:bgp_asn_number),
+      bgp_asn_org: s.(:bgp_asn_org),
       bgp_asn_country: country,
-      bgp_asn_prefix: str(row, 28),
+      bgp_asn_prefix: s.(:bgp_asn_prefix),
       country: country,
       country_flag: country_to_flag(country),
-      ctl_tld: str(row, 3),
-      ctl_issuer: str(row, 4),
-      ctl_subdomain_count: Enum.at(row, 5),
-      ctl_subdomains: parse_pipe(Enum.at(row, 6)),
+      ctl_tld: s.(:ctl_tld),
+      ctl_issuer: s.(:ctl_issuer),
+      ctl_subdomain_count: at.(:ctl_subdomain_count),
+      ctl_subdomains: parse_pipe(at.(:ctl_subdomains)),
       rdap_domain_created_at: created_at,
-      rdap_domain_expires_at: Enum.at(row, 30),
-      rdap_domain_updated_at: Enum.at(row, 31),
-      rdap_registrar: str(row, 32),
-      rdap_registrar_iana_id: str(row, 33),
+      rdap_domain_expires_at: at.(:rdap_domain_expires_at),
+      rdap_domain_updated_at: at.(:rdap_domain_updated_at),
+      rdap_registrar: s.(:rdap_registrar),
+      rdap_registrar_iana_id: s.(:rdap_registrar_iana_id),
       rdap_nameservers: nameservers,
-      rdap_status: str(row, 35),
-      tranco_rank: Enum.at(row, 37),
-      majestic_rank: Enum.at(row, 38),
-      majestic_ref_subnets: Enum.at(row, 39),
-      is_malware: str(row, 40),
-      is_phishing: str(row, 41),
-      is_disposable_email: str(row, 42),
+      rdap_status: s.(:rdap_status),
+      tranco_rank: at.(:tranco_rank),
+      majestic_rank: at.(:majestic_rank),
+      majestic_ref_subnets: at.(:majestic_ref_subnets),
+      is_malware: s.(:is_malware),
+      is_phishing: s.(:is_phishing),
+      is_disposable_email: s.(:is_disposable_email),
+      business_model: s.(:business_model),
+      industry: s.(:industry),
+      estimated_revenue: s.(:estimated_revenue),
+      estimated_employees: s.(:estimated_employees),
+      revenue_confidence: at.(:revenue_confidence),
+      revenue_evidence: s.(:revenue_evidence),
       tld: tld,
       domain_age: compute_domain_age(created_at),
       mail_provider: extract_mail_provider(mx_records),
@@ -221,16 +221,15 @@ defmodule LSWeb.StoreController do
       has_spf: String.contains?(dns_txt_joined, "v=spf1"),
       has_dmarc: String.contains?(dns_txt_joined, "v=DMARC"),
       email_count: length(emails),
-      subdomain_count: Enum.at(row, 5) || 0,
-      language_flag: language_to_flag(str(row, 18)),
-      enriched_at: str(row, 0),
-      worker: str(row, 1)
+      subdomain_count: at.(:ctl_subdomain_count) || 0,
+      language_flag: language_to_flag(s.(:http_language)),
+      enriched_at: s.(:enriched_at),
+      worker: s.(:worker)
     }
   end
 
   # ── Helpers ──
 
-  defp str(row, i), do: Enum.at(row, i) || ""
   defp parse_pipe(""), do: []
   defp parse_pipe(nil), do: []
   defp parse_pipe(s) when is_binary(s), do: s |> String.split("|") |> Enum.reject(&(&1 == ""))

@@ -19,6 +19,8 @@ defmodule LS.Pipeline do
   alias LS.BGP.Resolver, as: BGPResolver
   alias LS.RDAP.Client, as: RDAPClient
   alias LS.Reputation.{Tranco, Majestic, Blocklist}
+  alias LS.Revenue.Estimator, as: RevenueEstimator
+  alias LS.ML.Classifier, as: MLClassifier
 
   # ===========================================================================
   # END-TO-END
@@ -160,7 +162,7 @@ defmodule LS.Pipeline do
             http_error: "",
             http_schema_type: schema_type,
             http_og_type: og_type,
-            # Ephemeral — used by classifier only, NOT stored in ClickHouse
+            # Ephemeral — used by classifier, text stored separately via merge_row
             _h1: h1,
             _body_text: body_text,
             _nav_links: nav_links
@@ -225,6 +227,10 @@ defmodule LS.Pipeline do
 
     # Classification
     tld = ctl[:ctl_tld] || (domain |> String.split(".") |> List.last() || "")
+    h1 = http[:_h1] || ""
+    body_text = http[:_body_text] || ""
+    nav_links = http[:_nav_links] || ""
+
     classify_result = BusinessClassifier.classify(%{
       http_tech: merged_tech,
       http_apps: http[:http_apps] || "",
@@ -235,10 +241,24 @@ defmodule LS.Pipeline do
       http_og_type: http[:http_og_type] || "",
       ctl_tld: tld,
       dns_txt: d[:txt] |> List.wrap() |> Enum.join(" "),
-      h1: http[:_h1] || "",
-      body_text: http[:_body_text] || "",
-      nav_links: http[:_nav_links] || ""
+      h1: h1,
+      body_text: body_text,
+      nav_links: nav_links
     })
+
+    # Tier 2: ML classifier fallback when heuristic confidence is low
+    classify_result = if classify_result.confidence < 0.55 and MLClassifier.ready?() do
+      ml_text = Enum.join([http[:http_title] || "", h1, http[:http_meta_description] || "", body_text], " ")
+      ml_text = String.trim(ml_text)
+      if byte_size(ml_text) > 20 do
+        ml = MLClassifier.classify(ml_text)
+        merge_classification(classify_result, ml)
+      else
+        classify_result
+      end
+    else
+      classify_result
+    end
 
     # Reputation — pure ETS reads
     maj = Majestic.lookup(domain)
@@ -269,6 +289,8 @@ defmodule LS.Pipeline do
       http_pages: http[:http_pages] || "",
       http_emails: http[:http_emails] || "",
       http_error: http[:http_error] || "",
+      http_h1: h1,
+      http_body_snippet: body_text,
       business_model: classify_result.business_model,
       industry: classify_result.industry,
       classification_confidence: classify_result.confidence,
@@ -294,6 +316,37 @@ defmodule LS.Pipeline do
       is_phishing: if(bl == :phishing, do: "true", else: ""),
       is_disposable_email: if(bl == :disposable, do: "true", else: "")
     }
+    |> add_revenue_estimate()
+  end
+
+  defp add_revenue_estimate(row) do
+    rev = RevenueEstimator.estimate(row)
+    Map.merge(row, rev)
+  end
+
+  # ===========================================================================
+  # PRIVATE — ML/heuristic merge
+  # ===========================================================================
+
+  defp merge_classification(heuristic, ml) do
+    # ML overrides heuristic BM if ML confidence is decent and heuristic was empty or weak
+    bm = cond do
+      ml.business_model != "" and heuristic.business_model == "" -> ml.business_model
+      ml.business_model != "" and ml[:ml_bm_confidence] >= 0.5 and heuristic.confidence < 0.45 -> ml.business_model
+      true -> heuristic.business_model
+    end
+
+    # ML overrides heuristic industry if ML found one and heuristic didn't
+    ind = cond do
+      ml.industry != "" and heuristic.industry == "" -> ml.industry
+      ml.industry != "" and ml[:ml_industry_confidence] >= 0.5 and heuristic.confidence < 0.45 -> ml.industry
+      true -> heuristic.industry
+    end
+
+    # Confidence: take the higher of heuristic or ML
+    conf = max(heuristic.confidence, ml.ml_confidence)
+
+    %{heuristic | business_model: bm, industry: ind, confidence: conf}
   end
 
   # ===========================================================================

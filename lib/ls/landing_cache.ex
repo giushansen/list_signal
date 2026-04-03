@@ -24,6 +24,16 @@ defmodule LS.LandingCache do
     _ -> defaults()
   end
 
+  @doc "Get cached list of known tech names with counts. Returns [{name, count}, ...]."
+  def tech_names do
+    case :ets.lookup(@table, :tech_names) do
+      [{:tech_names, names}] -> names
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
+
   @impl true
   def init(_opts) do
     :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])
@@ -36,6 +46,8 @@ defmodule LS.LandingCache do
   def handle_info(:refresh, state) do
     data = fetch_all()
     :ets.insert(@table, {:landing, data})
+    tech_names = fetch_tech_names()
+    :ets.insert(@table, {:tech_names, tech_names})
     Process.send_after(self(), :refresh, @refresh_ms)
     {:noreply, state}
   end
@@ -103,6 +115,14 @@ defmodule LS.LandingCache do
             tech: Enum.at(row, 2) || "", country: Enum.at(row, 3) || "",
             rank: Enum.at(row, 4)}
         end)
+      _ -> []
+    end
+  end
+
+  defp fetch_tech_names do
+    case LS.Clickhouse.tech_directory() do
+      {:ok, rows} ->
+        Enum.map(rows, fn [name, count] -> {name, count} end)
       _ -> []
     end
   end

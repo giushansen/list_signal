@@ -6,6 +6,8 @@ defmodule LS.Tools.Lookup do
   require Logger
   @timeout 30_000
   @cache_table :lookup_result_cache
+  # Landing page lookups: re-crawl if older than 7 days regardless of business model
+  @freshness_ttl_days 7
 
   @doc "Get a cached enrichment row for a domain, if available."
   def get_cached_row(domain) do
@@ -51,10 +53,10 @@ defmodule LS.Tools.Lookup do
     case LS.Clickhouse.get_store(domain) do
       {:ok, [row | _]} ->
         enriched_at = Enum.at(row, 0)
-        if fresh_today?(enriched_at) do
+        if fresh_enough?(enriched_at) do
           {:ok, parse_row(row, domain)}
         else
-          Logger.debug("[LOOKUP] #{domain} — ClickHouse data stale (#{enriched_at})")
+          Logger.debug("[LOOKUP] #{domain} — ClickHouse data older than #{@freshness_ttl_days}d (#{enriched_at})")
           :stale
         end
       {:ok, []} ->
@@ -66,14 +68,14 @@ defmodule LS.Tools.Lookup do
     end
   end
 
-  defp fresh_today?(nil), do: false
-  defp fresh_today?(ts) when is_binary(ts) do
+  defp fresh_enough?(nil), do: false
+  defp fresh_enough?(ts) when is_binary(ts) do
     case Date.from_iso8601(String.slice(ts, 0, 10)) do
-      {:ok, date} -> date == Date.utc_today()
+      {:ok, date} -> Date.diff(Date.utc_today(), date) < @freshness_ttl_days
       _ -> false
     end
   end
-  defp fresh_today?(_), do: false
+  defp fresh_enough?(_), do: false
 
   defp enrich_and_store(domain) do
     {pid, monitor_ref} = spawn_monitor(fn ->
@@ -154,7 +156,11 @@ defmodule LS.Tools.Lookup do
       is_shopify: is_shopify,
       business_model: at.(:business_model) || "",
       industry: at.(:industry) || "",
-      fresh: fresh
+      fresh: fresh,
+      estimated_revenue: at.(:estimated_revenue) || "",
+      estimated_employees: at.(:estimated_employees) || "",
+      revenue_confidence: at.(:revenue_confidence),
+      revenue_evidence: at.(:revenue_evidence) || ""
     }
   end
 end

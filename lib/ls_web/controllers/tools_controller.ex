@@ -43,6 +43,26 @@ defmodule LSWeb.ToolsController do
     conn |> put_status(400) |> json(%{ok: false, error: "Missing domain parameter"})
   end
 
+  @doc "JSON API endpoint for tech name autocomplete"
+  def api_tech_suggest(conn, %{"q" => q}) when is_binary(q) and byte_size(q) >= 1 do
+    techs = LS.LandingCache.tech_names()
+    needle = String.downcase(q)
+    matches = techs
+    |> Enum.filter(fn {name, _count} -> String.contains?(String.downcase(name), needle) end)
+    |> Enum.sort_by(fn {name, count} ->
+      # Prioritize: starts-with first, then by count descending
+      starts = if String.starts_with?(String.downcase(name), needle), do: 0, else: 1
+      {starts, -count}
+    end)
+    |> Enum.take(10)
+    |> Enum.map(fn {name, count} -> %{name: name, count: count} end)
+    json(conn, %{ok: true, results: matches})
+  end
+
+  def api_tech_suggest(conn, _params) do
+    json(conn, %{ok: true, results: []})
+  end
+
   defp tool_json_ld(name, desc) do
     Jason.encode!(%{
       "@context" => "https://schema.org", "@type" => "WebApplication",

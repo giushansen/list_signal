@@ -39,6 +39,7 @@ defmodule LSWeb.Router do
     get "/tools/shopify-checker", ToolsController, :shopify_checker
     get "/tools/tech-lookup", ToolsController, :tech_lookup
     get "/api/tools/lookup", ToolsController, :api_lookup
+    get "/api/tech/suggest", ToolsController, :api_tech_suggest
 
     get "/new-stores", FeedController, :new_stores
 

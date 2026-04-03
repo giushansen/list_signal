@@ -20,6 +20,7 @@ defmodule LS.Cluster.Inserter do
     :http_status, :http_response_time, :http_blocked,
     :http_content_type, :http_tech, :http_apps, :http_language,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,
+    :http_h1, :http_body_snippet,
     # Classification
     :business_model, :industry, :classification_confidence,
     :http_schema_type, :http_og_type,
@@ -30,7 +31,9 @@ defmodule LS.Cluster.Inserter do
     :rdap_status, :rdap_error,
     # Reputation
     :tranco_rank, :majestic_rank, :majestic_ref_subnets,
-    :is_malware, :is_phishing, :is_disposable_email
+    :is_malware, :is_phishing, :is_disposable_email,
+    # Revenue estimation
+    :estimated_revenue, :estimated_employees, :revenue_confidence, :revenue_evidence
   ]
 
   def columns, do: @columns

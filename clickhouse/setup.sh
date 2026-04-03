@@ -8,7 +8,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 GREEN='\033[0;32m'; RED='\033[0;31m'; YELLOW='\033[1;33m'; NC='\033[0m'
 
-echo "🔧 ListSignal ClickHouse Setup"
+echo "ListSignal ClickHouse Setup"
 echo ""
 
 # Detect client binary
@@ -30,27 +30,34 @@ else
     sleep 2
 fi
 
-$CH --query "SELECT version()" &>/dev/null || { echo -e "${RED}✗ ClickHouse not responding${NC}"; exit 1; }
-echo -e "${GREEN}✓${NC} ClickHouse $($CH --query 'SELECT version()')"
+$CH --query "SELECT version()" &>/dev/null || { echo -e "${RED}ClickHouse not responding${NC}"; exit 1; }
+echo -e "${GREEN}OK${NC} ClickHouse $($CH --query 'SELECT version()')"
 
 # Nuke existing
 echo -e "${YELLOW}Dropping existing database...${NC}"
 $CH --query "DROP DATABASE IF EXISTS ls"
-echo -e "${GREEN}✓${NC} Old database dropped"
+echo -e "${GREEN}OK${NC} Old database dropped"
 
-# Create fresh
+# Create fresh from schema.sql (single source of truth)
 $CH < "$SCRIPT_DIR/schema.sql"
-echo -e "${GREEN}✓${NC} Schema created (48 columns)"
+echo -e "${GREEN}OK${NC} Schema created"
 
 # Verify
 echo ""
 echo "Tables:"
 $CH --database=ls --query "SHOW TABLES FORMAT Pretty"
 echo ""
-echo "Enrichments columns: $($CH --database=ls --query 'SELECT count() FROM system.columns WHERE database = '\''ls'\'' AND table = '\''enrichments'\''')"
-echo "domains_current columns: $($CH --database=ls --query 'SELECT count() FROM system.columns WHERE database = '\''ls'\'' AND table = '\''domains_current'\''')"
+ECOLS=$($CH --database=ls --query "SELECT count() FROM system.columns WHERE database = 'ls' AND table = 'enrichments'")
+DCOLS=$($CH --database=ls --query "SELECT count() FROM system.columns WHERE database = 'ls' AND table = 'domains_current'")
+echo "enrichments columns: ${ECOLS}"
+echo "domains_current columns: ${DCOLS}"
 
 echo ""
-echo -e "${GREEN}✅ Ready. Pipeline inserts go to ls.enrichments${NC}"
-echo -e "   Latest state auto-maintained in ls.domains_current"
-echo -e "   Both tables have all 48 columns."
+echo -e "${GREEN}Ready.${NC}"
+echo "  Pipeline inserts go to ls.enrichments"
+echo "  Latest state auto-maintained in ls.domains_current"
+echo "  Both tables have ${ECOLS} columns."
+echo ""
+echo "Next steps:"
+echo "  1. make dev          # start master (CTL + queue + dashboard)"
+echo "  2. make dev-worker   # start worker (connects to master, runs pipeline)"

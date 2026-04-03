@@ -43,7 +43,11 @@ defmodule LS.MixProject do
       # Pipeline
       {:req, "~> 0.5"},
       {:paasaa, "~> 1.0"},
-      {:x509, "~> 0.9"}
+      {:x509, "~> 0.9"},
+      # ML — sentence embeddings for Tier 2 classification
+      {:bumblebee, "~> 0.6"},
+      {:nx, "~> 0.9"},
+      {:exla, "~> 0.9"}
     ]
   end
 

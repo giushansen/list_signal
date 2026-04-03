@@ -13,19 +13,24 @@ defmodule LS.HTTP.BusinessClassifier do
   # ===========================================================================
 
   def classify(signals) when is_map(signals) do
-    model_scores = %{}
-    industry_scores = %{}
-    methods = []
+    # Skip placeholder/dead/infrastructure pages — no real business to classify.
+    if default_shopify_page?(signals) or parking_page?(signals) do
+      @empty_result
+    else
+      model_scores = %{}
+      industry_scores = %{}
+      methods = []
 
-    {model_scores, industry_scores, methods} = layer_1_tech(signals, model_scores, industry_scores, methods)
-    {model_scores, industry_scores, methods} = layer_2_schema(signals, model_scores, industry_scores, methods)
-    {model_scores, industry_scores, methods} = layer_3_pages(signals, model_scores, industry_scores, methods)
-    {model_scores, industry_scores, methods} = layer_4_nav(signals, model_scores, industry_scores, methods)
-    {model_scores, industry_scores, methods} = layer_5_tld(signals, model_scores, industry_scores, methods)
-    {model_scores, industry_scores, methods} = layer_6_keywords(signals, model_scores, industry_scores, methods)
-    {model_scores, industry_scores, methods} = layer_7_dns(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_1_tech(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_2_schema(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_3_pages(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_4_nav(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_5_tld(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_6_keywords(signals, model_scores, industry_scores, methods)
+      {model_scores, industry_scores, methods} = layer_7_dns(signals, model_scores, industry_scores, methods)
 
-    pick_winner(model_scores, industry_scores, methods)
+      pick_winner(model_scores, industry_scores, methods)
+    end
   rescue
     _ -> @empty_result
   end
@@ -147,6 +152,7 @@ defmodule LS.HTTP.BusinessClassifier do
     "NewsMediaOrganization" => {"Media", 9, "Media & Entertainment", 9},
     # Generic
     "LocalBusiness" => {"Consulting", 3, nil, 0},
+    "ProfessionalService" => {"Consulting", 6, nil, 0},
     "Organization" => {nil, 0, nil, 0},
     "WebSite" => {nil, 0, nil, 0},
   }
@@ -373,6 +379,7 @@ defmodule LS.HTTP.BusinessClassifier do
   @model_keywords [
     {~r/\bsaas\b|cloud[- ]based|cloud platform/i, "SaaS", 7},
     {~r/free trial|start free|try free|try it free/i, "SaaS", 5},
+    {~r/web hosting|shared hosting|\bvps\b|dedicated server|managed hosting|cloud hosting/i, "SaaS", 6},
     {~r/per user|per seat|per month|billed annually|billed monthly/i, "SaaS", 6},
     {~r/request (?:a )?demo|book (?:a )?demo|schedule (?:a )?demo|get (?:a )?demo/i, "SaaS", 5},
     {~r/sign up free|get started free|start your free/i, "SaaS", 4},
@@ -385,17 +392,17 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/consulting firm|management consulting|strategy consulting/i, "Consulting", 7},
     {~r/law firm|attorneys?\b|lawyers?\b|legal (?:services|practice|team)/i, "Consulting", 7},
     {~r/newsletter|weekly digest|daily brief|subscribe to (?:our|the)/i, "Newsletter", 5},
-    {~r/marketplace|buy and sell|connect buyers/i, "Marketplace", 6},
+    {~r/\bmarketplace\b|buy and sell|connect buyers/i, "Marketplace", 6},
     {~r/online course|bootcamp|online (?:learning|classes|school)/i, "Education", 5},
     {~r/calculator|generator|converter|checker|(?:free )?tool\b/i, "Tool", 6},
-    {~r/community|forum|discussion|join (?:the |our )?community/i, "Community", 4},
+    {~r/\bcommunity forum\b|\bdiscussion board\b|\bforum topic|online community|members area/i, "Community", 4},
     {~r/latest news|breaking news|editorial|journalism|reporting/i, "Media", 5},
     {~r/directory|listing|submit your|find (?:a |local )/i, "Directory", 4},
   ]
 
   # Industry patterns: {regex, industry, points}
   @industry_keywords [
-    {~r/\bfintech\b|payment[s ]?(?:platform|solution|gateway)|banking|lending|mortgage|(?:invest|trading)\b|crypto(?:currency)?/i, "Fintech", 6},
+    {~r/\bfintech\b|payment[s ]?(?:platform|gateway)|(?:payment processing)|banking|lending|mortgage|(?:invest|trading)\b|crypto(?:currency)?/i, "Fintech", 6},
     {~r/\bhipaa\b|telemedicine|telehealth|\behr\b|clinical|patient[s ]?(?:care|portal)|medical|healthcare/i, "Healthcare", 7},
     {~r/marketing (?:platform|software|tool|automation)|(?:\bseo\b|\bppc\b|\bcrm\b)|email marketing|lead gen/i, "Marketing", 6},
     {~r/\bhr\b software|recruiting|payroll|onboarding|\bats\b|applicant tracking|talent (?:management|acquisition)/i, "HR & Recruiting", 6},
@@ -414,7 +421,7 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/data analytics|business intelligence|\bbi\b (?:tool|platform|solution)|data (?:visualization|warehouse|pipeline)/i, "Data & Analytics", 6},
     {~r/online (?:learning|education|school|university)|e-?learning|\blms\b|student|academic|curriculum/i, "Education", 5},
     {~r/hotel|travel (?:agency|booking)|tourism|vacation|flight|destination/i, "Travel", 6},
-    {~r/streaming|entertainment|gaming|music|video|podcast|media (?:company|production)/i, "Media & Entertainment", 5},
+    {~r/streaming|entertainment|gaming|music (?:label|platform|production)|podcast|media (?:company|production)|film (?:production|studio)|tv (?:show|series)/i, "Media & Entertainment", 5},
     {~r/ecommerce|e-commerce|online (?:store|shop|retail)|retail (?:platform|solution)/i, "Ecommerce & Retail", 5},
   ]
 
@@ -545,5 +552,38 @@ defmodule LS.HTTP.BusinessClassifier do
       v when is_binary(v) -> v
       _ -> ""
     end
+  end
+
+  # Detects Shopify password/setup pages that show generic platform copy
+  # instead of the actual store content. These pages contain "payment solution"
+  # in their meta description which falsely triggers Fintech industry matching.
+  defp parking_page?(signals) do
+    title = s(signals, :http_title) |> String.downcase()
+    body = s(signals, :body_text) |> String.downcase()
+
+    String.contains?(title, "domain for sale") or
+      String.contains?(title, "parked domain") or
+      String.contains?(title, "website coming soon") or
+      String.contains?(body, "this domain is for sale") or
+      String.contains?(body, "buy this domain") or
+      title == "storefront"
+  end
+
+  defp default_shopify_page?(signals) do
+    title = s(signals, :http_title)
+    body = s(signals, :body_text)
+
+    String.contains?(title, "Ecommerce Software by Shopify") or
+      String.contains?(title, "E-Commerce-Software von Shopify") or
+      String.contains?(title, "E-commercesoftware van Shopify") or
+      String.contains?(title, "E-Ticaret Yazılımı") or
+      String.contains?(title, "logiciel de commerce") or
+      String.contains?(title, "Software di ecommerce di Shopify") or
+      title == "My Store" or
+      title == "Opening Soon" or
+      String.contains?(body, "store is currently unavailable") or
+      String.contains?(body, "is currently unavailable") or
+      String.contains?(body, "store is coming soon") or
+      String.contains?(body, "Opening Soon")
   end
 end

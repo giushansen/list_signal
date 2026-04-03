@@ -28,6 +28,10 @@ config :logger, :console,
 
 config :phoenix, :json_library, Jason
 
+# ML — Nx/EXLA configuration
+config :nx, default_backend: EXLA.Backend
+config :exla, default_client: :host
+
 config :swoosh, :api_client, false
 
 config :ssl,

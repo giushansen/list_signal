@@ -267,6 +267,36 @@ defmodule LS.Clickhouse do
     end
   end
 
+  # ── Recrawl scheduler ──
+
+  @doc """
+  Fetch domains that need re-crawling based on tiered freshness.
+  Digital businesses (Ecommerce, SaaS, Tool, Marketplace, Agency) → stale after `weekly_days`.
+  Everything else → stale after `monthly_days`.
+  Returns {:ok, [domain, ...]} or {:error, reason}.
+  """
+  def stale_domains(weekly_days, monthly_days, limit \\ 5000) do
+    # Digital business models that get weekly crawling
+    digital_bms = "'Ecommerce','SaaS','Tool','Marketplace','Agency'"
+
+    sql = """
+    SELECT domain FROM domains_current FINAL
+    WHERE (
+      (business_model IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{weekly_days} DAY)
+      OR
+      (business_model NOT IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{monthly_days} DAY)
+    )
+    AND http_status IS NOT NULL
+    ORDER BY tranco_rank ASC NULLS LAST
+    LIMIT #{limit}
+    """
+
+    case query(sql) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d] -> d end)}
+      err -> err
+    end
+  end
+
   # ── Raw + Public ──
 
   def query_raw(sql) do

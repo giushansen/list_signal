@@ -35,12 +35,15 @@
     </p>
 
     <div class="mx-auto max-w-[660px] mb-2 animate-fade-in-up-delay-2">
-      <form id="heroForm" action="/search" method="get" class="flex items-center rounded-[14px] bg-white p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.4),0_0_40px_rgba(16,185,129,0.2)] transition-shadow focus-within:shadow-[0_0_0_2px_#10B981,0_20px_60px_rgba(0,0,0,0.5),0_0_60px_rgba(16,185,129,0.25)]">
-        <div class="pl-4 pr-1 flex items-center text-slate-400">
+      <form id="heroForm" action="/search" method="get" class="relative flex items-center rounded-[14px] bg-white p-1.5 shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_20px_60px_rgba(0,0,0,0.4),0_0_40px_rgba(16,185,129,0.2)] transition-shadow focus-within:shadow-[0_0_0_2px_#10B981,0_20px_60px_rgba(0,0,0,0.5),0_0_60px_rgba(16,185,129,0.25)]">
+        <div class="pl-4 pr-1 flex items-center text-slate-400" id="searchIcon">
           <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="7"/><path d="M16 16l-4-4"/></svg>
         </div>
-        <input type="text" name="q" id="heroSearch" placeholder="Enter a store URL or search an app name..." class="flex-1 border-none outline-none bg-transparent font-body text-base text-slate-900 px-3 py-3.5 placeholder:text-slate-400" autocomplete="off" />
+        <input type="text" name="q" id="heroSearch" placeholder="Enter a store URL or search a technology..." class="flex-1 border-none outline-none bg-transparent font-body text-base text-slate-900 px-3 py-3.5 placeholder:text-slate-400" autocomplete="off" />
         <button type="submit" id="heroBtn" class="rounded-[10px] bg-accent px-7 py-3.5 font-display text-[15px] font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px whitespace-nowrap">Look up</button>
+        <%!-- Autocomplete dropdown --%>
+        <div id="acDropdown" class="hidden absolute left-0 right-0 top-full mt-1 rounded-xl bg-white border border-slate-200 shadow-xl z-50 overflow-hidden max-h-[320px] overflow-y-auto">
+        </div>
       </form>
     </div>
 
@@ -72,7 +75,7 @@
     </div>
 
     <p class="text-[13px] text-white/35 animate-fade-in-up-delay-3" id="searchHints">
-      Try: <button onclick="fillSearch('gymshark.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">gymshark.com</button> · <button onclick="fillSearch('Klaviyo')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Klaviyo</button> · <button onclick="fillSearch('allbirds.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">allbirds.com</button>
+      Try: <button onclick="fillSearch('gymshark.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">gymshark.com</button> · <button onclick="fillSearch('Shopify')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Shopify</button> · <button onclick="fillSearch('HubSpot')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">HubSpot</button> · <button onclick="fillSearch('Klaviyo')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Klaviyo</button> · <button onclick="fillSearch('allbirds.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">allbirds.com</button>
     </p>
   </div>
 </section>
@@ -223,8 +226,100 @@ function cflag(c){if(!c||c.length!==2)return '';const o=0x1F1A5;return String.fr
 const html=s=>`<div class="flex items-center gap-2.5 px-7 whitespace-nowrap text-[13px] text-white/60 border-r border-white/[0.07]"><a href="/shopify/${s.n.replace(/\./g,'-')}" class="text-white font-medium hover:text-accent transition-colors">${s.n}</a><span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Shopify</span>${s.c?`<span class="text-sm">${cflag(s.c)}</span>`:''}</div>`;
 const el=document.getElementById('tickerTrack');if(stores.length>0){el.innerHTML=stores.map(html).join('')+stores.map(html).join('')}else{el.innerHTML='<div class="px-7 text-[13px] text-white/40">Pipeline active — new stores detected every minute</div>'}})();
 
+// ═══ TECH AUTOCOMPLETE ═══
+(function(){
+  const input=document.getElementById('heroSearch');
+  const dropdown=document.getElementById('acDropdown');
+  const icon=document.getElementById('searchIcon');
+  let debounceTimer=null;
+  let selectedIdx=-1;
+  let lastResults=[];
+
+  function isDomain(val){return val.includes('.')}
+
+  function updateIcon(recognized){
+    if(recognized===null){
+      icon.innerHTML='<svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="7"/><path d="M16 16l-4-4"/></svg>';
+    }else if(recognized){
+      icon.innerHTML='<svg width="20" height="20" fill="none" stroke="#10B981" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M7 10l2 2 4-4"/></svg>';
+    }else{
+      icon.innerHTML='<svg width="20" height="20" fill="none" stroke="#EF4444" stroke-width="2.5" stroke-linecap="round"><circle cx="10" cy="10" r="7"/><path d="M7 7l6 6M13 7l-6 6"/></svg>';
+    }
+  }
+
+  function hideDropdown(){dropdown.classList.add('hidden');dropdown.innerHTML='';selectedIdx=-1;lastResults=[];}
+
+  function showResults(results,query){
+    lastResults=results;
+    selectedIdx=-1;
+    if(!results.length){
+      if(query.length>=2){
+        dropdown.innerHTML='<div class="px-4 py-3 text-sm text-red-500 flex items-center gap-2"><svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="6"/><path d="M6 6l4 4M10 6l-4 4"/></svg>No technology named "'+query+'" in our database</div>';
+        dropdown.classList.remove('hidden');
+        updateIcon(false);
+      }else{hideDropdown();updateIcon(null);}
+      return;
+    }
+    updateIcon(true);
+    dropdown.innerHTML=results.map(function(r,i){
+      return '<button type="button" data-idx="'+i+'" class="ac-item w-full text-left px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0" onmousedown="acSelect('+i+')">'
+        +'<span class="text-sm font-medium text-slate-800">'+r.name+'</span>'
+        +'<span class="text-xs text-slate-400">'+r.count.toLocaleString()+' sites</span>'
+        +'</button>';
+    }).join('');
+    dropdown.classList.remove('hidden');
+  }
+
+  function fetchSuggestions(q){
+    fetch('/api/tech/suggest?q='+encodeURIComponent(q))
+      .then(function(r){return r.json()})
+      .then(function(d){
+        if(d.ok&&input.value.trim().toLowerCase()===q.toLowerCase()){
+          showResults(d.results,q);
+        }
+      }).catch(function(){});
+  }
+
+  input.addEventListener('input',function(){
+    const val=input.value.trim();
+    if(!val||isDomain(val)){hideDropdown();updateIcon(null);return;}
+    clearTimeout(debounceTimer);
+    debounceTimer=setTimeout(function(){fetchSuggestions(val)},150);
+  });
+
+  input.addEventListener('keydown',function(e){
+    if(dropdown.classList.contains('hidden')||!lastResults.length)return;
+    if(e.key==='ArrowDown'){e.preventDefault();selectedIdx=Math.min(selectedIdx+1,lastResults.length-1);highlightItem();}
+    else if(e.key==='ArrowUp'){e.preventDefault();selectedIdx=Math.max(selectedIdx-1,0);highlightItem();}
+    else if(e.key==='Enter'&&selectedIdx>=0){e.preventDefault();acSelect(selectedIdx);}
+    else if(e.key==='Escape'){hideDropdown();}
+  });
+
+  function highlightItem(){
+    dropdown.querySelectorAll('.ac-item').forEach(function(el,i){
+      el.style.background=i===selectedIdx?'#f1f5f9':'';
+    });
+  }
+
+  window.acSelect=function(idx){
+    if(lastResults[idx]){input.value=lastResults[idx].name;hideDropdown();updateIcon(true);input.focus();}
+  };
+
+  document.addEventListener('click',function(e){
+    if(!e.target.closest('#heroForm'))hideDropdown();
+  });
+
+  input.addEventListener('focus',function(){
+    const val=input.value.trim();
+    if(val&&!isDomain(val)&&val.length>=1){clearTimeout(debounceTimer);debounceTimer=setTimeout(function(){fetchSuggestions(val)},100);}
+  });
+})();
+
 // ═══ INLINE SEARCH — the main thing ═══
-function fillSearch(t){document.getElementById('heroSearch').value=t;document.getElementById('heroSearch').focus()}
+function fillSearch(t){document.getElementById('heroSearch').value=t;document.getElementById('heroSearch').focus();
+  // Trigger autocomplete check for tech names
+  document.getElementById('heroSearch').dispatchEvent(new Event('input'));
+}
 
 function resetSearch(){
   document.getElementById('searchProgress').classList.add('hidden');

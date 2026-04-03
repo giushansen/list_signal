@@ -53,9 +53,11 @@ defmodule LS.Application do
       LS.Reputation.Tranco,
       LS.Reputation.Majestic,
       LS.Reputation.Blocklist,
+      LS.ML.Classifier,
       LS.Cluster.WorkQueue,
       LS.Cluster.Inserter,
       LS.Cluster.Monitor,
+      LS.Recrawl.Scheduler,
       LSWeb.Endpoint
     ]
     if mode == "ctl_live", do: master ++ [LS.CTL.Poller],
@@ -73,6 +75,7 @@ defmodule LS.Application do
       LS.Reputation.Tranco,
       LS.Reputation.Majestic,
       LS.Reputation.Blocklist,
+      LS.ML.Classifier,
       LS.HTTP.PerformanceTracker,
       LS.Cluster.WorkerAgent
     ]
