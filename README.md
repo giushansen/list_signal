@@ -4,6 +4,67 @@ Domain intelligence platform. Ingests SSL certificates in real-time, enriches do
 
 No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's it.
 
+## User-Facing Application
+
+### Auth & Accounts
+
+- **Registration**: Email-only (magic link). Visit `/users/register`.
+- **Login**: Magic link (primary) or password (secondary). Visit `/users/log-in`.
+- **Sessions**: Cookie-based, remember-me, session reissue at 7 days.
+- **Settings**: `/users/settings` — change email, set password, manage subscription.
+- Generated via `mix phx.gen.auth` with `current_scope` pattern.
+
+### Plans & Billing
+
+| Feature | Free | Pro ($49/mo) |
+|---------|------|--------------|
+| Browse/filter | Rate-limited | Unlimited |
+| Results/page | 25 | 100 |
+| CSV export | 100 rows/mo | 5,000 rows/mo |
+
+- `User.effective_plan/1` is the single source of truth for access level.
+- Stripe Checkout for subscription, Stripe Customer Portal for management.
+- Stripe customer created lazily at checkout, not at registration.
+- Webhook at `POST /webhooks/stripe` handles subscription lifecycle events.
+
+### Data Explorer (`/app`)
+
+- Authenticated-only filterable table of ClickHouse domain intelligence.
+- **Filters**: Tech stack, Country, Business Model, Industry, Revenue, Employees, Language, Domain search, Freshness.
+- **Row expand**: Click a row for full detail (tech, apps, hosting, registrar, SSL, response time, etc.).
+- **CSV Export**: `GET /app/export` — available on paid plans, respects monthly limits.
+- **Rate limiting**: ETS-based per-user (10/60 req/min by plan).
+
+### Environment Variables (Billing)
+
+```bash
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRO_MONTHLY_PRICE_ID=price_...
+STRIPE_PRO_YEARLY_PRICE_ID=price_...
+MAILGUN_API_KEY=key-...           # prod only
+MAILGUN_DOMAIN=mg.listsignal.com  # prod only
+```
+
+### Seed Users (Development)
+
+```bash
+mix run priv/repo/seeds.exs
+```
+
+Creates two test users:
+- `admin@listsignal.com` — Pro plan, manual override
+- `free@listsignal.com` — Free plan
+
+### Manual Plan Overrides (IEx)
+
+```elixir
+u = LS.Repo.get_by(LS.Accounts.User, email: "friend@example.com")
+{:ok, u} = u |> Ecto.Changeset.change(plan: "pro", stripe_subscription_id: "manual_override") |> LS.Repo.update()
+LS.Accounts.User.effective_plan(u)  # => "pro"
+```
+
 ---
 
 ## Quick Start — Starting & Restarting Nodes

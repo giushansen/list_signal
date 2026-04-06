@@ -52,6 +52,7 @@ defmodule LSWeb do
     quote do
       import Phoenix.HTML
       import Phoenix.Component
+      import LSWeb.CoreComponents, only: [translate_error: 1]
       unquote(verified_routes())
     end
   end

@@ -22,6 +22,7 @@ defmodule LS.Application do
       :ets.new(:lookup_result_cache, [:set, :public, :named_table, read_concurrency: true])
     end
 
+    LS.RateLimiter.init()
     children = common_children() ++ role_children(role, mode)
     Supervisor.start_link(children, strategy: :one_for_one, name: LS.Supervisor)
   end

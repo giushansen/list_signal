@@ -1,6 +1,20 @@
 import Config
 
+config :ls, :scopes,
+  user: [
+    default: true,
+    module: LS.Accounts.Scope,
+    assign_key: :current_scope,
+    access_path: [:user, :id],
+    schema_key: :user_id,
+    schema_type: :binary_id,
+    schema_table: :users,
+    test_data_fixture: LS.AccountsFixtures,
+    test_setup_helper: :register_and_log_in_user
+  ]
+
 config :ls,
+  namespace: LS,
   ecto_repos: [LS.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
@@ -21,6 +35,7 @@ config :ls, LSWeb.Endpoint,
   live_view: [signing_salt: "ls_salt_2026"]
 
 config :ls, LS.Mailer, adapter: Swoosh.Adapters.Local
+config :ls, :stripe_client, LS.StripeClient
 
 config :logger, :console,
   format: "$time [$level] $message\n",

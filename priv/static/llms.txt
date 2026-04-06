@@ -26,5 +26,5 @@ Ranked lists of Shopify stores by country and technology.
 - [All Countries](/countries)
 
 ## Pricing
-- Explorer (Free): 50 lookups/month
-- Pro ($79/month): Unlimited lookups, full data, API, CSV exports
+- Free: Rate-limited searches, 100 CSV exports/month, 25 results/page
+- Pro ($49/month): Unlimited searches, 5,000 CSV exports/month, 100 results/page, full data

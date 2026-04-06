@@ -6,12 +6,16 @@ defmodule LS.MixProject do
       app: :ls,
       version: "0.1.0",
       elixir: "~> 1.18",
+      elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
       listeners: [Phoenix.CodeReloader]
     ]
   end
+
+  defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(_), do: ["lib"]
 
   def application do
     [
@@ -22,6 +26,7 @@ defmodule LS.MixProject do
 
   defp deps do
     [
+      {:bcrypt_elixir, "~> 3.0"},
       {:phoenix, "~> 1.7"},
       {:phoenix_html, "~> 4.1"},
       {:phoenix_live_view, "~> 1.0"},
@@ -37,9 +42,12 @@ defmodule LS.MixProject do
       # Database
       {:ecto_sql, "~> 3.10"},
       {:ecto_sqlite3, ">= 0.0.0"},
+      {:phoenix_ecto, "~> 4.6"},
       # Email
       {:swoosh, "~> 1.5"},
       {:finch, "~> 0.13"},
+      # Billing
+      {:stripity_stripe, "~> 3.0"},
       # Pipeline
       {:req, "~> 0.5"},
       {:paasaa, "~> 1.0"},
@@ -47,14 +55,16 @@ defmodule LS.MixProject do
       # ML — sentence embeddings for Tier 2 classification
       {:bumblebee, "~> 0.6"},
       {:nx, "~> 0.9"},
-      {:exla, "~> 0.9"}
+      {:exla, "~> 0.9"},
+      # Test
+      {:lazy_html, ">= 0.1.0", only: :test}
     ]
   end
 
   defp aliases do
     [
       setup: ["deps.get", "ecto.setup", "assets.setup", "assets.build"],
-      "ecto.setup": ["ecto.create", "ecto.migrate"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind ls", "esbuild ls"],
