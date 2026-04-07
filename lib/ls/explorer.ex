@@ -26,7 +26,7 @@ defmodule LS.Explorer do
   )
 
   @business_models ~w(
-    Ecommerce SaaS Tool Marketplace Agency Portfolio Blog Media
+    Ecommerce Shopify SaaS Tool Marketplace Agency Portfolio Blog Media
     Community Government Education Nonprofit Other
   )
 
@@ -144,13 +144,14 @@ defmodule LS.Explorer do
   end
 
   @doc "Get distinct app values (split by pipe separator)."
-  def distinct_apps(prefix \\ "", limit \\ 50) do
+  def distinct_apps(prefix \\ "", limit \\ 50, opts \\ []) do
     prefix_clause = if prefix != "", do: "HAVING lower(app) LIKE '%#{esc(String.downcase(prefix))}%'", else: ""
+    tech_clause = if opts[:shopify_only], do: "AND lower(http_tech) LIKE '%shopify%'", else: ""
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_apps)) AS app
     FROM domains_current FINAL
-    WHERE http_apps != ''
+    WHERE http_apps != '' #{tech_clause}
     GROUP BY app
     #{prefix_clause}
     ORDER BY app ASC
@@ -196,8 +197,30 @@ defmodule LS.Explorer do
 
   defp filter_clause({:business_model, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["business_model = '#{esc(hd(values))}'"],
-    else: ["business_model IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    # "Shopify" is a platform detected via http_tech, not a business_model DB value
+    {shopify, regular} = Enum.split_with(values, &(&1 == "Shopify"))
+
+    clauses = []
+
+    clauses =
+      case regular do
+        [] -> clauses
+        [single] -> clauses ++ ["business_model = '#{esc(single)}'"]
+        many -> clauses ++ ["business_model IN (#{Enum.map_join(many, ",", &"'#{esc(&1)}'")})" ]
+      end
+
+    clauses =
+      if shopify != [] do
+        clauses ++ ["lower(http_tech) LIKE '%shopify%'"]
+      else
+        clauses
+      end
+
+    case clauses do
+      [] -> []
+      [single] -> [single]
+      multiple -> ["(" <> Enum.join(multiple, " OR ") <> ")"]
+    end
   end
 
   defp filter_clause({:industry, v}) when is_binary(v) and v != "" do

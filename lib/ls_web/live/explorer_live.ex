@@ -202,35 +202,41 @@ defmodule LSWeb.ExplorerLive do
   end
 
   defp fetch_dropdown_options("tech", query), do: fetch_techs(query)
-  defp fetch_dropdown_options("shopify_app", query), do: fetch_apps(query)
+  defp fetch_dropdown_options("shopify_app", query), do: fetch_apps(query, shopify_only: true)
   defp fetch_dropdown_options("country", query), do: fetch_distinct("bgp_asn_country", query)
   defp fetch_dropdown_options("language", query), do: fetch_distinct("http_language", query)
-  defp fetch_dropdown_options("business_model", _query), do: Explorer.business_models()
-  defp fetch_dropdown_options("industry", _query), do: Explorer.industries()
-  defp fetch_dropdown_options("revenue", _query), do: ["<$1M", "$1M-$10M", "$10M-$50M", "$50M-$100M", "$100M-$1B", "$1B+"]
-  defp fetch_dropdown_options("employees", _query), do: ["1-10", "11-50", "51-200", "201-500", "501-5000", "5001+"]
-  defp fetch_dropdown_options("freshness", _query), do: ["24h", "7d", "30d"]
+  defp fetch_dropdown_options("business_model", query), do: filter_static(Explorer.business_models(), query)
+  defp fetch_dropdown_options("industry", query), do: filter_static(Explorer.industries(), query)
+  defp fetch_dropdown_options("revenue", query), do: filter_static(["<$1M", "$1M-$10M", "$10M-$50M", "$50M-$100M", "$100M-$1B", "$1B+"], query)
+  defp fetch_dropdown_options("employees", query), do: filter_static(["1-10", "11-50", "51-200", "201-500", "501-5000", "5001+"], query)
+  defp fetch_dropdown_options("freshness", query), do: filter_static(["24h", "7d", "30d"], query)
   defp fetch_dropdown_options(_, _), do: []
 
   defp fetch_techs(query) do
-    case Explorer.distinct_techs(query, 30) do
+    case Explorer.distinct_techs(query, 500) do
       {:ok, techs} -> techs
       _ -> []
     end
   end
 
-  defp fetch_apps(query) do
-    case Explorer.distinct_apps(query, 30) do
+  defp fetch_apps(query, opts) do
+    case Explorer.distinct_apps(query, 500, opts) do
       {:ok, apps} -> apps
       _ -> []
     end
   end
 
   defp fetch_distinct(column, query) do
-    case Explorer.distinct_values(column, query, 30) do
+    case Explorer.distinct_values(column, query, 500) do
       {:ok, values} -> values
       _ -> []
     end
+  end
+
+  defp filter_static(options, ""), do: options
+  defp filter_static(options, query) do
+    q = String.downcase(query)
+    Enum.filter(options, fn opt -> String.downcase(opt) |> String.contains?(q) end)
   end
 
   defp load_data(socket) do
@@ -360,14 +366,21 @@ defmodule LSWeb.ExplorerLive do
       <%!-- Header --%>
       <header class="border-b border-white/[0.06] bg-[#0F1628]">
         <div class="max-w-[1700px] mx-auto px-5 py-3.5 flex items-center justify-between">
-          <div class="flex items-center gap-3">
+          <.link navigate={~p"/app"} class="flex items-center gap-3 hover:opacity-80 transition">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-xs font-extrabold text-white">LS</div>
-            <span class="text-white font-semibold text-[15px] tracking-tight">Explorer</span>
-          </div>
+            <span class="text-white font-semibold text-[15px] tracking-tight">Dashboard</span>
+          </.link>
           <div class="flex items-center gap-4 text-sm">
-            <span class={"inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase #{plan_badge_class(@plan)}"}>
-              <%= @plan %>
-            </span>
+            <%= if @plan == "free" do %>
+              <button phx-click="show_upgrade" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/25 hover:ring-amber-500/50 transition cursor-pointer animate-pulse">
+                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                FREE — Upgrade
+              </button>
+            <% else %>
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20">
+                <%= @plan %>
+              </span>
+            <% end %>
             <.link navigate={~p"/users/settings"} class="text-gray-500 hover:text-white transition text-sm">Settings</.link>
             <.link href={~p"/users/log-out"} method="delete" class="text-gray-500 hover:text-white transition text-sm">Log out</.link>
           </div>
@@ -416,11 +429,11 @@ defmodule LSWeb.ExplorerLive do
                 phx-click="remove_tag"
                 phx-value-field={to_string(tag.field)}
                 phx-value-value={tag.value}
-                class="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 bg-emerald-500/[0.1] border border-emerald-500/20 rounded-full text-[12px] text-emerald-400 font-medium cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.06] group/tag transition"
+                class="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 bg-white/[0.06] border border-white/[0.10] rounded-full text-[12px] text-gray-300 font-medium cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.06] group/tag transition"
               >
-                <span class="text-emerald-600/70 text-[10px] uppercase"><%= tag.label %>:</span>
+                <span class="text-gray-500 text-[10px] uppercase"><%= tag.label %>:</span>
                 <span><%= tag.value %></span>
-                <svg class="w-3 h-3 text-emerald-500/50 group-hover/tag:text-red-400 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
+                <svg class="w-3 h-3 text-gray-500 group-hover/tag:text-red-400 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
               </div>
             <% end %>
             <%= if active_filter_count(@filters) > 1 do %>
@@ -433,17 +446,17 @@ defmodule LSWeb.ExplorerLive do
 
           <%!-- Row 2: Filter dropdown selectors --%>
           <div class="flex items-center gap-2 flex-wrap">
+            <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
             <%= for {field, label, icon, searchable} <- [
               {"tech", "Tech", "🔧", true},
-              {"shopify_app", "Shopify Apps", "🛍️", true},
               {"country", "Country", "🌍", true},
-              {"business_model", "Business", "🏢", false},
-              {"industry", "Industry", "🏭", false},
-              {"revenue", "Revenue", "💰", false},
-              {"employees", "Employees", "👥", false},
+              {"business_model", "Business", "🏢", true},
+              {"industry", "Industry", "🏭", true},
+              {"revenue", "Revenue", "💰", true},
+              {"employees", "Employees", "👥", true},
               {"language", "Language", "🗣️", true},
-              {"freshness", "Freshness", "🕐", false}
-            ] do %>
+              {"freshness", "Freshness", "🕐", true}
+            ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>
               <.filter_dropdown
                 field={field} label={label} icon={icon} searchable={searchable}
                 filters={@filters}
@@ -492,7 +505,7 @@ defmodule LSWeb.ExplorerLive do
           <%!-- Table --%>
           <div class={"flex-1 min-w-0 transition-all duration-200 #{if @expanded, do: "max-w-[60%]"}"}>
             <div class="rounded-xl border border-white/[0.06] bg-[#0F1628] overflow-hidden">
-              <div class="overflow-x-auto">
+              <div class="overflow-x-auto dark-scrollbar">
                 <table id="explorer-table" phx-hook="ResizableTable" class="w-full text-[13px] table-fixed">
                   <colgroup>
                     <col data-col="domain" style="width:140px" />
@@ -527,13 +540,13 @@ defmodule LSWeb.ExplorerLive do
                   <tbody class="divide-y divide-white/[0.04]">
                     <%= for row <- @results do %>
                       <tr phx-click="expand" phx-value-domain={row["domain"]}
-                        class={"group cursor-pointer transition-colors hover:bg-emerald-500/[0.04] #{if @expanded == row["domain"], do: "bg-emerald-500/[0.07] ring-1 ring-inset ring-emerald-500/20"}"}>
-                        <td class="px-4 py-2.5 font-medium text-emerald-400 truncate"><%= row["domain"] %></td>
+                        class={"group cursor-pointer transition-colors hover:bg-white/[0.03] #{if @expanded == row["domain"], do: "bg-blue-500/[0.06] ring-1 ring-inset ring-blue-500/20"}"}>
+                        <td class="px-4 py-2.5 font-medium text-blue-400 truncate"><%= row["domain"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-300"><%= row["http_title"] %></td>
                         <td class="px-3 py-2.5">
                           <div class="flex flex-wrap gap-1 overflow-hidden">
                             <%= for tech <- format_tech(row["http_tech"]) |> Enum.take(2) do %>
-                              <span class="px-1.5 py-0.5 bg-emerald-500/[0.08] text-emerald-400/90 rounded text-[11px] font-medium truncate max-w-[80px]"><%= tech %></span>
+                              <span class="px-1.5 py-0.5 bg-purple-500/[0.08] text-purple-400/90 rounded text-[11px] font-medium truncate max-w-[80px]"><%= tech %></span>
                             <% end %>
                             <%= if length(format_tech(row["http_tech"])) > 2 do %>
                               <span class="text-gray-600 text-[11px]">+<%= length(format_tech(row["http_tech"])) - 2 %></span>
@@ -577,9 +590,9 @@ defmodule LSWeb.ExplorerLive do
                 <div class="px-5 py-4 border-b border-white/[0.06] bg-[#0B1020]">
                   <div class="flex items-center justify-between">
                     <div class="flex items-center gap-2.5 min-w-0">
-                      <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-400 text-lg flex-shrink-0">🌐</div>
+                      <div class="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 text-lg flex-shrink-0">🌐</div>
                       <div class="min-w-0 flex-1">
-                        <h3 class="text-[15px] font-bold text-white truncate"><%= @detail["domain"] %></h3>
+                        <a href={"https://#{@detail["domain"]}"} target="_blank" rel="noopener noreferrer" class="text-[15px] font-bold text-blue-400 hover:text-blue-300 hover:underline truncate block transition"><%= @detail["domain"] %></a>
                         <%= if @detail["http_title"] && @detail["http_title"] != "" do %>
                           <p class="text-[12px] text-gray-400 mt-0.5 line-clamp-2" title={@detail["http_title"]}><%= @detail["http_title"] %></p>
                         <% end %>
@@ -592,70 +605,73 @@ defmodule LSWeb.ExplorerLive do
                 </div>
 
                 <%!-- Body --%>
-                <div class="overflow-y-auto max-h-[calc(100vh-180px)] p-5 space-y-4" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;">
-                  <%!-- Crawled / enriched timestamp --%>
+                <div class="overflow-y-auto max-h-[calc(100vh-180px)] p-5 space-y-4 dark-scrollbar">
+                  <%!-- Crawled timestamp --%>
                   <div class="flex items-center gap-2 text-[11px] text-gray-500 pb-1 border-b border-white/[0.04]">
                     <span>🕐</span>
                     <span>Crawled: <span class="text-gray-300"><%= format_datetime(@detail["enriched_at"]) %></span></span>
                   </div>
 
-                  <%!-- Classification --%>
-                  <div class="grid grid-cols-2 gap-2.5">
+                  <%!-- Classification: Business + Industry + Confidence on one line --%>
+                  <div class="grid grid-cols-3 gap-2.5">
                     <.detail_card icon="🏢" label="Business Model" value={@detail["business_model"]} />
                     <.detail_card icon="🏭" label="Industry" value={@detail["industry"]} />
-                    <.detail_card icon="💰" label="Revenue" value={@detail["estimated_revenue"]} />
-                    <.detail_card icon="👥" label="Employees" value={@detail["estimated_employees"]} />
-                    <.detail_card icon="🌍" label="Country" value={if @detail["bgp_asn_country"], do: "#{country_flag(@detail["bgp_asn_country"])} #{@detail["bgp_asn_country"]}"} />
-                    <.detail_card icon="🗣️" label="Language" value={@detail["http_language"]} />
+                    <.detail_card icon="🎯" label="Confidence" value={format_pct(@detail["classification_confidence"])} />
                   </div>
 
-                  <%!-- Confidence scores --%>
-                  <%= if has_value?(@detail["classification_confidence"]) || has_value?(@detail["revenue_confidence"]) do %>
-                    <div class="grid grid-cols-2 gap-2.5">
-                      <.detail_card icon="🎯" label="Class. Confidence" value={format_pct(@detail["classification_confidence"])} />
-                      <.detail_card icon="📊" label="Rev. Confidence" value={format_pct(@detail["revenue_confidence"])} />
-                    </div>
-                  <% end %>
+                  <%!-- Revenue: Revenue + Employees + Confidence on one line --%>
+                  <div class="grid grid-cols-3 gap-2.5">
+                    <.detail_card icon="💰" label="Revenue" value={@detail["estimated_revenue"]} />
+                    <.detail_card icon="👥" label="Employees" value={@detail["estimated_employees"]} />
+                    <.detail_card icon="📊" label="Confidence" value={format_pct(@detail["revenue_confidence"])} />
+                  </div>
 
-                  <%!-- Tech stack --%>
-                  <.detail_section icon="🔧" label="Tech Stack">
+                  <%!-- Country + Language --%>
+                  <div class="grid grid-cols-2 gap-2.5">
+                    <.detail_card icon="🌍" label="Country" value={if @detail["bgp_asn_country"], do: "#{country_flag(@detail["bgp_asn_country"])} #{country_name(@detail["bgp_asn_country"])}"} />
+                    <.detail_card icon="🗣️" label="Language" value={if @detail["http_language"], do: language_name(@detail["http_language"])} />
+                  </div>
+
+                  <%!-- Tech stack — purple --%>
+                  <.detail_section_badge icon="🔧" label="Tech Stack" badge={tech_section_badge(@detail)}>
                     <div class="flex flex-wrap gap-1.5">
                       <%= for tech <- format_tech(@detail["http_tech"]) do %>
-                        <span class="px-2 py-1 bg-emerald-500/[0.08] text-emerald-400/90 rounded-md text-[11px] font-medium"><%= tech %></span>
+                        <span class="px-2 py-1 bg-purple-500/[0.08] text-purple-400/90 rounded-md text-[11px] font-medium"><%= tech %></span>
                       <% end %>
                       <%= if format_tech(@detail["http_tech"]) == [] do %>
                         <span class="text-gray-600 text-xs">No data</span>
                       <% end %>
                     </div>
-                  </.detail_section>
+                  </.detail_section_badge>
 
-                  <%!-- Apps --%>
+                  <%!-- Apps — purple --%>
                   <%= if has_value?(@detail["http_apps"]) do %>
-                    <.detail_section icon="📦" label="Apps">
+                    <.detail_section_badge icon="📦" label="Apps" badge={app_section_badge(@detail)}>
                       <div class="flex flex-wrap gap-1.5">
                         <%= for app <- format_tech(@detail["http_apps"]) do %>
-                          <span class="px-2 py-1 bg-blue-500/[0.08] text-blue-400/90 rounded-md text-[11px] font-medium"><%= app %></span>
+                          <span class="px-2 py-1 bg-purple-500/[0.08] text-purple-400/90 rounded-md text-[11px] font-medium"><%= app %></span>
                         <% end %>
                       </div>
-                    </.detail_section>
+                    </.detail_section_badge>
                   <% end %>
 
-                  <%!-- Revenue Evidence --%>
+                  <%!-- Revenue Evidence — gold/silver/bronze --%>
                   <%= if format_evidence(@detail["revenue_evidence"]) != [] do %>
-                    <.detail_section icon="📊" label="Revenue Evidence">
-                      <ul class="space-y-1.5">
+                    <.detail_section_badge icon="📊" label="Revenue Evidence" badge={nil}>
+                      <div class="space-y-1.5">
                         <%= for item <- format_evidence(@detail["revenue_evidence"]) do %>
-                          <li class="flex items-start gap-2 text-[12px] text-gray-300">
-                            <span class="w-1 h-1 rounded-full bg-emerald-500/60 mt-1.5 flex-shrink-0"></span>
-                            <span><%= item %></span>
-                          </li>
+                          <% {tier, label} = parse_evidence_item(item) %>
+                          <div class="flex items-center gap-2 text-[12px]">
+                            <span class={evidence_tier_class(tier)}><%= evidence_tier_dot(tier) %></span>
+                            <span class={evidence_tier_text_class(tier)}><%= label %></span>
+                          </div>
                         <% end %>
-                      </ul>
-                    </.detail_section>
+                      </div>
+                    </.detail_section_badge>
                   <% end %>
 
-                  <%!-- HTTP info --%>
-                  <.detail_section icon="🌐" label="HTTP">
+                  <%!-- HTTP --%>
+                  <.detail_section_badge icon="🌐" label="HTTP" badge={nil}>
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="⚡" label="Response Time" value={format_response_time(@detail["http_response_time"])} />
                       <.detail_card icon="📡" label="Status" value={@detail["http_status"]} />
@@ -674,57 +690,67 @@ defmodule LSWeb.ExplorerLive do
                         <p class="text-[12px] text-gray-300"><%= @detail["http_h1"] %></p>
                       </div>
                     <% end %>
+                    <%!-- Pages — blue, clickable --%>
                     <%= if has_value?(@detail["http_pages"]) do %>
                       <div class="mt-2.5 bg-[#0B1020] rounded-lg p-3">
                         <div class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1">📑 Pages</div>
                         <div class="flex flex-wrap gap-1.5">
                           <%= for page <- format_pipe_list(@detail["http_pages"]) |> Enum.take(10) do %>
-                            <span class="px-2 py-0.5 bg-white/[0.04] text-gray-400 rounded text-[11px]"><%= page %></span>
+                            <a href={"https://#{@detail["domain"]}#{page}"} target="_blank" rel="noopener noreferrer"
+                              class="px-2 py-0.5 bg-blue-500/[0.06] text-blue-400 hover:text-blue-300 hover:bg-blue-500/[0.12] rounded text-[11px] transition"><%= page %></a>
                           <% end %>
                         </div>
                       </div>
                     <% end %>
-                  </.detail_section>
+                  </.detail_section_badge>
 
-                  <%!-- Emails --%>
+                  <%!-- Emails — blue --%>
                   <%= if has_value?(@detail["http_emails"]) do %>
-                    <.detail_section icon="📧" label="Emails">
+                    <.detail_section_badge icon="📧" label="Emails" badge={nil}>
                       <div class="space-y-1">
                         <%= for email <- format_pipe_list(@detail["http_emails"]) do %>
                           <div class="text-[12px] text-blue-400"><%= email %></div>
                         <% end %>
                       </div>
-                    </.detail_section>
+                    </.detail_section_badge>
                   <% end %>
 
-                  <%!-- DNS --%>
-                  <.detail_section icon="🔍" label="DNS">
+                  <%!-- DNS — with MX provider + badge --%>
+                  <.detail_section_badge icon="🔍" label="DNS" badge={dns_section_badge(@detail)}>
+                    <%= if has_value?(@detail["dns_mx"]) do %>
+                      <% provider = mx_provider(@detail["dns_mx"]) %>
+                      <%= if provider do %>
+                        <div class="flex items-center gap-2 mb-2.5 bg-[#0B1020] rounded-lg px-3 py-2">
+                          <span class="text-[11px] text-gray-500">Mail Provider</span>
+                          <span class="text-[13px] font-semibold text-white"><%= provider %></span>
+                        </div>
+                      <% end %>
+                    <% end %>
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="🅰️" label="A Record" value={@detail["dns_a"]} />
                       <.detail_card icon="6️⃣" label="AAAA Record" value={@detail["dns_aaaa"]} />
-                      <.detail_card icon="📮" label="MX Record" value={@detail["dns_mx"]} />
+                      <.detail_card icon="📮" label="MX Record" value={format_mx_short(@detail["dns_mx"])} />
                       <.detail_card icon="↪️" label="CNAME" value={@detail["dns_cname"]} />
                     </div>
-                  </.detail_section>
+                  </.detail_section_badge>
 
                   <%!-- Network / BGP --%>
-                  <.detail_section icon="📡" label="Network (BGP)">
+                  <.detail_section_badge icon="📡" label="Network (BGP)" badge={network_section_badge(@detail)}>
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="🔢" label="IP Address" value={@detail["bgp_ip"]} />
                       <.detail_card icon="#️⃣" label="ASN Number" value={@detail["bgp_asn_number"]} />
                       <.detail_card icon="🏢" label="ASN Org" value={@detail["bgp_asn_org"]} />
                       <.detail_card icon="🌐" label="ASN Prefix" value={@detail["bgp_asn_prefix"]} />
                     </div>
-                  </.detail_section>
+                  </.detail_section_badge>
 
-                  <%!-- RDAP / Domain registration --%>
-                  <.detail_section icon="🏛️" label="Domain Registration (RDAP)">
+                  <%!-- Domain Registration --%>
+                  <.detail_section_badge icon="🏛️" label="Domain Registration" badge={domain_section_badge(@detail)}>
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="📅" label="Created" value={format_date(@detail["rdap_domain_created_at"])} />
                       <.detail_card icon="⏳" label="Expires" value={format_date(@detail["rdap_domain_expires_at"])} />
                       <.detail_card icon="🔄" label="Updated" value={format_date(@detail["rdap_domain_updated_at"])} />
                       <.detail_card icon="🏛️" label="Registrar" value={@detail["rdap_registrar"]} />
-                      <.detail_card icon="🆔" label="Registrar IANA" value={@detail["rdap_registrar_iana_id"]} />
                       <.detail_card icon="📋" label="Status" value={@detail["rdap_status"]} />
                     </div>
                     <%= if has_value?(@detail["rdap_nameservers"]) do %>
@@ -737,49 +763,49 @@ defmodule LSWeb.ExplorerLive do
                         </div>
                       </div>
                     <% end %>
-                  </.detail_section>
+                  </.detail_section_badge>
 
-                  <%!-- SSL / Certificate Transparency --%>
-                  <.detail_section icon="🔒" label="SSL / Certificates">
+                  <%!-- SSL / Certificates --%>
+                  <.detail_section_badge icon="🔒" label="SSL / Certificates" badge={ssl_section_badge(@detail)}>
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="🔒" label="SSL Issuer" value={@detail["ctl_issuer"]} />
                       <.detail_card icon="🌐" label="TLD" value={@detail["ctl_tld"]} />
                       <.detail_card icon="🔢" label="Subdomains" value={@detail["ctl_subdomain_count"]} />
                     </div>
-                  </.detail_section>
+                  </.detail_section_badge>
 
-                  <%!-- Subdomain list --%>
+                  <%!-- Subdomain list — purple --%>
                   <%= if format_subdomains(@detail["ctl_subdomains"]) != [] do %>
-                    <.detail_section icon="🔗" label="Subdomain List">
+                    <.detail_section_badge icon="🔗" label="Subdomain List" badge={nil}>
                       <div class="flex flex-wrap gap-1.5">
                         <%= for sub <- format_subdomains(@detail["ctl_subdomains"]) |> Enum.take(30) do %>
-                          <span class="px-2 py-1 bg-white/[0.04] text-gray-400 rounded-md text-[11px]"><%= sub %></span>
+                          <span class="px-2 py-1 bg-purple-500/[0.06] text-purple-400/80 rounded-md text-[11px]"><%= sub %></span>
                         <% end %>
                         <%= if length(format_subdomains(@detail["ctl_subdomains"])) > 30 do %>
                           <span class="text-gray-600 text-[11px]">+<%= length(format_subdomains(@detail["ctl_subdomains"])) - 30 %> more</span>
                         <% end %>
                       </div>
-                    </.detail_section>
+                    </.detail_section_badge>
                   <% end %>
 
                   <%!-- Rankings --%>
-                  <.detail_section icon="📈" label="Rankings">
+                  <.detail_section_badge icon="📈" label="Rankings" badge={rankings_section_badge(@detail)}>
                     <div class="grid grid-cols-3 gap-2.5">
                       <.detail_card icon="📈" label="Tranco" value={format_rank(@detail["tranco_rank"])} />
                       <.detail_card icon="👑" label="Majestic" value={format_rank(@detail["majestic_rank"])} />
                       <.detail_card icon="🌐" label="Ref Subnets" value={@detail["majestic_ref_subnets"]} />
                     </div>
-                  </.detail_section>
+                  </.detail_section_badge>
 
-                  <%!-- Reputation flags --%>
+                  <%!-- Reputation --%>
                   <%= if any_flag?(@detail) do %>
-                    <.detail_section icon="🛡️" label="Reputation">
+                    <.detail_section_badge icon="🛡️" label="Reputation" badge={nil}>
                       <div class="flex flex-wrap gap-2">
                         <.flag_badge label="Malware" value={@detail["is_malware"]} />
                         <.flag_badge label="Phishing" value={@detail["is_phishing"]} />
                         <.flag_badge label="Disposable Email" value={@detail["is_disposable_email"]} />
                       </div>
-                    </.detail_section>
+                    </.detail_section_badge>
                   <% end %>
                 </div>
               </div>
@@ -834,14 +860,14 @@ defmodule LSWeb.ExplorerLive do
 
     ~H"""
     <th class="px-3 py-3 text-left relative group/th select-none">
-      <span class={"inline-flex items-center gap-1 #{if @active, do: "text-emerald-400", else: "text-gray-500"}"}>
+      <span class={"inline-flex items-center gap-1 #{if @active, do: "text-white", else: "text-gray-500"}"}>
         <%= @label %>
         <%= if @summary do %>
-          <span class="text-[9px] font-bold bg-emerald-500/20 text-emerald-400 rounded px-1 py-0.5 normal-case max-w-[60px] truncate" title={@summary}><%= @summary %></span>
+          <span class="text-[9px] font-bold bg-white/[0.10] text-gray-300 rounded px-1 py-0.5 normal-case max-w-[60px] truncate" title={@summary}><%= @summary %></span>
         <% end %>
       </span>
       <%!-- Resize handle --%>
-      <div class="col-resize-handle absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize bg-transparent hover:bg-emerald-500/30 transition-colors"></div>
+      <div class="col-resize-handle absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize bg-transparent hover:bg-white/20 transition-colors"></div>
     </th>
     """
   end
@@ -868,7 +894,7 @@ defmodule LSWeb.ExplorerLive do
         phx-value-field={@field}
         class={"inline-flex items-center gap-1.5 h-9 px-3 rounded-lg border text-sm transition " <>
           if(@count > 0,
-            do: "bg-emerald-500/[0.08] border-emerald-500/30 text-emerald-400",
+            do: "bg-white/[0.06] border-white/[0.15] text-white",
             else: "bg-[#141C30] border-white/[0.08] text-gray-400 hover:border-white/[0.15] hover:text-gray-300"
           )}
       >
@@ -894,7 +920,7 @@ defmodule LSWeb.ExplorerLive do
           <% end %>
 
           <%!-- Options --%>
-          <div class="max-h-56 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;">
+          <div class="max-h-72 overflow-y-auto" style="scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.08) transparent;">
             <%= for option <- @dropdown_options do %>
               <% checked = MapSet.member?(@selected, option) %>
               <div
@@ -902,18 +928,33 @@ defmodule LSWeb.ExplorerLive do
                 phx-value-field={@field}
                 phx-value-value={option}
                 class={"flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left transition cursor-pointer select-none " <>
-                  if(checked, do: "bg-emerald-500/[0.06]", else: "hover:bg-white/[0.03]")}
+                  if(checked, do: "bg-white/[0.04]", else: "hover:bg-white/[0.03]")}
               >
                 <span class={"flex items-center justify-center w-4 h-4 rounded flex-shrink-0 border transition " <>
                   if(checked,
-                    do: "bg-emerald-500 border-emerald-500",
+                    do: "bg-blue-500 border-blue-500",
                     else: "border-gray-600 bg-transparent"
                   )}>
                   <%= if checked do %>
                     <svg class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" /></svg>
                   <% end %>
                 </span>
-                <span class={"truncate #{if checked, do: "text-emerald-400 font-medium", else: "text-gray-300"}"}><%= option %></span>
+                <%!-- Custom rendering for country (flag + name + code) and language (name + code) --%>
+                <%= if @field == "country" do %>
+                  <span class={"flex-1 flex items-center justify-between gap-1 #{if checked, do: "text-white font-medium", else: "text-gray-300"}"}>
+                    <span class="truncate"><%= country_flag(option) %> <%= country_name(option) %></span>
+                    <span class="text-gray-500 text-xs flex-shrink-0"><%= option %></span>
+                  </span>
+                <% else %>
+                  <%= if @field == "language" do %>
+                    <span class={"flex-1 flex items-center justify-between gap-1 #{if checked, do: "text-white font-medium", else: "text-gray-300"}"}>
+                      <span class="truncate"><%= language_name(option) %></span>
+                      <span class="text-gray-500 text-xs flex-shrink-0"><%= option %></span>
+                    </span>
+                  <% else %>
+                    <span class={"truncate #{if checked, do: "text-white font-medium", else: "text-gray-300"}"}><%= option %></span>
+                  <% end %>
+                <% end %>
               </div>
             <% end %>
             <%= if @dropdown_options == [] do %>
@@ -950,11 +991,16 @@ defmodule LSWeb.ExplorerLive do
     """
   end
 
-  defp detail_section(assigns) do
+  defp detail_section_badge(assigns) do
     ~H"""
     <div class="bg-[#0B1020]/50 rounded-lg p-3.5 border border-white/[0.03]">
-      <div class="flex items-center gap-1.5 text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-2.5">
-        <span><%= @icon %></span><%= @label %>
+      <div class="flex items-center justify-between mb-2.5">
+        <div class="flex items-center gap-1.5 text-[10px] text-gray-600 uppercase tracking-wider font-semibold">
+          <span><%= @icon %></span><%= @label %>
+        </div>
+        <%= if @badge do %>
+          <span class={badge_class(@badge)}><%= badge_label(@badge) %></span>
+        <% end %>
       </div>
       <%= render_slot(@inner_block) %>
     </div>
@@ -1024,9 +1070,6 @@ defmodule LSWeb.ExplorerLive do
     end
   end
 
-  defp plan_badge_class("pro"), do: "bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20"
-  defp plan_badge_class(_), do: "bg-gray-500/15 text-gray-400 ring-1 ring-gray-500/20"
-
   defp has_value?(nil), do: false
   defp has_value?(""), do: false
   defp has_value?(0), do: false
@@ -1088,4 +1131,261 @@ defmodule LSWeb.ExplorerLive do
   defp filter_params(filters) do
     filters |> Enum.reject(fn {_k, v} -> v == "" or is_nil(v) end) |> Map.new(fn {k, v} -> {to_string(k), v} end)
   end
+
+  # Badge system: :gold, :silver, :bronze
+  defp badge_class(:gold), do: "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-400/15 text-amber-400 ring-1 ring-amber-400/30"
+  defp badge_class(:silver), do: "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-gray-300/10 text-gray-300 ring-1 ring-gray-300/20"
+  defp badge_class(:bronze), do: "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-orange-500/10 text-orange-400 ring-1 ring-orange-400/25"
+  defp badge_class(_), do: ""
+
+  defp badge_label(:gold), do: "Gold"
+  defp badge_label(:silver), do: "Silver"
+  defp badge_label(:bronze), do: "Bronze"
+  defp badge_label(_), do: ""
+
+  # MX provider detection
+  defp mx_provider(nil), do: nil
+  defp mx_provider(""), do: nil
+  defp mx_provider(mx) when is_binary(mx) do
+    lower = String.downcase(mx)
+    cond do
+      String.contains?(lower, "google") or String.contains?(lower, "aspmx") -> "Google Workspace"
+      String.contains?(lower, "outlook") or String.contains?(lower, "microsoft") -> "Microsoft 365"
+      String.contains?(lower, "protonmail") or String.contains?(lower, "proton") -> "Proton Mail"
+      String.contains?(lower, "zoho") -> "Zoho Mail"
+      String.contains?(lower, "mimecast") -> "Mimecast"
+      String.contains?(lower, "barracuda") -> "Barracuda"
+      String.contains?(lower, "pphosted") or String.contains?(lower, "proofpoint") -> "Proofpoint"
+      String.contains?(lower, "yahoodns") or String.contains?(lower, "yahoo") -> "Yahoo Mail"
+      String.contains?(lower, "secureserver") or String.contains?(lower, "godaddy") -> "GoDaddy Email"
+      String.contains?(lower, "ovh") -> "OVH Mail"
+      true -> nil
+    end
+  end
+  defp mx_provider(_), do: nil
+
+  defp format_mx_short(nil), do: nil
+  defp format_mx_short(""), do: nil
+  defp format_mx_short(mx) when is_binary(mx) do
+    mx |> String.split("|") |> hd() |> String.trim()
+  end
+  defp format_mx_short(_), do: nil
+
+  # Evidence parsing: "tranco:top_100k:25741->mid_market" -> {:gold, "Tranco #25,741 — Mid Market"}
+  defp parse_evidence_item(item) when is_binary(item) do
+    case String.split(item, [":", "→", "->"], parts: 4) do
+      [signal, tier, val, estimate] ->
+        badge = evidence_signal_tier(signal, tier)
+        label = "#{humanize_signal(signal)} #{humanize_val(val)} — #{humanize_estimate(estimate)}"
+        {badge, label}
+      [signal, tier, val_or_est] ->
+        badge = evidence_signal_tier(signal, tier)
+        {badge, "#{humanize_signal(signal)} #{humanize_val(tier)} — #{humanize_estimate(val_or_est)}"}
+      _ -> {:bronze, item}
+    end
+  end
+  defp parse_evidence_item(item), do: {:bronze, to_string(item)}
+
+  defp evidence_signal_tier(signal, tier) do
+    t = String.downcase(tier)
+    cond do
+      String.contains?(t, "enterprise") or String.contains?(t, "top_10k") or String.contains?(t, "top_50k") -> :gold
+      String.contains?(t, "mid_market") or String.contains?(t, "top_100k") or String.contains?(t, "top_500k") -> :gold
+      String.contains?(t, "small") or String.contains?(t, "top_1m") -> :silver
+      String.contains?(t, "micro") or String.contains?(t, "basic") -> :bronze
+      String.downcase(signal) in ~w(tranco majestic ref_subnets) -> :silver
+      true -> :bronze
+    end
+  end
+
+  defp humanize_signal(s) do
+    case String.downcase(s) do
+      "tranco" -> "Tranco"
+      "majestic" -> "Majestic"
+      "ref_subnets" -> "Ref Subnets"
+      "ssl_issuer" -> "SSL"
+      "mx" -> "Email"
+      "spf_includes" -> "SPF"
+      "tech_count" -> "Tech Stack"
+      "app_count" -> "Apps"
+      "cms" -> "CMS"
+      "tools" -> "Tool"
+      other -> other |> String.replace("_", " ") |> String.capitalize()
+    end
+  end
+
+  defp humanize_val(v) do
+    case Integer.parse(v) do
+      {n, _} when n > 999 -> "##{format_number(n)}"
+      {n, _} -> "#{n}"
+      :error -> v |> String.replace("_", " ")
+    end
+  end
+
+  defp humanize_estimate(e), do: e |> String.replace("_", " ") |> String.capitalize()
+
+  defp evidence_tier_class(:gold), do: "w-2 h-2 rounded-full bg-amber-400 flex-shrink-0"
+  defp evidence_tier_class(:silver), do: "w-2 h-2 rounded-full bg-gray-300 flex-shrink-0"
+  defp evidence_tier_class(:bronze), do: "w-2 h-2 rounded-full bg-orange-500 flex-shrink-0"
+  defp evidence_tier_class(_), do: "w-2 h-2 rounded-full bg-gray-600 flex-shrink-0"
+
+  defp evidence_tier_dot(:gold), do: ""
+  defp evidence_tier_dot(:silver), do: ""
+  defp evidence_tier_dot(:bronze), do: ""
+  defp evidence_tier_dot(_), do: ""
+
+  defp evidence_tier_text_class(:gold), do: "text-amber-400 font-medium"
+  defp evidence_tier_text_class(:silver), do: "text-gray-300"
+  defp evidence_tier_text_class(:bronze), do: "text-orange-400/80"
+  defp evidence_tier_text_class(_), do: "text-gray-500"
+
+  # Section badges
+  defp tech_section_badge(d) do
+    count = length(format_tech(d["http_tech"]))
+    cond do
+      count >= 8 -> :gold
+      count >= 4 -> :silver
+      count >= 1 -> :bronze
+      true -> nil
+    end
+  end
+
+  defp app_section_badge(d) do
+    count = length(format_pipe_list(d["http_apps"]))
+    cond do
+      count >= 5 -> :gold
+      count >= 2 -> :silver
+      count >= 1 -> :bronze
+      true -> nil
+    end
+  end
+
+  defp dns_section_badge(d) do
+    mx = mx_provider(d["dns_mx"])
+    cond do
+      mx in ["Google Workspace", "Microsoft 365", "Proofpoint", "Mimecast"] -> :gold
+      mx != nil -> :silver
+      has_value?(d["dns_mx"]) -> :bronze
+      true -> nil
+    end
+  end
+
+  defp network_section_badge(d) do
+    org = to_string(d["bgp_asn_org"]) |> String.downcase()
+    cond do
+      String.contains?(org, "amazon") or String.contains?(org, "aws") -> :gold
+      String.contains?(org, "google") or String.contains?(org, "gcp") -> :gold
+      String.contains?(org, "cloudflare") -> :gold
+      String.contains?(org, "microsoft") or String.contains?(org, "azure") -> :gold
+      String.contains?(org, "fastly") or String.contains?(org, "akamai") -> :silver
+      String.contains?(org, "digitalocean") or String.contains?(org, "hetzner") -> :silver
+      String.contains?(org, "ovh") or String.contains?(org, "linode") -> :silver
+      has_value?(d["bgp_asn_org"]) -> :bronze
+      true -> nil
+    end
+  end
+
+  defp domain_section_badge(d) do
+    registrar = to_string(d["rdap_registrar"]) |> String.downcase()
+    has_dates = has_value?(d["rdap_domain_created_at"])
+    cond do
+      String.contains?(registrar, "markmonitor") or String.contains?(registrar, "csc") -> :gold
+      String.contains?(registrar, "networksolutions") or String.contains?(registrar, "safenames") -> :gold
+      has_dates and has_value?(d["rdap_registrar"]) -> :silver
+      has_dates -> :bronze
+      true -> nil
+    end
+  end
+
+  defp ssl_section_badge(d) do
+    sub_count = parse_int(d["ctl_subdomain_count"])
+    issuer = to_string(d["ctl_issuer"]) |> String.downcase()
+    cond do
+      sub_count >= 20 or String.contains?(issuer, "digicert") or String.contains?(issuer, "globalsign") -> :gold
+      sub_count >= 5 or String.contains?(issuer, "amazon") or String.contains?(issuer, "sectigo") -> :silver
+      has_value?(d["ctl_issuer"]) -> :bronze
+      true -> nil
+    end
+  end
+
+  defp rankings_section_badge(d) do
+    tranco = parse_int(d["tranco_rank"])
+    majestic = parse_int(d["majestic_rank"])
+    best = Enum.min([tranco || 999_999_999, majestic || 999_999_999])
+    cond do
+      best <= 100_000 -> :gold
+      best <= 500_000 -> :silver
+      best <= 2_000_000 -> :bronze
+      true -> nil
+    end
+  end
+
+  defp parse_int(nil), do: nil
+  defp parse_int(n) when is_integer(n), do: n
+  defp parse_int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> nil
+    end
+  end
+  defp parse_int(_), do: nil
+
+  @country_names %{
+    "AD" => "Andorra", "AE" => "United Arab Emirates", "AF" => "Afghanistan", "AG" => "Antigua & Barbuda",
+    "AL" => "Albania", "AM" => "Armenia", "AO" => "Angola", "AR" => "Argentina", "AT" => "Austria",
+    "AU" => "Australia", "AZ" => "Azerbaijan", "BA" => "Bosnia", "BB" => "Barbados", "BD" => "Bangladesh",
+    "BE" => "Belgium", "BG" => "Bulgaria", "BH" => "Bahrain", "BM" => "Bermuda", "BN" => "Brunei",
+    "BO" => "Bolivia", "BR" => "Brazil", "BS" => "Bahamas", "BW" => "Botswana", "BY" => "Belarus",
+    "BZ" => "Belize", "CA" => "Canada", "CD" => "DR Congo", "CH" => "Switzerland", "CI" => "Ivory Coast",
+    "CL" => "Chile", "CM" => "Cameroon", "CN" => "China", "CO" => "Colombia", "CR" => "Costa Rica",
+    "CU" => "Cuba", "CW" => "Curacao", "CY" => "Cyprus", "CZ" => "Czechia", "DE" => "Germany",
+    "DK" => "Denmark", "DO" => "Dominican Republic", "DZ" => "Algeria", "EC" => "Ecuador", "EE" => "Estonia",
+    "EG" => "Egypt", "ES" => "Spain", "ET" => "Ethiopia", "FI" => "Finland", "FJ" => "Fiji",
+    "FR" => "France", "GA" => "Gabon", "GB" => "United Kingdom", "GE" => "Georgia", "GH" => "Ghana",
+    "GR" => "Greece", "GT" => "Guatemala", "GU" => "Guam", "HK" => "Hong Kong", "HN" => "Honduras",
+    "HR" => "Croatia", "HU" => "Hungary", "ID" => "Indonesia", "IE" => "Ireland", "IL" => "Israel",
+    "IN" => "India", "IQ" => "Iraq", "IR" => "Iran", "IS" => "Iceland", "IT" => "Italy",
+    "JM" => "Jamaica", "JO" => "Jordan", "JP" => "Japan", "KE" => "Kenya", "KG" => "Kyrgyzstan",
+    "KH" => "Cambodia", "KR" => "South Korea", "KW" => "Kuwait", "KY" => "Cayman Islands", "KZ" => "Kazakhstan",
+    "LA" => "Laos", "LB" => "Lebanon", "LI" => "Liechtenstein", "LK" => "Sri Lanka", "LT" => "Lithuania",
+    "LU" => "Luxembourg", "LV" => "Latvia", "LY" => "Libya", "MA" => "Morocco", "MC" => "Monaco",
+    "MD" => "Moldova", "ME" => "Montenegro", "MG" => "Madagascar", "MK" => "North Macedonia", "MM" => "Myanmar",
+    "MN" => "Mongolia", "MO" => "Macau", "MT" => "Malta", "MU" => "Mauritius", "MV" => "Maldives",
+    "MX" => "Mexico", "MY" => "Malaysia", "MZ" => "Mozambique", "NA" => "Namibia", "NG" => "Nigeria",
+    "NI" => "Nicaragua", "NL" => "Netherlands", "NO" => "Norway", "NP" => "Nepal", "NZ" => "New Zealand",
+    "OM" => "Oman", "PA" => "Panama", "PE" => "Peru", "PH" => "Philippines", "PK" => "Pakistan",
+    "PL" => "Poland", "PR" => "Puerto Rico", "PS" => "Palestine", "PT" => "Portugal", "PY" => "Paraguay",
+    "QA" => "Qatar", "RO" => "Romania", "RS" => "Serbia", "RU" => "Russia", "RW" => "Rwanda",
+    "SA" => "Saudi Arabia", "SC" => "Seychelles", "SD" => "Sudan", "SE" => "Sweden", "SG" => "Singapore",
+    "SI" => "Slovenia", "SK" => "Slovakia", "SN" => "Senegal", "SO" => "Somalia", "SV" => "El Salvador",
+    "TH" => "Thailand", "TN" => "Tunisia", "TR" => "Turkey", "TT" => "Trinidad & Tobago", "TW" => "Taiwan",
+    "TZ" => "Tanzania", "UA" => "Ukraine", "UG" => "Uganda", "US" => "United States", "UY" => "Uruguay",
+    "UZ" => "Uzbekistan", "VE" => "Venezuela", "VG" => "British Virgin Islands", "VI" => "US Virgin Islands",
+    "VN" => "Vietnam", "ZA" => "South Africa", "ZM" => "Zambia", "ZW" => "Zimbabwe"
+  }
+
+  defp country_name(code) when is_binary(code), do: Map.get(@country_names, String.upcase(code), code)
+  defp country_name(_), do: ""
+
+  @language_names %{
+    "en" => "English", "fr" => "French", "de" => "German", "es" => "Spanish", "it" => "Italian",
+    "pt" => "Portuguese", "nl" => "Dutch", "ru" => "Russian", "zh" => "Chinese", "ja" => "Japanese",
+    "ko" => "Korean", "ar" => "Arabic", "hi" => "Hindi", "bn" => "Bengali", "pa" => "Punjabi",
+    "tr" => "Turkish", "vi" => "Vietnamese", "th" => "Thai", "pl" => "Polish", "uk" => "Ukrainian",
+    "ro" => "Romanian", "el" => "Greek", "cs" => "Czech", "sv" => "Swedish", "hu" => "Hungarian",
+    "fi" => "Finnish", "da" => "Danish", "no" => "Norwegian", "sk" => "Slovak", "bg" => "Bulgarian",
+    "hr" => "Croatian", "sr" => "Serbian", "sl" => "Slovenian", "lt" => "Lithuanian", "lv" => "Latvian",
+    "et" => "Estonian", "ms" => "Malay", "id" => "Indonesian", "tl" => "Filipino", "he" => "Hebrew",
+    "fa" => "Persian", "ur" => "Urdu", "sw" => "Swahili", "af" => "Afrikaans", "ca" => "Catalan",
+    "gl" => "Galician", "eu" => "Basque", "is" => "Icelandic", "ga" => "Irish", "cy" => "Welsh",
+    "sq" => "Albanian", "mk" => "Macedonian", "bs" => "Bosnian", "mt" => "Maltese", "ka" => "Georgian",
+    "hy" => "Armenian", "az" => "Azerbaijani", "kk" => "Kazakh", "uz" => "Uzbek", "mn" => "Mongolian",
+    "km" => "Khmer", "lo" => "Lao", "my" => "Burmese", "ne" => "Nepali", "si" => "Sinhala",
+    "am" => "Amharic", "ta" => "Tamil", "te" => "Telugu", "kn" => "Kannada", "ml" => "Malayalam",
+    "mr" => "Marathi", "gu" => "Gujarati"
+  }
+
+  defp language_name(code) when is_binary(code), do: Map.get(@language_names, String.downcase(code), code)
+  defp language_name(_), do: ""
+
 end

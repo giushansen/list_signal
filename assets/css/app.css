@@ -14,3 +14,28 @@ body {
   background: rgba(16, 185, 129, 0.3);
   color: white;
 }
+
+/* Dark themed scrollbars for the data table */
+.dark-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(16, 185, 129, 0.25) rgba(255, 255, 255, 0.03);
+}
+
+.dark-scrollbar::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 4px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(16, 185, 129, 0.25);
+  border-radius: 4px;
+}
+
+.dark-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(16, 185, 129, 0.4);
+}
