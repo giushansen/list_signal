@@ -28,12 +28,15 @@ defmodule LSWeb.ExplorerLive do
         query_ms: nil,
         open_dropdown: nil,
         dropdown_query: "",
-        dropdown_options: []
+        dropdown_options: [],
+        rate_stats: %{used: 0, limit: 10, remaining: 10, reset_in: 60}
       )
 
     if connected?(socket) do
       RateLimiter.init()
+      :timer.send_interval(5_000, self(), :refresh_rate_stats)
       send(self(), :load_data)
+      send(self(), :refresh_rate_stats)
     end
 
     {:ok, socket}
@@ -54,6 +57,12 @@ defmodule LSWeb.ExplorerLive do
   @impl true
   def handle_info(:load_data, socket) do
     {:noreply, load_data(socket)}
+  end
+
+  def handle_info(:refresh_rate_stats, socket) do
+    user = socket.assigns.current_scope.user
+    plan = User.effective_plan(user)
+    {:noreply, assign(socket, rate_stats: RateLimiter.stats(user.id, plan))}
   end
 
   @impl true
@@ -257,7 +266,9 @@ defmodule LSWeb.ExplorerLive do
           end
 
         query_ms = System.monotonic_time(:millisecond) - t0
-        assign(socket, results: results, total: total, loading: false, query_ms: query_ms)
+        socket
+        |> assign(results: results, total: total, loading: false, query_ms: query_ms)
+        |> assign(rate_stats: RateLimiter.stats(user.id, plan))
 
       {:error, :rate_limited} ->
         socket
@@ -366,11 +377,41 @@ defmodule LSWeb.ExplorerLive do
       <%!-- Header --%>
       <header class="border-b border-white/[0.06] bg-[#0F1628]">
         <div class="max-w-[1700px] mx-auto px-5 py-3.5 flex items-center justify-between">
-          <.link navigate={~p"/app"} class="flex items-center gap-3 hover:opacity-80 transition">
+          <.link navigate={~p"/dashboard"} class="flex items-center gap-3 hover:opacity-80 transition">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-xs font-extrabold text-white">LS</div>
             <span class="text-white font-semibold text-[15px] tracking-tight">Dashboard</span>
           </.link>
           <div class="flex items-center gap-4 text-sm">
+            <%!-- Rate limit indicator --%>
+            <% rs = @rate_stats %>
+            <% pct = if rs.limit > 0, do: rs.used * 100 / rs.limit, else: 0 %>
+            <% bar_color = cond do
+              pct >= 90 -> "bg-red-500"
+              pct >= 70 -> "bg-amber-500"
+              true -> "bg-emerald-500"
+            end %>
+            <% text_color = cond do
+              pct >= 90 -> "text-red-400"
+              pct >= 70 -> "text-amber-400"
+              true -> "text-gray-400"
+            end %>
+            <div class="hidden md:flex items-center gap-2 group relative" title={"#{rs.remaining} of #{rs.limit} requests remaining this minute. Resets in #{rs.reset_in}s."}>
+              <span class={"text-[11px] font-medium #{text_color}"}>
+                <span class="text-white font-semibold"><%= rs.remaining %></span>/<%= rs.limit %> req/min
+              </span>
+              <div class="w-20 h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                <div class={"h-full #{bar_color} transition-all duration-500"} style={"width: #{min(pct, 100)}%"}></div>
+              </div>
+              <%!-- Tooltip --%>
+              <div class="absolute top-full right-0 mt-2 w-56 bg-[#0B1020] border border-white/[0.08] rounded-lg p-3 text-xs text-gray-300 shadow-2xl opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50">
+                <div class="font-semibold text-white mb-1">Rate Limit</div>
+                <div><%= rs.used %> used / <%= rs.limit %> per minute</div>
+                <div class="text-gray-500 mt-1">Resets in <%= rs.reset_in %>s</div>
+                <%= if @plan != "pro" do %>
+                  <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to Pro for 60 req/min</div>
+                <% end %>
+              </div>
+            </div>
             <%= if @plan == "free" do %>
               <button phx-click="show_upgrade" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/25 hover:ring-amber-500/50 transition cursor-pointer animate-pulse">
                 <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
@@ -381,8 +422,14 @@ defmodule LSWeb.ExplorerLive do
                 <%= @plan %>
               </span>
             <% end %>
-            <.link navigate={~p"/users/settings"} class="text-gray-500 hover:text-white transition text-sm">Settings</.link>
-            <.link href={~p"/users/log-out"} method="delete" class="text-gray-500 hover:text-white transition text-sm">Log out</.link>
+            <.link navigate={~p"/users/settings"} class="text-gray-500 hover:text-white transition inline-flex items-center gap-1.5 text-sm" title="Settings">
+              <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+              <span>Settings</span>
+            </.link>
+            <.link href={~p"/users/log-out"} method="delete" class="text-gray-500 hover:text-white transition inline-flex items-center gap-1.5 text-sm" title="Log out">
+              <.icon name="hero-arrow-right-start-on-rectangle" class="w-4 h-4" />
+              <span>Log out</span>
+            </.link>
           </div>
         </div>
       </header>
@@ -491,7 +538,7 @@ defmodule LSWeb.ExplorerLive do
               <%= if @total_pages > 1 do %>
                 <.pagination page={@page} total_pages={@total_pages} compact={true} />
               <% end %>
-              <a href={~p"/app/export?" <> URI.encode_query(filter_params(@filters))}
+              <a href={~p"/dashboard/export?" <> URI.encode_query(filter_params(@filters))}
                 class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                 Export CSV
@@ -675,7 +722,7 @@ defmodule LSWeb.ExplorerLive do
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="⚡" label="Response Time" value={format_response_time(@detail["http_response_time"])} />
                       <.detail_card icon="📡" label="Status" value={@detail["http_status"]} />
-                      <.detail_card icon="📄" label="Content Type" value={@detail["http_content_type"]} />
+                      <.detail_card icon="📄" label="Content Type" value={friendly_content_type(@detail["http_content_type"])} />
                       <.detail_card icon="🏷️" label="Schema Type" value={@detail["http_schema_type"]} />
                     </div>
                     <%= if has_value?(@detail["http_meta_description"]) do %>
@@ -715,16 +762,41 @@ defmodule LSWeb.ExplorerLive do
                     </.detail_section_badge>
                   <% end %>
 
-                  <%!-- DNS — with MX provider + badge --%>
+                  <%!-- DNS --%>
                   <.detail_section_badge icon="🔍" label="DNS" badge={dns_section_badge(@detail)}>
                     <%= if has_value?(@detail["dns_mx"]) do %>
                       <% provider = mx_provider(@detail["dns_mx"]) %>
                       <%= if provider do %>
                         <div class="flex items-center gap-2 mb-2.5 bg-[#0B1020] rounded-lg px-3 py-2">
-                          <span class="text-[11px] text-gray-500">Mail Provider</span>
+                          <span class="text-[11px] text-gray-500">📬 Mail Provider</span>
                           <span class="text-[13px] font-semibold text-white"><%= provider %></span>
                         </div>
                       <% end %>
+                    <% end %>
+                    <%!-- SPF and DKIM info derived from TXT --%>
+                    <% spf = parse_spf(@detail["dns_txt"]) %>
+                    <% dkim = parse_dkim(@detail["dns_txt"]) %>
+                    <%= if spf || dkim do %>
+                      <div class="grid grid-cols-2 gap-2.5 mb-2.5">
+                        <%= if spf do %>
+                          <div class="bg-[#0B1020] rounded-lg p-3">
+                            <div class="flex items-center justify-between text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1.5">
+                              <span>🛡️ SPF</span>
+                              <span class={badge_class(spf.tier)}><%= spf.emoji %> <%= badge_label(spf.tier) %></span>
+                            </div>
+                            <div class="text-[12px] text-gray-300"><%= spf.summary %></div>
+                          </div>
+                        <% end %>
+                        <%= if dkim do %>
+                          <div class="bg-[#0B1020] rounded-lg p-3">
+                            <div class="flex items-center justify-between text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1.5">
+                              <span>🔐 DKIM/DMARC</span>
+                              <span class={badge_class(dkim.tier)}><%= dkim.emoji %> <%= badge_label(dkim.tier) %></span>
+                            </div>
+                            <div class="text-[12px] text-gray-300"><%= dkim.summary %></div>
+                          </div>
+                        <% end %>
+                      </div>
                     <% end %>
                     <div class="grid grid-cols-2 gap-2.5">
                       <.detail_card icon="🅰️" label="A Record" value={@detail["dns_a"]} />
@@ -732,6 +804,20 @@ defmodule LSWeb.ExplorerLive do
                       <.detail_card icon="📮" label="MX Record" value={format_mx_short(@detail["dns_mx"])} />
                       <.detail_card icon="↪️" label="CNAME" value={@detail["dns_cname"]} />
                     </div>
+                    <%!-- TXT records — expandable --%>
+                    <%= if has_value?(@detail["dns_txt"]) do %>
+                      <details class="mt-2.5 bg-[#0B1020] rounded-lg p-3 group">
+                        <summary class="cursor-pointer text-[10px] text-gray-500 uppercase tracking-wider font-semibold hover:text-gray-300 transition flex items-center justify-between">
+                          <span>📝 TXT Records (<%= length(format_pipe_list(@detail["dns_txt"])) %>)</span>
+                          <span class="text-gray-600 group-open:rotate-90 transition-transform">▸</span>
+                        </summary>
+                        <div class="mt-2 space-y-1.5">
+                          <%= for txt <- format_pipe_list(@detail["dns_txt"]) do %>
+                            <div class="text-[11px] text-gray-400 font-mono break-all bg-white/[0.02] rounded px-2 py-1.5"><%= txt %></div>
+                          <% end %>
+                        </div>
+                      </details>
+                    <% end %>
                   </.detail_section_badge>
 
                   <%!-- Network / BGP --%>
@@ -774,12 +860,15 @@ defmodule LSWeb.ExplorerLive do
                     </div>
                   </.detail_section_badge>
 
-                  <%!-- Subdomain list — purple --%>
+                  <%!-- Subdomain list — purple, clickable --%>
                   <%= if format_subdomains(@detail["ctl_subdomains"]) != [] do %>
                     <.detail_section_badge icon="🔗" label="Subdomain List" badge={nil}>
                       <div class="flex flex-wrap gap-1.5">
                         <%= for sub <- format_subdomains(@detail["ctl_subdomains"]) |> Enum.take(30) do %>
-                          <span class="px-2 py-1 bg-purple-500/[0.06] text-purple-400/80 rounded-md text-[11px]"><%= sub %></span>
+                          <a href={"https://#{sub}.#{@detail["domain"]}"} target="_blank" rel="noopener noreferrer"
+                            class="px-2 py-1 bg-purple-500/[0.06] hover:bg-purple-500/[0.12] rounded-md text-[11px] transition">
+                            <span class="text-purple-400"><%= sub %></span><span class="text-gray-400">.<%= @detail["domain"] %></span>
+                          </a>
                         <% end %>
                         <%= if length(format_subdomains(@detail["ctl_subdomains"])) > 30 do %>
                           <span class="text-gray-600 text-[11px]">+<%= length(format_subdomains(@detail["ctl_subdomains"])) - 30 %> more</span>
@@ -820,6 +909,25 @@ defmodule LSWeb.ExplorerLive do
           </div>
         <% end %>
       </div>
+
+      <%!-- Discreet dashboard footer --%>
+      <footer class="border-t border-white/[0.04] mt-4">
+        <div class="max-w-[1700px] mx-auto px-5 py-5">
+          <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-[11px] text-gray-600">
+            <div class="flex items-center gap-2">
+              <div class="flex h-4 w-4 items-center justify-center rounded bg-emerald-500/80 text-[8px] font-extrabold text-white">LS</div>
+              <span>© 2026 ListSignal · A <span class="text-gray-500">ListSignal Pte Ltd</span> company, Singapore</span>
+            </div>
+            <div class="flex items-center gap-4">
+              <a href="/features" class="hover:text-gray-400 transition">Features</a>
+              <a href="/pricing" class="hover:text-gray-400 transition">Pricing</a>
+              <a href="/api/tools/lookup" class="hover:text-gray-400 transition">API</a>
+              <a href="/privacy" class="hover:text-gray-400 transition">Privacy</a>
+              <a href="/terms" class="hover:text-gray-400 transition">Terms</a>
+            </div>
+          </div>
+        </div>
+      </footer>
 
       <%!-- Upgrade modal --%>
       <%= if @show_upgrade do %>
@@ -1170,6 +1278,84 @@ defmodule LSWeb.ExplorerLive do
     mx |> String.split("|") |> hd() |> String.trim()
   end
   defp format_mx_short(_), do: nil
+
+  # Friendly content type: "text/html; charset=utf-8" -> "HTML"
+  defp friendly_content_type(nil), do: nil
+  defp friendly_content_type(""), do: nil
+  defp friendly_content_type(ct) when is_binary(ct) do
+    lower = String.downcase(ct)
+    cond do
+      String.contains?(lower, "text/html") -> "HTML"
+      String.contains?(lower, "application/xhtml") -> "XHTML"
+      String.contains?(lower, "application/json") -> "JSON"
+      String.contains?(lower, "application/xml") or String.contains?(lower, "text/xml") -> "XML"
+      String.contains?(lower, "application/pdf") -> "PDF"
+      String.contains?(lower, "text/plain") -> "Text"
+      String.contains?(lower, "text/css") -> "CSS"
+      String.contains?(lower, "javascript") -> "JavaScript"
+      String.contains?(lower, "image/") -> "Image"
+      String.contains?(lower, "video/") -> "Video"
+      String.contains?(lower, "audio/") -> "Audio"
+      true -> ct |> String.split(";") |> hd() |> String.trim()
+    end
+  end
+  defp friendly_content_type(_), do: nil
+
+  # SPF parser: returns %{tier, emoji, summary} or nil
+  defp parse_spf(nil), do: nil
+  defp parse_spf(""), do: nil
+  defp parse_spf(txt) when is_binary(txt) do
+    spf_record =
+      txt
+      |> String.split("|")
+      |> Enum.find(fn r -> String.starts_with?(String.trim(r), "v=spf1") end)
+
+    case spf_record do
+      nil -> nil
+      record ->
+        includes = Regex.scan(~r/include:(\S+)/, record) |> length()
+        has_all = String.contains?(record, "-all") or String.contains?(record, "~all")
+        strict = String.contains?(record, "-all")
+
+        {tier, emoji, summary} =
+          cond do
+            includes >= 3 and strict -> {:gold, "🏆", "Advanced — #{includes} includes, strict (-all)"}
+            includes >= 2 and has_all -> {:gold, "⭐", "Strong — #{includes} includes, #{if strict, do: "strict", else: "soft"}"}
+            includes >= 1 and has_all -> {:silver, "✓", "Standard — #{includes} include(s), #{if strict, do: "strict", else: "soft"}"}
+            has_all -> {:silver, "✓", "Basic — no includes, #{if strict, do: "strict", else: "soft"}"}
+            true -> {:bronze, "⚠", "Weak — no qualifier"}
+          end
+
+        %{tier: tier, emoji: emoji, summary: summary}
+    end
+  end
+  defp parse_spf(_), do: nil
+
+  # DKIM/DMARC parser
+  defp parse_dkim(nil), do: nil
+  defp parse_dkim(""), do: nil
+  defp parse_dkim(txt) when is_binary(txt) do
+    records = String.split(txt, "|")
+    dmarc = Enum.find(records, fn r -> String.contains?(r, "v=DMARC1") end)
+    has_dkim = Enum.any?(records, fn r -> String.contains?(r, "v=DKIM1") or String.contains?(r, "k=rsa") end)
+
+    cond do
+      dmarc && String.contains?(dmarc, "p=reject") ->
+        %{tier: :gold, emoji: "🏆", summary: "DMARC reject policy" <> if(has_dkim, do: " + DKIM", else: "")}
+
+      dmarc && String.contains?(dmarc, "p=quarantine") ->
+        %{tier: :gold, emoji: "⭐", summary: "DMARC quarantine" <> if(has_dkim, do: " + DKIM", else: "")}
+
+      dmarc && String.contains?(dmarc, "p=none") ->
+        %{tier: :silver, emoji: "✓", summary: "DMARC monitoring only" <> if(has_dkim, do: " + DKIM", else: "")}
+
+      has_dkim ->
+        %{tier: :silver, emoji: "✓", summary: "DKIM configured"}
+
+      true -> nil
+    end
+  end
+  defp parse_dkim(_), do: nil
 
   # Evidence parsing: "tranco:top_100k:25741->mid_market" -> {:gold, "Tranco #25,741 — Mid Market"}
   defp parse_evidence_item(item) when is_binary(item) do

@@ -13,13 +13,16 @@ defmodule LSWeb.UserLive.Settings do
       <%!-- Same header as Dashboard --%>
       <header class="border-b border-white/[0.06] bg-[#0F1628]">
         <div class="max-w-[1700px] mx-auto px-5 py-3.5 flex items-center justify-between">
-          <.link navigate={~p"/app"} class="flex items-center gap-3 hover:opacity-80 transition">
+          <.link navigate={~p"/dashboard"} class="flex items-center gap-3 hover:opacity-80 transition">
             <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-xs font-extrabold text-white">LS</div>
             <span class="text-white font-semibold text-[15px] tracking-tight">Settings</span>
           </.link>
           <div class="flex items-center gap-4 text-sm">
-            <.link navigate={~p"/app"} class="text-gray-500 hover:text-white transition text-sm">Dashboard</.link>
-            <.link href={~p"/users/log-out"} method="delete" class="text-gray-500 hover:text-white transition text-sm">Log out</.link>
+            <.link navigate={~p"/dashboard"} class="text-gray-500 hover:text-white transition text-sm">Dashboard</.link>
+            <.link href={~p"/users/log-out"} method="delete" class="text-gray-500 hover:text-white transition inline-flex items-center gap-1.5 text-sm" title="Log out">
+              <.icon name="hero-arrow-right-start-on-rectangle" class="w-4 h-4" />
+              <span>Log out</span>
+            </.link>
           </div>
         </div>
       </header>
@@ -159,6 +162,24 @@ defmodule LSWeb.UserLive.Settings do
           </.form>
         </div>
       </div>
+
+      <%!-- Discreet footer --%>
+      <footer class="border-t border-white/[0.04] mt-4">
+        <div class="max-w-[1700px] mx-auto px-5 py-5">
+          <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-[11px] text-gray-600">
+            <div class="flex items-center gap-2">
+              <div class="flex h-4 w-4 items-center justify-center rounded bg-emerald-500/80 text-[8px] font-extrabold text-white">LS</div>
+              <span>© 2026 ListSignal · A <span class="text-gray-500">ListSignal Pte Ltd</span> company, Singapore</span>
+            </div>
+            <div class="flex items-center gap-4">
+              <a href="/features" class="hover:text-gray-400 transition">Features</a>
+              <a href="/pricing" class="hover:text-gray-400 transition">Pricing</a>
+              <a href="/privacy" class="hover:text-gray-400 transition">Privacy</a>
+              <a href="/terms" class="hover:text-gray-400 transition">Terms</a>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
     """
   end

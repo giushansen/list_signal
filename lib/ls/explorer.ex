@@ -14,7 +14,7 @@ defmodule LS.Explorer do
     http_language http_emails http_content_type http_meta_description
     http_h1 http_schema_type http_og_type http_pages
     bgp_ip bgp_asn_number bgp_asn_org bgp_asn_country bgp_asn_prefix
-    dns_a dns_aaaa dns_mx dns_cname
+    dns_a dns_aaaa dns_mx dns_txt dns_cname
     rdap_registrar rdap_registrar_iana_id rdap_nameservers
     rdap_domain_created_at rdap_domain_expires_at rdap_domain_updated_at rdap_status
     ctl_tld ctl_issuer ctl_subdomains ctl_subdomain_count

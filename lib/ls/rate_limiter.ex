@@ -34,6 +34,31 @@ defmodule LS.RateLimiter do
   defp limit_for("pro"), do: 60
   defp limit_for(_), do: 10
 
+  @doc """
+  Returns the current usage stats for a user without incrementing the counter.
+  Returns %{used: integer, limit: integer, remaining: integer, reset_in: seconds}.
+  """
+  def stats(user_id, plan) do
+    init()
+    limit = limit_for(plan)
+    now = System.system_time(:second)
+    window = div(now, 60)
+    key = {user_id, window}
+
+    used =
+      case :ets.lookup(@table, key) do
+        [{^key, count}] -> count
+        [] -> 0
+      end
+
+    %{
+      used: used,
+      limit: limit,
+      remaining: max(limit - used, 0),
+      reset_in: 60 - rem(now, 60)
+    }
+  end
+
   @doc "Clean up expired windows. Call periodically."
   def sweep do
     now = System.system_time(:second)

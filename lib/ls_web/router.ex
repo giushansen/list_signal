@@ -94,7 +94,7 @@ defmodule LSWeb.Router do
 
     live_session :require_authenticated_user,
       on_mount: [{LSWeb.UserAuth, :require_authenticated}] do
-      live "/app", ExplorerLive, :index
+      live "/dashboard", ExplorerLive, :index
       live "/users/settings", UserLive.Settings, :edit
       live "/users/settings/confirm-email/:token", UserLive.Settings, :confirm_email
     end
@@ -102,7 +102,7 @@ defmodule LSWeb.Router do
     post "/users/update-password", UserSessionController, :update_password
     post "/subscription/checkout/:plan/:period", SubscriptionController, :create_checkout_session
     post "/subscription/portal", SubscriptionController, :create_billing_portal_session
-    get "/app/export", ExportController, :csv
+    get "/dashboard/export", ExportController, :csv
   end
 
   # Dev routes

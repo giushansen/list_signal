@@ -14,8 +14,8 @@ defmodule LSWeb.SubscriptionController do
            payment_method_types: ["card"],
            line_items: [%{price: price_id, quantity: 1}],
            mode: "subscription",
-           success_url: url(~p"/app") <> "?checkout=success",
-           cancel_url: url(~p"/app") <> "?checkout=cancelled",
+           success_url: url(~p"/dashboard") <> "?checkout=success",
+           cancel_url: url(~p"/dashboard") <> "?checkout=cancelled",
            client_reference_id: user.id
          }) do
       redirect(conn, external: session.url)
@@ -23,7 +23,7 @@ defmodule LSWeb.SubscriptionController do
       _ ->
         conn
         |> put_flash(:error, "Unable to start checkout. Please try again.")
-        |> redirect(to: ~p"/app")
+        |> redirect(to: ~p"/dashboard")
     end
   end
 

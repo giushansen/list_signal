@@ -31,12 +31,12 @@ defmodule LSWeb.ExportController do
         _ ->
           conn
           |> put_flash(:error, "Export failed. Please try again.")
-          |> redirect(to: ~p"/app")
+          |> redirect(to: ~p"/dashboard")
       end
     else
       conn
       |> put_flash(:error, "CSV export is not available on your plan or you've reached your monthly limit.")
-      |> redirect(to: ~p"/app")
+      |> redirect(to: ~p"/dashboard")
     end
   end
 
