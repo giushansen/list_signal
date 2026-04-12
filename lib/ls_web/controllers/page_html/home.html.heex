@@ -20,18 +20,18 @@
   <div class="absolute -top-[200px] left-1/2 -translate-x-1/2 w-[1000px] h-[800px] bg-[radial-gradient(ellipse,rgba(16,185,129,0.07),rgba(59,130,246,0.03)_50%,transparent_70%)] pointer-events-none"></div>
 
   <div class="relative mx-auto max-w-[1200px] px-6">
-    <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-7 animate-fade-in-down">
+    <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-7 animate-fade-in-down uppercase tracking-wider">
       <span class="h-2 w-2 rounded-full bg-accent animate-pulse"></span>
-      <span id="liveCount"><%= if @landing.store_count > 0, do: "#{@landing.store_count}+ Shopify stores tracked", else: "Scanning domains now — pipeline active" %></span>
+      Domain Intelligence — Updated Daily
     </div>
 
     <h1 class="font-display text-[clamp(38px,5.2vw,62px)] font-extrabold leading-[1.08] tracking-[-2px] mb-5 animate-fade-in-up">
-      Find any Shopify store.<br/>
-      <span class="bg-gradient-to-r from-accent to-emerald-300 bg-clip-text text-transparent">Know everything about it.</span>
+      Stop overpaying for<br/>
+      <span class="bg-gradient-to-r from-accent to-emerald-300 bg-clip-text text-transparent">stale data.</span>
     </h1>
 
-    <p class="mx-auto max-w-[520px] text-lg text-white/60 leading-relaxed mb-10 animate-fade-in-up-delay">
-      Discover tech stack, installed apps, revenue signals and contact data for millions of Shopify stores — updated daily.
+    <p class="mx-auto max-w-[560px] text-lg text-white/60 leading-relaxed mb-10 animate-fade-in-up-delay">
+      ListSignal scans millions of domains daily — Shopify stores, SaaS products, agencies, and every digital business. Fresh tech stack, revenue signals, and contact data. No credits, no expiring tokens.
     </p>
 
     <div class="mx-auto max-w-[660px] mb-2 animate-fade-in-up-delay-2">
@@ -93,9 +93,9 @@
   <section class="border-b border-white/[0.07] py-11">
     <div class="mx-auto max-w-[1200px] px-6">
       <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+        <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.total_domains || @landing.store_count * 10}>0</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Domains Tracked</div></div>
         <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.store_count}>0</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Shopify Stores</div></div>
-        <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.tech_count}>0</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Technologies</div></div>
-        <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight"><span class="count" data-target={@landing.app_count}>0</span></div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Apps Tracked</div></div>
+        <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight">230+</div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Technologies</div></div>
         <div class="anim"><div class="font-display text-[34px] font-bold tracking-tight">Hourly</div><div class="text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Data Refresh</div></div>
       </div>
     </div>
@@ -111,8 +111,8 @@
 <section class="py-20" id="data">
   <div class="mx-auto max-w-[1200px] px-6">
     <div class="text-center max-w-[600px] mx-auto mb-12 anim">
-      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">Live Data Preview</div>
-      <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15] mb-3.5">Search any domain. Discover<br/>who uses what — and why.</h2>
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">Latest Stores Detected</div>
+      <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15] mb-3.5">New Shopify and ecommerce stores,<br/>detected within hours of launching.</h2>
       <p class="text-base text-white/60 leading-relaxed">Look up a store to see its full profile, or search by app name to find every store using it.</p>
     </div>
 
@@ -174,18 +174,44 @@
       <div class="hidden md:block absolute top-10 left-[16.6%] right-[16.6%] h-0.5 bg-gradient-to-r from-accent to-blue-500 opacity-20"></div>
       <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">1</div>
-        <h3 class="font-display text-[17px] font-semibold mb-2">Search a store or app</h3>
-        <p class="text-sm text-white/60 leading-relaxed">Enter any Shopify store URL to see its profile — or search by app name to find every store running it.</p>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Search</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Search any domain or technology — Shopify apps, SaaS tools, analytics platforms, and 230+ more.</p>
       </div>
       <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">2</div>
-        <h3 class="font-display text-[17px] font-semibold mb-2">Filter and qualify</h3>
-        <p class="text-sm text-white/60 leading-relaxed">Narrow by country, revenue, tech stack, and growth score to find your ideal leads.</p>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Filter</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Filter by tech stack, country, revenue, industry, business model, and more.</p>
       </div>
       <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">3</div>
-        <h3 class="font-display text-[17px] font-semibold mb-2">Export and close</h3>
-        <p class="text-sm text-white/60 leading-relaxed">Download your filtered list as CSV with contact emails. No credits, no limits.</p>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Export</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Export qualified leads as CSV. No credits. No surprises.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="py-20 bg-[#0A1020]">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="text-center max-w-[600px] mx-auto mb-12 anim">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">Beyond Shopify</div>
+      <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15]">Deep Shopify coverage.<br/>And everything else.</h2>
+    </div>
+    <div class="grid md:grid-cols-3 gap-7">
+      <div class="p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
+        <div class="text-2xl mb-4">&#128230;</div>
+        <h3 class="font-display text-[17px] font-semibold mb-2">260+ Shopify Apps</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Track Klaviyo, ReCharge, Judge.me and hundreds more. See install dates and app churn.</p>
+      </div>
+      <div class="p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
+        <div class="text-2xl mb-4">&#128295;</div>
+        <h3 class="font-display text-[17px] font-semibold mb-2">230+ Technologies</h3>
+        <p class="text-sm text-white/60 leading-relaxed">From frontend frameworks to backend infrastructure. CDN, hosting, analytics, payments — we see what others miss.</p>
+      </div>
+      <div class="p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
+        <div class="text-2xl mb-4">&#127758;</div>
+        <h3 class="font-display text-[17px] font-semibold mb-2">Every Digital Business</h3>
+        <p class="text-sm text-white/60 leading-relaxed">SaaS, agencies, marketplaces, media, consulting — classified automatically with revenue and employee estimates.</p>
       </div>
     </div>
   </div>
@@ -194,8 +220,8 @@
 <section class="py-20 text-center relative">
   <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-[radial-gradient(ellipse,rgba(16,185,129,0.05),transparent_60%)] pointer-events-none"></div>
   <div class="mx-auto max-w-[1200px] px-6 relative">
-    <h2 class="font-display text-[clamp(26px,3.2vw,38px)] font-bold tracking-tight mb-3.5 anim">Stop overpaying for stale data.</h2>
-    <p class="text-base text-white/60 mb-7 anim">Join hundreds of teams finding Shopify leads faster with ListSignal.</p>
+    <h2 class="font-display text-[clamp(26px,3.2vw,38px)] font-bold tracking-tight mb-3.5 anim">Updated daily, not monthly.</h2>
+    <p class="text-base text-white/60 mb-7 max-w-[560px] mx-auto anim">New domains detected within hours. Backend tech, hosting, DNS, and network data that frontend-only scanners miss entirely. Infrastructure intelligence you won't find anywhere else.</p>
     <a href="/signup" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all anim">
       Try it now — it's free
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
@@ -205,10 +231,17 @@
 
 <footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
   <div class="mx-auto max-w-[1200px] px-6">
+    <p class="text-white/40 mb-4">ListSignal — Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Updated daily.</p>
     <div class="mb-3">
-      <a href="/features" class="text-white/50 hover:text-white transition-colors mx-4">Features</a>
-      <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-4">Pricing</a>
-      <a href="/blog" class="text-white/50 hover:text-white transition-colors mx-4">Blog</a>
+      <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-3">Pricing</a>
+      <a href="/store" class="text-white/50 hover:text-white transition-colors mx-3">Search Stores</a>
+      <a href="/new-stores" class="text-white/50 hover:text-white transition-colors mx-3">New Stores</a>
+      <a href="/apps" class="text-white/50 hover:text-white transition-colors mx-3">Apps</a>
+      <a href="/signup" class="text-white/50 hover:text-white transition-colors mx-3">Sign Up</a>
+      <a href="/users/log-in" class="text-white/50 hover:text-white transition-colors mx-3">Log In</a>
+      <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-3">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white transition-colors mx-3">Terms</a>
     </div>
     <p>&copy; 2026 ListSignal</p>
   </div>

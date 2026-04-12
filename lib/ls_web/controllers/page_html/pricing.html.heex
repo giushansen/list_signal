@@ -9,26 +9,144 @@
   </div>
 </nav>
 <main class="pt-[140px] pb-20"><div class="mx-auto max-w-[1200px] px-6">
-  <div class="text-center max-w-[600px] mx-auto mb-14">
+  <div class="text-center max-w-[600px] mx-auto mb-8">
     <h1 class="font-display text-[clamp(32px,4vw,48px)] font-bold tracking-tight leading-[1.1] mb-4">Simple. No credits.<br/>No surprises.</h1>
-    <p class="text-lg text-white/60">Start free, upgrade when you need more. Cancel anytime.</p>
+    <p class="text-lg text-white/60">Flat-rate plans with predictable limits. No expiring tokens, no per-lookup fees.</p>
   </div>
-  <div class="grid md:grid-cols-2 gap-6 max-w-[760px] mx-auto mb-20">
+
+  <%!-- Monthly / Annual toggle --%>
+  <div class="flex items-center justify-center gap-3 mb-10">
+    <span id="label-monthly" class="text-sm font-medium text-white">Monthly</span>
+    <button id="billing-toggle" type="button" role="switch" aria-checked="false"
+      class="relative inline-flex h-7 w-[52px] items-center rounded-full bg-white/[0.08] transition-colors cursor-pointer"
+      onclick="toggleBilling()">
+      <span id="toggle-dot" class="inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform translate-x-1"></span>
+    </button>
+    <span id="label-annual" class="text-sm font-medium text-white/40">
+      Annual
+      <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-accent/15 text-accent">Save 20%+</span>
+    </span>
+  </div>
+
+  <div class="grid md:grid-cols-3 gap-6 max-w-[1000px] mx-auto mb-10">
+    <%!-- Free column --%>
     <div class="rounded-[20px] border border-white/[0.07] bg-white/[0.03] p-9">
       <div class="font-display text-[15px] font-semibold text-white/60 mb-1.5">Free</div>
       <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1">$0</div>
       <div class="text-[13px] text-white/35 mb-6">Free forever</div>
-      <ul class="space-y-2.5 mb-8"><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Rate-limited searches</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 100 CSV exports / month</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 25 results per page</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Basic tech stack data</li></ul>
-      <a href="/signup" class="block w-full text-center rounded-xl border border-white/[0.07] py-3.5 font-display text-sm font-semibold text-white hover:border-white/20">Get Started Free</a>
+      <ul class="space-y-2.5 mb-8">
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Browse all domain data</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 15 results per page</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 10 searches per minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Tech + country filters</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/40"><span class="text-white/20 font-bold mt-px">&#10005;</span> No CSV export</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/40"><span class="text-white/20 font-bold mt-px">&#10005;</span> No contact emails</li>
+      </ul>
+      <a href="/signup" class="block w-full text-center rounded-xl border border-white/[0.07] py-3.5 font-display text-sm font-semibold text-white hover:border-white/20 transition">Get Started Free</a>
     </div>
+
+    <%!-- Starter column --%>
+    <div class="rounded-[20px] border border-blue-500/40 bg-white/[0.03] p-9 relative shadow-[0_0_50px_rgba(59,130,246,0.1)]">
+      <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-display">Best Value</div>
+      <div class="font-display text-[15px] font-semibold text-blue-400 mb-1.5">Starter</div>
+      <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly="$39" data-annual="$29">$39</div>
+      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual="per month &middot; billed annually ($348/yr)">per month &middot; cancel anytime</div>
+      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $120/yr</div>
+      <div class="mb-6"></div>
+      <ul class="space-y-2.5 mb-8">
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> All filters unlocked</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> 500 rows / month</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> 50 results per page</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> 30 searches per minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> Contact email access</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> Email support</li>
+      </ul>
+      <a data-href-monthly="/signup?plan=starter&billing=monthly" data-href-annual="/signup?plan=starter&billing=annual" href="/signup?plan=starter&billing=monthly" class="block w-full text-center rounded-xl bg-blue-500 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_28px_rgba(59,130,246,0.25)] hover:bg-blue-400 transition">Start with Starter</a>
+    </div>
+
+    <%!-- Pro column --%>
     <div class="rounded-[20px] border border-accent bg-white/[0.03] p-9 relative shadow-[0_0_50px_rgba(16,185,129,0.15)]">
       <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-display">Most Popular</div>
-      <div class="font-display text-[15px] font-semibold text-white/60 mb-1.5">Pro</div>
-      <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1">$49</div>
-      <div class="text-[13px] text-white/35 mb-6">per month &middot; cancel anytime</div>
-      <ul class="space-y-2.5 mb-8"><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Unlimited searches</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 5,000 CSV exports / month</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 100 results per page</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Full data access</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Revenue &amp; growth scoring</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Contact email extraction</li><li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Priority support</li></ul>
-      <a href="/signup?plan=pro" class="block w-full text-center rounded-xl bg-accent py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover">Upgrade to Pro</a>
+      <div class="font-display text-[15px] font-semibold text-emerald-400 mb-1.5">Pro</div>
+      <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly="$99" data-annual="$79">$99</div>
+      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual="per month &middot; billed annually ($948/yr)">per month &middot; cancel anytime</div>
+      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $240/yr</div>
+      <div class="mb-6"></div>
+      <ul class="space-y-2.5 mb-8">
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Everything in Starter, plus:</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 5,000 rows / month</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 100 results per page</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 120 searches per minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Priority email support</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> API access <span class="ml-1.5 inline-flex px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider bg-white/[0.06] text-white/30 font-medium">Soon</span></li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Webhook alerts <span class="ml-1.5 inline-flex px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider bg-white/[0.06] text-white/30 font-medium">Soon</span></li>
+      </ul>
+      <a data-href-monthly="/signup?plan=pro&billing=monthly" data-href-annual="/signup?plan=pro&billing=annual" href="/signup?plan=pro&billing=monthly" class="block w-full text-center rounded-xl bg-accent py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover transition">Upgrade to Pro</a>
     </div>
   </div>
-</div></main>
-<footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">&copy; 2026 ListSignal</footer>
+
+  <%!-- Enterprise anchor --%>
+  <div class="text-center mt-10 p-6 rounded-2xl border border-white/[0.05] bg-white/[0.02] max-w-[1000px] mx-auto mb-10">
+    <p class="text-sm text-white/50">
+      <span class="font-semibold text-white">Need more?</span>
+      Enterprise plans with custom limits, bulk API, and team seats.
+      <a href="mailto:hello@listsignal.com" class="text-accent hover:underline ml-1">Contact us &#8594;</a>
+    </p>
+  </div>
+
+  <%!-- Competitive comparison strip --%>
+  <div class="text-center mb-20">
+    <p class="text-sm text-white/40">What others charge $250/mo to export, ListSignal includes at $39.</p>
+  </div>
+</div>
+
+<script>
+function toggleBilling() {
+  var toggle = document.getElementById('billing-toggle');
+  var dot = document.getElementById('toggle-dot');
+  var isAnnual = toggle.getAttribute('aria-checked') === 'true';
+  var newState = !isAnnual;
+
+  toggle.setAttribute('aria-checked', String(newState));
+  dot.classList.toggle('translate-x-1', !newState);
+  dot.classList.toggle('translate-x-[27px]', newState);
+
+  document.getElementById('label-monthly').classList.toggle('text-white/40', newState);
+  document.getElementById('label-monthly').classList.toggle('text-white', !newState);
+  document.getElementById('label-annual').classList.toggle('text-white/40', !newState);
+  document.getElementById('label-annual').classList.toggle('text-white', newState);
+
+  // Swap prices
+  document.querySelectorAll('[data-monthly]').forEach(function(el) {
+    el.textContent = newState ? el.dataset.annual : el.dataset.monthly;
+  });
+
+  // Swap period text
+  document.querySelectorAll('[data-period-monthly]').forEach(function(el) {
+    el.textContent = newState ? el.dataset.periodAnnual : el.dataset.periodMonthly;
+  });
+
+  // Swap CTA hrefs
+  document.querySelectorAll('[data-href-monthly]').forEach(function(el) {
+    el.href = newState ? el.dataset.hrefAnnual : el.dataset.hrefMonthly;
+  });
+
+  // Show/hide savings badges
+  document.querySelectorAll('[data-savings]').forEach(function(el) {
+    el.classList.toggle('hidden', !newState);
+  });
+}
+</script>
+</main>
+<footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="mb-3">
+      <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
+      <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-3">Pricing</a>
+      <a href="/new-stores" class="text-white/50 hover:text-white transition-colors mx-3">New Stores</a>
+      <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-3">Privacy</a>
+      <a href="/terms" class="text-white/50 hover:text-white transition-colors mx-3">Terms</a>
+    </div>
+    <p>&copy; 2026 ListSignal</p>
+  </div>
+</footer>

@@ -12,7 +12,7 @@ defmodule LSWeb.AlternativesController do
       name: "BuiltWith",
       tagline: "Same depth. 1/4 the price. Fresher data.",
       price: "$295–$995/mo",
-      ls_price: "Free – $49/mo",
+      ls_price: "Free – $99/mo",
       pros: [
         "113,000+ technologies tracked (largest database)",
         "18 years of historical data",
@@ -28,7 +28,7 @@ defmodule LSWeb.AlternativesController do
       ls_wins: [
         {"⚡", "Real-time detection", "We detect new stores within hours via SSL Certificate Transparency logs. BuiltWith relies on periodic web crawls."},
         {"🔍", "Transparent timestamps", "Every data point shows exactly when it was collected. No guessing if data is fresh."},
-        {"💰", "80% cheaper", "Full access at $49/mo vs BuiltWith's $295 minimum. Same store and tech data."},
+        {"💰", "85% cheaper", "Plans from $39/mo vs BuiltWith's $295 minimum. Same store and tech data."},
         {"📤", "Clean exports", "CSV exports designed for CRM import. No cleaning needed."},
         {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data that BuiltWith doesn't surface."},
         {"🤖", "AI-ready data", "Structured data with API access designed for automation and AI workflows."}
@@ -38,7 +38,7 @@ defmodule LSWeb.AlternativesController do
       name: "Wappalyzer",
       tagline: "No credits. No expiration. Just data.",
       price: "$250–$850/mo",
-      ls_price: "Free – $49/mo",
+      ls_price: "Free – $99/mo",
       pros: [
         "Browser extension with 2M+ daily users",
         "94% React detection accuracy (best in class)",
@@ -54,7 +54,7 @@ defmodule LSWeb.AlternativesController do
       ls_wins: [
         {"🚫", "No credits, ever", "Wappalyzer's credits expire after 60 days. ListSignal has zero credit system — flat monthly price."},
         {"⚡", "Server-side detection", "We scan from infrastructure level (DNS, HTTP, BGP), not just browser. Catches backend tech Wappalyzer misses."},
-        {"💰", "68% cheaper", "$49/mo unlimited vs Wappalyzer's $250 minimum for useful access."},
+        {"💰", "84% cheaper", "Plans from $39/mo vs Wappalyzer's $250 minimum for useful access."},
         {"📊", "Shopify specialization", "Deep Shopify data: app detection, theme, plan tier, revenue signals."},
         {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data — data Wappalyzer doesn't have."},
         {"🕐", "Data freshness timestamps", "Know exactly when each domain was last scanned. Wappalyzer doesn't show this."}
@@ -64,7 +64,7 @@ defmodule LSWeb.AlternativesController do
       name: "StoreLeads",
       tagline: "Shopify-first intelligence. Fraction of the cost.",
       price: "$75–$950/mo",
-      ls_price: "Free – $49/mo",
+      ls_price: "Free – $99/mo",
       pros: [
         "2.8M Shopify stores with deep ecommerce data",
         "6,502 Shopify apps tracked with install dates",
@@ -80,7 +80,7 @@ defmodule LSWeb.AlternativesController do
       ],
       ls_wins: [
         {"⚡", "Detected within hours, not days", "New stores appear in ListSignal within hours via CT log monitoring. StoreLeads updates weekly."},
-        {"💰", "CSV exports at $49/mo", "StoreLeads charges $250/mo for CSV export. ListSignal includes unlimited exports at $49/mo."},
+        {"💰", "CSV exports from $39/mo", "StoreLeads charges $250/mo for CSV export. ListSignal includes CSV exports starting at $39/mo."},
         {"🏗️", "Infrastructure insights competitors don't have", "Hosting provider, email service, server location, and domain age data — data StoreLeads doesn't collect."},
         {"🔬", "Transparent methodology", "We show exactly when and how each data point was collected. Full audit trail."},
         {"🤝", "Startup-level support", "Direct access to founders. Not a ticket queue."},
@@ -92,7 +92,7 @@ defmodule LSWeb.AlternativesController do
       name: "ZoomInfo",
       tagline: "Domain intelligence without the enterprise price tag.",
       price: "$15,000–$60,000/yr",
-      ls_price: "Free – $49/mo",
+      ls_price: "Free – $99/mo",
       pros: [
         "Massive B2B contact database (100M+ profiles)",
         "Intent data and buyer signals",
@@ -107,7 +107,7 @@ defmodule LSWeb.AlternativesController do
         "Lock-in contracts with difficult cancellation"
       ],
       ls_wins: [
-        {"💰", "99% cheaper for tech data", "ZoomInfo's minimum is $15K/yr. ListSignal is $49/mo ($588/yr) for unlimited tech lookups."},
+        {"💰", "97% cheaper for tech data", "ZoomInfo's minimum is $15K/yr. ListSignal starts at $39/mo for full tech lookups."},
         {"🎯", "Purpose-built for tech intelligence", "ZoomInfo is a contact database that happens to have tech data. ListSignal is built specifically for technology detection."},
         {"📅", "Month-to-month, cancel anytime", "No annual contracts. No lock-in. No 10-20% surprise renewals."},
         {"⚡", "Real-time detection", "New domains detected within hours via CT logs. ZoomInfo's tech data lags by weeks."},

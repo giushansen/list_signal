@@ -17,7 +17,7 @@ defmodule LSWeb.Layouts do
         <%= if assigns[:page_title] do %>
           <title><%= @page_title %> — ListSignal</title>
         <% else %>
-          <title>ListSignal — Shopify Store Intelligence, Instantly</title>
+          <title>ListSignal — Domain Intelligence, Updated Daily</title>
         <% end %>
         <%= if assigns[:page_description] do %>
           <meta name="description" content={@page_description} />

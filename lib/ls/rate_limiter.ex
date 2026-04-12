@@ -17,7 +17,8 @@ defmodule LS.RateLimiter do
 
   Limits per minute by plan:
   - free: 10
-  - pro: 60
+  - starter: 30
+  - pro: 120
   """
   def check(user_id, plan) do
     limit = limit_for(plan)
@@ -31,7 +32,8 @@ defmodule LS.RateLimiter do
     end
   end
 
-  defp limit_for("pro"), do: 60
+  defp limit_for("pro"), do: 120
+  defp limit_for("starter"), do: 30
   defp limit_for(_), do: 10
 
   @doc """

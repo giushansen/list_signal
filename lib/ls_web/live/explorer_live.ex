@@ -407,20 +407,29 @@ defmodule LSWeb.ExplorerLive do
                 <div class="font-semibold text-white mb-1">Rate Limit</div>
                 <div><%= rs.used %> used / <%= rs.limit %> per minute</div>
                 <div class="text-gray-500 mt-1">Resets in <%= rs.reset_in %>s</div>
-                <%= if @plan != "pro" do %>
-                  <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to Pro for 60 req/min</div>
+                <%= cond do %>
+                  <% @plan == "free" -> %>
+                    <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to Starter for 30 req/min &#8594;</div>
+                  <% @plan == "starter" -> %>
+                    <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to Pro for 120 req/min &#8594;</div>
+                  <% true -> %>
                 <% end %>
               </div>
             </div>
-            <%= if @plan == "free" do %>
-              <button phx-click="show_upgrade" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/25 hover:ring-amber-500/50 transition cursor-pointer animate-pulse">
-                <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
-                FREE — Upgrade
-              </button>
-            <% else %>
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20">
-                <%= @plan %>
-              </span>
+            <%= case @plan do %>
+              <% "free" -> %>
+                <button phx-click="show_upgrade" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/25 hover:ring-amber-500/50 transition cursor-pointer animate-pulse">
+                  <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
+                  FREE — Upgrade
+                </button>
+              <% "starter" -> %>
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/20">
+                  Starter
+                </span>
+              <% _ -> %>
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20">
+                  Pro
+                </span>
             <% end %>
             <.link navigate={~p"/users/settings"} class="text-gray-500 hover:text-white transition inline-flex items-center gap-1.5 text-sm" title="Settings">
               <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
@@ -538,11 +547,19 @@ defmodule LSWeb.ExplorerLive do
               <%= if @total_pages > 1 do %>
                 <.pagination page={@page} total_pages={@total_pages} compact={true} />
               <% end %>
-              <a href={~p"/dashboard/export?" <> URI.encode_query(filter_params(@filters))}
-                class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
-                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                Export CSV
-              </a>
+              <%= if @plan in ["starter", "pro"] do %>
+                <a href={~p"/dashboard/export?" <> URI.encode_query(filter_params(@filters))}
+                  class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  Export CSV (<%= LS.Accounts.exports_remaining(@current_scope.user) %> rows left)
+                </a>
+              <% else %>
+                <button phx-click="show_upgrade"
+                  class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600/40 text-white/60 rounded-lg text-sm font-semibold opacity-60 cursor-pointer transition hover:opacity-80">
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                  Export CSV — Starter plan
+                </button>
+              <% end %>
             </div>
           </div>
         </div>
@@ -932,23 +949,45 @@ defmodule LSWeb.ExplorerLive do
       <%!-- Upgrade modal --%>
       <%= if @show_upgrade do %>
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" phx-click="close_upgrade">
-          <div class="bg-[#0F1628] border border-white/[0.08] rounded-2xl p-7 max-w-sm w-full mx-4 shadow-2xl" phx-click-away="close_upgrade">
-            <h3 class="text-lg font-bold text-white mb-2">Upgrade to Pro</h3>
-            <p class="text-gray-400 text-sm mb-6">Get 5,000 CSV exports/mo, 100 results/page, and full data access.</p>
-            <div class="border border-emerald-500/20 rounded-xl p-5 bg-emerald-500/[0.03]">
-              <h4 class="font-semibold text-emerald-400 text-sm">Pro</h4>
-              <p class="text-3xl font-bold text-white mt-1">$49<span class="text-sm text-gray-500 font-normal">/mo</span></p>
-              <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> 5,000 CSV exports/mo</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> 100 results per page</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Full data access</li>
-              </ul>
-              <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="mt-5">
-                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/25 transition">
-                  Upgrade Now
-                </button>
-              </form>
+          <div class="bg-[#0F1628] border border-white/[0.08] rounded-2xl p-7 max-w-2xl w-full mx-4 shadow-2xl" phx-click-away="close_upgrade">
+            <h3 class="text-lg font-bold text-white mb-2">Unlock more with ListSignal</h3>
+            <p class="text-gray-400 text-sm mb-6">Choose the plan that fits your needs.</p>
+            <div class="grid grid-cols-2 gap-4">
+              <%!-- Starter card --%>
+              <div class="border border-blue-500/20 rounded-xl p-5 bg-blue-500/[0.03]">
+                <h4 class="font-semibold text-blue-400 text-sm">Starter</h4>
+                <p class="text-3xl font-bold text-white mt-1">$39<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+                <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
+                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Export up to 500 rows/mo</li>
+                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> All filters unlocked</li>
+                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Contact emails visible</li>
+                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 30 searches/min</li>
+                </ul>
+                <form action={~p"/subscription/checkout/starter/monthly"} method="post" class="mt-5">
+                  <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+                  <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-blue-500/25 transition">
+                    Subscribe to Starter &#8594;
+                  </button>
+                </form>
+              </div>
+              <%!-- Pro card --%>
+              <div class="border border-emerald-500/20 rounded-xl p-5 bg-emerald-500/[0.03] relative">
+                <span class="absolute -top-2.5 right-4 bg-accent text-white px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Recommended</span>
+                <h4 class="font-semibold text-emerald-400 text-sm">Pro</h4>
+                <p class="text-3xl font-bold text-white mt-1">$99<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+                <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
+                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Export up to 5,000 rows/mo</li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> 120 searches/min</li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Priority support</li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> API access <span class="text-white/30 text-[9px] ml-1">(soon)</span></li>
+                </ul>
+                <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="mt-5">
+                  <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+                  <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/25 transition">
+                    Subscribe to Pro &#8594;
+                  </button>
+                </form>
+              </div>
             </div>
             <button phx-click="close_upgrade" class="mt-4 text-sm text-gray-600 hover:text-gray-400 w-full text-center transition">Maybe later</button>
           </div>

@@ -41,7 +41,8 @@ defmodule LSWeb.ExportController do
   end
 
   defp export_cap("pro"), do: 5_000
-  defp export_cap(_), do: 100
+  defp export_cap("starter"), do: 500
+  defp export_cap(_), do: 0
 
   defp build_csv(columns, rows) do
     header = Enum.join(columns, ",")

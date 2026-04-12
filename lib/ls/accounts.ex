@@ -308,12 +308,14 @@ defmodule LS.Accounts do
   def export_limit(%User{} = user) do
     case User.effective_plan(user) do
       "pro" -> 5_000
-      _ -> 100
+      "starter" -> 500
+      _ -> 0
     end
   end
 
   def can_export?(%User{} = user) do
-    user.exports_used_this_month < export_limit(user)
+    plan = User.effective_plan(user)
+    plan in ["starter", "pro"] and exports_remaining(user) > 0
   end
 
   def exports_remaining(%User{} = user) do
@@ -329,7 +331,8 @@ defmodule LS.Accounts do
   def results_per_page(%User{} = user) do
     case User.effective_plan(user) do
       "pro" -> 100
-      _ -> 25
+      "starter" -> 50
+      _ -> 15
     end
   end
 

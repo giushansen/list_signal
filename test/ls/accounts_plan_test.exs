@@ -17,6 +17,13 @@ defmodule LS.AccountsPlanTest do
       assert updated.stripe_subscription_id == "sub_123"
     end
 
+    test "upgrades to starter", %{user: user} do
+      assert user.plan == "free"
+      {:ok, updated} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
+      assert updated.plan == "starter"
+      assert updated.stripe_subscription_id == "sub_456"
+    end
+
     test "downgrades to free", %{user: user} do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_123"})
       {:ok, updated} = Accounts.update_user_plan(user, %{plan: "free", stripe_subscription_id: nil})
@@ -52,6 +59,11 @@ defmodule LS.AccountsPlanTest do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_123"})
       assert User.effective_plan(user) == "pro"
     end
+
+    test "returns starter when subscribed to starter", %{user: user} do
+      {:ok, user} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
+      assert User.effective_plan(user) == "starter"
+    end
   end
 
   describe "subscribed?/1" do
@@ -66,8 +78,13 @@ defmodule LS.AccountsPlanTest do
   end
 
   describe "export_limit/1" do
-    test "returns 100 for free users", %{user: user} do
-      assert Accounts.export_limit(user) == 100
+    test "returns 0 for free users", %{user: user} do
+      assert Accounts.export_limit(user) == 0
+    end
+
+    test "returns 500 for starter users", %{user: user} do
+      {:ok, user} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
+      assert Accounts.export_limit(user) == 500
     end
 
     test "returns 5000 for pro users", %{user: user} do
@@ -77,13 +94,34 @@ defmodule LS.AccountsPlanTest do
   end
 
   describe "results_per_page/1" do
-    test "returns 25 for free users", %{user: user} do
-      assert Accounts.results_per_page(user) == 25
+    test "returns 15 for free users", %{user: user} do
+      assert Accounts.results_per_page(user) == 15
+    end
+
+    test "returns 50 for starter users", %{user: user} do
+      {:ok, user} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
+      assert Accounts.results_per_page(user) == 50
     end
 
     test "returns 100 for pro users", %{user: user} do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_123"})
       assert Accounts.results_per_page(user) == 100
+    end
+  end
+
+  describe "can_export?/1" do
+    test "returns false for free users", %{user: user} do
+      refute Accounts.can_export?(user)
+    end
+
+    test "returns true for starter users", %{user: user} do
+      {:ok, user} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
+      assert Accounts.can_export?(user)
+    end
+
+    test "returns true for pro users", %{user: user} do
+      {:ok, user} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_123"})
+      assert Accounts.can_export?(user)
     end
   end
 end

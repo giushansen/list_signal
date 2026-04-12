@@ -6,8 +6,8 @@ defmodule LSWeb.PageController do
     data = LS.LandingCache.get()
 
     conn
-    |> assign(:page_title, "Shopify Store Intelligence, Instantly")
-    |> assign(:page_description, "Discover any Shopify store's tech stack, installed apps, revenue signals and contact data. Updated daily.")
+    |> assign(:page_title, "Domain Intelligence, Updated Daily")
+    |> assign(:page_description, "Fresh tech stack, app detection, revenue signals and contact data for Shopify stores, SaaS products, and every digital business. No credits, no stale data.")
     |> assign(:landing, data)
     |> assign(:json_ld, home_json_ld())
     |> put_layout(html: {LSWeb.Layouts, :public})
@@ -16,16 +16,16 @@ defmodule LSWeb.PageController do
 
   def pricing(conn, _params) do
     conn
-    |> assign(:page_title, "Pricing")
-    |> assign(:page_description, "Simple pricing, no credits, no surprises. Start free, upgrade when you need more.")
+    |> assign(:page_title, "Pricing — Plans from $0 to $99/mo")
+    |> assign(:page_description, "Three flat-rate plans. No credits, no expiring tokens. Start free, export from $39/mo. Save 20%+ with annual billing.")
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:pricing)
   end
 
   def features(conn, _params) do
     conn
-    |> assign(:page_title, "Features")
-    |> assign(:page_description, "Domain lookup, technology search, real-time alerts, unlimited CSV exports, and REST API.")
+    |> assign(:page_title, "Features — What ListSignal Tracks")
+    |> assign(:page_description, "Technology detection, Shopify app tracking, business classification, revenue estimation, and CSV export for millions of domains — updated daily.")
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:features)
   end
@@ -40,9 +40,13 @@ defmodule LSWeb.PageController do
     Jason.encode!(%{
       "@context" => "https://schema.org", "@type" => "WebApplication",
       "name" => "ListSignal", "url" => "https://listsignal.com",
-      "description" => "Shopify store intelligence platform.",
+      "description" => "Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data — updated daily.",
       "applicationCategory" => "BusinessApplication", "operatingSystem" => "Web",
-      "offers" => %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD"}
+      "offers" => [
+        %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD", "name" => "Free"},
+        %{"@type" => "Offer", "price" => "39", "priceCurrency" => "USD", "name" => "Starter"},
+        %{"@type" => "Offer", "price" => "99", "priceCurrency" => "USD", "name" => "Pro"}
+      ]
     })
   end
 end

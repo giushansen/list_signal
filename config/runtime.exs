@@ -11,6 +11,8 @@ config :stripity_stripe, api_key: System.get_env("STRIPE_SECRET_KEY")
 config :ls, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SECRET")
 config :ls, :stripe_pro_monthly_price_id, System.get_env("STRIPE_PRO_MONTHLY_PRICE_ID")
 config :ls, :stripe_pro_yearly_price_id, System.get_env("STRIPE_PRO_YEARLY_PRICE_ID")
+config :ls, :stripe_starter_monthly_price_id, System.get_env("STRIPE_STARTER_MONTHLY_PRICE_ID")
+config :ls, :stripe_starter_yearly_price_id, System.get_env("STRIPE_STARTER_YEARLY_PRICE_ID")
 
 if config_env() == :prod do
   database_path = System.get_env("DATABASE_PATH") || Path.expand("../ls_prod.db", __DIR__)

@@ -31,23 +31,47 @@ defmodule LSWeb.UserLive.Settings do
         <%!-- Plan & Billing — comparison table --%>
         <div class="bg-[#0F1628] border border-white/[0.06] rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-2">Plan & Billing</h2>
-          <p class="text-sm text-gray-500 mb-6">You are currently on the <span class={"font-semibold #{if @plan == "pro", do: "text-emerald-400", else: "text-amber-400"}"}><%= String.capitalize(@plan) %></span> plan.</p>
+          <% plan_color = case @plan do
+            "pro" -> "text-emerald-400"
+            "starter" -> "text-blue-400"
+            _ -> "text-amber-400"
+          end %>
+          <p class="text-sm text-gray-500 mb-6">You are currently on the <span class={"font-semibold #{plan_color}"}><%= String.capitalize(@plan) %></span> plan.</p>
 
-          <div class="grid grid-cols-2 gap-4 mb-6">
+          <div class="grid grid-cols-3 gap-4 mb-6">
             <%!-- Free column --%>
-            <div class={"rounded-xl border p-5 #{if @plan != "pro", do: "border-amber-500/30 bg-amber-500/[0.03] ring-1 ring-amber-500/20", else: "border-white/[0.06] bg-[#0B1020]"}"}>
+            <div class={"rounded-xl border p-5 #{if @plan == "free", do: "border-amber-500/30 bg-amber-500/[0.03] ring-1 ring-amber-500/20", else: "border-white/[0.06] bg-[#0B1020]"}"}>
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-bold text-white">Free</h3>
-                <%= if @plan != "pro" do %>
+                <%= if @plan == "free" do %>
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/15 text-amber-400">Current</span>
                 <% end %>
               </div>
               <p class="text-2xl font-bold text-white mb-4">$0<span class="text-sm text-gray-500 font-normal">/mo</span></p>
               <ul class="text-sm text-gray-400 space-y-2.5">
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 100 CSV exports/mo</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 25 results per page</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 10 requests/min</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> Basic data access</li>
+                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 15 results per page</li>
+                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 10 searches/min</li>
+                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> Tech + country filters</li>
+                <li class="flex items-center gap-2"><span class="text-gray-600">&#10005;</span> No CSV export</li>
+                <li class="flex items-center gap-2"><span class="text-gray-600">&#10005;</span> No contact emails</li>
+              </ul>
+            </div>
+
+            <%!-- Starter column --%>
+            <div class={"rounded-xl border p-5 #{if @plan == "starter", do: "border-blue-500/30 bg-blue-500/[0.03] ring-1 ring-blue-500/20", else: "border-white/[0.06] bg-[#0B1020]"}"}>
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-bold text-blue-400">Starter</h3>
+                <%= if @plan == "starter" do %>
+                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-500/15 text-blue-400">Current</span>
+                <% end %>
+              </div>
+              <p class="text-2xl font-bold text-white mb-4">$39<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+              <ul class="text-sm text-gray-300 space-y-2.5">
+                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 50 results per page</li>
+                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 30 searches/min</li>
+                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> All filters</li>
+                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 500 rows/mo</li>
+                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Contact email access</li>
               </ul>
             </div>
 
@@ -59,12 +83,13 @@ defmodule LSWeb.UserLive.Settings do
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400">Current</span>
                 <% end %>
               </div>
-              <p class="text-2xl font-bold text-white mb-4">$49<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+              <p class="text-2xl font-bold text-white mb-4">$99<span class="text-sm text-gray-500 font-normal">/mo</span></p>
               <ul class="text-sm text-gray-300 space-y-2.5">
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>5,000</strong> CSV exports/mo</li>
                 <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>100</strong> results per page</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>60</strong> requests/min</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Full data access</li>
+                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>120</strong> searches/min</li>
+                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> All filters</li>
+                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>5,000</strong> rows/mo</li>
+                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Priority support</li>
               </ul>
             </div>
           </div>
@@ -74,7 +99,7 @@ defmodule LSWeb.UserLive.Settings do
             <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Your Usage This Month</h4>
             <div class="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <span class="text-gray-500">Exports remaining</span>
+                <span class="text-gray-500">Rows remaining</span>
                 <p class="text-white font-semibold"><%= @exports_remaining %> <span class="text-gray-600 font-normal">/ <%= @export_limit %></span></p>
               </div>
               <div>
@@ -96,12 +121,20 @@ defmodule LSWeb.UserLive.Settings do
               </button>
             </form>
           <% else %>
-            <form action={~p"/subscription/checkout/pro/monthly"} method="post">
-              <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-              <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
-                Upgrade to Pro — $49/mo
-              </button>
-            </form>
+            <div class="flex gap-3">
+              <form action={~p"/subscription/checkout/starter/monthly"} method="post" class="flex-1">
+                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-blue-500/20 transition">
+                  Start with Starter — $39/mo
+                </button>
+              </form>
+              <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="flex-1">
+                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
+                  Upgrade to Pro — $99/mo
+                </button>
+              </form>
+            </div>
           <% end %>
         </div>
 
@@ -204,7 +237,11 @@ defmodule LSWeb.UserLive.Settings do
     email_changeset = Accounts.change_user_email(user, %{}, validate_unique: false)
     password_changeset = Accounts.change_user_password(user, %{}, hash_password: false)
 
-    rate_limit = if plan == "pro", do: 60, else: 10
+    rate_limit = case plan do
+      "pro" -> 120
+      "starter" -> 30
+      _ -> 10
+    end
 
     socket =
       socket

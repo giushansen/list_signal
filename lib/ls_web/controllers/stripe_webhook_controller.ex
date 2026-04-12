@@ -89,7 +89,9 @@ defmodule LSWeb.StripeWebhookController do
   defp price_id_to_plan(price_id) do
     plan_map = %{
       Application.get_env(:ls, :stripe_pro_monthly_price_id) => "pro",
-      Application.get_env(:ls, :stripe_pro_yearly_price_id) => "pro"
+      Application.get_env(:ls, :stripe_pro_yearly_price_id) => "pro",
+      Application.get_env(:ls, :stripe_starter_monthly_price_id) => "starter",
+      Application.get_env(:ls, :stripe_starter_yearly_price_id) => "starter"
     }
 
     Map.get(plan_map, price_id, "free")

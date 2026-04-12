@@ -22,7 +22,7 @@ defmodule LS.Accounts.User do
     timestamps(type: :utc_datetime)
   end
 
-  @valid_plans ["free", "pro"]
+  @valid_plans ["free", "starter", "pro"]
 
   def plan_changeset(user, attrs) do
     user

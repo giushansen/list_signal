@@ -4,7 +4,7 @@ defmodule LSWeb.SubscriptionController do
   alias LS.Accounts
 
   def create_checkout_session(conn, %{"plan" => plan, "period" => period})
-      when plan in ["pro"] and period in ["monthly", "yearly"] do
+      when plan in ["starter", "pro"] and period in ["monthly", "yearly"] do
     user = conn.assigns.current_scope.user
 
     with {:ok, user} <- ensure_stripe_customer(user),

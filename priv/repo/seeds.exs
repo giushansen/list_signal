@@ -21,6 +21,20 @@ unless Repo.get_by(User, email: "admin@listsignal.com") do
   IO.puts("Created admin user: admin@listsignal.com (pro plan)")
 end
 
+# Create a starter-tier test user
+unless Repo.get_by(User, email: "starter@listsignal.com") do
+  %User{}
+  |> Ecto.Changeset.change(%{
+    email: "starter@listsignal.com",
+    plan: "starter",
+    stripe_subscription_id: "manual_override",
+    confirmed_at: DateTime.utc_now() |> DateTime.truncate(:second)
+  })
+  |> Repo.insert!()
+
+  IO.puts("Created starter user: starter@listsignal.com (starter plan)")
+end
+
 # Create a free-tier test user
 unless Repo.get_by(User, email: "free@listsignal.com") do
   %User{}

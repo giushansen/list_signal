@@ -16,11 +16,13 @@ No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's i
 
 ### Plans & Billing
 
-| Feature | Free | Pro ($49/mo) |
-|---------|------|--------------|
-| Browse/filter | Rate-limited | Unlimited |
-| Results/page | 25 | 100 |
-| CSV export | 100 rows/mo | 5,000 rows/mo |
+| Feature | Free | Starter ($39/mo) | Pro ($99/mo) |
+|---------|------|-------------------|--------------|
+| Browse/filter | 10 req/min, basic filters | 30 req/min, all filters | 120 req/min, all filters |
+| Results/page | 15 | 50 | 100 |
+| CSV export | None | 500 rows/mo | 5,000 rows/mo |
+| Contact emails | Hidden | Visible | Visible |
+| Support | — | Email | Priority email |
 
 - `User.effective_plan/1` is the single source of truth for access level.
 - Stripe Checkout for subscription, Stripe Customer Portal for management.
@@ -33,7 +35,7 @@ No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's i
 - **Filters**: Tech stack, Country, Business Model, Industry, Revenue, Employees, Language, Domain search, Freshness.
 - **Row expand**: Click a row for full detail (tech, apps, hosting, registrar, SSL, response time, etc.).
 - **CSV Export**: `GET /app/export` — available on paid plans, respects monthly limits.
-- **Rate limiting**: ETS-based per-user (10/60 req/min by plan).
+- **Rate limiting**: ETS-based per-user (10/30/120 req/min by plan).
 
 ### Environment Variables (Billing)
 
@@ -43,6 +45,8 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 STRIPE_PRO_MONTHLY_PRICE_ID=price_...
 STRIPE_PRO_YEARLY_PRICE_ID=price_...
+STRIPE_STARTER_MONTHLY_PRICE_ID=price_...
+STRIPE_STARTER_YEARLY_PRICE_ID=price_...
 MAILGUN_API_KEY=key-...           # prod only
 MAILGUN_DOMAIN=mg.listsignal.com  # prod only
 ```
@@ -53,8 +57,9 @@ MAILGUN_DOMAIN=mg.listsignal.com  # prod only
 mix run priv/repo/seeds.exs
 ```
 
-Creates two test users:
+Creates three test users:
 - `admin@listsignal.com` — Pro plan, manual override
+- `starter@listsignal.com` — Starter plan, manual override
 - `free@listsignal.com` — Free plan
 
 ### Manual Plan Overrides (IEx)
