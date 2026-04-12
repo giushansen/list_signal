@@ -152,6 +152,7 @@ defmodule LS.RDAP.Client do
       domain_updated_at: find_event(events, "last changed"),
       registrar: find_registrar_name(entities),
       registrar_iana_id: find_registrar_iana_id(entities),
+      registrant_country: find_registrant_country(entities),
       nameservers: nameservers |> Enum.map(&get_in(&1, ["ldhName"])) |> Enum.reject(&is_nil/1) |> Enum.join("|"),
       status: Enum.join(status, "|"),
       dnssec: to_string(Map.get(secure_dns, "delegationSigned", false))
@@ -191,4 +192,31 @@ defmodule LS.RDAP.Client do
     end
   end
   defp extract_vcard_fn(_), do: ""
+
+  # Extract registrant country from RDAP entities (RFC 9083 vCard "adr" field)
+  # Many registrars redact this (GDPR), so it's often empty.
+  defp find_registrant_country(entities) do
+    registrant = Enum.find(entities, fn e ->
+      roles = Map.get(e, "roles", [])
+      "registrant" in roles
+    end)
+
+    case registrant do
+      %{"vcardArray" => [_, fields]} -> extract_vcard_country(fields)
+      _ -> ""
+    end
+  end
+
+  # vCard "adr" field: ["adr", {params}, "text", [pobox, ext, street, city, region, postal, country]]
+  defp extract_vcard_country(fields) when is_list(fields) do
+    case Enum.find(fields, fn f -> is_list(f) and List.first(f) == "adr" end) do
+      [_, _, _, addr] when is_list(addr) ->
+        case List.last(addr) do
+          country when is_binary(country) and country != "" -> String.upcase(String.slice(country, 0, 2))
+          _ -> ""
+        end
+      _ -> ""
+    end
+  end
+  defp extract_vcard_country(_), do: ""
 end

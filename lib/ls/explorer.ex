@@ -3,11 +3,20 @@ defmodule LS.Explorer do
 
   alias LS.Clickhouse
 
-  @columns ~w(
-    domain http_title http_tech http_apps bgp_asn_country business_model industry
+  @columns_raw ~w(
+    domain http_title http_tech http_apps business_model industry
     estimated_revenue estimated_employees http_language enriched_at
     tranco_rank majestic_rank http_response_time
   )
+
+  # Country is computed via expression for backward compat with existing data
+  @country_expr LS.Clickhouse.country_expr()
+
+  defp columns_sql do
+    (@columns_raw ++ ["#{@country_expr} AS inferred_country"]) |> Enum.join(", ")
+  end
+
+  defp column_names, do: @columns_raw ++ ["inferred_country"]
 
   @detail_columns ~w(
     domain http_title http_tech http_apps http_status http_response_time
@@ -47,7 +56,7 @@ defmodule LS.Explorer do
     where = build_where(filters)
 
     sql = """
-    SELECT #{Enum.join(@columns, ", ")}
+    SELECT #{columns_sql()}
     FROM domains_current FINAL
     #{where}
     ORDER BY tranco_rank ASC NULLS LAST
@@ -56,7 +65,7 @@ defmodule LS.Explorer do
     """
 
     case Clickhouse.query_raw(sql) do
-      {:ok, rows} -> {:ok, rows_to_maps(rows, @columns)}
+      {:ok, rows} -> {:ok, rows_to_maps(rows, column_names())}
       err -> err
     end
   end
@@ -106,14 +115,20 @@ defmodule LS.Explorer do
   end
 
   @doc "Get distinct values for a column, optionally filtered by prefix. For typeahead filters."
-  def distinct_values(column, prefix \\ "", limit \\ 50) when column in ~w(http_tech bgp_asn_country http_language) do
-    prefix_clause = if prefix != "", do: "AND lower(#{column}) LIKE '%#{esc(String.downcase(prefix))}%'", else: ""
+  def distinct_values(column, prefix \\ "", limit \\ 50) when column in ~w(http_tech country http_language) do
+    {col_expr, col_alias} = if column == "country" do
+      {"#{@country_expr}", "country"}
+    else
+      {column, column}
+    end
+
+    prefix_clause = if prefix != "", do: "AND lower(#{col_alias}) LIKE '%#{esc(String.downcase(prefix))}%'", else: ""
 
     sql = """
-    SELECT DISTINCT #{column}
+    SELECT DISTINCT #{col_expr} AS #{col_alias}
     FROM domains_current FINAL
-    WHERE #{column} != '' #{prefix_clause}
-    ORDER BY #{column} ASC
+    WHERE #{col_alias} != '' #{prefix_clause}
+    ORDER BY #{col_alias} ASC
     LIMIT #{limit}
     """
 
@@ -190,9 +205,10 @@ defmodule LS.Explorer do
   end
 
   defp filter_clause({:country, v}) when is_binary(v) and v != "" do
+    ce = @country_expr
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["bgp_asn_country = '#{esc(hd(values))}'"],
-    else: ["bgp_asn_country IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    if length(values) == 1, do: ["#{ce} = '#{esc(hd(values))}'"],
+    else: ["#{ce} IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
   defp filter_clause({:business_model, v}) when is_binary(v) and v != "" do

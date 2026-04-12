@@ -152,7 +152,12 @@ defmodule LS.Tools.Lookup do
       title: at.(:http_title) || domain,
       tech: tech,
       status: at.(:http_status),
-      country: at.(:bgp_asn_country) || "",
+      country: LS.CountryInferrer.infer(
+        at.(:ctl_tld),
+        at.(:http_language),
+        nil,
+        at.(:bgp_asn_country)
+      ),
       is_shopify: is_shopify,
       business_model: at.(:business_model) || "",
       industry: at.(:industry) || "",

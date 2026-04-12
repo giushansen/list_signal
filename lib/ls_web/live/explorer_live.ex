@@ -212,7 +212,7 @@ defmodule LSWeb.ExplorerLive do
 
   defp fetch_dropdown_options("tech", query), do: fetch_techs(query)
   defp fetch_dropdown_options("shopify_app", query), do: fetch_apps(query, shopify_only: true)
-  defp fetch_dropdown_options("country", query), do: fetch_distinct("bgp_asn_country", query)
+  defp fetch_dropdown_options("country", query), do: fetch_distinct("country", query)
   defp fetch_dropdown_options("language", query), do: fetch_distinct("http_language", query)
   defp fetch_dropdown_options("business_model", query), do: filter_static(Explorer.business_models(), query)
   defp fetch_dropdown_options("industry", query), do: filter_static(Explorer.industries(), query)
@@ -627,7 +627,7 @@ defmodule LSWeb.ExplorerLive do
                             <% end %>
                           </div>
                         </td>
-                        <td class="px-3 py-2.5 truncate text-gray-300"><%= country_flag(row["bgp_asn_country"]) %> <%= row["bgp_asn_country"] %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-300"><%= country_flag(row["inferred_country"]) %> <%= row["inferred_country"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["business_model"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["industry"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-300"><%= row["estimated_revenue"] %></td>
@@ -692,7 +692,8 @@ defmodule LSWeb.ExplorerLive do
 
                   <%!-- Country + Language --%>
                   <div class="grid grid-cols-2 gap-2.5">
-                    <.detail_card icon="🌍" label="Country" value={if @detail["bgp_asn_country"], do: "#{country_flag(@detail["bgp_asn_country"])} #{country_name(@detail["bgp_asn_country"])}"} />
+                    <% inferred = LS.CountryInferrer.infer(@detail["ctl_tld"], @detail["http_language"], nil, @detail["bgp_asn_country"]) %>
+                    <.detail_card icon="🌍" label="Country" value={if inferred != "", do: "#{country_flag(inferred)} #{country_name(inferred)}"} />
                     <.detail_card icon="🗣️" label="Language" value={if @detail["http_language"], do: language_name(@detail["http_language"])} />
                   </div>
 

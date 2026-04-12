@@ -21,6 +21,7 @@ defmodule LS.Pipeline do
   alias LS.Reputation.{Tranco, Majestic, Blocklist}
   alias LS.Revenue.Estimator, as: RevenueEstimator
   alias LS.ML.Classifier, as: MLClassifier
+  alias LS.CountryInferrer
 
   # ===========================================================================
   # END-TO-END
@@ -301,6 +302,12 @@ defmodule LS.Pipeline do
       bgp_asn_org: bgp[:bgp_asn_org] || "",
       bgp_asn_country: bgp[:bgp_asn_country] || "",
       bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
+      inferred_country: CountryInferrer.infer(
+        tld,
+        http[:http_language] || "",
+        rdap[:registrant_country],
+        bgp[:bgp_asn_country]
+      ),
       rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
       rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
       rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),

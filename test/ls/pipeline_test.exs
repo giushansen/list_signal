@@ -33,7 +33,8 @@ defmodule LS.PipelineTest do
       v3_keys = [
         :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_registrar,
         :tranco_rank, :majestic_rank, :majestic_ref_subnets,
-        :is_malware, :is_phishing, :is_disposable_email
+        :is_malware, :is_phishing, :is_disposable_email,
+        :inferred_country
       ]
       for key <- v3_keys, do: assert(Map.has_key?(result, key), "Missing: #{key}")
     end
@@ -43,6 +44,19 @@ defmodule LS.PipelineTest do
       assert is_binary(result.is_malware)
       assert is_binary(result.is_phishing)
       assert is_binary(result.is_disposable_email)
+    end
+
+    test "inferred_country is populated" do
+      result = LS.Pipeline.run("example.com")
+      assert is_binary(result.inferred_country)
+      # example.com is a .com domain, should get a country
+      assert result.inferred_country != ""
+    end
+  end
+
+  describe "column count" do
+    test "inserter has 55 columns matching schema" do
+      assert length(LS.Cluster.Inserter.columns()) == 55
     end
   end
 end

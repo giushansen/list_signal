@@ -46,22 +46,46 @@ defmodule LSWeb.StoreController do
     end
   end
 
-  # /store/:slug — legacy route, redirects to /shopify/ or /website/ based on data
-  def show(conn, %{"slug" => slug}) do
-    domain = slug_to_domain(slug)
-    Logger.info("[STORE] show (legacy) slug=#{slug} domain=#{domain}")
+  @country_slug_to_code %{
+    "united-states" => "us", "united-kingdom" => "gb", "canada" => "ca",
+    "australia" => "au", "germany" => "de", "france" => "fr", "netherlands" => "nl",
+    "sweden" => "se", "japan" => "jp", "south-korea" => "kr", "india" => "in",
+    "brazil" => "br", "new-zealand" => "nz", "ireland" => "ie", "singapore" => "sg",
+    "italy" => "it", "spain" => "es", "denmark" => "dk", "norway" => "no",
+    "finland" => "fi", "belgium" => "be", "switzerland" => "ch", "austria" => "at",
+    "poland" => "pl", "portugal" => "pt", "mexico" => "mx", "israel" => "il",
+    "hong-kong" => "hk", "taiwan" => "tw", "uae" => "ae", "south-africa" => "za",
+    "china" => "cn", "russia" => "ru", "turkey" => "tr", "czech-republic" => "cz",
+    "hungary" => "hu", "romania" => "ro", "greece" => "gr", "ukraine" => "ua",
+    "thailand" => "th", "vietnam" => "vn", "indonesia" => "id", "malaysia" => "my",
+    "argentina" => "ar", "colombia" => "co", "chile" => "cl", "peru" => "pe",
+    "philippines" => "ph", "nigeria" => "ng", "egypt" => "eg", "kenya" => "ke",
+    "saudi-arabia" => "sa", "pakistan" => "pk", "bangladesh" => "bd"
+  }
 
-    case find_store(domain, slug) do
-      {:found, row, resolved_domain} ->
-        store = parse_store(row, resolved_domain)
-        if is_shopify?(store) do
-          conn |> put_status(301) |> redirect(to: "/shopify/#{slug}")
-        else
-          conn |> put_status(301) |> redirect(to: "/website/#{slug}")
+  # /store/:slug — legacy route, redirects to /shopify/ or /website/ based on data
+  # Also handles country-name slugs like /store/united-states → /top/shopify-stores-us
+  def show(conn, %{"slug" => slug}) do
+    # Check if slug is a country name first
+    case Map.get(@country_slug_to_code, slug) do
+      nil ->
+        domain = slug_to_domain(slug)
+        Logger.info("[STORE] show (legacy) slug=#{slug} domain=#{domain}")
+
+        case find_store(domain, slug) do
+          {:found, row, resolved_domain} ->
+            store = parse_store(row, resolved_domain)
+            if is_shopify?(store) do
+              conn |> put_status(301) |> redirect(to: "/shopify/#{slug}")
+            else
+              conn |> put_status(301) |> redirect(to: "/website/#{slug}")
+            end
+          :not_found ->
+            render_not_found(conn, domain)
         end
-      :not_found ->
-        # No data yet — just render store page directly (data was fetched by landing page search)
-        render_not_found(conn, domain)
+
+      code ->
+        conn |> put_status(301) |> redirect(to: "/top/shopify-stores-#{code}")
     end
   end
 
@@ -157,7 +181,10 @@ defmodule LSWeb.StoreController do
     s = fn key -> at.(key) || "" end
 
     tech = parse_pipe(at.(:http_tech))
-    country = s.(:bgp_asn_country)
+    tld = s.(:ctl_tld)
+    language = s.(:http_language)
+    bgp_country = s.(:bgp_asn_country)
+    country = LS.CountryInferrer.infer(tld, language, nil, bgp_country)
     mx_records = parse_pipe(at.(:dns_mx))
     dns_txt = parse_pipe(at.(:dns_txt))
     dns_txt_joined = Enum.join(dns_txt, " ")

@@ -161,9 +161,16 @@ LS_ROLE=worker LS_MASTER=master@10.0.0.1 LS_DNS_CONCURRENCY=500 \
 **Setup** (first time or schema changes):
 
 ```bash
-bash clickhouse/setup.sh        # creates database + tables
-# or for upgrades:
-clickhouse client < clickhouse/migrate_v3.sql
+bash clickhouse/setup.sh        # nuke + recreate database + tables
+```
+
+**Re-import saved data** (after a reset):
+
+```bash
+# CSV files in clickhouse/ are human-readable backups (CSVWithNames format)
+# Re-import them after a fresh setup:
+clickhouse client --database=ls --query="INSERT INTO enrichments FORMAT CSVWithNames" < clickhouse/shopify_domains.csv
+clickhouse client --database=ls --query="INSERT INTO enrichments FORMAT CSVWithNames" < clickhouse/saas_domains.csv
 ```
 
 **Two objects:**
@@ -541,13 +548,16 @@ Every enriched domain becomes one row with these fields:
 
 | Column Group | Columns | Source |
 |---|---|---|
-| **Meta** | `enriched_at`, `worker`, `domain` | System |
-| **CTL** | `ctl_tld`, `ctl_issuer`, `ctl_subdomain_count`, `ctl_subdomains` | CTL Poller |
-| **DNS** | `dns_a`, `dns_aaaa`, `dns_mx`, `dns_txt`, `dns_cname` | DNS Resolver |
-| **HTTP** | `http_status`, `http_response_time`, `http_blocked`, `http_content_type`, `http_tech`, `http_apps`, `http_language`, `http_title`, `http_meta_description`, `http_pages`, `http_emails`, `http_error` | HTTP Client + detectors |
-| **BGP** | `bgp_ip`, `bgp_asn_number`, `bgp_asn_org`, `bgp_asn_country`, `bgp_asn_prefix` | BGP Resolver |
-| **RDAP** | `rdap_domain_created_at`, `rdap_domain_expires_at`, `rdap_domain_updated_at`, `rdap_registrar`, `rdap_registrar_iana_id`, `rdap_nameservers`, `rdap_status`, `rdap_error` | RDAP Client |
-| **Reputation** | `tranco_rank`, `majestic_rank`, `majestic_ref_subnets`, `is_malware`, `is_phishing`, `is_disposable_email` | Reputation modules |
+| **Meta** (3) | `enriched_at`, `worker`, `domain` | System |
+| **CTL** (4) | `ctl_tld`, `ctl_issuer`, `ctl_subdomain_count`, `ctl_subdomains` | CTL Poller |
+| **DNS** (5) | `dns_a`, `dns_aaaa`, `dns_mx`, `dns_txt`, `dns_cname` | DNS Resolver |
+| **HTTP** (14) | `http_status`, `http_response_time`, `http_blocked`, `http_content_type`, `http_tech`, `http_apps`, `http_language`, `http_title`, `http_meta_description`, `http_pages`, `http_emails`, `http_error`, `http_h1`, `http_body_snippet` | HTTP Client + detectors |
+| **Classification** (5) | `business_model`, `industry`, `classification_confidence`, `http_schema_type`, `http_og_type` | BusinessClassifier + ML |
+| **BGP** (5) | `bgp_ip`, `bgp_asn_number`, `bgp_asn_org`, `bgp_asn_country`, `bgp_asn_prefix` | BGP Resolver |
+| **Inferred Country** (1) | `inferred_country` | CountryInferrer (TLD > language > RDAP > BGP) |
+| **RDAP** (8) | `rdap_domain_created_at`, `rdap_domain_expires_at`, `rdap_domain_updated_at`, `rdap_registrar`, `rdap_registrar_iana_id`, `rdap_nameservers`, `rdap_status`, `rdap_error` | RDAP Client |
+| **Reputation** (6) | `tranco_rank`, `majestic_rank`, `majestic_ref_subnets`, `is_malware`, `is_phishing`, `is_disposable_email` | Reputation modules |
+| **Revenue** (4) | `estimated_revenue`, `estimated_employees`, `revenue_confidence`, `revenue_evidence` | RevenueEstimator |
 
 Multi-value fields use pipe separators: `"1.2.3.4|5.6.7.8"`.
 

@@ -25,6 +25,7 @@ defmodule LS.Cluster.Inserter do
     :business_model, :industry, :classification_confidence,
     :http_schema_type, :http_og_type,
     :bgp_ip, :bgp_asn_number, :bgp_asn_org, :bgp_asn_country, :bgp_asn_prefix,
+    :inferred_country,
     # RDAP
     :rdap_domain_created_at, :rdap_domain_expires_at, :rdap_domain_updated_at,
     :rdap_registrar, :rdap_registrar_iana_id, :rdap_nameservers,

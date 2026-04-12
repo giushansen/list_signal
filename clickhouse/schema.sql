@@ -1,6 +1,6 @@
 -- ============================================================================
 -- LISTSIGNAL CLICKHOUSE SCHEMA
--- Source of truth. Matches LS.Cluster.Inserter.@columns exactly (54 columns).
+-- Source of truth. Matches LS.Cluster.Inserter.@columns exactly (55 columns).
 -- Run: clickhouse client < clickhouse/schema.sql
 -- Reset: bash clickhouse/setup.sh
 -- ============================================================================
@@ -59,6 +59,9 @@ CREATE TABLE IF NOT EXISTS ls.enrichments
     bgp_asn_country LowCardinality(String) DEFAULT '',
     bgp_asn_prefix String DEFAULT '',
 
+    -- Inferred country (1) — smart business location from TLD + language + RDAP + BGP
+    inferred_country LowCardinality(String) DEFAULT '',
+
     -- RDAP (8)
     rdap_domain_created_at Nullable(DateTime),
     rdap_domain_expires_at Nullable(DateTime),
@@ -106,6 +109,7 @@ AS SELECT
     business_model, industry, classification_confidence,
     http_schema_type, http_og_type,
     bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix,
+    inferred_country,
     rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at,
     rdap_registrar, rdap_registrar_iana_id, rdap_nameservers,
     rdap_status, rdap_error,
