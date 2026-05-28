@@ -56,3 +56,6 @@ http_performance.log
 priv/reputation/*
 
 metadata_dropped/
+
+.env
+rel/
