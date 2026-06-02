@@ -24,7 +24,13 @@ if config_env() == :prod do
 
   config :ls, LSWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
-    http: [ip: {0, 0, 0, 0}, port: port],
+    https: [
+      ip: {0, 0, 0, 0},
+      port: port,
+      cipher_suite: :strong,
+      certfile: System.get_env("SSL_CERT_FILE"),
+      keyfile: System.get_env("SSL_KEY_FILE")
+    ],
     secret_key_base: secret_key_base
 
   config :ls, :dns_rewrite_on_redirect, host
@@ -49,4 +55,3 @@ end
 if config_env() != :test do
   :logger.add_primary_filter(:tls_filter, {fn _, _ -> :ignore end, %{}})
 end
-
