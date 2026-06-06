@@ -154,6 +154,53 @@ LS_ROLE=worker LS_MASTER=master@10.0.0.1 LS_DNS_CONCURRENCY=500 \
 
 ---
 
+## Accessing Production Runtime (remote console)
+
+Production nodes are **mix releases** with long-name distribution (`-name node@ip`).
+RDAP/HTTP/enrichment state lives on **worker** nodes — connect there for diagnostics.
+
+### Connect to a running worker
+
+```bash
+# 1. SSH into the worker
+ssh ls@<worker-public-ip>          # e.g. 108.61.94.33 (ny1)
+
+# 2. Extract release root, node name, and cookie from the running process
+RELROOT=$(ps -eo args | grep '[b]eam.smp' | grep -oP '(?<=-root )\S+')
+NODE=$(ps -eo args | grep '[b]eam.smp' | grep -oP '(?<=-name )\S+')
+COOKIE=$(ps -eo args | grep '[b]eam.smp' | grep -oP '(?<=-setcookie )\S+')
+
+# 3. Open the remote console (all 4 env vars required for long-name releases)
+RELEASE_DISTRIBUTION=name RELEASE_NODE=$NODE RELEASE_COOKIE=$COOKIE \
+  "$RELROOT/bin/ls" remote
+```
+
+### One-shot commands (no interactive shell)
+
+```bash
+RELEASE_DISTRIBUTION=name RELEASE_NODE=$NODE RELEASE_COOKIE=$COOKIE \
+  "$RELROOT/bin/ls" rpc 'IO.inspect(LS.RDAP.Client.stats())'
+```
+
+### Useful runtime diagnostics
+
+```elixir
+LS.RDAP.Client.stats()              # RDAP hit/error/rate-limited counters
+LS.Cluster.WorkerAgent.stats()       # enrichment throughput + stage timings
+:ets.info(:rdap_bootstrap, :size)    # TLDs with RDAP server mappings
+:ets.lookup(:rdap_bootstrap, "io")   # check specific TLD coverage
+LS.RDAP.Client.lookup("stripe.com")  # test a single RDAP lookup live
+```
+
+### Exit without killing the node
+
+**Ctrl-G** → **q** → Enter. The release is a separate OS process and keeps running.
+
+### Node naming
+
+Long names: `worker<N>_<region>@<wireguard-ip>` (e.g. `worker1_ny@10.0.0.2`).
+Master: `master@10.0.0.1`. Read the exact name from `ps -eo args | grep beam.smp`.
+
 ## Databases
 
 ### ClickHouse (enrichment data — master node)
