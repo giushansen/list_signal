@@ -12,6 +12,7 @@ defmodule LS.HTTP.TechDetector do
     urls = srcs ++ hrefs
     tech = []
       |> from_headers(headers)
+      |> from_set_cookie(headers)
       |> from_srcs(srcs)
       |> from_hrefs(hrefs)
       |> from_meta(metas)
@@ -81,6 +82,40 @@ defmodule LS.HTTP.TechDetector do
     |> add(h["x-powered-by"] =~ ~r/\bcraftcms\b/i, "Craft CMS")
     |> add(h["x-powered-by"] =~ ~r/\bplasma\b/i, "Jetveo")
   end
+
+  # =========================================================================
+  # SET-COOKIE (backend framework from session cookie names)
+  # =========================================================================
+  # Inspects ALL set-cookie headers (there can be several). Matches case-insensitively.
+  defp from_set_cookie(a, hdrs) do
+    cookies = set_cookies(hdrs) |> Enum.join("\n") |> String.downcase()
+    a
+    |> add(c?(cookies, "_rails_session") || c?(cookies, "_session_id"), "Ruby on Rails")
+    |> add(c?(cookies, "laravel_session"), "Laravel")
+    |> add(c?(cookies, "csrftoken") && c?(cookies, "sessionid"), "Django")
+    |> add(c?(cookies, "connect.sid"), "Express")
+    |> add(c?(cookies, "phpsessid"), "PHP")
+    |> add(c?(cookies, "jsessionid"), "Java")
+    |> add(c?(cookies, "asp.net_sessionid") || c?(cookies, ".aspnetcore"), "ASP.NET")
+    |> add(c?(cookies, "ci_session"), "CodeIgniter")
+    |> add(c?(cookies, "next-auth.session-token") || c?(cookies, "__secure-next-auth"), "NextAuth")
+  end
+
+  # Collect every set-cookie value (case-insensitive name match) from list or map headers.
+  defp set_cookies(hdrs) when is_list(hdrs) do
+    hdrs
+    |> Enum.filter(fn
+      {k, _v} -> String.downcase(to_string(k)) == "set-cookie"
+      _ -> false
+    end)
+    |> Enum.map(fn {_k, v} -> to_string(v) end)
+  end
+  defp set_cookies(hdrs) when is_map(hdrs) do
+    Enum.flat_map(hdrs, fn {k, v} ->
+      if String.downcase(to_string(k)) == "set-cookie", do: [to_string(v)], else: []
+    end)
+  end
+  defp set_cookies(_), do: []
 
   # =========================================================================
   # SCRIPT SRC (the most reliable signal)
@@ -207,7 +242,7 @@ defmodule LS.HTTP.TechDetector do
     |> add(m?(s, "cdn.snipcart.com"), "Snipcart")
     |> add(m?(s, "cdn.foxycart.com"), "FoxyCart")
     # --- Payment ---
-    |> add(m?(s, "js.stripe.com/v3"), "Stripe")
+    |> add(m?(s, "js.stripe.com"), "Stripe")
     |> add(m?(s, "paypal.com/sdk/js"), "PayPal")
     |> add(m?(s, "js.braintreegateway.com"), "Braintree")
     |> add(m?(s, "js.squareup.com") || m?(s, "web.squarecdn.com"), "Square")
@@ -447,6 +482,17 @@ defmodule LS.HTTP.TechDetector do
     |> add(m?(u, "/_astro/"), "Astro")
     |> add(m?(u, "firebaseapp.com") || m?(u, "firebase.google.com") || m?(u, "__/firebase/"), "Firebase")
     |> add(m?(u, "supabase.co"), "Supabase")
+    # --- Auth providers (pay off most on login pages) ---
+    |> add(m?(u, "auth0.com"), "Auth0")
+    |> add(m?(u, "clerk."), "Clerk")
+    |> add(m?(u, "identitytoolkit") || m?(u, "firebaseapp.com/__/auth"), "Firebase Auth")
+    |> add(m?(u, "supabase.co"), "Supabase Auth")
+    |> add(m?(u, "cognito-idp."), "AWS Cognito")
+    |> add(m?(u, "okta.com") || m?(u, "oktacdn.com"), "Okta")
+    |> add(m?(u, "js.stytch.com"), "Stytch")
+    |> add(m?(u, "workos.com"), "WorkOS")
+    # --- Stripe Checkout / Payment Links (hrefs) ---
+    |> add(m?(u, "buy.stripe.com") || m?(u, "checkout.stripe.com"), "Stripe")
   end
 
   # =========================================================================

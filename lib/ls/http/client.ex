@@ -39,11 +39,26 @@ defmodule LS.HTTP.Client do
   Fetch domain using provided IP for rate limiting.
   Returns {:error, :rate_limited} immediately if IP is rate-limited.
   """
-  def fetch(domain, ip) do
-    # Check rate limiter FIRST - DON'T sleep, return error immediately
+  def fetch(domain, ip), do: fetch(domain, ip, [])
+
+  @doc """
+  Fetch a specific `path` on `domain` (default "/"), reusing the SAME per-IP rate
+  limiter, TLS connection logic, and `@max_body_bytes` cap. Options:
+
+    * `:path`    — request path, defaults to "/"
+    * `:timeout` — receive timeout in ms, defaults to `@receive_timeout`
+
+  Used for best-effort secondary-page (login/pricing) tech detection. The rate
+  limiter is ALWAYS consulted so secondary fetches stay polite.
+  """
+  def fetch(domain, ip, opts) when is_list(opts) do
+    path = Keyword.get(opts, :path, "/")
+    recv_timeout = Keyword.get(opts, :timeout, @receive_timeout)
+
+    # Check rate limiter FIRST - DON'T sleep beyond the spacing window
     case IPRateLimiter.check_and_update(ip, 1000) do
       :ok ->
-        fetch_with_redirects(domain, ip, 0)
+        fetch_with_redirects(domain, ip, 0, path, recv_timeout)
 
       {:wait, wait_ms} ->
         Process.sleep(wait_ms)
@@ -51,11 +66,12 @@ defmodule LS.HTTP.Client do
     end
   end
 
-  defp fetch_with_redirects(_domain, _ip, redirect_count) when redirect_count > @max_redirects do
+  defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout)
+       when redirect_count > @max_redirects do
     {:error, "too_many_redirects", :too_many_redirects}
   end
 
-  defp fetch_with_redirects(domain, _ip, redirect_count) do
+  defp fetch_with_redirects(domain, _ip, redirect_count, path, recv_timeout) do
     start_time = System.monotonic_time(:millisecond)
 
     # Mint connection options
@@ -75,7 +91,7 @@ defmodule LS.HTTP.Client do
 
     case Mint.HTTP.connect(:https, domain, 443, opts) do
       {:ok, conn} ->
-        perform_request(conn, domain, start_time, redirect_count)
+        perform_request(conn, domain, start_time, redirect_count, path, recv_timeout)
 
       {:error, error} ->
         reason = format_error(error)
@@ -89,12 +105,12 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp perform_request(conn, domain, start_time, redirect_count) do
+  defp perform_request(conn, domain, start_time, redirect_count, path, recv_timeout) do
     headers = build_headers(domain)
 
-    case Mint.HTTP.request(conn, "GET", "/", headers, nil) do
+    case Mint.HTTP.request(conn, "GET", path, headers, nil) do
       {:ok, conn, request_ref} ->
-        receive_response(conn, request_ref, start_time, redirect_count)
+        receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout)
 
       {:error, _conn, error} ->
         reason = format_error(error)
@@ -109,9 +125,9 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp receive_response(conn, request_ref, start_time, redirect_count) do
+  defp receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout) do
     # Start receive timeout
-    receive_deadline = System.monotonic_time(:millisecond) + @receive_timeout
+    receive_deadline = System.monotonic_time(:millisecond) + recv_timeout
 
     result = do_receive_response(conn, request_ref, %{
       status: nil,
@@ -135,7 +151,7 @@ defmodule LS.HTTP.Client do
               # Follow redirect
               case URI.parse(location) do
                 %URI{host: new_host} when is_binary(new_host) and new_host != "" ->
-                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1)
+                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1, path, recv_timeout)
                 _ ->
                   {:ok, %{response | elapsed_ms: elapsed_ms}}
               end

@@ -20,6 +20,19 @@ defmodule LS.RDAP.Client do
   @req_timeout 10_000
   @default_rate_per_sec 1
 
+  # TLDs with RDAP servers NOT in IANA bootstrap (dns.json). Remove any that error.
+  @supplementary_rdap %{
+    "io" => "https://rdap.nic.io/",
+    "co" => "https://rdap.nic.co/",
+    "us" => "https://rdap.nic.us/",
+    "it" => "https://rdap.nic.it/",
+    "be" => "https://rdap.dns.be/",
+    "at" => "https://rdap.nic.at/",
+    "dk" => "https://rdap.punktum.dk/",
+    "se" => "https://rdap.nic.se/",
+    "nz" => "https://rdap.nz/"
+  }
+
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @doc "Lookup RDAP data for a domain. Returns {:ok, map} or {:error, reason}."
@@ -38,6 +51,7 @@ defmodule LS.RDAP.Client do
     :ets.new(@bootstrap_table, [:set, :public, :named_table, read_concurrency: true])
     :ets.new(@rate_table, [:set, :public, :named_table, write_concurrency: true])
     rate = System.get_env("LS_RDAP_RATE", "#{@default_rate_per_sec}") |> String.to_integer()
+    :persistent_term.put(:ls_rdap_rate_per_sec, rate)
     state = %{rate_per_sec: rate, total_queries: 0, total_hits: 0,
               total_errors: 0, total_rate_limited: 0,
               bootstrap_loaded: false, bootstrap_tlds: 0,
@@ -93,7 +107,7 @@ defmodule LS.RDAP.Client do
   defp find_server(tld) do
     case :ets.lookup(@bootstrap_table, tld) do
       [{^tld, url}] -> url
-      [] -> nil
+      [] -> Map.get(@supplementary_rdap, tld)
     end
   end
 
@@ -131,7 +145,8 @@ defmodule LS.RDAP.Client do
 
   defp rate_allowed?(host) do
     now_ms = System.system_time(:millisecond)
-    interval_ms = div(1000, @default_rate_per_sec)
+    rate = :persistent_term.get(:ls_rdap_rate_per_sec, @default_rate_per_sec)
+    interval_ms = div(1000, max(rate, 1))
     case :ets.lookup(@rate_table, host) do
       [{^host, last_ms}] when now_ms - last_ms < interval_ms -> false
       _ -> :ets.insert(@rate_table, {host, now_ms}); true

@@ -301,7 +301,10 @@ defmodule LS.Cluster.WorkerAgent do
         Cache.http_insert(d)
         {d, r}
       end,
-      max_concurrency: conc, timeout: @http_timeout + 5_000,
+      # Homepage budget + up to 2 best-effort secondary fetches (login/pricing),
+      # each ≤10s plus per-IP rate-limiter spacing. Raised so a secondary fetch can
+      # never time out the task and drop the (sacred) homepage row.
+      max_concurrency: conc, timeout: @http_timeout + 35_000,
       on_timeout: :kill_task, ordered: false
     )
     |> Enum.reduce(%{}, fn
@@ -326,7 +329,11 @@ defmodule LS.Cluster.WorkerAgent do
             Cache.rdap_insert(d)
             {d, data}
           {:error, :rate_limited} ->
-            {d, :skip}
+            Process.sleep(600)
+            case RDAPClient.lookup(d) do
+              {:ok, data} -> Cache.rdap_insert(d); {d, data}
+              _ -> {d, :skip}
+            end
           {:error, _} ->
             Cache.rdap_insert(d)
             {d, :skip}

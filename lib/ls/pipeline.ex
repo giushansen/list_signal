@@ -148,7 +148,7 @@ defmodule LS.Pipeline do
           h1 = TextExtractor.extract_h1(body)
           body_text = TextExtractor.extract_visible_text(body, 500)
           nav_links = TextExtractor.extract_nav_links(body)
-          %{
+          result = %{
             http_status: resp.status,
             http_response_time: resp[:elapsed_ms],
             http_blocked: tech_result.blocked,
@@ -168,12 +168,59 @@ defmodule LS.Pipeline do
             _body_text: body_text,
             _nav_links: nav_links
           }
+          # Best-effort, fully fault-isolated secondary-page enrichment. MUST be the
+          # last thing that can touch the homepage result; on any failure it returns
+          # `result` untouched.
+          enhance_with_secondary_pages(result, domain, ip)
         {:error, reason, _} -> %{http_error: to_string(reason)}
         {:error, reason} -> %{http_error: to_string(reason)}
       end
     end
   rescue
     e -> %{http_error: "crash:#{Exception.message(e)}"}
+  end
+
+  # ===========================================================================
+  # PRIVATE — secondary-page enrichment (login + pricing)
+  # ===========================================================================
+  # Best-effort union of login/pricing-page tech into the homepage `http_tech`.
+  # Gated on http_status == 200 AND a matching discovered path. Fault-isolated:
+  # any failure returns the untouched homepage result. Never overwrites homepage
+  # fields, never changes http_status — only ADDS to http_tech (uniq union).
+  defp enhance_with_secondary_pages(%{http_status: 200, http_pages: pages} = result, domain, ip)
+       when is_binary(pages) and pages != "" do
+    paths = String.split(pages, "|")
+    login_path   = Enum.find(paths, &(&1 in ~w(/login /sign-in /signin /log-in /auth /account /dashboard /portal)))
+    pricing_path = Enum.find(paths, &String.starts_with?(&1, "/pricing"))
+
+    extra_tech =
+      [login_path, pricing_path]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.take(2)
+      |> Enum.flat_map(fn path -> tech_from_secondary_page(domain, ip, path) end)
+
+    case extra_tech do
+      [] -> result
+      more ->
+        merged = (String.split(result.http_tech || "", "|", trim: true) ++ more) |> Enum.uniq() |> Enum.sort()
+        %{result | http_tech: Enum.join(merged, "|")}
+    end
+  rescue
+    _ -> result
+  end
+  defp enhance_with_secondary_pages(result, _domain, _ip), do: result
+
+  # Best-effort fetch of one secondary page. Returns [] on ANY problem.
+  # Reuses LS.HTTP.Client (and therefore the per-IP rate limiter) with a tight timeout.
+  defp tech_from_secondary_page(domain, ip, path) do
+    url_path = String.trim_leading(path, "/")
+    case Client.fetch(domain, ip, path: "/" <> url_path, timeout: 10_000) do
+      {:ok, %{body: body, headers: headers}} ->
+        TechDetector.detect(%{body: body, headers: headers}).tech
+      _ -> []
+    end
+  rescue
+    _ -> []
   end
 
   def bgp(ip) when is_binary(ip) do
@@ -466,6 +513,7 @@ defmodule LS.Pipeline do
     # Verification TXT records
     techs = if String.contains?(txt, "google-site-verification"), do: ["Google Search Console" | techs], else: techs
     techs = if String.contains?(txt, "facebook-domain-verification"), do: ["Meta Pixel" | techs], else: techs
+    techs = if String.contains?(txt, "stripe-verification"), do: ["Stripe" | techs], else: techs
 
     techs |> Enum.uniq()
   end
