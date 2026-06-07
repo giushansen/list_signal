@@ -31,6 +31,8 @@ defmodule LS.Cluster.WorkerAgent do
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   def stats, do: GenServer.call(__MODULE__, :stats)
+  def drain, do: GenServer.cast(__MODULE__, :drain)
+  def drain_status, do: GenServer.call(__MODULE__, :drain_status)
 
   @impl true
   def init(_opts) do
@@ -44,7 +46,7 @@ defmodule LS.Cluster.WorkerAgent do
       master_node: master, connected: false,
       http_concurrency: http_c, dns_concurrency: dns_c,
       rdap_concurrency: rdap_c, batch_size: batch,
-      total_enriched: 0, total_batches: 0, current_batch: nil,
+      total_enriched: 0, total_batches: 0, current_batch: nil, draining: false,
       start_time: System.monotonic_time(:second),
       last_stages: nil, last_samples: %{}, errors: []
     }
@@ -87,6 +89,21 @@ defmodule LS.Cluster.WorkerAgent do
 
   @impl true
   def handle_call(:errors, _from, s), do: {:reply, s.errors, s}
+
+  # ==========================================================================
+  # DRAIN (graceful deploy — finish in-flight batch, pull no new work)
+  # ==========================================================================
+
+  @impl true
+  def handle_call(:drain_status, _from, s) do
+    {:reply, %{draining: s.draining, idle: s.current_batch == nil}, s}
+  end
+
+  @impl true
+  def handle_cast(:drain, s) do
+    Logger.info("WorkerAgent draining — no new batches")
+    {:noreply, %{s | draining: true}}
+  end
 
   # ==========================================================================
   # CONNECTION
@@ -146,13 +163,13 @@ defmodule LS.Cluster.WorkerAgent do
       last_samples: samples,
       errors: errors
     }
-    send(self(), :pull_work)
+    unless new_s.draining, do: send(self(), :pull_work)
     {:noreply, new_s}
   end
 
   @impl true
   def handle_info(:batch_empty, s) do
-    Process.send_after(self(), :pull_work, @empty_queue_wait_ms)
+    unless s.draining, do: Process.send_after(self(), :pull_work, @empty_queue_wait_ms)
     {:noreply, %{s | current_batch: nil}}
   end
 

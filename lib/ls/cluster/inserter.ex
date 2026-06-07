@@ -46,6 +46,7 @@ defmodule LS.Cluster.Inserter do
 
   @impl true
   def init(_opts) do
+    Process.flag(:trap_exit, true)
     schedule_flush()
     Logger.info("💾 Inserter started (#{length(@columns)} columns, flush: #{@flush_size}/#{div(@flush_interval_ms, 1000)}s)")
     {:ok, %{buffer: [], buffer_size: 0, total_inserted: 0, total_batches: 0,
@@ -77,6 +78,15 @@ defmodule LS.Cluster.Inserter do
     state = if state.buffer_size > 0, do: do_flush(state), else: state
     schedule_flush()
     {:noreply, state}
+  end
+
+  @impl true
+  def terminate(_reason, state) do
+    if state.buffer_size > 0 do
+      Logger.info("Inserter terminating — flushing #{state.buffer_size} rows")
+      do_flush(state)
+    end
+    :ok
   end
 
   defp do_flush(%{buffer: []} = state), do: state

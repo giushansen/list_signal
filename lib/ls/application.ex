@@ -56,7 +56,8 @@ defmodule LS.Application do
       LS.Reputation.Blocklist,
       LS.ML.Classifier,
       LS.Cluster.WorkQueue,
-      LS.Cluster.Inserter,
+      # Allow time for the terminate/2 flush (ClickHouse insert has a 30s receive_timeout)
+      Supervisor.child_spec(LS.Cluster.Inserter, shutdown: 35_000),
       LS.Cluster.Monitor,
       LS.Recrawl.Scheduler,
       LSWeb.Endpoint
