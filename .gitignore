@@ -58,4 +58,7 @@ priv/reputation/*
 metadata_dropped/
 
 .env
-rel/
+# Ignore rel/ except env.sh.eex — it must ship so releases derive
+# RELEASE_NODE per host (deploys build from a fresh git clone).
+rel/*
+!rel/env.sh.eex
