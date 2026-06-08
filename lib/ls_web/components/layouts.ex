@@ -24,6 +24,10 @@ defmodule LSWeb.Layouts do
         <% end %>
         <meta property="og:site_name" content="ListSignal" />
         <meta property="og:type" content="website" />
+        <%= if assigns[:conn] do %>
+          <link rel="canonical" href={"https://listsignal.com" <> @conn.request_path} />
+          <meta property="og:url" content={"https://listsignal.com" <> @conn.request_path} />
+        <% end %>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
         <link rel="icon" type="image/x-icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />

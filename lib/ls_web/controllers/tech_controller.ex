@@ -19,33 +19,50 @@ defmodule LSWeb.TechController do
         end
     end
 
-    # Fetch distributions and stats in parallel-ish (sequential here but fast)
-    countries = case LS.Clickhouse.tech_country_distribution(actual_name) do
+    # These 6 ClickHouse queries are independent, so run them concurrently.
+    # On high-volume techs each query scans many rows; sequentially this was the
+    # dominant page cost (~0.8s). In parallel the page waits on the slowest one only.
+    [countries_r, languages_r, hosting_r, registrars_r, co_techs_r, stats_r] =
+      [
+        fn -> LS.Clickhouse.tech_country_distribution(actual_name) end,
+        fn -> LS.Clickhouse.tech_language_distribution(actual_name) end,
+        fn -> LS.Clickhouse.tech_hosting_distribution(actual_name) end,
+        fn -> LS.Clickhouse.tech_registrar_distribution(actual_name) end,
+        fn -> LS.Clickhouse.tech_co_occurring(actual_name) end,
+        fn -> LS.Clickhouse.tech_stats(actual_name) end
+      ]
+      |> Task.async_stream(& &1.(), max_concurrency: 6, timeout: 15_000, on_timeout: :kill_task)
+      |> Enum.map(fn
+        {:ok, result} -> result
+        _ -> {:error, :unavailable}
+      end)
+
+    countries = case countries_r do
       {:ok, rows} -> Enum.map(rows, fn [c, cnt] -> %{country: c, flag: country_to_flag(c), count: cnt} end)
       _ -> []
     end
 
-    languages = case LS.Clickhouse.tech_language_distribution(actual_name) do
+    languages = case languages_r do
       {:ok, rows} -> Enum.map(rows, fn [l, cnt] -> %{language: l, flag: language_to_flag(l), count: cnt} end)
       _ -> []
     end
 
-    hosting = case LS.Clickhouse.tech_hosting_distribution(actual_name) do
+    hosting = case hosting_r do
       {:ok, rows} -> Enum.map(rows, fn [h, cnt] -> %{provider: h, count: cnt} end)
       _ -> []
     end
 
-    registrars = case LS.Clickhouse.tech_registrar_distribution(actual_name) do
+    registrars = case registrars_r do
       {:ok, rows} -> Enum.map(rows, fn [r, cnt] -> %{registrar: r, count: cnt} end)
       _ -> []
     end
 
-    co_techs = case LS.Clickhouse.tech_co_occurring(actual_name) do
+    co_techs = case co_techs_r do
       {:ok, rows} -> Enum.map(rows, fn [t, cnt] -> %{tech: t, count: cnt} end)
       _ -> []
     end
 
-    stats = case LS.Clickhouse.tech_stats(actual_name) do
+    stats = case stats_r do
       {:ok, [[total, avg_rt, online, top100k]]} ->
         %{total: total, avg_response_time: avg_rt, online_count: online, top_100k_count: top100k}
       _ -> %{total: store_count, avg_response_time: nil, online_count: 0, top_100k_count: 0}
