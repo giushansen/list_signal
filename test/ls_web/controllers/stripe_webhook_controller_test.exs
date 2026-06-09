@@ -76,9 +76,41 @@ defmodule LSWeb.StripeWebhookControllerTest do
     end
   end
 
+  describe "handle_event/1 — invoice.paid" do
+    test "marks subscription active and stores period end", %{user: user} do
+      {:ok, _} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_inv"})
+
+      event = invoice_event("invoice.paid", user.stripe_customer_id)
+      StripeWebhookController.handle_event(event)
+
+      updated = Accounts.get_user!(user.id)
+      assert updated.subscription_status == "active"
+      assert updated.plan == "pro"
+      assert updated.current_period_end != nil
+    end
+
+    test "ignores when customer is missing" do
+      StripeWebhookController.handle_event(%{type: "invoice.paid", data: %{object: %{}}})
+    end
+  end
+
+  describe "handle_event/1 — invoice.payment_failed" do
+    test "marks subscription past_due without revoking access", %{user: user} do
+      {:ok, _} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_pf"})
+
+      event = invoice_event("invoice.payment_failed", user.stripe_customer_id)
+      StripeWebhookController.handle_event(event)
+
+      updated = Accounts.get_user!(user.id)
+      assert updated.subscription_status == "past_due"
+      assert updated.stripe_subscription_id == "sub_pf"
+      assert updated.plan == "pro"
+    end
+  end
+
   describe "handle_event/1 — unhandled events" do
     test "ignores unknown event types" do
-      StripeWebhookController.handle_event(%{type: "invoice.paid", data: %{object: %{}}})
+      StripeWebhookController.handle_event(%{type: "charge.succeeded", data: %{object: %{}}})
     end
   end
 
@@ -123,6 +155,22 @@ defmodule LSWeb.StripeWebhookControllerTest do
           id: subscription_id,
           customer: customer_id,
           items: %{data: [%{price: %{id: price_id}}]}
+        }
+      }
+    }
+  end
+
+  defp invoice_event(type, customer_id) do
+    period_end = System.os_time(:second) + 30 * 24 * 3600
+
+    %{
+      type: type,
+      data: %{
+        object: %{
+          customer: customer_id,
+          subscription: "sub_#{System.unique_integer([:positive])}",
+          period_end: period_end,
+          lines: %{data: [%{period: %{end: period_end}}]}
         }
       }
     }

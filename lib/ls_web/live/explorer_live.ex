@@ -670,10 +670,10 @@ defmodule LSWeb.ExplorerLive do
 
                 <%!-- Body --%>
                 <div class="overflow-y-auto max-h-[calc(100vh-180px)] p-5 space-y-4 dark-scrollbar">
-                  <%!-- Crawled timestamp --%>
+                  <%!-- Indexed date --%>
                   <div class="flex items-center gap-2 text-[11px] text-gray-500 pb-1 border-b border-white/[0.04]">
                     <span>🕐</span>
-                    <span>Crawled: <span class="text-gray-300"><%= format_datetime(@detail["enriched_at"]) %></span></span>
+                    <span>Indexed: <span class="text-gray-300"><%= @detail["enriched_at"] |> to_string() |> String.slice(0, 10) %></span></span>
                   </div>
 
                   <%!-- Classification: Business + Industry + Confidence on one line --%>
@@ -1252,17 +1252,6 @@ defmodule LSWeb.ExplorerLive do
     end
   end
   defp format_date(_), do: nil
-
-  defp format_datetime(nil), do: "—"
-  defp format_datetime(""), do: "—"
-  defp format_datetime(dt) when is_binary(dt) do
-    clean = dt |> String.replace("T", " ") |> String.replace("Z", "")
-    case NaiveDateTime.from_iso8601(clean) do
-      {:ok, ndt} -> Calendar.strftime(ndt, "%b %d, %Y %H:%M UTC")
-      _ -> dt
-    end
-  end
-  defp format_datetime(_), do: "—"
 
   defp format_pct(nil), do: nil
   defp format_pct(""), do: nil

@@ -57,7 +57,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT #{columns_sql()}
-    FROM domains_current FINAL
+    FROM domains_current
     #{where}
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{per_page}
@@ -73,7 +73,7 @@ defmodule LS.Explorer do
   def count(filters) do
     where = build_where(filters)
 
-    sql = "SELECT count() FROM domains_current FINAL #{where}"
+    sql = "SELECT count() FROM domains_current #{where}"
 
     case Clickhouse.query_raw(sql) do
       {:ok, [[count]]} when is_integer(count) -> {:ok, count}
@@ -85,7 +85,7 @@ defmodule LS.Explorer do
   def get_detail(domain) when is_binary(domain) do
     sql = """
     SELECT #{Enum.join(@detail_columns, ", ")}
-    FROM domains_current FINAL
+    FROM domains_current
     WHERE domain = '#{Clickhouse.escape_public(domain)}'
     LIMIT 1
     """
@@ -102,7 +102,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT #{Enum.join(@detail_columns, ", ")}
-    FROM domains_current FINAL
+    FROM domains_current
     #{where}
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
@@ -126,7 +126,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT DISTINCT #{col_expr} AS #{col_alias}
-    FROM domains_current FINAL
+    FROM domains_current
     WHERE #{col_alias} != '' #{prefix_clause}
     ORDER BY #{col_alias} ASC
     LIMIT #{limit}
@@ -144,7 +144,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_tech)) AS tech
-    FROM domains_current FINAL
+    FROM domains_current
     WHERE http_tech != ''
     GROUP BY tech
     #{prefix_clause}
@@ -165,7 +165,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_apps)) AS app
-    FROM domains_current FINAL
+    FROM domains_current
     WHERE http_apps != '' #{tech_clause}
     GROUP BY app
     #{prefix_clause}

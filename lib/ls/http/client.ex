@@ -29,12 +29,6 @@ defmodule LS.HTTP.Client do
     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
   ]
 
-  @accept_languages [
-    "en-US,en;q=0.9",
-    "en-GB,en;q=0.9,en-US;q=0.8",
-    "en-US,en;q=0.9,fr;q=0.8"
-  ]
-
   @doc """
   Fetch domain using provided IP for rate limiting.
   Returns {:error, :rate_limited} immediately if IP is rate-limited.
@@ -249,7 +243,9 @@ defmodule LS.HTTP.Client do
       {"host", domain},
       {"user-agent", Enum.random(@user_agents)},
       {"accept", Enum.random(@accept_headers)},
-      {"accept-language", Enum.random(@accept_languages)},
+      # Force English so sites that localize by Accept-Language/IP serve English
+      # (otherwise e.g. facebook.com is detected as French).
+      {"accept-language", "en-US,en;q=0.9"},
       {"accept-encoding", "identity"},
       {"connection", "close"},
       {"upgrade-insecure-requests", "1"},

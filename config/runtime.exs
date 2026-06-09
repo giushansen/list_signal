@@ -14,6 +14,12 @@ config :ls, :stripe_pro_yearly_price_id, System.get_env("STRIPE_PRO_YEARLY_PRICE
 config :ls, :stripe_starter_monthly_price_id, System.get_env("STRIPE_STARTER_MONTHLY_PRICE_ID")
 config :ls, :stripe_starter_yearly_price_id, System.get_env("STRIPE_STARTER_YEARLY_PRICE_ID")
 
+# Admin/monitoring panel allowlist (comma-separated emails). Empty = nobody.
+config :ls, :admin_emails,
+  (System.get_env("LS_ADMIN_EMAILS") || "")
+  |> String.split(",", trim: true)
+  |> Enum.map(fn e -> e |> String.trim() |> String.downcase() end)
+
 if config_env() == :prod do
   database_path = System.get_env("DATABASE_PATH") || Path.expand("../ls_prod.db", __DIR__)
   config :ls, LS.Repo, database: database_path

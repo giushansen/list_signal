@@ -14,6 +14,8 @@ defmodule LS.Accounts.User do
     # Billing
     field :stripe_customer_id, :string
     field :stripe_subscription_id, :string
+    field :subscription_status, :string
+    field :current_period_end, :utc_datetime
     field :plan, :string, default: "free"
     field :trial_ends_at, :utc_datetime
     field :exports_used_this_month, :integer, default: 0
@@ -26,7 +28,7 @@ defmodule LS.Accounts.User do
 
   def plan_changeset(user, attrs) do
     user
-    |> cast(attrs, [:plan, :stripe_customer_id, :stripe_subscription_id])
+    |> cast(attrs, [:plan, :stripe_customer_id, :stripe_subscription_id, :subscription_status, :current_period_end])
     |> validate_inclusion(:plan, @valid_plans)
   end
 

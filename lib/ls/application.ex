@@ -58,6 +58,7 @@ defmodule LS.Application do
       LS.Cluster.WorkQueue,
       # Allow time for the terminate/2 flush (ClickHouse insert has a 30s receive_timeout)
       Supervisor.child_spec(LS.Cluster.Inserter, shutdown: 35_000),
+      LS.Cluster.Optimizer,
       LS.Cluster.Monitor,
       LS.Recrawl.Scheduler,
       LSWeb.Endpoint

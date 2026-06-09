@@ -1,7 +1,10 @@
 defmodule LS.HTTP.LanguageDetector do
   @moduledoc "Detect page language via text analysis with html lang fallback."
 
-  @min_text_length 100
+  # Require a decent amount of real text before trusting statistical detection
+  # (paasaa). Below this, login walls / JS shells / boilerplate make it guess
+  # wrong (e.g. facebook.com → French), so we fall back to declared signals only.
+  @min_text_length 200
 
   def detect(body, headers, title, meta_desc) when is_binary(body) do
     text = build_text(title, meta_desc, body)

@@ -299,10 +299,12 @@ defmodule LS.Clickhouse do
 
   # ── Raw + Public ──
 
-  def query_raw(sql) do
+  def query_raw(sql, receive_timeout \\ @timeout) do
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact"
-    case Req.post(url, body: sql, receive_timeout: @timeout) do
+    case Req.post(url, body: sql, receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
+      # DDL / OPTIMIZE / statements with no result set return an empty 200 body.
+      {:ok, %{status: 200, body: body}} -> {:ok, body}
       {:ok, %{status: status, body: body}} -> {:error, "CH #{status}: #{inspect(body)}"}
       {:error, reason} -> {:error, reason}
     end

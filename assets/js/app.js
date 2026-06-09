@@ -1,8 +1,10 @@
 import "phoenix_html"
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
+import AutoClearFlashHook from "./clear_flash_hook"
 
 let Hooks = {}
+Hooks.AutoClearFlash = AutoClearFlashHook
 
 const STORAGE_KEY = "ls_explorer_col_widths"
 
