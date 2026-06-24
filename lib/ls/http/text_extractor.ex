@@ -8,6 +8,7 @@ defmodule LS.HTTP.TextExtractor do
       [_, raw] ->
         raw
         |> String.replace(~r/<[^>]+>/, " ")
+        |> LS.HTTP.Entities.decode()
         |> String.replace(~r/\s+/, " ")
         |> String.trim()
         |> String.slice(0, 200)
@@ -35,7 +36,7 @@ defmodule LS.HTTP.TextExtractor do
       ""
     else
       Regex.scan(~r/<a[^>]*>([^<]{1,100})<\/a>/is, nav_block)
-      |> Enum.map(fn [_, text] -> String.trim(text) end)
+      |> Enum.map(fn [_, text] -> text |> LS.HTTP.Entities.decode() |> String.trim() end)
       |> Enum.reject(&(&1 == ""))
       |> Enum.join(" ")
       |> String.slice(0, 300)
@@ -53,8 +54,7 @@ defmodule LS.HTTP.TextExtractor do
     |> String.replace(~r/<script[^>]*>.*?<\/script>/is, " ")
     |> String.replace(~r/<style[^>]*>.*?<\/style>/is, " ")
     |> String.replace(~r/<[^>]+>/, " ")
-    |> String.replace(~r/&[a-zA-Z]+;/, " ")
-    |> String.replace(~r/&#?\w+;/, " ")
+    |> LS.HTTP.Entities.decode()
     |> String.replace(~r/\s+/, " ")
     |> String.trim()
     |> String.slice(0, max_chars)

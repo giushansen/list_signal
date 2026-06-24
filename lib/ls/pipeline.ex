@@ -450,7 +450,7 @@ defmodule LS.Pipeline do
 
   defp extract_title(b) when is_binary(b) do
     case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
-      [_, t] -> String.trim(t) |> String.slice(0, 200)
+      [_, t] -> t |> LS.HTTP.Entities.decode() |> String.trim() |> String.slice(0, 200)
       _ -> ""
     end
   rescue
@@ -460,10 +460,10 @@ defmodule LS.Pipeline do
 
   defp extract_meta_desc(b) when is_binary(b) do
     case Regex.run(~r/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']{1,1000})["']/is, b) do
-      [_, d] -> String.trim(d) |> String.slice(0, 500)
+      [_, d] -> d |> LS.HTTP.Entities.decode() |> String.trim() |> String.slice(0, 500)
       _ ->
         case Regex.run(~r/<meta[^>]*content\s*=\s*["']([^"']{1,1000})["'][^>]*name\s*=\s*["']description["']/is, b) do
-          [_, d] -> String.trim(d) |> String.slice(0, 500)
+          [_, d] -> d |> LS.HTTP.Entities.decode() |> String.trim() |> String.slice(0, 500)
           _ -> ""
         end
     end
