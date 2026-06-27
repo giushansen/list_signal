@@ -351,9 +351,9 @@ defmodule LS.HTTP.ClassificationTest do
       assert r.industry == "Food & Beverage"
     end
 
-    test ".ai → AI & ML" do
+    test ".ai TLD alone is NOT AI & ML (generic startup TLD, was a false-positive source)" do
       r = classify(%{ctl_tld: "ai"})
-      assert r.industry == "AI & ML"
+      assert r.industry == ""
     end
 
     test ".travel → Travel" do
@@ -534,7 +534,7 @@ defmodule LS.HTTP.ClassificationTest do
 
     test "AI SaaS" do
       r = classify(%{
-        http_title: "AI-Powered Data Analytics Platform",
+        http_title: "Machine Learning Platform for Enterprises",
         http_schema_type: "SoftwareApplication",
         http_pages: "/pricing|/login|/docs",
         body_text: "machine learning llm generative ai cloud-based per user"

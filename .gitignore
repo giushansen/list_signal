@@ -62,3 +62,5 @@ metadata_dropped/
 # RELEASE_NODE per host (deploys build from a fresh git clone).
 rel/*
 !rel/env.sh.eex
+# local clickhouse server (dev data, not committed)
+.ch/

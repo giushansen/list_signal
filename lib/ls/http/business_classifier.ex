@@ -351,7 +351,8 @@ defmodule LS.HTTP.BusinessClassifier do
     "insurance" => {"Fintech", 9},
     "realty" => {"Real Estate", 9},
     "homes" => {"Real Estate", 8},
-    "ai" => {"AI & ML", 6},
+    # NOTE: ".ai" is a generic startup TLD now (Anguilla), not an AI-industry signal — it was
+    # tagging 94k non-AI sites as "AI & ML". Genuine AI is caught by the keyword rule instead.
     "dev" => {"DevTools", 5},
     "travel" => {"Travel", 8},
     "tours" => {"Travel", 8},
@@ -411,8 +412,10 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/skincare|makeup|cosmetic[s]?|beauty|serum|moisturizer|salon/i, "Beauty", 6},
     {~r/fashion|apparel|clothing|footwear|jewelry|designer|boutique/i, "Fashion", 6},
     {~r/restaurant|bakery|coffee shop|gluten[- ]free|food (?:delivery|ordering)|catering|cuisine|brewery|winery|bistro|pizz/i, "Food & Beverage", 6},
-    {~r/\bai[- ]powered\b|machine learning|\bgpt\b|\bllm\b|generative ai|artificial intelligence|neural net/i, "AI & ML", 6},
-    {~r/developer[s ]?(?:tool|platform)|(?:\bsdk\b|\bapi\b|devops|ci\/cd)|kubernetes|docker|open[- ]?source/i, "DevTools", 6},
+    # Genuine AI/ML only — "ai-powered"/"ai-native" is 2026 marketing fluff on non-AI products
+    # (observability, hosting, forms…), so it's intentionally NOT matched here.
+    {~r/machine learning|\bgpt\b|\bllm\b|generative ai|artificial intelligence|neural net|deep learning|\bml model|\bai model/i, "AI & ML", 6},
+    {~r/developer[s ]?(?:tool|platform)|(?:\bsdk\b|\bapi\b|devops|ci\/cd)|kubernetes|docker|open[- ]?source|observability|\bapm\b|monitoring/i, "DevTools", 6},
     {~r/cybersecurity|infosec|threat (?:detection|intelligence)|vulnerability|penetration test|\bsiem\b/i, "Security", 7},
     {~r/productivity|project management|task management|workflow|collaboration tool|team (?:management|communication)/i, "Productivity", 5},
     {~r/logistics|supply chain|shipping (?:software|platform)|fleet management|warehouse/i, "Logistics", 6},

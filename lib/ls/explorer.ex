@@ -9,11 +9,8 @@ defmodule LS.Explorer do
     tranco_rank majestic_rank http_response_time
   )
 
-  # Country is computed via expression for backward compat with existing data
-  @country_expr LS.Clickhouse.country_expr()
-
   defp columns_sql do
-    (@columns_raw ++ ["#{@country_expr} AS inferred_country"]) |> Enum.join(", ")
+    Enum.join(@columns_raw ++ ["inferred_country"], ", ")
   end
 
   defp column_names, do: @columns_raw ++ ["inferred_country"]
@@ -34,19 +31,9 @@ defmodule LS.Explorer do
     enriched_at
   )
 
-  @business_models ~w(
-    Ecommerce Shopify SaaS Tool Marketplace Agency Portfolio Blog Media
-    Community Government Education Nonprofit Other
-  )
-
-  @industries ~w(
-    Fashion Beauty Health Food Electronics Home Sports Automotive
-    Pets Travel Education Entertainment Finance Technology Arts
-    Agriculture Energy Legal Real\ Estate Telecom Other
-  )
-
-  def business_models, do: @business_models
-  def industries, do: @industries
+  # Business-model and industry options are derived from the live data (distinct_by_count/2),
+  # not a hardcoded list — the classifier's categories are the source of truth, so the dropdowns
+  # can never offer a value that returns 0 rows (e.g. "Technology", which the classifier never emits).
 
   def list(filters, opts \\ []) do
     per_page = Keyword.get(opts, :per_page, 25)
@@ -117,7 +104,7 @@ defmodule LS.Explorer do
   @doc "Get distinct values for a column, optionally filtered by prefix. For typeahead filters."
   def distinct_values(column, prefix \\ "", limit \\ 50) when column in ~w(http_tech country http_language) do
     {col_expr, col_alias} = if column == "country" do
-      {"#{@country_expr}", "country"}
+      {"inferred_country", "country"}
     else
       {column, column}
     end
@@ -148,7 +135,7 @@ defmodule LS.Explorer do
     WHERE http_tech != ''
     GROUP BY tech
     #{prefix_clause}
-    ORDER BY tech ASC
+    ORDER BY count() DESC
     LIMIT #{limit}
     """
 
@@ -169,7 +156,28 @@ defmodule LS.Explorer do
     WHERE http_apps != '' #{tech_clause}
     GROUP BY app
     #{prefix_clause}
-    ORDER BY app ASC
+    ORDER BY count() DESC
+    LIMIT #{limit}
+    """
+
+    case Clickhouse.query_raw(sql) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [v] -> v end)}
+      _ -> {:ok, []}
+    end
+  end
+
+  @doc "Distinct values of a low-cardinality column ordered by frequency (for dropdown options)."
+  def distinct_by_count(column, limit \\ 300)
+      when column in ~w(inferred_country http_language business_model industry) do
+    # Collapse language region subtags (en-US / en-us -> en) so values match the curated list.
+    expr = if column == "http_language", do: "splitByChar('-', lower(http_language))[1]", else: column
+
+    sql = """
+    SELECT #{expr} AS v
+    FROM domains_current
+    WHERE #{expr} != ''
+    GROUP BY v
+    ORDER BY count() DESC
     LIMIT #{limit}
     """
 
@@ -194,21 +202,20 @@ defmodule LS.Explorer do
   # Multi-value filter support: "US,GB,FR" → IN ('US','GB','FR')
   defp filter_clause({:tech, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    conditions = Enum.map(values, fn val -> "lower(http_tech) LIKE '%#{esc(String.downcase(val))}%'" end)
+    conditions = Enum.map(values, fn val -> "positionCaseInsensitive(http_tech, '#{esc(val)}') > 0" end)
     ["(" <> Enum.join(conditions, " AND ") <> ")"]
   end
 
   defp filter_clause({:shopify_app, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    conditions = Enum.map(values, fn val -> "lower(http_apps) LIKE '%#{esc(String.downcase(val))}%'" end)
+    conditions = Enum.map(values, fn val -> "positionCaseInsensitive(http_apps, '#{esc(val)}') > 0" end)
     ["(" <> Enum.join(conditions, " AND ") <> ")"]
   end
 
   defp filter_clause({:country, v}) when is_binary(v) and v != "" do
-    ce = @country_expr
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["#{ce} = '#{esc(hd(values))}'"],
-    else: ["#{ce} IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    if length(values) == 1, do: ["inferred_country = '#{esc(hd(values))}'"],
+    else: ["inferred_country IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
   defp filter_clause({:business_model, v}) when is_binary(v) and v != "" do
@@ -227,7 +234,7 @@ defmodule LS.Explorer do
 
     clauses =
       if shopify != [] do
-        clauses ++ ["lower(http_tech) LIKE '%shopify%'"]
+        clauses ++ ["positionCaseInsensitive(http_tech, 'Shopify') > 0"]
       else
         clauses
       end
@@ -259,8 +266,12 @@ defmodule LS.Explorer do
 
   defp filter_clause({:language, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["http_language = '#{esc(hd(values))}'"],
-    else: ["http_language IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    # match on the primary subtag so "en" also matches stored "en-US", "en-us", etc.
+    lang = "splitByChar('-', lower(http_language))[1]"
+
+    if length(values) == 1,
+      do: ["#{lang} = '#{esc(hd(values))}'"],
+      else: ["#{lang} IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})"]
   end
 
   defp filter_clause({:domain_search, v}) when is_binary(v) and v != "" do

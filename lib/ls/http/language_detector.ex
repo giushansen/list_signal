@@ -27,9 +27,11 @@ defmodule LS.HTTP.LanguageDetector do
   end
 
   defp detect_from_text(text) do
-    case Paasaa.detect(text, min_length: 20) do
+    # min_length 50 (was 20): Paasaa wildly misfires on short text (guesses fr/cat/por/etc.
+    # for English sites). At 50 it returns "und" instead of guessing, killing false positives.
+    case Paasaa.detect(text, min_length: 50) do
       "und" -> nil
-      code when is_binary(code) and byte_size(code) > 0 -> iso3_to_iso2(code)
+      code when is_binary(code) and byte_size(code) > 0 -> validate_lang(iso3_to_iso2(code))
       _ -> nil
     end
   rescue
@@ -74,11 +76,10 @@ defmodule LS.HTTP.LanguageDetector do
     |> String.replace("_", "-")
     |> String.split(~r/[,;\s]/, parts: 2)
     |> hd()
-    |> case do
-      "" -> nil
-      l when byte_size(l) >= 2 -> l
-      _ -> nil
-    end
+    # primary subtag only: "en-us" -> "en", "pt-br" -> "pt"
+    |> String.split("-", parts: 2)
+    |> hd()
+    |> validate_lang()
   end
 
   @iso3_to_2 %{
@@ -88,7 +89,7 @@ defmodule LS.HTTP.LanguageDetector do
     "ukr" => "uk", "vie" => "vi", "tha" => "th", "ces" => "cs", "ell" => "el",
     "hun" => "hu", "ron" => "ro", "bul" => "bg", "hrv" => "hr", "srp" => "sr",
     "slk" => "sk", "slv" => "sl", "dan" => "da", "fin" => "fi", "nor" => "no",
-    "nob" => "nb", "nno" => "nn", "swe" => "sv", "cat" => "ca", "eus" => "eu",
+    "nob" => "no", "nno" => "no", "swe" => "sv", "cat" => "ca", "eus" => "eu",
     "glg" => "gl", "ind" => "id", "msa" => "ms", "tgl" => "tl", "heb" => "he",
     "fas" => "fa", "urd" => "ur", "ben" => "bn", "tam" => "ta", "tel" => "te",
     "mar" => "mr", "guj" => "gu", "kan" => "kn", "mal" => "ml", "pan" => "pa",
@@ -102,4 +103,19 @@ defmodule LS.HTTP.LanguageDetector do
   defp iso3_to_iso2(code) do
     Map.get(@iso3_to_2, code, code)
   end
+
+  # The set of real ISO 639-1 codes we accept. Anything else — template placeholders
+  # like "%paraglide.lang%" / "{{lang}}", "x-default", "und", stray 3-letter codes — is
+  # rejected so it never reaches the DB or the language filter.
+  @valid_langs @iso3_to_2 |> Map.values() |> MapSet.new()
+
+  defp validate_lang(code) when is_binary(code) do
+    cond do
+      MapSet.member?(@valid_langs, code) -> code
+      Map.has_key?(@iso3_to_2, code) -> Map.fetch!(@iso3_to_2, code)
+      true -> nil
+    end
+  end
+
+  defp validate_lang(_), do: nil
 end

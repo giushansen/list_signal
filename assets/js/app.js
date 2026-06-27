@@ -83,6 +83,42 @@ Hooks.ResizableTable = {
   }
 }
 
+// Client-side dropdown option filtering. Typing in a filter's search box only shows/hides
+// the already-rendered options (zero backend round-trips). The backend is queried only when
+// an option is actually selected. Hook lives on the dropdown panel so it survives the
+// option re-render that follows a selection (re-applying the active filter in updated()).
+Hooks.DropdownFilter = {
+  mounted() {
+    this.onInput = (e) => { if (e.target.matches("input")) this.filter() }
+    this.el.addEventListener("input", this.onInput)
+    const input = this.el.querySelector("input")
+    if (input) requestAnimationFrame(() => input.focus())
+  },
+  updated() { this.filter() },
+  destroyed() { this.el.removeEventListener("input", this.onInput) },
+  filter() {
+    const input = this.el.querySelector("input")
+    const q = input ? input.value.trim().toLowerCase() : ""
+    let visible = 0
+    this.el.querySelectorAll(".dropdown-option").forEach(opt => {
+      const show = q === "" || this.match(opt.getAttribute("data-search") || "", q)
+      opt.classList.toggle("hidden", !show)
+      if (show) visible++
+    })
+    const noRes = this.el.querySelector(".dropdown-no-results")
+    if (noRes) noRes.classList.toggle("hidden", visible !== 0)
+  },
+  // Fuzzy: exact substring, else in-order subsequence so "sng" still matches "singapore".
+  match(hay, q) {
+    if (hay.indexOf(q) !== -1) return true
+    let i = 0
+    for (let c = 0; c < hay.length && i < q.length; c++) {
+      if (hay[c] === q[i]) i++
+    }
+    return i === q.length
+  }
+}
+
 let csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 let liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

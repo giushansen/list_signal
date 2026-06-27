@@ -141,12 +141,6 @@ defmodule LSWeb.ExplorerLive do
     {:noreply, assign(socket, open_dropdown: nil, dropdown_query: "", dropdown_options: [])}
   end
 
-  def handle_event("dropdown_search", %{"value" => query}, socket) do
-    field = socket.assigns.open_dropdown
-    options = if field, do: fetch_dropdown_options(field, query), else: []
-    {:noreply, assign(socket, dropdown_query: query, dropdown_options: options)}
-  end
-
   def handle_event("select_option", %{"field" => field, "value" => value}, socket) do
     field_atom = String.to_existing_atom(field)
     current = Map.get(socket.assigns.filters, field_atom, "")
@@ -210,42 +204,45 @@ defmodule LSWeb.ExplorerLive do
     {:noreply, socket}
   end
 
-  defp fetch_dropdown_options("tech", query), do: fetch_techs(query)
-  defp fetch_dropdown_options("shopify_app", query), do: fetch_apps(query, shopify_only: true)
-  defp fetch_dropdown_options("country", query), do: fetch_distinct("country", query)
-  defp fetch_dropdown_options("language", query), do: fetch_distinct("http_language", query)
-  defp fetch_dropdown_options("business_model", query), do: filter_static(Explorer.business_models(), query)
-  defp fetch_dropdown_options("industry", query), do: filter_static(Explorer.industries(), query)
-  defp fetch_dropdown_options("revenue", query), do: filter_static(["<$1M", "$1M-$10M", "$10M-$50M", "$50M-$100M", "$100M-$1B", "$1B+"], query)
-  defp fetch_dropdown_options("employees", query), do: filter_static(["1-10", "11-50", "51-200", "201-500", "501-5000", "5001+"], query)
-  defp fetch_dropdown_options("freshness", query), do: filter_static(["24h", "7d", "30d"], query)
+  # Dropdown options are loaded in full (at most once per dropdown-open); the search
+  # box filters them entirely client-side (JS), so typing never hits the backend.
+  defp fetch_dropdown_options("tech", _q), do: fetch_techs()
+  defp fetch_dropdown_options("shopify_app", _q), do: fetch_apps(shopify_only: true)
+
+  defp fetch_dropdown_options("country", _q),
+    do: fetch_distinct_by_count("inferred_country") |> Enum.filter(&valid_country?/1)
+
+  defp fetch_dropdown_options("language", _q),
+    do: fetch_distinct_by_count("http_language") |> Enum.filter(&valid_language?/1)
+
+  # "Shopify" is a platform (detected via http_tech, handled specially in the filter), kept as a
+  # convenience option; the rest come live from the classifier's actual business_model values.
+  defp fetch_dropdown_options("business_model", _q), do: ["Shopify" | fetch_distinct_by_count("business_model")]
+  defp fetch_dropdown_options("industry", _q), do: fetch_distinct_by_count("industry")
+  defp fetch_dropdown_options("revenue", _q), do: ["<$1M", "$1M-$10M", "$10M-$50M", "$50M-$100M", "$100M-$1B", "$1B+"]
+  defp fetch_dropdown_options("employees", _q), do: ["1-10", "11-50", "51-200", "201-500", "501-5000", "5001+"]
+  defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 
-  defp fetch_techs(query) do
-    case Explorer.distinct_techs(query, 500) do
+  defp fetch_techs do
+    case Explorer.distinct_techs("", 800) do
       {:ok, techs} -> techs
       _ -> []
     end
   end
 
-  defp fetch_apps(query, opts) do
-    case Explorer.distinct_apps(query, 500, opts) do
+  defp fetch_apps(opts) do
+    case Explorer.distinct_apps("", 800, opts) do
       {:ok, apps} -> apps
       _ -> []
     end
   end
 
-  defp fetch_distinct(column, query) do
-    case Explorer.distinct_values(column, query, 500) do
+  defp fetch_distinct_by_count(column) do
+    case Explorer.distinct_by_count(column, 300) do
       {:ok, values} -> values
       _ -> []
     end
-  end
-
-  defp filter_static(options, ""), do: options
-  defp filter_static(options, query) do
-    q = String.downcase(query)
-    Enum.filter(options, fn opt -> String.downcase(opt) |> String.contains?(q) end)
   end
 
   defp load_data(socket) do
@@ -258,9 +255,16 @@ defmodule LSWeb.ExplorerLive do
       :ok ->
         t0 = System.monotonic_time(:millisecond)
 
+        # Run the page query and the total-count query concurrently.
+        list_task =
+          Task.async(fn ->
+            Explorer.list(filter_kw, per_page: socket.assigns.per_page, page: socket.assigns.page)
+          end)
+
+        count_task = Task.async(fn -> Explorer.count(filter_kw) end)
+
         {results, total} =
-          case {Explorer.list(filter_kw, per_page: socket.assigns.per_page, page: socket.assigns.page),
-                Explorer.count(filter_kw)} do
+          case {Task.await(list_task, 15_000), Task.await(count_task, 15_000)} do
             {{:ok, rows}, {:ok, count}} -> {rows, count}
             _ -> {[], 0}
           end
@@ -500,8 +504,8 @@ defmodule LSWeb.ExplorerLive do
             <% end %>
           </div>
 
-          <%!-- Row 2: Filter dropdown selectors --%>
-          <div class="flex items-center gap-2 flex-wrap">
+          <%!-- Row 2: Filter dropdown selectors (z-50 keeps triggers above the click-outside backdrop) --%>
+          <div class="flex items-center gap-2 flex-wrap relative z-50">
             <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
             <%= for {field, label, icon, searchable} <- [
               {"tech", "Tech", "🔧", true},
@@ -548,10 +552,11 @@ defmodule LSWeb.ExplorerLive do
                 <.pagination page={@page} total_pages={@total_pages} compact={true} />
               <% end %>
               <%= if @plan in ["starter", "pro"] do %>
-                <a href={~p"/dashboard/export?" <> URI.encode_query(filter_params(@filters))}
+                <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
+                  title={"#{LS.Accounts.exports_remaining(@current_scope.user)} export rows remaining this month"}
                   class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                  Export CSV (<%= LS.Accounts.exports_remaining(@current_scope.user) %> rows left)
+                  Export CSV<span class="ml-1 text-[11px] font-normal text-white/45 tabular-nums"><%= LS.Accounts.exports_remaining(@current_scope.user) %> left</span>
                 </a>
               <% else %>
                 <button phx-click="show_upgrade"
@@ -1056,14 +1061,13 @@ defmodule LSWeb.ExplorerLive do
 
       <%!-- Dropdown panel — z-50 so it sits above the z-40 backdrop --%>
       <%= if @is_open do %>
-        <div class="absolute top-full left-0 mt-1.5 w-64 bg-[#141C30] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 z-50 overflow-hidden">
-          <%!-- Search --%>
+        <div data-dropdown-panel id={"dd-panel-#{@field}"} phx-hook="DropdownFilter" class="absolute top-full left-0 mt-1.5 w-64 bg-[#141C30] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 z-50 overflow-hidden">
+          <%!-- Search (filters options client-side via the DropdownFilter JS hook — no backend) --%>
           <%= if @searchable do %>
             <div class="p-2 border-b border-white/[0.06]">
-              <input type="text" value={@dropdown_query} phx-keyup="dropdown_search" phx-debounce="200"
+              <input type="text" id={"dd-search-#{@field}"} autocomplete="off"
                 placeholder={"Search #{String.downcase(@label)}..."}
-                class="w-full h-8 bg-[#0B0F19] border border-white/[0.08] rounded-lg px-3 text-sm text-white placeholder-gray-600 focus:border-emerald-500/50 focus:outline-none"
-                autofocus />
+                class="w-full h-8 bg-[#0B0F19] border border-white/[0.08] rounded-lg px-3 text-sm text-white placeholder-gray-600 focus:border-emerald-500/50 focus:outline-none" />
             </div>
           <% end %>
 
@@ -1075,7 +1079,8 @@ defmodule LSWeb.ExplorerLive do
                 phx-click="select_option"
                 phx-value-field={@field}
                 phx-value-value={option}
-                class={"flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left transition cursor-pointer select-none " <>
+                data-search={option_search_text(@field, option)}
+                class={"dropdown-option flex items-center gap-2.5 w-full px-3 py-2 text-sm text-left transition cursor-pointer select-none " <>
                   if(checked, do: "bg-white/[0.04]", else: "hover:bg-white/[0.03]")}
               >
                 <span class={"flex items-center justify-center w-4 h-4 rounded flex-shrink-0 border transition " <>
@@ -1108,6 +1113,7 @@ defmodule LSWeb.ExplorerLive do
             <%= if @dropdown_options == [] do %>
               <div class="px-3 py-4 text-sm text-gray-600 text-center">No options found</div>
             <% end %>
+            <div class="dropdown-no-results hidden px-3 py-4 text-sm text-gray-600 text-center">No matches</div>
           </div>
 
           <%!-- Footer --%>
@@ -1602,5 +1608,15 @@ defmodule LSWeb.ExplorerLive do
 
   defp language_name(code) when is_binary(code), do: Map.get(@language_names, String.downcase(code), code)
   defp language_name(_), do: ""
+
+  # Whitelists: only real, curated countries/languages reach the dropdowns — this is what
+  # keeps junk like "%paraglide.lang%" out of the language filter.
+  defp valid_country?(code), do: is_binary(code) and Map.has_key?(@country_names, String.upcase(code))
+  defp valid_language?(code), do: is_binary(code) and Map.has_key?(@language_names, String.downcase(code))
+
+  # Text a dropdown option is matched against when the user types (client-side filtering).
+  defp option_search_text("country", code), do: String.downcase("#{country_name(code)} #{code}")
+  defp option_search_text("language", code), do: String.downcase("#{language_name(code)} #{code}")
+  defp option_search_text(_field, value), do: String.downcase(to_string(value))
 
 end
