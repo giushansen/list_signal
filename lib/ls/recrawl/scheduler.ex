@@ -80,7 +80,9 @@ defmodule LS.Recrawl.Scheduler do
         Logger.info("[RECRAWL] Found #{count} stale domains, enqueuing for re-crawl")
 
         enqueued = Enum.reduce(domains, 0, fn domain, acc ->
-          data = %{domain: domain, source: :recrawl}
+          # Use the same :ctl_domain key CTL items carry so the worker pipeline
+          # (enrich_dns/merge_results) can read it uniformly regardless of source.
+          data = %{ctl_domain: domain, source: :recrawl}
           case LS.Cluster.WorkQueue.enqueue(data) do
             :ok -> acc + 1
             :queue_full ->

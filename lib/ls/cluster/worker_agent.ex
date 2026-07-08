@@ -253,7 +253,8 @@ defmodule LS.Cluster.WorkerAgent do
     domains
     |> Task.async_stream(
       fn d ->
-        domain = d.ctl_domain
+        # CTL items carry :ctl_domain; recrawl items carry :domain.
+        domain = d[:ctl_domain] || d[:domain]
         case LS.DNS.Resolver.lookup(domain) do
           {:ok, dns} ->
             scores = %{}
@@ -401,7 +402,7 @@ defmodule LS.Cluster.WorkerAgent do
   defp merge_results(domains, dns_res, http_res, bgp_res, rdap_res, worker) do
     now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
     Enum.map(domains, fn d ->
-      domain = d.ctl_domain
+      domain = d[:ctl_domain] || d[:domain]
       ctl = %{ctl_tld: d[:ctl_tld], ctl_issuer: d[:ctl_issuer],
               ctl_subdomain_count: d[:ctl_subdomain_count], ctl_subdomains: d[:ctl_subdomains]}
       dns = Map.get(dns_res, domain, %{dns: %{}, scores: %{}})
