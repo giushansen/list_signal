@@ -797,7 +797,7 @@ defmodule LSWeb.ExplorerLive do
                       <% end %>
                     <% end %>
                     <%!-- SPF and DKIM info derived from TXT --%>
-                    <% spf = parse_spf(@detail["dns_txt"]) %>
+                    <% spf = LS.DNS.SPF.parse(@detail["dns_txt"]) %>
                     <% dkim = parse_dkim(@detail["dns_txt"]) %>
                     <%= if spf || dkim do %>
                       <div class="grid grid-cols-2 gap-2.5 mb-2.5">
@@ -1335,36 +1335,6 @@ defmodule LSWeb.ExplorerLive do
     end
   end
   defp friendly_content_type(_), do: nil
-
-  # SPF parser: returns %{tier, emoji, summary} or nil
-  defp parse_spf(nil), do: nil
-  defp parse_spf(""), do: nil
-  defp parse_spf(txt) when is_binary(txt) do
-    spf_record =
-      txt
-      |> String.split("|")
-      |> Enum.find(fn r -> String.starts_with?(String.trim(r), "v=spf1") end)
-
-    case spf_record do
-      nil -> nil
-      record ->
-        includes = Regex.scan(~r/include:(\S+)/, record) |> length()
-        has_all = String.contains?(record, "-all") or String.contains?(record, "~all")
-        strict = String.contains?(record, "-all")
-
-        {tier, emoji, summary} =
-          cond do
-            includes >= 3 and strict -> {:gold, "🏆", "Advanced — #{includes} includes, strict (-all)"}
-            includes >= 2 and has_all -> {:gold, "⭐", "Strong — #{includes} includes, #{if strict, do: "strict", else: "soft"}"}
-            includes >= 1 and has_all -> {:silver, "✓", "Standard — #{includes} include(s), #{if strict, do: "strict", else: "soft"}"}
-            has_all -> {:silver, "✓", "Basic — no includes, #{if strict, do: "strict", else: "soft"}"}
-            true -> {:bronze, "⚠", "Weak — no qualifier"}
-          end
-
-        %{tier: tier, emoji: emoji, summary: summary}
-    end
-  end
-  defp parse_spf(_), do: nil
 
   # DKIM/DMARC parser
   defp parse_dkim(nil), do: nil
