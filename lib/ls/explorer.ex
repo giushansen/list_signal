@@ -3,6 +3,24 @@ defmodule LS.Explorer do
 
   alias LS.Clickhouse
 
+  # Explorer queries scan the whole table (see list_sql/2), so they need more room
+  # than LS.Clickhouse's default. The dashboard's Task.await must stay above this,
+  # or it kills the query before the timeout can report it.
+  @query_timeout 20_000
+  @export_timeout 60_000
+
+  # `domain` is appended to the ORDER BY as a tiebreaker: tranco_rank has huge NULL
+  # ties, and without a deterministic order the same row can appear on two pages or
+  # on none.
+  @order_by "tranco_rank ASC NULLS LAST, domain ASC"
+
+  # domains_current is a ReplacingMergeTree and we deliberately do not use FINAL
+  # (too expensive at 82M rows), so a domain re-enriched since the last merge still
+  # has its old row present. Those duplicates take up page slots: lightricks.com was
+  # observed at the end of page 1 and again at the top of page 2. FINAL costs a full
+  # merge; `LIMIT 1 BY domain` is nearly free at this scale (0.89s -> 1.12s measured).
+  @dedupe "LIMIT 1 BY domain"
+
   @columns_raw ~w(
     domain http_title http_tech http_apps business_model industry
     estimated_revenue estimated_employees http_language enriched_at
@@ -35,34 +53,57 @@ defmodule LS.Explorer do
   # not a hardcoded list — the classifier's categories are the source of truth, so the dropdowns
   # can never offer a value that returns 0 rows (e.g. "Technology", which the classifier never emits).
 
-  def list(filters, opts \\ []) do
+  # domains_current is ORDER BY domain, so there is no index for these queries:
+  # every filtered page is a full scan, and ORDER BY tranco_rank forces the whole
+  # matching set to be materialised before the LIMIT applies. Selecting the wide
+  # String columns (http_title, http_tech, http_apps) inside that scan meant
+  # reading ~4.5GB to return 25 rows — 5-8s idle on the 3-core master, and past
+  # the query timeout under load, which the dashboard showed as "Search
+  # unavailable" after 10s.
+  #
+  # Two phases instead: rank on the narrow columns to pick 25 domains, then fetch
+  # the wide ones by primary key. Measured against production (81M rows):
+  #
+  #   country=US + revenue $1M-$10M   5.06s / 4.51GB  ->  0.89s / 1.93GB
+  #   tech=Klaviyo                    3.25s / 5.24GB  ->  1.49s / 2.98GB
+  #   industry=Fintech, page 20       3.13s / 5.36GB  ->  0.90s / 2.05GB
+  @doc "SQL for one page of results. Public so performance tests measure the real query."
+  def list_sql(filters, opts \\ []) do
     per_page = Keyword.get(opts, :per_page, 25)
     page = Keyword.get(opts, :page, 1)
     offset = (page - 1) * per_page
-
     where = build_where(filters)
 
-    sql = """
+    """
     SELECT #{columns_sql()}
     FROM domains_current
-    #{where}
-    ORDER BY tranco_rank ASC NULLS LAST
+    WHERE domain IN (
+      SELECT domain
+      FROM domains_current
+      #{where}
+      ORDER BY #{@order_by}
+      #{@dedupe}
+      LIMIT #{per_page}
+      OFFSET #{offset}
+    )
+    ORDER BY #{@order_by}
+    #{@dedupe}
     LIMIT #{per_page}
-    OFFSET #{offset}
     """
+  end
 
-    case Clickhouse.query_raw(sql) do
+  def list(filters, opts \\ []) do
+    case Clickhouse.query_raw(list_sql(filters, opts), @query_timeout) do
       {:ok, rows} -> {:ok, rows_to_maps(rows, column_names())}
       err -> err
     end
   end
 
+  @doc "SQL for the total-row count. Public so performance tests measure the real query."
+  def count_sql(filters), do: "SELECT count() FROM domains_current #{build_where(filters)}"
+
   def count(filters) do
-    where = build_where(filters)
-
-    sql = "SELECT count() FROM domains_current #{where}"
-
-    case Clickhouse.query_raw(sql) do
+    case Clickhouse.query_raw(count_sql(filters), @query_timeout) do
       {:ok, [[count]]} when is_integer(count) -> {:ok, count}
       {:ok, [[count]]} when is_binary(count) -> {:ok, String.to_integer(count)}
       _ -> {:ok, 0}
@@ -87,15 +128,24 @@ defmodule LS.Explorer do
   def export_rows(filters, limit) do
     where = build_where(filters)
 
+    # Same two-phase shape as list_sql/2 — an export selects 40+ columns, so
+    # scanning them across the whole match set is even worse than for one page.
     sql = """
     SELECT #{Enum.join(@detail_columns, ", ")}
     FROM domains_current
-    #{where}
-    ORDER BY tranco_rank ASC NULLS LAST
+    WHERE domain IN (
+      SELECT domain FROM domains_current
+      #{where}
+      ORDER BY #{@order_by}
+      #{@dedupe}
+      LIMIT #{limit}
+    )
+    ORDER BY #{@order_by}
+    #{@dedupe}
     LIMIT #{limit}
     """
 
-    case Clickhouse.query_raw(sql) do
+    case Clickhouse.query_raw(sql, @export_timeout) do
       {:ok, rows} -> {:ok, {@detail_columns, rows}}
       err -> err
     end

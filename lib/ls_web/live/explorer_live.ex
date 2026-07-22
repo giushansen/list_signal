@@ -271,7 +271,9 @@ defmodule LSWeb.ExplorerLive do
         # "your filter matched nothing" and sends people hunting for a data bug
         # that isn't there. Surface it instead.
         {results, total, error} =
-          case {Task.await(list_task, 15_000), Task.await(count_task, 15_000)} do
+          # Must exceed LS.Explorer's own query timeout, or we kill the task before
+          # ClickHouse can report what went wrong and every failure looks alike.
+          case {Task.await(list_task, 25_000), Task.await(count_task, 25_000)} do
             {{:ok, rows}, {:ok, count}} -> {rows, count, nil}
             {list_result, count_result} -> {[], nil, query_error(list_result, count_result)}
           end
