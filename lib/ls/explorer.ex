@@ -17,9 +17,21 @@ defmodule LS.Explorer do
   # domains_current is a ReplacingMergeTree and we deliberately do not use FINAL
   # (too expensive at 82M rows), so a domain re-enriched since the last merge still
   # has its old row present. Those duplicates take up page slots: lightricks.com was
-  # observed at the end of page 1 and again at the top of page 2. FINAL costs a full
-  # merge; `LIMIT 1 BY domain` is nearly free at this scale (0.89s -> 1.12s measured).
+  # observed at the end of page 1 and again at the top of page 2.
+  #
+  # `LIMIT 1 BY domain` over the whole stream fixes it but costs 25x on the
+  # unfiltered default view (0.16s -> 4.05s): with no WHERE, the plain top-25 can
+  # early-terminate on a partial sort, while deduping forces a full pass over 82M
+  # rows. So dedupe a bounded prefix instead — take offset+per_page+@dedupe_slack
+  # rows (still a cheap top-N), dedupe those, then apply the offset to the deduped
+  # result. Correct as long as the prefix holds fewer than @dedupe_slack duplicates;
+  # the table currently runs ~0.03% duplicates across 5 merged parts, so a slack of
+  # 100 over a prefix of a few hundred rows is a very wide margin.
+  #
+  #   unfiltered page 1   0.16s no dedupe / 4.05s full dedupe / 0.56s prefix dedupe
+  #   US + $1M-$10M       1.17s no dedupe / 0.97s full dedupe / 1.54s prefix dedupe
   @dedupe "LIMIT 1 BY domain"
+  @dedupe_slack 100
 
   @columns_raw ~w(
     domain http_title http_tech http_apps business_model industry
@@ -78,10 +90,13 @@ defmodule LS.Explorer do
     SELECT #{columns_sql()}
     FROM domains_current
     WHERE domain IN (
-      SELECT domain
-      FROM domains_current
-      #{where}
-      ORDER BY #{@order_by}
+      SELECT domain FROM (
+        SELECT domain
+        FROM domains_current
+        #{where}
+        ORDER BY #{@order_by}
+        LIMIT #{offset + per_page + @dedupe_slack}
+      )
       #{@dedupe}
       LIMIT #{per_page}
       OFFSET #{offset}
@@ -134,9 +149,12 @@ defmodule LS.Explorer do
     SELECT #{Enum.join(@detail_columns, ", ")}
     FROM domains_current
     WHERE domain IN (
-      SELECT domain FROM domains_current
-      #{where}
-      ORDER BY #{@order_by}
+      SELECT domain FROM (
+        SELECT domain FROM domains_current
+        #{where}
+        ORDER BY #{@order_by}
+        LIMIT #{limit + @dedupe_slack}
+      )
       #{@dedupe}
       LIMIT #{limit}
     )
