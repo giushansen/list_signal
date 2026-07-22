@@ -40,6 +40,7 @@ defmodule LSWeb.Layouts do
         <% end %>
       </head>
       <body class="bg-ls-dark text-white antialiased">
+        <.public_nav current_path={assigns[:conn] && @conn.request_path} />
         {@inner_content}
         <.footer />
       </body>
@@ -51,6 +52,54 @@ defmodule LSWeb.Layouts do
     ~H"""
     {@inner_content}
     """
+  end
+
+  @doc """
+  The one and only public navbar.
+
+  Rendered by `public_root/1` so every marketing/SEO page gets the exact same
+  header. Pages must not ship their own `<nav>` — a per-page navbar is how we
+  ended up with five different variants where /features had no Log in link and
+  /privacy had no Features or Pricing link.
+  """
+  attr :current_path, :string, default: nil
+
+  def public_nav(assigns) do
+    ~H"""
+    <nav class="fixed top-0 left-0 right-0 z-50 border-b border-white/[0.07] bg-ls-dark/85 backdrop-blur-xl" aria-label="Main">
+      <div class="mx-auto max-w-[1200px] px-6 py-4 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2 font-display text-[21px] font-bold tracking-tight">
+          <span class="flex h-[30px] w-[30px] items-center justify-center rounded-lg bg-accent text-[13px] font-extrabold text-white relative overflow-hidden">
+            LS<span class="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 to-transparent"></span>
+          </span>
+          ListSignal
+        </a>
+        <ul class="flex items-center gap-4 md:gap-8">
+          <li :for={{href, label} <- nav_links()} class="hidden md:block">
+            <a href={href} class={"text-sm font-medium transition-colors hover:text-white #{if @current_path == href, do: "text-white", else: "text-white/60"}"}>
+              {label}
+            </a>
+          </li>
+          <li>
+            <a href="/users/log-in" class="text-sm font-medium text-white/60 hover:text-white transition-colors">Sign in</a>
+          </li>
+          <li>
+            <a href="/signup" class="rounded-lg bg-accent px-4 md:px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px">Start Free</a>
+          </li>
+        </ul>
+      </div>
+    </nav>
+    """
+  end
+
+  @doc "Links shown in the public navbar, in order. Single source of truth (also used by tests)."
+  def nav_links do
+    [
+      {"/features", "Features"},
+      {"/pricing", "Pricing"},
+      {"/apps", "Apps"},
+      {"/tools/shopify-checker", "Free Tools"}
+    ]
   end
 
   def footer(assigns) do
