@@ -34,24 +34,34 @@
 
       <%!-- ═══ KEY STATS ═══ --%>
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8" aria-label="Technology statistics">
-        <div class="rounded-xl border border-accent/20 bg-accent/[0.05] px-4 py-3">
-          <div class="text-[10px] uppercase tracking-wider text-accent/60 font-semibold mb-1">📊 Stores Using <%= @tech_name %></div>
-          <div class="font-display text-2xl font-bold text-accent"><%= @stats.total %>+</div>
-        </div>
+        <%!-- Every tile is omitted when its number is unknown (nil). Never render a
+             placeholder 0 — a missing measurement is not a measurement of zero. --%>
+        <%= if @stats.total do %>
+          <div class="rounded-xl border border-accent/20 bg-accent/[0.05] px-4 py-3">
+            <div class="text-[10px] uppercase tracking-wider text-accent/60 font-semibold mb-1">📊 Stores Using <%= @tech_name %></div>
+            <div class="font-display text-2xl font-bold text-accent"><%= LSWeb.TechController.format_count(@stats.total) %></div>
+          </div>
+        <% end %>
         <%= if @stats.avg_response_time do %>
           <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
             <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">⚡ Avg Response</div>
             <div class="font-display text-2xl font-bold text-white"><%= round(@stats.avg_response_time) %><span class="text-sm text-white/40 ml-0.5">ms</span></div>
           </div>
         <% end %>
-        <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
-          <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">🟢 Online</div>
-          <div class="font-display text-2xl font-bold text-emerald-400"><%= @stats.online_count %></div>
-        </div>
-        <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
-          <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">🏆 Top 100K Sites</div>
-          <div class="font-display text-2xl font-bold text-white"><%= @stats.top_100k_count %></div>
-        </div>
+        <%= if @stats.responding_count do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+            <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">🟢 Returned HTTP 200</div>
+            <div class="font-display text-2xl font-bold text-emerald-400"><%= LSWeb.TechController.format_count(@stats.responding_count) %></div>
+            <div class="text-[10px] text-white/30 mt-0.5">on our last crawl</div>
+          </div>
+        <% end %>
+        <%= if @stats.top_100k_count do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] px-4 py-3">
+            <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">🏆 Top 100K Sites</div>
+            <div class="font-display text-2xl font-bold text-white"><%= LSWeb.TechController.format_count(@stats.top_100k_count) %></div>
+            <div class="text-[10px] text-white/30 mt-0.5">by Tranco rank</div>
+          </div>
+        <% end %>
       </section>
 
       <%!-- ═══ DISTRIBUTIONS: Country + Language + Hosting ═══ --%>
@@ -227,12 +237,14 @@
     <section class="mb-10" itemscope itemtype="https://schema.org/FAQPage" aria-label={"Frequently asked questions about #{@tech_name}"}>
       <h2 class="font-display text-xl font-semibold mb-4">Frequently Asked Questions</h2>
       <div class="space-y-3">
-        <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
-          <h3 itemprop="name" class="font-medium text-white mb-2">How many Shopify stores use <%= @tech_name %>?</h3>
-          <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
-            <p itemprop="text" class="text-sm text-white/60">ListSignal tracks <strong><%= @stats.total %>+</strong> Shopify stores currently using <%= @tech_name %>. Of these, <%= @stats.online_count %> are currently online and responding.</p>
+        <%= if @stats.total do %>
+          <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+            <h3 itemprop="name" class="font-medium text-white mb-2">How many Shopify stores use <%= @tech_name %>?</h3>
+            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+              <p itemprop="text" class="text-sm text-white/60">ListSignal tracks <strong><%= LSWeb.TechController.format_count(@stats.total) %></strong> stores using <%= @tech_name %>.<%= if @stats.responding_count do %> <%= LSWeb.TechController.format_count(@stats.responding_count) %> of them returned HTTP 200 the last time we crawled them.<% end %></p>
+            </div>
           </div>
-        </div>
+        <% end %>
         <%= if @countries != [] do %>
           <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
             <h3 itemprop="name" class="font-medium text-white mb-2">Which countries use <%= @tech_name %> the most?</h3>
@@ -264,7 +276,7 @@
     <div class="sr-only" aria-hidden="false" data-ai-summary="true">
       <h2>Summary: <%= @tech_name %> usage on Shopify stores</h2>
       <p>
-        <%= @tech_name %> is used by <%= @stats.total %>+ Shopify stores tracked by ListSignal.
+        <%= if @stats.total do %><%= @tech_name %> is used by <%= LSWeb.TechController.format_count(@stats.total) %> stores tracked by ListSignal.<% end %>
         <%= if @countries != [] do %>Top countries: <%= @countries |> Enum.take(3) |> Enum.map(fn c -> "#{c.country} (#{c.count})" end) |> Enum.join(", ") %>.<% end %>
         <%= if @stats.avg_response_time do %>Average response time: <%= round(@stats.avg_response_time) %>ms.<% end %>
         <%= if @co_techs != [] do %>Commonly used with: <%= @co_techs |> Enum.take(5) |> Enum.map(fn ct -> ct.tech end) |> Enum.join(", ") %>.<% end %>

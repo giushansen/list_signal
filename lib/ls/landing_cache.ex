@@ -34,6 +34,35 @@ defmodule LS.LandingCache do
     _ -> []
   end
 
+  @doc """
+  Memoise an expensive query under `key` for `ttl_ms`, computing it on miss.
+
+  Reuses this module's (public) ETS table so heavy per-page aggregates don't need
+  their own GenServer. `fun` must return `{:ok, value}` or `{:error, reason}` —
+  errors are never cached, so a ClickHouse hiccup doesn't get pinned for the TTL.
+  Falls back to running `fun` directly if the table doesn't exist yet.
+  """
+  def cached(key, ttl_ms, fun) do
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@table, key) do
+      [{^key, value, expires_at}] when expires_at > now ->
+        value
+
+      _ ->
+        case fun.() do
+          {:ok, _} = ok ->
+            :ets.insert(@table, {key, ok, now + ttl_ms})
+            ok
+
+          err ->
+            err
+        end
+    end
+  rescue
+    ArgumentError -> fun.()
+  end
+
   @impl true
   def init(_opts) do
     :ets.new(@table, [:named_table, :set, :public, read_concurrency: true])

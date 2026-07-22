@@ -97,16 +97,28 @@ defmodule LS.Clickhouse do
     """)
   end
 
+  # Aggregating over every row matching a popular tech (Google Analytics matches
+  # ~1.5M rows) regularly runs 5-10s on a loaded master. At the default 10s
+  # timeout this silently failed and the page fell back to fabricated numbers,
+  # so give it room and cache the result for 15 minutes.
+  @tech_stats_timeout 30_000
+  @tech_stats_ttl_ms :timer.minutes(15)
+
   def tech_stats(tech_name) do
-    query("""
-    SELECT
-      count() AS total,
-      avg(http_response_time) AS avg_response_time,
-      countIf(http_status = 200) AS online_count,
-      countIf(tranco_rank IS NOT NULL AND tranco_rank <= 100000) AS top_100k_count
-    FROM domains_current
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
-    """)
+    LS.LandingCache.cached({:tech_stats, tech_name}, @tech_stats_ttl_ms, fn ->
+      query_raw(
+        """
+        SELECT
+          count() AS total,
+          avg(http_response_time) AS avg_response_time,
+          countIf(http_status = 200) AS responding_count,
+          countIf(tranco_rank IS NOT NULL AND tranco_rank <= 100000) AS top_100k_count
+        FROM domains_current
+        WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
+        """,
+        @tech_stats_timeout
+      )
+    end)
   end
 
   def tech_language_distribution(tech_name) do

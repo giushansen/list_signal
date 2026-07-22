@@ -62,15 +62,11 @@ defmodule LSWeb.TechController do
       _ -> []
     end
 
-    stats = case stats_r do
-      {:ok, [[total, avg_rt, online, top100k]]} ->
-        %{total: total, avg_response_time: avg_rt, online_count: online, top_100k_count: top100k}
-      _ -> %{total: store_count, avg_response_time: nil, online_count: 0, top_100k_count: 0}
-    end
+    stats = build_stats(stats_r)
 
     conn
-    |> assign(:page_title, "#{actual_name} — #{stats.total}+ Stores Using #{actual_name}")
-    |> assign(:page_description, "#{stats.total}+ Shopify stores use #{actual_name}. See who uses #{actual_name}, country distribution, hosting providers, and technology insights — only on ListSignal.")
+    |> assign(:page_title, tech_page_title(actual_name, stats.total))
+    |> assign(:page_description, tech_page_description(actual_name, stats.total))
     |> assign(:tech_name, actual_name)
     |> assign(:slug, slug)
     |> assign(:stores, stores)
@@ -85,6 +81,53 @@ defmodule LSWeb.TechController do
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:show)
   end
+
+  @unknown_stats %{total: nil, avg_response_time: nil, responding_count: nil, top_100k_count: nil}
+
+  @doc """
+  Map the `tech_stats` aggregate onto the page's stats map.
+
+  `nil` means "we could not measure this", NOT zero. The previous fallback
+  substituted the 100-row listing cap for `total` and literal 0s for the counts,
+  which is how /tech/google-analytics ended up advertising "100+ stores using
+  Google Analytics, 0 online" for a tech with ~1.5M matching rows. Every consumer
+  renders nothing rather than inventing a number.
+  """
+  def build_stats({:ok, [[total, avg_rt, responding, top100k]]}) do
+    %{
+      total: total,
+      avg_response_time: avg_rt,
+      responding_count: responding,
+      top_100k_count: top100k
+    }
+  end
+
+  def build_stats(_unavailable), do: @unknown_stats
+
+  defp tech_page_title(name, nil), do: "#{name} — Shopify Stores Using #{name}"
+  defp tech_page_title(name, total), do: "#{name} — #{format_count(total)} Stores Using #{name}"
+
+  defp tech_page_description(name, nil) do
+    "See which Shopify stores use #{name}, plus country distribution, hosting providers, " <>
+      "and technology insights — only on ListSignal."
+  end
+
+  defp tech_page_description(name, total) do
+    "#{format_count(total)} Shopify stores use #{name}. See who uses #{name}, country distribution, " <>
+      "hosting providers, and technology insights — only on ListSignal."
+  end
+
+  @doc "Thousands-separated integer. Exposed for the template and its tests."
+  def format_count(n) when is_integer(n) do
+    n
+    |> Integer.to_string()
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
+  end
+
+  def format_count(n) when is_float(n), do: format_count(round(n))
+  def format_count(_), do: nil
 
   defp parse_full_row(row) do
     country = Enum.at(row, 3) || ""
@@ -177,13 +220,23 @@ defmodule LSWeb.TechController do
     |> put_resp_header("vary", "Accept-Encoding")
   end
 
+  defp tech_json_ld(name, %{total: nil}) do
+    Jason.encode!(%{
+      "@context" => "https://schema.org",
+      "@type" => "SoftwareApplication",
+      "name" => name,
+      "applicationCategory" => "BusinessApplication",
+      "description" => "#{name} usage across Shopify stores tracked by ListSignal."
+    })
+  end
+
   defp tech_json_ld(name, stats) do
     Jason.encode!(%{
       "@context" => "https://schema.org",
       "@type" => "SoftwareApplication",
       "name" => name,
       "applicationCategory" => "BusinessApplication",
-      "description" => "#{name} is used by #{stats.total}+ Shopify stores tracked by ListSignal.",
+      "description" => "#{name} is used by #{format_count(stats.total)} Shopify stores tracked by ListSignal.",
       "aggregateRating" => %{
         "@type" => "AggregateRating",
         "ratingCount" => stats.total,
