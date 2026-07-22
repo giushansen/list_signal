@@ -3,12 +3,18 @@ defmodule LS.Clickhouse do
 
   @ch_url "http://127.0.0.1:8123/"
   @ch_db "ls"
-  @timeout 10_000
+  # Was 10s. country_expr/0 is a ~100-branch multiIf and used to be evaluated over
+  # 81M rows on every /top/* request, taking 8-11s — so the query lost the race and
+  # the controller turned the error into a 404. That expression is now a
+  # materialised column (see country_expr/0), which brought the same query to
+  # ~1.8s, but the headroom stays: a timeout here costs a page, and the master has
+  # only 3 cores to share with the ingest pipeline.
+  @timeout 25_000
 
   # ── Landing page ──
 
   def shopify_store_count do
-    case query("SELECT count() FROM domains_current WHERE http_tech LIKE '%Shopify%'") do
+    case query("SELECT count() FROM domains_fast WHERE is_shopify = 1") do
       {:ok, [[count]]} -> count
       _ -> nil
     end
@@ -16,9 +22,9 @@ defmodule LS.Clickhouse do
 
   def sample_shopify_stores(limit \\ 6) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank
-    FROM domains_current
-    WHERE http_tech LIKE '%Shopify%' AND http_title != ''
+    SELECT domain, http_title, http_tech, country, tranco_rank
+    FROM domains_fast
+    WHERE is_shopify = 1 AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
     """)
@@ -26,9 +32,9 @@ defmodule LS.Clickhouse do
 
   def recent_stores(limit \\ 20) do
     query("""
-    SELECT domain, #{country_expr()} AS country, http_title, http_tech, enriched_at
-    FROM domains_current
-    WHERE http_tech LIKE '%Shopify%' AND http_title != ''
+    SELECT domain, country, http_title, http_tech, enriched_at
+    FROM domains_fast
+    WHERE is_shopify = 1 AND http_title != ''
     ORDER BY enriched_at DESC
     LIMIT #{limit}
     """)
@@ -44,8 +50,8 @@ defmodule LS.Clickhouse do
 
   def stores_by_tech(tech_name, limit \\ 100) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank
-    FROM domains_current
+    SELECT domain, http_title, http_tech, country, tranco_rank
+    FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
@@ -54,8 +60,8 @@ defmodule LS.Clickhouse do
 
   def stores_by_tech_ilike(search, limit \\ 100) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank
-    FROM domains_current
+    SELECT domain, http_title, http_tech, country, tranco_rank
+    FROM domains_fast
     WHERE lower(http_tech) LIKE '%#{escape(String.downcase(search))}%' AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
@@ -63,7 +69,7 @@ defmodule LS.Clickhouse do
   end
 
   def tech_store_count(tech_name) do
-    case query("SELECT count() FROM domains_current WHERE http_tech LIKE '%#{escape(tech_name)}%'") do
+    case query("SELECT count() FROM domains_fast WHERE http_tech LIKE '%#{escape(tech_name)}%'") do
       {:ok, [[count]]} -> count
       _ -> 0
     end
@@ -73,11 +79,11 @@ defmodule LS.Clickhouse do
 
   def stores_by_tech_full(tech_name, limit \\ 100) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank,
+    SELECT domain, http_title, http_tech, country, tranco_rank,
            http_response_time, http_language, rdap_registrar,
            rdap_domain_created_at, http_status, bgp_asn_org,
            dns_mx, http_emails, majestic_rank
-    FROM domains_current
+    FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
@@ -86,11 +92,11 @@ defmodule LS.Clickhouse do
 
   def stores_by_tech_full_ilike(search, limit \\ 100) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank,
+    SELECT domain, http_title, http_tech, country, tranco_rank,
            http_response_time, http_language, rdap_registrar,
            rdap_domain_created_at, http_status, bgp_asn_org,
            dns_mx, http_emails, majestic_rank
-    FROM domains_current
+    FROM domains_fast
     WHERE lower(http_tech) LIKE '%#{escape(String.downcase(search))}%' AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
@@ -113,7 +119,7 @@ defmodule LS.Clickhouse do
           avg(http_response_time) AS avg_response_time,
           countIf(http_status = 200) AS responding_count,
           countIf(tranco_rank IS NOT NULL AND tranco_rank <= 100000) AS top_100k_count
-        FROM domains_current
+        FROM domains_fast
         WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
         """,
         @tech_stats_timeout
@@ -123,7 +129,7 @@ defmodule LS.Clickhouse do
 
   def tech_language_distribution(tech_name) do
     query("""
-    SELECT http_language, count() AS cnt FROM domains_current
+    SELECT http_language, count() AS cnt FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_language != ''
     GROUP BY http_language ORDER BY cnt DESC LIMIT 10
     """)
@@ -131,7 +137,7 @@ defmodule LS.Clickhouse do
 
   def tech_hosting_distribution(tech_name) do
     query("""
-    SELECT bgp_asn_org, count() AS cnt FROM domains_current
+    SELECT bgp_asn_org, count() AS cnt FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND bgp_asn_org != ''
     GROUP BY bgp_asn_org ORDER BY cnt DESC LIMIT 10
     """)
@@ -139,7 +145,7 @@ defmodule LS.Clickhouse do
 
   def tech_registrar_distribution(tech_name) do
     query("""
-    SELECT rdap_registrar, count() AS cnt FROM domains_current
+    SELECT rdap_registrar, count() AS cnt FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND rdap_registrar != ''
     GROUP BY rdap_registrar ORDER BY cnt DESC LIMIT 10
     """)
@@ -148,7 +154,7 @@ defmodule LS.Clickhouse do
   def tech_co_occurring(tech_name) do
     query("""
     SELECT arrayJoin(splitByString('|', http_tech)) AS tech, count() AS cnt
-    FROM domains_current
+    FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
     GROUP BY tech HAVING tech != '#{escape(tech_name)}' AND cnt >= 2
     ORDER BY cnt DESC LIMIT 20
@@ -165,7 +171,7 @@ defmodule LS.Clickhouse do
     {:ok, countries_a} = tech_country_distribution(tech_a)
     {:ok, countries_b} = tech_country_distribution(tech_b)
     both_count = case query("""
-    SELECT count() FROM domains_current
+    SELECT count() FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_a)}%' AND http_tech LIKE '%#{escape(tech_b)}%'
     """) do
       {:ok, [[c]]} -> c
@@ -180,8 +186,8 @@ defmodule LS.Clickhouse do
 
   def tech_country_distribution(tech_name) do
     query("""
-    SELECT #{country_expr()} AS country, count() AS cnt FROM domains_current
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND #{country_expr()} != ''
+    SELECT country, count() AS cnt FROM domains_fast
+    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND country != ''
     GROUP BY country ORDER BY cnt DESC LIMIT 10
     """)
   end
@@ -190,28 +196,28 @@ defmodule LS.Clickhouse do
 
   def top_stores_by_country(country_code, limit \\ 50) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank
-    FROM domains_current
-    WHERE http_tech LIKE '%Shopify%' AND #{country_expr()} = '#{escape(country_code)}' AND http_title != ''
+    SELECT domain, http_title, http_tech, country, tranco_rank
+    FROM domains_fast
+    WHERE is_shopify = 1 AND country = '#{escape(country_code)}' AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
     """)
   end
 
   def top_stores_using_tech(tech_name, limit \\ 50) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank
-    FROM domains_current
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_tech LIKE '%Shopify%' AND http_title != ''
+    SELECT domain, http_title, http_tech, country, tranco_rank
+    FROM domains_fast
+    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND is_shopify = 1 AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
     """)
   end
 
   def top_stores_using_tech_in_country(tech_name, country_code, limit \\ 50) do
     query("""
-    SELECT domain, http_title, http_tech, #{country_expr()} AS country, tranco_rank
-    FROM domains_current
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_tech LIKE '%Shopify%'
-      AND #{country_expr()} = '#{escape(country_code)}' AND http_title != ''
+    SELECT domain, http_title, http_tech, country, tranco_rank
+    FROM domains_fast
+    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND is_shopify = 1
+      AND country = '#{escape(country_code)}' AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
     """)
   end
@@ -221,15 +227,47 @@ defmodule LS.Clickhouse do
   def tech_directory do
     query("""
     SELECT arrayJoin(splitByString('|', http_tech)) AS tech, count() AS cnt
-    FROM domains_current WHERE http_tech != ''
+    FROM domains_fast WHERE http_tech != ''
     GROUP BY tech HAVING cnt >= 5 ORDER BY cnt DESC LIMIT 500
     """)
   end
 
+  # arrayJoin over every non-empty http_tech is a full scan, and both /tech/:slug
+  # and /compare/:slug need it on every request just to resolve their slug.
+  @tech_directory_ttl :timer.hours(1)
+
+  def tech_directory_cached do
+    LS.LandingCache.cached(:tech_directory, @tech_directory_ttl, &tech_directory/0)
+  end
+
+  @doc """
+  URL slug for a tech name. Must stay in sync with the slug the sitemap emits
+  and with `canonical_tech_name/1`, or /tech/* and /compare/* 404.
+  """
+  def tech_slug(name) do
+    name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")
+  end
+
+  @doc """
+  Resolve a URL slug back to the exact string stored in `http_tech`.
+
+  Callers used to rebuild the name with `split("-") |> map(&capitalize/1)`, which
+  silently mangles every tech that isn't Title Case: "vue-js" -> "Vue Js" (stored
+  "Vue.js"), "jquery" -> "Jquery" (stored "jQuery"), "paypal" -> "Paypal" (stored
+  "PayPal"). ClickHouse LIKE is case-sensitive, so those pages rendered with zero
+  stores and empty distributions. Returns nil when the slug matches no known tech.
+  """
+  def canonical_tech_name(slug) when is_binary(slug) do
+    case tech_directory_cached() do
+      {:ok, rows} -> Enum.find_value(rows, fn [name | _] -> if tech_slug(name) == slug, do: name end)
+      _ -> nil
+    end
+  end
+
   def country_directory do
     query("""
-    SELECT #{country_expr()} AS country, count() AS cnt FROM domains_current
-    WHERE http_tech LIKE '%Shopify%' AND #{country_expr()} != ''
+    SELECT country, count() AS cnt FROM domains_fast
+    WHERE is_shopify = 1 AND country != ''
     GROUP BY country ORDER BY cnt DESC
     """)
   end
@@ -238,8 +276,8 @@ defmodule LS.Clickhouse do
 
   def all_shopify_domains(limit \\ 49_000) do
     query("""
-    SELECT domain FROM domains_current
-    WHERE http_tech LIKE '%Shopify%' AND http_title != ''
+    SELECT domain FROM domains_fast
+    WHERE is_shopify = 1 AND http_title != ''
     ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
     """)
   end
@@ -266,7 +304,7 @@ defmodule LS.Clickhouse do
   end
 
   def shopify_stores_last_hour do
-    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR AND http_tech LIKE '%Shopify%'") do
+    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR AND is_shopify = 1") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
@@ -326,6 +364,38 @@ defmodule LS.Clickhouse do
 
   def escape_public(str), do: escape(str)
 
+  @doc """
+  Run `sql` and return what it cost: `{:ok, %{elapsed_ms, rows_read, bytes_read, rows_returned}}`.
+
+  For performance tests. `elapsed_ms` is ClickHouse's own server-side timing, not
+  the client clock, so a budget means the same thing over an SSH tunnel as it does
+  on the master. `bytes_read` is a property of the query plan rather than the
+  hardware, so it catches a regression to a full-scan shape even on a box fast
+  enough to hide the latency.
+  """
+  def measure(sql, receive_timeout \\ @timeout) do
+    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSON"
+
+    case Req.post(url, body: sql, receive_timeout: receive_timeout) do
+      {:ok, %{status: 200, body: %{"statistics" => stats} = body}} ->
+        {:ok,
+         %{
+           elapsed_ms: round(stats["elapsed"] * 1000),
+           rows_read: stats["rows_read"],
+           bytes_read: stats["bytes_read"],
+           rows_returned: body["rows"]
+         }}
+
+      {:ok, %{status: status, body: body}} ->
+        {:error, "CH #{status}: #{inspect(body)}"}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
   # ── Private ──
 
   defp query(sql) do
@@ -344,6 +414,18 @@ defmodule LS.Clickhouse do
   # Computes inferred country at query time from existing columns.
   # Uses same logic as LS.CountryInferrer: TLD > language > BGP fallback.
   # Once inferred_country column is populated, this falls through to it first.
+  @doc """
+  Source of truth for the `country` MATERIALIZED column on ClickHouse's
+  `.inner_id.*` table behind `domains_current` (exposed for reads as the
+  `domains_fast` view — see `devops/listsignal/clickhouse_materialize.sql`).
+
+  No query interpolates this any more: evaluating a ~100-branch multiIf over 81M
+  rows cost 8-11s and blew the app timeout, which surfaced as a 404 on every
+  /top/* page. It is now computed once at insert time and read as a column.
+
+  **If you change this, you must re-run the ALTER + MATERIALIZE COLUMN in that
+  file**, or the stored column silently drifts from this definition.
+  """
   def country_expr do
     """
     multiIf(

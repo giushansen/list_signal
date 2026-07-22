@@ -3,7 +3,12 @@ defmodule LSWeb.TechController do
   plug :cache_headers
 
   def show(conn, %{"slug" => slug}) do
-    tech_name = slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" ")
+    # Resolve against the real http_tech values first; naive capitalisation breaks
+    # every non-Title-Case tech ("vue-js" -> "Vue Js" never matches "Vue.js").
+    tech_name =
+      LS.Clickhouse.canonical_tech_name(slug) ||
+        (slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" "))
+
     search_term = slug |> String.replace("-", " ")
 
     {stores, store_count, actual_name} = case LS.Clickhouse.stores_by_tech_full(tech_name, 100) do

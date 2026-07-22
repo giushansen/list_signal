@@ -40,8 +40,12 @@ defmodule LSWeb.CompareController do
     end
   end
 
+  # Prefer the exact string stored in http_tech — capitalising the slug turns
+  # "vue-js" into "Vue Js" and "paypal" into "Paypal", neither of which matches
+  # anything (ClickHouse LIKE is case-sensitive), so the page rendered 0 vs 0.
   defp humanize(slug) do
-    slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" ")
+    LS.Clickhouse.canonical_tech_name(slug) ||
+      (slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" "))
   end
 
   defp cache_headers(conn, _opts) do

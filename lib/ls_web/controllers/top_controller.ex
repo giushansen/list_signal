@@ -54,9 +54,11 @@ defmodule LSWeb.TopController do
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top Shopify Stores in #{country_name}", length(stores)))
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
-      _ ->
-        conn |> put_status(404) |> assign(:page_title, "Page Not Found")
-        |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:not_found)
+      {:ok, _empty} ->
+        not_found(conn)
+
+      {:error, reason} ->
+        unavailable(conn, slug, reason)
     end
   end
 
@@ -72,9 +74,11 @@ defmodule LSWeb.TopController do
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top Shopify Stores Using #{tech_name}", length(stores)))
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
-      _ ->
-        conn |> put_status(404) |> assign(:page_title, "Page Not Found")
-        |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:not_found)
+      {:ok, _empty} ->
+        not_found(conn)
+
+      {:error, reason} ->
+        unavailable(conn, slug, reason)
     end
   end
 
@@ -91,10 +95,34 @@ defmodule LSWeb.TopController do
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top Shopify Stores Using #{tech_name} in #{country_name}", length(stores)))
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
-      _ ->
-        conn |> put_status(404) |> assign(:page_title, "Page Not Found")
-        |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:not_found)
+      {:ok, _empty} ->
+        not_found(conn)
+
+      {:error, reason} ->
+        unavailable(conn, slug, reason)
     end
+  end
+
+  defp not_found(conn) do
+    conn |> put_status(404) |> assign(:page_title, "Page Not Found")
+    |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:not_found)
+  end
+
+  # A ClickHouse failure is NOT "this page does not exist". These pages used to
+  # collapse both into 404, so when country_expr/0 blew the query timeout Google
+  # was told every /top/* URL was permanently gone — while the sitemap kept
+  # advertising them. 503 + Retry-After keeps the URL in the index and asks Google
+  # to come back, which is the honest answer when the data store is the problem.
+  defp unavailable(conn, slug, reason) do
+    require Logger
+    Logger.error("[TOP] /top/#{slug} unavailable: #{inspect(reason)}")
+
+    conn
+    |> put_status(503)
+    |> put_resp_header("retry-after", "3600")
+    |> assign(:page_title, "Temporarily Unavailable")
+    |> put_layout(html: {LSWeb.Layouts, :public})
+    |> render(:not_found)
   end
 
   # Parse URL slug patterns
@@ -119,7 +147,12 @@ defmodule LSWeb.TopController do
     end
   end
 
-  defp humanize(slug), do: slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" ")
+  # Same trap as the other controllers: "vue-js" must resolve to "Vue.js", not
+  # "Vue Js", or the ClickHouse LIKE matches nothing and the page 404s.
+  defp humanize(slug) do
+    LS.Clickhouse.canonical_tech_name(slug) ||
+      (slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" "))
+  end
 
   defp parse_rows(rows) do
     Enum.map(rows, fn row ->

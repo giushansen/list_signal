@@ -64,3 +64,6 @@ rel/*
 !rel/env.sh.eex
 # local clickhouse server (dev data, not committed)
 .ch/
+
+# Local prod backups + analytics exports (never commit — 16G ClickHouse archive lives here)
+/backups/

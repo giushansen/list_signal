@@ -1,6 +1,65 @@
 defmodule LSWeb.SitemapController do
   use LSWeb, :controller
 
+  # /compare/:slug renders for any "a-vs-b" pair, but the sitemap never listed a
+  # single one — so Google only ever found /compare/klaviyo-vs-mailchimp (via a
+  # backlink), and it is already the #2 page on the site by impressions. These are
+  # curated real competitor pairs rather than every combination of the top techs:
+  # a combinatorial dump would be thin content and risks a quality penalty.
+  #
+  # Names must match `http_tech` exactly — they are filtered against the live tech
+  # directory below, so a rename upstream drops the URL instead of emitting a 404.
+  @compare_pairs [
+    # email / SMS / CRM
+    {"Klaviyo", "Mailchimp"},
+    {"Klaviyo", "Attentive"},
+    {"Klaviyo", "HubSpot"},
+    {"Mailchimp", "HubSpot"},
+    # support / live chat
+    {"Gorgias", "Zendesk"},
+    {"Gorgias", "Tidio"},
+    {"Tidio", "Zendesk"},
+    {"Tidio", "Tawk.to"},
+    {"Tawk.to", "Zendesk"},
+    # analytics / tagging
+    {"Google Analytics", "Matomo"},
+    {"Google Tag Manager", "Google Analytics"},
+    {"Meta Pixel", "Google Tag Manager"},
+    # payments
+    {"Stripe", "PayPal"},
+    {"Afterpay", "PayPal"},
+    {"Stripe", "Afterpay"},
+    # platforms
+    {"Shopify", "WooCommerce"},
+    {"WooCommerce", "WordPress"},
+    {"Webflow", "WordPress"},
+    {"Shopify", "Webflow"},
+    # frontend
+    {"Vue.js", "Svelte"},
+    {"Next.js", "Svelte"},
+    {"Vue.js", "AngularJS"},
+    {"jQuery", "Vue.js"},
+    {"Alpine.js", "Vue.js"},
+    # servers / hosting
+    {"Nginx", "Apache"},
+    {"Nginx", "LiteSpeed"},
+    {"Apache", "LiteSpeed"},
+    {"OpenResty", "Nginx"},
+    {"Cloudflare", "Vercel"},
+    # asset CDNs
+    {"cdnjs", "jsDelivr"},
+    {"jsDelivr", "unpkg"},
+    {"cdnjs", "unpkg"},
+    # fonts / carousels / animation / video / consent
+    {"Google Fonts", "Adobe Fonts"},
+    {"Swiper", "Slick"},
+    {"Swiper", "Owl Carousel"},
+    {"Slick", "Owl Carousel"},
+    {"GSAP", "AOS"},
+    {"YouTube", "Vimeo"},
+    {"Cookiebot", "UserWay"}
+  ]
+
   def index(conn, _params) do
     base = "https://listsignal.com"
 
@@ -26,6 +85,20 @@ defmodule LSWeb.SitemapController do
       _ -> []
     end
 
+    compares = case LS.Clickhouse.tech_directory_cached() do
+      {:ok, rows} ->
+        known = MapSet.new(rows, fn [name | _] -> name end)
+
+        @compare_pairs
+        |> Enum.filter(fn {a, b} -> MapSet.member?(known, a) and MapSet.member?(known, b) end)
+        |> Enum.map(fn {a, b} ->
+          slug = LS.Clickhouse.tech_slug(a) <> "-vs-" <> LS.Clickhouse.tech_slug(b)
+          entry(base, "/compare/" <> slug, "0.8", "weekly")
+        end)
+
+      _ -> []
+    end
+
     marketing = [
       entry(base, "/", "1.0", "daily"),
       entry(base, "/pricing", "0.8", "weekly"),
@@ -41,7 +114,7 @@ defmodule LSWeb.SitemapController do
       entry(base, "/new-stores", "0.7", "daily"),
     ]
 
-    all = marketing ++ stores ++ techs ++ countries
+    all = marketing ++ compares ++ stores ++ techs ++ countries
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" <> Enum.join(all, "\n") <> "\n</urlset>"
 
     conn
