@@ -106,6 +106,30 @@ One INSERT point. No staging tables. No import scripts.
 - Signature files are plain CSVs loaded into ETS at boot. To add a scoring rule, add a line to a CSV.
 - `Req` is the only HTTP client for external calls (CTL API, ClickHouse inserts). `Mint` is used only by the HTTP enrichment client for raw domain crawling.
 
+## Never fabricate a number
+
+Two production bugs came from the same habit: a fallback that substitutes a
+plausible value for a missing one. `/tech/*` rendered a failed aggregate as
+"100+ stores, 0 online"; `/dashboard` rendered a failed query as "0 results".
+In both cases a broken system looked like a working one reporting bad news.
+
+- A measurement that failed is `nil`, never `0` and never a nearby number that
+  happened to be in scope. The template omits the tile; it does not print a
+  stand-in.
+- An error path in the UI must say the query failed. "0 results" and "the search
+  broke" are different sentences and must never share a rendering.
+- Anything the UI offers as a choice comes from the module that writes the data
+  (`LS.Revenue.Estimator.revenue_labels/0`) or from the data itself
+  (`Explorer.distinct_by_count/2`) — never a hand-copied list. A hardcoded
+  dropdown drifts silently and produces filters that match nothing.
+
+`test/ls/data_contract_test.exs` enforces the last two against a live
+ClickHouse. It self-skips when none is reachable, so point it at real data
+after changing a filter, a bracket, or a page statistic:
+
+    ssh -N -L 8123:127.0.0.1:8123 ls@45.63.7.58 &
+    mix test test/ls/data_contract_test.exs
+
 ## When adding features
 
 1. Ask: does this need to be in the data pipeline or the web app?

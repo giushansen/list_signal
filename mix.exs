@@ -68,7 +68,8 @@ defmodule LS.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["tailwind ls", "esbuild ls"],
-      "assets.deploy": ["tailwind ls --minify", "esbuild ls --minify", "phx.digest"]
+      "assets.deploy": ["tailwind ls --minify", "esbuild ls --minify", "phx.digest"],
+      precommit: ["compile --warnings-as-errors", "test"]
     ]
   end
 end
