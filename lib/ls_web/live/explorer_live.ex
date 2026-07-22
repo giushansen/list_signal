@@ -22,6 +22,7 @@ defmodule LSWeb.ExplorerLive do
         results: [],
         total: 0,
         loading: true,
+        query_error: nil,
         expanded: nil,
         detail: nil,
         show_upgrade: false,
@@ -219,8 +220,11 @@ defmodule LSWeb.ExplorerLive do
   # convenience option; the rest come live from the classifier's actual business_model values.
   defp fetch_dropdown_options("business_model", _q), do: ["Shopify" | fetch_distinct_by_count("business_model")]
   defp fetch_dropdown_options("industry", _q), do: fetch_distinct_by_count("industry")
-  defp fetch_dropdown_options("revenue", _q), do: ["<$1M", "$1M-$10M", "$10M-$50M", "$50M-$100M", "$100M-$1B", "$1B+"]
-  defp fetch_dropdown_options("employees", _q), do: ["1-10", "11-50", "51-200", "201-500", "501-5000", "5001+"]
+  # Straight from the estimator that writes these columns — never a hand-copied
+  # list, which is how "$10M-$50M"/"$50M-$100M" and "51-200"/"201-500" ended up
+  # in the dropdowns matching zero rows while the data held "$10M-$100M"/"51-500".
+  defp fetch_dropdown_options("revenue", _q), do: LS.Revenue.Estimator.revenue_labels()
+  defp fetch_dropdown_options("employees", _q), do: LS.Revenue.Estimator.employee_labels()
   defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 
@@ -263,15 +267,20 @@ defmodule LSWeb.ExplorerLive do
 
         count_task = Task.async(fn -> Explorer.count(filter_kw) end)
 
-        {results, total} =
+        # A failed query must never masquerade as "0 results" — that reads as
+        # "your filter matched nothing" and sends people hunting for a data bug
+        # that isn't there. Surface it instead.
+        {results, total, error} =
           case {Task.await(list_task, 15_000), Task.await(count_task, 15_000)} do
-            {{:ok, rows}, {:ok, count}} -> {rows, count}
-            _ -> {[], 0}
+            {{:ok, rows}, {:ok, count}} -> {rows, count, nil}
+            {list_result, count_result} -> {[], nil, query_error(list_result, count_result)}
           end
 
         query_ms = System.monotonic_time(:millisecond) - t0
+
         socket
         |> assign(results: results, total: total, loading: false, query_ms: query_ms)
+        |> assign(query_error: error)
         |> assign(rate_stats: RateLimiter.stats(user.id, plan))
 
       {:error, :rate_limited} ->
@@ -279,6 +288,14 @@ defmodule LSWeb.ExplorerLive do
         |> assign(loading: false)
         |> put_flash(:error, "Too many requests. Please slow down.")
     end
+  end
+
+  @doc false
+  def query_error(list_result, count_result) do
+    Enum.find_value([list_result, count_result], fn
+      {:error, reason} -> reason
+      _ -> nil
+    end) || :timeout
   end
 
   defp default_filters do
@@ -537,7 +554,12 @@ defmodule LSWeb.ExplorerLive do
                     Loading...
                   </span>
                 <% else %>
-                  <span class="text-white font-medium"><%= format_number(@total) %></span> results
+                  <%= if @query_error do %>
+                    <span class="text-amber-400 font-medium">Search unavailable</span>
+                    <span class="text-gray-500">— the query failed, this is not an empty result</span>
+                  <% else %>
+                    <span class="text-white font-medium"><%= format_number(@total) %></span> results
+                  <% end %>
                 <% end %>
               </span>
               <%= if @query_ms && !@loading do %>
@@ -643,7 +665,13 @@ defmodule LSWeb.ExplorerLive do
                       </tr>
                     <% end %>
                     <%= if @results == [] && !@loading do %>
-                      <tr><td colspan="12" class="px-4 py-16 text-center text-gray-600">No results found. Try adjusting your filters.</td></tr>
+                      <%= if @query_error do %>
+                        <tr><td colspan="12" class="px-4 py-16 text-center text-amber-400/80">
+                          The search query failed — your filters were not applied. Please retry in a moment.
+                        </td></tr>
+                      <% else %>
+                        <tr><td colspan="12" class="px-4 py-16 text-center text-gray-600">No results found. Try adjusting your filters.</td></tr>
+                      <% end %>
                     <% end %>
                   </tbody>
                 </table>

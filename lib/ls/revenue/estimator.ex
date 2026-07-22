@@ -133,6 +133,21 @@ defmodule LS.Revenue.Estimator do
   @doc "Get the employee label for a bracket atom."
   def employee_label(bracket), do: Map.get(@employee_labels, bracket, "")
 
+  @doc "Brackets from smallest to largest. The order the UI should offer them in."
+  def brackets, do: [:micro, :small, :mid_market, :enterprise, :large_enterprise]
+
+  @doc """
+  Every `estimated_revenue` value this estimator can write, smallest first.
+
+  Anything filtering on the column must offer exactly these — the dashboard once
+  hardcoded "$10M-$50M" and "$50M-$100M" while the estimator wrote "$10M-$100M",
+  so those two filter options matched zero rows out of 80M.
+  """
+  def revenue_labels, do: Enum.map(brackets(), &bracket_label/1)
+
+  @doc "Every `estimated_employees` value this estimator can write, smallest first."
+  def employee_labels, do: Enum.map(brackets(), &employee_label/1)
+
   # =========================================================================
   # SIGNAL 1 — Traffic Rank (Tranco) — strongest single predictor
   # =========================================================================

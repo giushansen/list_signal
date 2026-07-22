@@ -187,6 +187,15 @@ defmodule LS.Explorer do
     end
   end
 
+  @doc """
+  The WHERE clause a set of filters compiles to ("" when nothing is filtered).
+
+  Public so tests can assert on the SQL without a ClickHouse server: a filter
+  that silently compiles to a clause matching nothing is indistinguishable from
+  an empty database at the HTTP layer.
+  """
+  def where_sql(filters), do: build_where(filters)
+
   defp build_where(filters) do
     clauses =
       filters
