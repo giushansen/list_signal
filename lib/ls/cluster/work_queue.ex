@@ -28,7 +28,10 @@ defmodule LS.Cluster.WorkQueue do
   @queue_table :work_queue
   @inflight_table :work_inflight
   @counter_table :work_queue_counters
+  # Default cap; override with LS_QUEUE_MAX (read once at init). Measured cost
+  # ~287 B/item (273 MB at 1M), so 3M on the 16 GB master is ~800 MB.
   @max_queue_size 1_000_000
+  defp max_queue_size, do: :persistent_term.get({__MODULE__, :max_queue_size}, @max_queue_size)
   @batch_timeout_ms 600_000        # 10 minutes
   @ttl_ms 86_400_000               # 24 hours
   @cleanup_interval_ms 3_600_000   # 1 hour
@@ -50,7 +53,7 @@ defmodule LS.Cluster.WorkQueue do
   def enqueue(domain_data) when is_map(domain_data) do
     current_size = :ets.info(@queue_table, :size)
 
-    if current_size >= @max_queue_size do
+    if current_size >= max_queue_size() do
       :counters.add(counter_ref(), @idx_dropped, 1)
       :queue_full
     else
@@ -99,7 +102,12 @@ defmodule LS.Cluster.WorkQueue do
     schedule_cleanup()
     schedule_inflight_check()
 
-    Logger.info("📋 WorkQueue started (max: #{div(@max_queue_size, 1_000_000)}M, TTL: 24h)")
+    max = case Integer.parse(System.get_env("LS_QUEUE_MAX", "")) do
+      {n, _} when n > 0 -> n
+      _ -> @max_queue_size
+    end
+    :persistent_term.put({__MODULE__, :max_queue_size}, max)
+    Logger.info("📋 WorkQueue started (max: #{Float.round(max / 1_000_000, 1)}M, TTL: 24h)")
 
     {:ok, %{
       total_dequeued: 0,
@@ -154,7 +162,7 @@ defmodule LS.Cluster.WorkQueue do
 
     stats = %{
       queue_depth: queue_size,
-      queue_pct: if(@max_queue_size > 0, do: Float.round(queue_size / @max_queue_size * 100, 1), else: 0.0),
+      queue_pct: if(max_queue_size() > 0, do: Float.round(queue_size / max_queue_size() * 100, 1), else: 0.0),
       queue_memory_mb: queue_mem_mb,
       inflight_batches: inflight_count,
       total_enqueued: total_enqueued,
