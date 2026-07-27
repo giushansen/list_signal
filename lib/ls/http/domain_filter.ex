@@ -71,14 +71,29 @@ defmodule LS.HTTP.DomainFilter do
       false
   """
   def should_crawl?(domain, mx, txt) do
-    with true <- has_high_value_tld?(domain),
-         true <- not_junk_domain?(domain),
-         true <- has_mx?(mx),
-         true <- has_spf?(txt) do
-      true
-    else
-      _ -> false
-    end
+    tranco_ranked?(domain) or
+      with true <- has_high_value_tld?(domain),
+           true <- not_junk_domain?(domain),
+           true <- has_mx?(mx),
+           true <- has_spf?(txt) do
+        true
+      else
+        _ -> false
+      end
+  end
+
+  # Tranco bypass: a Tranco-ranked domain has independently-measured real
+  # traffic, which is stronger evidence than any of our heuristics — crawl it
+  # regardless of TLD/MX/SPF. Measured on 2026-07-26/27: the heuristics were
+  # skipping ~150K legit domains per 1.5 days in LISTED TLDs alone (41% of
+  # them for a missing SPF record). O(1) ETS lookup against the full Tranco
+  # list (~4.2M entries, refreshed daily, present on every worker).
+  defp tranco_ranked?(domain) do
+    LS.Reputation.Tranco.lookup(domain) != nil
+  rescue
+    # Tranco's ETS table isn't up yet (boot ordering) — fall through to the
+    # heuristic filters rather than crashing the batch.
+    ArgumentError -> false
   end
 
   # ============================================================================

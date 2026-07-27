@@ -5,6 +5,16 @@ defmodule LS.HTTP.DomainFilterTest do
 
   setup_all do
     DomainFilter.load_tlds()
+
+    # The reject-case fixtures below must not hit the Tranco bypass. Some are
+    # real domains that can appear in the daily list (naked.com already did),
+    # so pin the tests by removing them from the shared ETS table.
+    if :ets.whereis(:tranco_ranks) != :undefined do
+      for d <- ["nomail.com", "nospf.com", "aa.io", "naked.com", "x99999.com"] do
+        :ets.delete(:tranco_ranks, d)
+      end
+    end
+
     :ok
   end
 
@@ -83,5 +93,37 @@ defmodule LS.HTTP.DomainFilterTest do
 
   test ".io is a high-value TLD" do
     assert :ets.lookup(:http_high_value_tlds, "io") != []
+  end
+
+  # ============================================================================
+  # TRANCO BYPASS — ranked domains crawl regardless of the heuristic gate
+  # ============================================================================
+
+  describe "tranco bypass" do
+    setup do
+      case :ets.whereis(:tranco_ranks) do
+        :undefined ->
+          :ets.new(:tranco_ranks, [:set, :public, :named_table, read_concurrency: true])
+
+        _ ->
+          :ok
+      end
+
+      :ets.insert(:tranco_ranks, {"ranked-but-gated.pizza", 12_345})
+      on_exit(fn -> :ets.delete(:tranco_ranks, "ranked-but-gated.pizza") end)
+      :ok
+    end
+
+    test "tranco-ranked domain crawls even with no MX, no SPF, unlisted TLD" do
+      assert DomainFilter.should_crawl?("ranked-but-gated.pizza", "", "")
+    end
+
+    test "unranked domain is still subject to the full heuristic gate" do
+      refute DomainFilter.should_crawl?("unranked-no-mx.pizza", "", "")
+    end
+
+    test "junk heuristics still reject unranked garbage" do
+      refute DomainFilter.should_crawl?("x99999.com", "10:mx.example.com", "v=spf1 ~all")
+    end
   end
 end
