@@ -1,4 +1,5 @@
 defmodule LSWeb.SubscriptionController do
+  @moduledoc "Checkout/portal redirects and plan management against Stripe."
   use LSWeb, :controller
 
   alias LS.Accounts

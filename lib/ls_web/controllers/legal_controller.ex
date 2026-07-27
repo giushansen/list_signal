@@ -1,4 +1,5 @@
 defmodule LSWeb.LegalController do
+  @moduledoc "Static legal pages (terms, privacy)."
   use LSWeb, :controller
 
   def privacy(conn, _params) do

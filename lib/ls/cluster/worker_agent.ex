@@ -30,8 +30,29 @@ defmodule LS.Cluster.WorkerAgent do
   @max_errors 50
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @doc """
+  Live throughput and state snapshot for this worker.
+
+  Includes connection state, totals, `domains_per_sec`, per-stage timings of
+  the last batch (`last_stages`) and the configured concurrencies
+  (`LS_HTTP_CONCURRENCY` etc.). Called cross-node by the admin dashboard.
+  """
+  @spec stats() :: map()
   def stats, do: GenServer.call(__MODULE__, :stats)
+
+  @doc """
+  Graceful-deploy mode: finish the in-flight batch, pull no new work.
+
+  Poll `drain_status/0` until `idle: true`, then it is safe to stop the node
+  without requeueing (the master would otherwise requeue the batch after its
+  10-minute in-flight timeout).
+  """
+  @spec drain() :: :ok
   def drain, do: GenServer.cast(__MODULE__, :drain)
+
+  @doc "`%{draining: bool, idle: bool}` — `idle: true` means safe to stop."
+  @spec drain_status() :: %{draining: boolean(), idle: boolean()}
   def drain_status, do: GenServer.call(__MODULE__, :drain_status)
 
   @impl true

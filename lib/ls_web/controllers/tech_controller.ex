@@ -1,4 +1,5 @@
 defmodule LSWeb.TechController do
+  @moduledoc "SEO pages: stores using a given technology (`/tech/:slug`)."
   use LSWeb, :controller
   plug :cache_headers
 

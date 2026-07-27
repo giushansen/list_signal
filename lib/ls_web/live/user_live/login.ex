@@ -1,4 +1,5 @@
 defmodule LSWeb.UserLive.Login do
+  @moduledoc "Magic-link login LiveView (phx.gen.auth)."
   use LSWeb, :live_view
 
   alias LS.Accounts

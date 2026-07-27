@@ -1,4 +1,5 @@
 defmodule LSWeb.StoreHTML do
+  @moduledoc false
   use LSWeb, :html
   embed_templates "store_html/*"
 

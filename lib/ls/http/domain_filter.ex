@@ -100,23 +100,33 @@ defmodule LS.HTTP.DomainFilter do
   # PRIVATE - FILTER CHECKS
   # ============================================================================
 
-  # 1) Check if domain ends with a high-value TLD
+  # 1) Check if the domain ends with a high-value TLD.
+  #
+  # O(1): look up the domain's own suffixes ("shop.example.co.uk" checks
+  # "uk", "co.uk", "example.co.uk") instead of copying + sorting the whole
+  # ETS table per call, which the previous version did for every domain in
+  # every batch (~thousands of times per second fleet-wide).
   defp has_high_value_tld?(domain) do
     case :ets.whereis(:http_high_value_tlds) do
+      # Table not loaded yet — allow the domain through
       :undefined ->
-        # Table not loaded yet — allow the domain through
         true
 
       _tid ->
-        domain_lower = String.downcase(domain)
-        tlds = :ets.tab2list(:http_high_value_tlds)
-        |> Enum.map(fn {tld, _} -> tld end)
-        |> Enum.sort_by(&String.length/1, :desc)
-
-        Enum.any?(tlds, fn tld ->
-          String.ends_with?(domain_lower, "." <> tld)
-        end)
+        domain
+        |> String.downcase()
+        |> String.split(".")
+        |> tl_suffixes()
+        |> Enum.any?(fn suffix -> :ets.member(:http_high_value_tlds, suffix) end)
     end
+  end
+
+  # All dot-suffixes below the full domain: ["shop","example","co","uk"] →
+  # ["uk", "co.uk", "example.co.uk"] (the full domain itself is not a TLD).
+  defp tl_suffixes([_single]), do: []
+  defp tl_suffixes([_ | rest]) do
+    suffix = Enum.join(rest, ".")
+    [suffix | tl_suffixes(rest)]
   end
 
   # 2) Check domain is not obvious junk

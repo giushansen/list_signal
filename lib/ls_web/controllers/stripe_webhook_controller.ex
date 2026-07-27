@@ -1,4 +1,8 @@
 defmodule LSWeb.StripeWebhookController do
+  @moduledoc """
+  Stripe webhook endpoint: verifies signatures (see `LSWeb.RawBodyReader`)
+  and applies subscription lifecycle events to `LS.Accounts`.
+  """
   use LSWeb, :controller
   require Logger
 

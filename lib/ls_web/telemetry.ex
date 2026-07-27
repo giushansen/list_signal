@@ -1,4 +1,5 @@
 defmodule LSWeb.Telemetry do
+  @moduledoc "Telemetry supervisor: periodic VM measurements + Phoenix/Ecto metric definitions."
   use Supervisor
   import Telemetry.Metrics
 

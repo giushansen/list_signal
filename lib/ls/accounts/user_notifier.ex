@@ -1,4 +1,5 @@
 defmodule LS.Accounts.UserNotifier do
+  @moduledoc "Builds and delivers account emails (magic-link login, confirmations) via `LS.Mailer`."
   import Swoosh.Email
 
   alias LS.Mailer

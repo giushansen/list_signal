@@ -1,4 +1,5 @@
 defmodule LSWeb.UserLive.Confirmation do
+  @moduledoc "Email-confirmation LiveView (phx.gen.auth)."
   use LSWeb, :live_view
 
   alias LS.Accounts

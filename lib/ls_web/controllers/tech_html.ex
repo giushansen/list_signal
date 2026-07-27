@@ -1,4 +1,5 @@
 defmodule LSWeb.TechHTML do
+  @moduledoc false
   use LSWeb, :html
   embed_templates "tech_html/*"
 

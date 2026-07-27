@@ -1,5 +1,19 @@
 defmodule LS.Cluster.Monitor do
-  @moduledoc "Cluster health monitor. Logs stats every 30s. Runs on master node."
+  @moduledoc """
+  Cluster health monitor (master only).
+
+  Every 30s logs the one-line `[CLUSTER]` status that ops greps for:
+
+      [CLUSTER] Queue: 131K (4.4%) | In: 4599/min | Out: 1675/min |
+                Workers: 11 (worker_lsny1@10.0.0.2, ...) | CH: 1675/min buf=0
+
+  Reading it: `In` = CT+recrawl enqueue rate, `Out` = fleet enrichment rate
+  (if `In > Out` sustained, the queue will fill and shed), `Workers` lists
+  connected Erlang nodes (a missing node = worker down or partitioned),
+  `CH` = insert rate with Inserter buffer depth.
+
+  `watch/0` flips on a 5s terminal dashboard for interactive debugging.
+  """
 
   use GenServer
   require Logger
@@ -8,8 +22,15 @@ defmodule LS.Cluster.Monitor do
   @alert_queue_pct 80.0
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @doc "Collect a full cluster snapshot (queue, inserter, workers, caches) on demand."
+  @spec stats() :: map()
   def stats, do: GenServer.call(__MODULE__, :stats)
+
+  @doc "Start printing the live terminal dashboard every 5s (use from a remote shell)."
   def watch, do: GenServer.cast(__MODULE__, :start_watch)
+
+  @doc "Stop the live terminal dashboard."
   def stop_watch, do: GenServer.cast(__MODULE__, :stop_watch)
 
   @impl true

@@ -1,4 +1,5 @@
 defmodule LSWeb.UserLive.Settings do
+  @moduledoc "Account settings LiveView (phx.gen.auth)."
   use LSWeb, :live_view
 
   on_mount {LSWeb.UserAuth, :require_sudo_mode}

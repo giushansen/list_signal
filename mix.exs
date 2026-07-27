@@ -10,7 +10,39 @@ defmodule LS.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       aliases: aliases(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      # `mix docs` → doc/index.html (ExDoc)
+      name: "ListSignal",
+      docs: &docs/0
+    ]
+  end
+
+  # Documentation site layout. Modules are grouped by subsystem so the
+  # distributed pipeline reads as a system, not an alphabetical list.
+  defp docs do
+    [
+      main: "architecture",
+      extras: [
+        "docs/architecture.md",
+        "docs/recovery-h1-resolver-2026-07.md": [title: "Case study: h1 resolver incident"]
+      ],
+      groups_for_modules: [
+        "Cluster (master↔workers)": [LS.Cluster.WorkQueue, LS.Cluster.WorkerAgent,
+                                     LS.Cluster.Inserter, LS.Cluster.Monitor, LS.Cluster.Optimizer],
+        "Discovery (CT logs)": ~r/^LS\.CTL/,
+        "Enrichment stages": [LS.Pipeline, LS.DNS.Resolver, LS.DNS.Scorer, LS.DNS.SPF,
+                              LS.BGP.Resolver, LS.RDAP.Client, LS.CountryInferrer],
+        "HTTP crawling": ~r/^LS\.HTTP/,
+        "Classification & ML": [LS.ML.Classifier, LS.Revenue.Estimator],
+        "Reputation": ~r/^LS\.Reputation/,
+        Recrawl: ~r/^LS\.Recrawl/,
+        "Storage & queries": [LS.Clickhouse, LS.Cache, LS.Repo, LS.Explorer, LS.LandingCache],
+        "Accounts & billing": [LS.Accounts, LS.Accounts.User, LS.Accounts.UserToken,
+                               LS.Accounts.UserNotifier, LS.StripeClient, LS.StripeClientBehaviour, LS.Mailer],
+        Web: ~r/^LSWeb/
+      ],
+      source_url: "https://github.com/giushansen/list_signal",
+      formatters: ["html"]
     ]
   end
 
@@ -56,6 +88,8 @@ defmodule LS.MixProject do
       {:bumblebee, "~> 0.6"},
       {:nx, "~> 0.9"},
       {:exla, "~> 0.9"},
+      # Docs — `mix docs` generates the HTML documentation site
+      {:ex_doc, "~> 0.34", only: :dev, runtime: false},
       # Test
       {:lazy_html, ">= 0.1.0", only: :test}
     ]

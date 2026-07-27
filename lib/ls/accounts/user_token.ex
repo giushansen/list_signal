@@ -1,4 +1,5 @@
 defmodule LS.Accounts.UserToken do
+  @moduledoc "Session and email-verification token schema + query helpers (phx.gen.auth)."
   use Ecto.Schema
   import Ecto.Query
   alias LS.Accounts.UserToken

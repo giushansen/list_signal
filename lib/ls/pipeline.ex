@@ -231,11 +231,8 @@ defmodule LS.Pipeline do
     end
   end
 
-  def rdap(domain) do
-    case RDAPClient.lookup(domain) do
-      {:ok, data} -> {:ok, data}; e -> e
-    end
-  end
+  @doc "RDAP lookup for one domain: `{:ok, map}` or `{:error, reason}`."
+  defdelegate rdap(domain), to: RDAPClient, as: :lookup
 
   # Stable, low-cardinality strings — rdap_error is LowCardinality(String) in
   # ClickHouse, so don't feed it unbounded inspect() output.

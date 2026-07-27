@@ -1,4 +1,5 @@
 defmodule LSWeb.FeedController do
+  @moduledoc "RSS/Atom feeds of newly discovered stores."
   use LSWeb, :controller
   plug :cache_headers
 

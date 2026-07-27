@@ -1,4 +1,5 @@
 defmodule LS.Accounts.User do
+  @moduledoc "User schema + registration/email/password changesets (phx.gen.auth)."
   use Ecto.Schema
   import Ecto.Changeset
 

@@ -1,4 +1,8 @@
 defmodule LSWeb.UserAuth do
+  @moduledoc """
+  Authentication plugs and LiveView on_mount hooks: session handling,
+  remember-me cookies, and route guards (phx.gen.auth).
+  """
   use LSWeb, :verified_routes
 
   import Plug.Conn

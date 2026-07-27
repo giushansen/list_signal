@@ -49,7 +49,20 @@ defmodule LS.Cluster.WorkQueue do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
-  @doc "Enqueue a domain for enrichment. Called by CTL pipeline on :new domains."
+  @doc """
+  Enqueue one domain for enrichment. Returns `:ok` or `:queue_full`.
+
+  Callers are the CT pipeline and `LS.Recrawl.Scheduler`. The map MUST carry
+  the domain under `:ctl_domain` (recrawl items without it once crash-looped
+  every worker — see commit 4f486ca):
+
+      WorkQueue.enqueue(%{ctl_domain: "shop.example", source: :ctl})
+
+  `:queue_full` is deliberate load-shedding, not an error: when CT inflow
+  outruns the fleet, we drop discoveries rather than grow unbounded (the cap
+  and the drop counter are visible in `stats/0`).
+  """
+  @spec enqueue(map()) :: :ok | :queue_full
   def enqueue(domain_data) when is_map(domain_data) do
     current_size = :ets.info(@queue_table, :size)
 

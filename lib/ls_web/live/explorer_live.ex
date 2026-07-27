@@ -1,4 +1,8 @@
 defmodule LSWeb.ExplorerLive do
+  @moduledoc """
+  The data explorer LiveView — the core paid product. Filterable/searchable
+  view over `domains_fast` with server-side pagination and CSV export.
+  """
   use LSWeb, :live_view
 
   alias LS.{Accounts, Explorer, RateLimiter}

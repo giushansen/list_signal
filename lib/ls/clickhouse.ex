@@ -304,7 +304,11 @@ defmodule LS.Clickhouse do
   end
 
   def shopify_stores_last_hour do
-    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR AND is_shopify = 1") do
+    # NB: `is_shopify` only exists on domains_fast (materialized on the MV
+    # inner table) — on the raw enrichments log we must use the expression it
+    # materializes. The previous version queried `is_shopify` here, got
+    # UNKNOWN_IDENTIFIER on every call, and silently returned nil.
+    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR AND http_tech LIKE '%Shopify%'") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end

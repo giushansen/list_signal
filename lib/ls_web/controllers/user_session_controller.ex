@@ -1,4 +1,5 @@
 defmodule LSWeb.UserSessionController do
+  @moduledoc "Magic-link login/logout (phx.gen.auth)."
   use LSWeb, :controller
 
   alias LS.Accounts

@@ -1,4 +1,5 @@
 defmodule LSWeb.ExportController do
+  @moduledoc "CSV export of explorer result sets (plan-gated row limits)."
   use LSWeb, :controller
 
   alias LS.{Accounts, Explorer}

@@ -1,4 +1,8 @@
 defmodule LS.StripeClient do
+  @moduledoc """
+  Thin wrapper around `stripity_stripe` implementing `LS.StripeClientBehaviour`,
+  so billing code can be exercised in tests with a mock client.
+  """
   @behaviour LS.StripeClientBehaviour
 
   @impl true

@@ -1,4 +1,8 @@
 defmodule LSWeb.StoreController do
+  @moduledoc """
+  Public store/website profile pages (`/shopify/:slug`, `/website/:slug`,
+  legacy `/store/:slug` 301s) rendered from `domains_fast`.
+  """
   use LSWeb, :controller
   require Logger
 

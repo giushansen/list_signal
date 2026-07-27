@@ -48,6 +48,12 @@ defmodule LS.Cache do
   @platform_subdomain_count 100
   @platform_min_time 3600
 
+  @doc """
+  Track a domain seen in a CT log. Returns `:new` on first sighting (the
+  caller then enqueues it for enrichment) or `:tracked` on a repeat (dedup —
+  this cache is why the same cert seen across 8 CT logs enriches once).
+  Bounded at 5M entries; FIFO-evicts the 250K least-recently-seen when full.
+  """
   def ctl_track(domain, subdomain_count) do
     now = System.system_time(:second)
     case :ets.lookup(@ctl_cache, domain) do
@@ -61,6 +67,11 @@ defmodule LS.Cache do
     end
   end
 
+  @doc """
+  Heuristic: is this a SaaS/hosting platform issuing certs for customers
+  (≥20 certs/hour sustained, or ≥100 subdomains)? Platform apex domains are
+  skipped by discovery — their subdomains are the interesting part.
+  """
   def ctl_is_platform?(domain) do
     case :ets.lookup(@ctl_cache, domain) do
       [{^domain, {cc, sc, fs, _ls}}] ->

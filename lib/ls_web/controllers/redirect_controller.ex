@@ -1,4 +1,5 @@
 defmodule LSWeb.RedirectController do
+  @moduledoc "Legacy-URL 301 redirects."
   use LSWeb, :controller
 
   def signup(conn, params) do

@@ -1,4 +1,5 @@
 defmodule LSWeb.ErrorHTML do
+  @moduledoc false
   use LSWeb, :html
 
   def render(template, _assigns) do

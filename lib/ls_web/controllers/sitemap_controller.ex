@@ -1,4 +1,5 @@
 defmodule LSWeb.SitemapController do
+  @moduledoc "XML sitemaps (index + shards) for the public SEO surface."
   use LSWeb, :controller
 
   # /compare/:slug renders for any "a-vs-b" pair, but the sitemap never listed a

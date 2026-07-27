@@ -3,7 +3,8 @@ defmodule LS.HTTP.CloudflareEmailDecoder do
   Decode Cloudflare Email Protection obfuscation.
 
   Cloudflare obfuscates emails like:
-  <a href="/cdn-cgi/l/email-protection" data-cfemail="4b2e332a263b272e0b2e332a263b272e65282426">
+
+      <a href="/cdn-cgi/l/email-protection" data-cfemail="4b2e332a263b...">
 
   The data-cfemail attribute contains hex-encoded email with XOR cipher.
   First byte is the key, remaining bytes are XORed with the key.

@@ -1,4 +1,5 @@
 defmodule LSWeb.Endpoint do
+  @moduledoc "Phoenix endpoint: TLS termination (behind Cloudflare), static assets, sessions."
   use Phoenix.Endpoint, otp_app: :ls
 
   @session_options [

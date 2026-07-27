@@ -1,4 +1,5 @@
 defmodule LSWeb.UserLive.Registration do
+  @moduledoc "Signup LiveView (phx.gen.auth)."
   use LSWeb, :live_view
 
   alias LS.Accounts

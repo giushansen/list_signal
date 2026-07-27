@@ -1,4 +1,5 @@
 defmodule LSWeb.PageController do
+  @moduledoc "Landing page and other static marketing pages."
   use LSWeb, :controller
   plug :cache_headers
 

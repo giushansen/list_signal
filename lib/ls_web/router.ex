@@ -1,4 +1,9 @@
 defmodule LSWeb.Router do
+  @moduledoc """
+  All HTTP routes. Public SEO surface (`/shopify/:slug`, `/website/:slug`,
+  `/top/:slug`, `/compare/:slug`, sitemaps/feeds), the authenticated app
+  (explorer, exports, billing), admin, and the Stripe webhook.
+  """
   use LSWeb, :router
 
   import LSWeb.UserAuth
