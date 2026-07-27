@@ -19,6 +19,7 @@ defmodule LSWeb.DashboardLive do
        role: System.get_env("LS_ROLE", "standalone"),
        master_stats: collect_master_stats(),
        worker_stats: collect_worker_stats(),
+       worker_health: collect_worker_health(),
        all_errors: collect_all_errors(),
        peek: nil, peek_data: nil, show_errors: false
      )}
@@ -31,6 +32,7 @@ defmodule LSWeb.DashboardLive do
      assign(socket,
        master_stats: collect_master_stats(),
        worker_stats: collect_worker_stats(),
+       worker_health: collect_worker_health(),
        all_errors: if(socket.assigns.show_errors, do: collect_all_errors(), else: socket.assigns.all_errors)
      )}
   end
@@ -110,6 +112,17 @@ defmodule LSWeb.DashboardLive do
 
       /* Worker cards */
       .worker-card { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
+      .worker-card-danger { border: 2px solid #dc2626; background: #1c0f12; box-shadow: 0 0 0 1px #dc2626, 0 0 18px rgba(220,38,38,.35); }
+      .worker-card-warn { border: 2px solid #d97706; background: #1a1408; }
+      .health-banner { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
+      .health-banner-danger { background: #dc2626; color: #fff; }
+      .health-banner-warn { background: #d97706; color: #fff; }
+      .health-chip { font-family: 'JetBrains Mono', monospace; font-size: 10px; padding: 2px 8px; border-radius: 9999px; font-weight: 700; }
+      .health-chip-ok { background: #052e16; color: #4ade80; }
+      .health-chip-warn { background: #451a03; color: #fbbf24; }
+      .health-chip-danger { background: #dc2626; color: #fff; animation: pulse-red 1.2s infinite; }
+      @keyframes pulse-red { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+      .alert-danger { background: #dc2626; color: #fff; font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; }
       .worker-header { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
       .worker-name { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600; color: #e2e8f0; }
       .badge { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 500; padding: 2px 8px; border-radius: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
@@ -184,6 +197,14 @@ defmodule LSWeb.DashboardLive do
 
       <%= if @master_stats.queue && @master_stats.queue.queue_pct >= 80.0 do %>
         <div class="alert-warn">⚠ Queue at {@master_stats.queue.queue_pct}% — add workers</div>
+      <% end %>
+      <% quarantined = Enum.filter(@worker_health, fn {_, h} -> h.quarantined end) %>
+      <% missing = missing_workers(@worker_health, @worker_stats) %>
+      <%= if quarantined != [] do %>
+        <div class="alert-danger">⛔ {length(quarantined)} WORKER(S) QUARANTINED — hollow rows being dropped: {Enum.map_join(quarantined, ", ", &elem(&1, 0))}. Fix the node, then Inserter.release_worker/1.</div>
+      <% end %>
+      <%= if missing != [] do %>
+        <div class="alert-danger">⛔ {length(missing)} WORKER(S) DISAPPEARED from the cluster: {Enum.map_join(missing, ", ", &elem(&1, 0))}</div>
       <% end %>
 
       <%!-- HEALTH SUMMARY --%>
@@ -260,14 +281,32 @@ defmodule LSWeb.DashboardLive do
 
       <%!-- WORKER NODES --%>
       <div class="section-label">Worker Nodes</div>
+      <%= for {name, h} <- missing_workers(@worker_health, @worker_stats) do %>
+        <div class="worker-card worker-card-danger">
+          <div class="health-banner health-banner-danger">⛔ NOT CONNECTED — {name} produced rows this session (quality {if h.ratio, do: Float.round(h.ratio * 100, 1)}%) but has left the cluster. Check the node: systemctl status listsignal@worker.</div>
+        </div>
+      <% end %>
       <%= if @worker_stats == [] do %>
         <div class="no-workers">No workers connected</div>
       <% else %>
         <%= for {node_name, ws} <- @worker_stats do %>
-          <div class="worker-card">
+          <% wh = health_for(@worker_health, node_name) %>
+          <% sev = health_severity(wh) %>
+          <div class={health_card_class(sev)}>
+            <%= if sev == :danger do %>
+              <div class="health-banner health-banner-danger">⛔ QUARANTINED — this node's rows are being DROPPED ({wh.dropped} so far). Enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (min 90%). Fix the node, then LS.Cluster.Inserter.release_worker("{node_name}").</div>
+            <% end %>
+            <%= if sev == :warn do %>
+              <div class="health-banner health-banner-warn">⚠ AT RISK — enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (quarantine trips below 90%)</div>
+            <% end %>
             <div class="worker-header">
               <span class="worker-name">{node_name}</span>
               <span class={badge_class(ws)}>{badge_text(ws)}</span>
+              <%= case sev do %>
+                <% :danger -> %><span class="health-chip health-chip-danger">DATA QUALITY FAIL</span>
+                <% :warn -> %><span class="health-chip health-chip-warn">quality {if wh && wh.ratio, do: Float.round(wh.ratio * 100, 1)}%</span>
+                <% :ok -> %><%= if wh && wh.ratio do %><span class="health-chip health-chip-ok">quality {Float.round(wh.ratio * 100, 1)}%</span><% end %>
+              <% end %>
               <span class="worker-batch-info">
                 {Map.get(ws, :total_batches, 0)} batches · {fmt(Map.get(ws, :total_enriched, 0))} enriched · {Map.get(ws, :domains_per_sec, 0)}/s
                 <%= if (ec = Map.get(ws, :error_count, 0)) > 0 do %> · <span class="text-red">{ec} err</span><% end %>
@@ -389,6 +428,35 @@ defmodule LSWeb.DashboardLive do
     %{queue: queue, inserter: inserter, poller: poller, cache: cache,
       tranco: tranco, majestic: majestic, blocklist: blocklist}
   end
+
+  # ── Worker data-quality health (Inserter guard) ─────────────────────────────
+  # %{"worker_..." => %{ratio:, quarantined:, dropped:}} — empty map off-master.
+  defp collect_worker_health do
+    LS.Cluster.Inserter.worker_health()
+  rescue
+    _ -> %{}
+  catch
+    :exit, _ -> %{}
+  end
+
+  # Health entry for a connected worker card.
+  defp health_for(health, node_name), do: Map.get(health, to_string(node_name))
+
+  # Workers the Inserter has seen rows from that are NOT currently connected.
+  defp missing_workers(health, worker_stats) do
+    connected = MapSet.new(worker_stats, fn {n, _} -> to_string(n) end)
+    health |> Enum.reject(fn {n, _} -> MapSet.member?(connected, n) end)
+  end
+
+  # Card severity: :danger (quarantined) | :warn (ratio near the trip wire) | :ok
+  defp health_severity(nil), do: :ok
+  defp health_severity(%{quarantined: true}), do: :danger
+  defp health_severity(%{ratio: r}) when is_number(r) and r < 0.95, do: :warn
+  defp health_severity(_), do: :ok
+
+  defp health_card_class(:danger), do: "worker-card worker-card-danger"
+  defp health_card_class(:warn), do: "worker-card worker-card-warn"
+  defp health_card_class(:ok), do: "worker-card"
 
   defp collect_worker_stats do
     Node.list()

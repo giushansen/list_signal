@@ -175,7 +175,12 @@ defmodule LS.Cluster.Inserter do
   # Dropping a sick worker's rows is strictly safer than writing them: the
   # domain keeps its previous good data and stays eligible for recrawl.
   @guard_min_sample 2_000
-  @guard_min_ratio 0.5
+  # Raised 0.5 -> 0.9 on 2026-07-27 from measured baselines: over 14 healthy
+  # days the WORST hourly ratio any worker produced was 0.984 (syd1; everyone
+  # else >= 0.998, medians 1.0), while the h1 failure mode sat at 0.000 for 686
+  # consecutive hours. 0.90 keeps ~8 points of margin below the worst healthy
+  # hour ever observed and trips on anything remotely like a real failure.
+  @guard_min_ratio 0.9
 
   defp guard_batch(rows, state) do
     rows

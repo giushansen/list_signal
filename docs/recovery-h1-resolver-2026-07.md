@@ -159,12 +159,33 @@ its 1M cap in roughly **4–5 hours**, after which `enqueue/1` returns
 unmasked, and it has a consequence:
 
 **The master was OOM-killed at 2026-07-26 06:27:57** (`status=9/KILL`) and
-auto-restarted. Queue growth → master memory → OOM is the same mechanism as the
-earlier recrawl-balloon incident. It will recur while inflow exceeds capacity.
+auto-restarted.
 
-So the ~3.4M-domain recovery below **cannot be run as-is**: adding 3.4M items to
-a queue that is already overflowing will just accelerate the OOM. Resolve
-capacity first — more workers, less CT intake, or tighter pre-filtering.
+> **Correction (2026-07-27).** An earlier revision of this document blamed the
+> OOM on queue growth. **That was wrong.** Measured directly on the master:
+> the `work_queue` ETS table holds **273 MB at 998,193 entries (99.8% full)**,
+> ~287 bytes/item, and the cap demonstrably works (`total_dropped: 454,144`).
+> The queue was only at **23.8% (237.5K items)** when the OOM fired. With the
+> queue now sitting at 99.8% — the worst case — total BEAM memory is a flat
+> 2.1 GB. A bounded queue cannot cause a 6.2 GB OOM, and it didn't.
+>
+> What the kernel actually recorded at 06:27:57: `beam.smp` **6.2 GB RSS +
+> 7.6 GB swapped** (~13.8 GB anon), `clickhouse-server` only 0.6 GB resident.
+> The BEAM ballooned; the cause of that specific spike is **still
+> unexplained**. Ruled out: Tranco archiving (no activity in the preceding
+> 45 min), ClickHouse insert failures (zero in the whole 25 h window),
+> and mailbox backlog (none). The BEAM is currently stable with no growth.
+>
+> The real structural problem was oversubscription: on the 7.8 GB box,
+> ClickHouse alone was permitted 7 GB (`max_server_memory_usage`, 0.9 ratio)
+> and its RSS repeatedly spiked to 5.9–6.9 GB, while the BEAM also wanted
+> multiple GB. Available memory fell below 1 GB on ~6 occasions in 7 days.
+
+So the queue is **not** a blocker for recovery. The genuine constraint is
+throughput: ~900/min enrichment against ~3,900/min inflow means the queue is
+permanently saturated and already discarding CT items, so 3.4M re-enqueued
+domains would compete with — and partly displace — live discovery rather than
+being processed promptly. Size the recovery against that, not against OOM risk.
 
 ## Order of operations
 
