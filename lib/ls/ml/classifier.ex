@@ -182,7 +182,7 @@ defmodule LS.ML.Classifier do
 
   @doc "Classify a batch of texts. Returns a list of classification results."
   def classify_batch(texts) when is_list(texts) do
-    GenServer.call(__MODULE__, {:classify_batch, texts}, 30_000)
+    GenServer.call(__MODULE__, {:classify_batch, texts}, 120_000)
   catch
     :exit, _ -> Enum.map(texts, fn _ -> %{business_model: "", industry: "", ml_confidence: 0.0} end)
   end
@@ -263,7 +263,17 @@ defmodule LS.ML.Classifier do
 
   @impl true
   def handle_call({:classify_batch, texts}, _from, state) do
-    results = Enum.map(texts, &safe_classify(&1, state))
+    # TRUE batching (2026-07-27): one Nx.Serving.run per chunk instead of one
+    # per text. The serving is compiled with batch_size 8, so single-text calls
+    # were already paying for the 8-wide kernel and padding 7 slots with zeros —
+    # batching simply fills those slots with real work. Per-item math is
+    # unchanged: transformer attention/LayerNorm never mix batch items, and
+    # score_embedding/2 is the same code the single path uses.
+    results =
+      texts
+      |> Enum.chunk_every(32)
+      |> Enum.flat_map(fn chunk -> do_classify_chunk(chunk, state) end)
+
     {:reply, results, state}
   end
 
@@ -282,8 +292,19 @@ defmodule LS.ML.Classifier do
       @empty_classification
   end
 
-  defp do_classify(text, state) do
-    # Ensure valid UTF-8 — pages may contain Windows-1251, Latin-1, etc.
+  defp do_classify_chunk(chunk, state) do
+    sanitized = Enum.map(chunk, &sanitize_text/1)
+
+    outputs = Nx.Serving.run(state.serving, sanitized)
+
+    Enum.map(outputs, fn %{embedding: emb} -> score_embedding(emb, state) end)
+  rescue
+    e ->
+      Logger.warning("ML Classifier: batched chunk failed (#{Exception.message(e)}) — falling back to per-text")
+      Enum.map(chunk, &safe_classify(&1, state))
+  end
+
+  defp sanitize_text(text) do
     text = if String.valid?(text) do
       text
     else
@@ -294,11 +315,21 @@ defmodule LS.ML.Classifier do
       end
     end
 
-    # Truncate input to reasonable length
-    text = String.slice(text, 0, 500)
+    String.slice(text, 0, 500)
+  end
+
+  defp do_classify(text, state) do
+    text = sanitize_text(text)
 
     # Get embedding for input text
     %{embedding: text_embedding} = Nx.Serving.run(state.serving, text)
+
+    score_embedding(text_embedding, state)
+  end
+
+  # Shared post-embedding scoring — the ONLY scoring code, used by both the
+  # single and the batched path, so their results are identical by construction.
+  defp score_embedding(text_embedding, state) do
 
     # Find best business model
     {bm, bm_score} = find_best_match(text_embedding, state.bm_embeddings)
