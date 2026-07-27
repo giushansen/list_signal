@@ -137,7 +137,9 @@ defmodule LS.Cluster.WorkerAgent do
         case GenServer.call(queue, {:dequeue, bs}, 15_000) do
           {:ok, bid, domains} ->
             Logger.info("Batch #{bid}: #{length(domains)} domains")
+            t0 = System.monotonic_time(:millisecond)
             {results, stages, samples, errors} = enrich_batch(domains, hc, dc, rc)
+            stages = Map.put(stages, :cycle_ms, System.monotonic_time(:millisecond) - t0)
             send(parent, {:batch_done, bid, results, stages, samples, errors})
           {:empty, []} ->
             send(parent, :batch_empty)
@@ -152,7 +154,9 @@ defmodule LS.Cluster.WorkerAgent do
   @impl true
   def handle_info({:batch_done, bid, results, stages, samples, batch_errors}, s) do
     queue = {LS.Cluster.WorkQueue, s.master_node}
-    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms)")
+    cyc = Map.get(stages, :cycle_ms, 0)
+    known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
+    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
     GenServer.cast(queue, {:complete, bid, results})
     errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
     new_s = %{s |
@@ -188,6 +192,20 @@ defmodule LS.Cluster.WorkerAgent do
   # ENRICHMENT
   # ==========================================================================
 
+  # Await a stage task; on overrun, kill it and continue with empty results so
+  # one slow stage can never take down the batch (reliability pillar).
+  defp await_stage(task, stage, timeout_ms) do
+    case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, res} ->
+        res
+
+      _ ->
+        require Logger
+        Logger.error("#{stage} stage exceeded #{timeout_ms}ms — batch continues without it")
+        %{}
+    end
+  end
+
   defp enrich_batch(domains, http_c, dns_c, rdap_c) do
     worker = Node.self() |> Atom.to_string()
     errors = []
@@ -210,9 +228,15 @@ defmodule LS.Cluster.WorkerAgent do
     bgp_task = Task.async(fn -> enrich_bgp(bgp_cands) end)
     rdap_task = Task.async(fn -> enrich_rdap(rdap_cands, rdap_c) end)
 
-    {http_us, http_res} = :timer.tc(fn -> Task.await(http_task, 120_000) end)
-    {bgp_us, bgp_res} = :timer.tc(fn -> Task.await(bgp_task, 120_000) end)
-    {rdap_us, rdap_res} = :timer.tc(fn -> Task.await(rdap_task, 120_000) end)
+    # RDAP is rate-limited (politeness), so its wall time scales with candidate
+    # count — a fixed await here crash-looped h1 when batch_size=2000 pushed
+    # RDAP past 120s (2026-07-27). Timeouts now scale, and an overrunning stage
+    # is shut down and skipped instead of killing the whole batch (its domains
+    # still get rows, just without that stage's fields).
+    rdap_timeout = max(120_000, length(rdap_cands) * 1_000)
+    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", 120_000) end)
+    {bgp_us, bgp_res} = :timer.tc(fn -> await_stage(bgp_task, "bgp", 120_000) end)
+    {rdap_us, rdap_res} = :timer.tc(fn -> await_stage(rdap_task, "rdap", rdap_timeout) end)
 
     http_err = length(http_cands) - map_size(http_res)
     errors = if http_err > 0 do
@@ -221,8 +245,8 @@ defmodule LS.Cluster.WorkerAgent do
       errors
     end
 
-    # 4. Merge (reputation lookups happen here)
-    merged = merge_results(domains, dns_results, http_res, bgp_res, rdap_res, worker)
+    # 4. Merge (reputation + classification + scoring happen here)
+    {merge_us, merged} = :timer.tc(fn -> merge_results(domains, dns_results, http_res, bgp_res, rdap_res, worker) end)
 
     stages = %{
       dns: %{input: length(domains), output: map_size(dns_results), ms: div(dns_us, 1000)},
@@ -231,6 +255,7 @@ defmodule LS.Cluster.WorkerAgent do
       bgp: %{input: length(bgp_cands), output: map_size(bgp_res), ms: div(bgp_us, 1000)},
       rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
               rate_limited: length(rdap_cands) - map_size(rdap_res)},
+      merge: %{input: length(domains), output: length(merged), ms: div(merge_us, 1000)},
       total: length(merged)
     }
 
@@ -374,7 +399,13 @@ defmodule LS.Cluster.WorkerAgent do
   defp enrich_bgp([]), do: %{}
   defp enrich_bgp(cands) do
     ips = Enum.map(cands, fn {_, ip} -> ip end) |> Enum.uniq()
-    asn_map = case GenServer.call(BGPResolver, {:lookup_batch, ips}, 60_000) do
+    # Cymru lookups run 100 IPs/query with a polite 2s inter-query delay through
+    # one serialized GenServer, so wall time scales with unique-IP count: ~900
+    # cold IPs need 60-130s. The old fixed 60s timeout made the linked batch
+    # task exit mid-flight and took the whole WorkerAgent down with it (h1
+    # crash-loop, 2026-07-27) — and any worker could hit it on a cold cache.
+    bgp_timeout = max(60_000, div(length(ips), 100) * 10_000 + 30_000)
+    asn_map = case GenServer.call(BGPResolver, {:lookup_batch, ips}, bgp_timeout) do
       {:ok, m} -> m
       {:error, _} -> %{}
     end

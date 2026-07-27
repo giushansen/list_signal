@@ -291,9 +291,13 @@ defmodule LSWeb.DashboardLive do
       <% else %>
         <%= for {node_name, ws} <- @worker_stats do %>
           <% wh = health_for(@worker_health, node_name) %>
-          <% sev = health_severity(wh) %>
+          <% conn_bad = Map.get(ws, :status) == :unreachable or Map.get(ws, :connected) == false %>
+          <% sev = if conn_bad, do: :danger, else: health_severity(wh) %>
           <div class={health_card_class(sev)}>
-            <%= if sev == :danger do %>
+            <%= if conn_bad do %>
+              <div class="health-banner health-banner-danger">⛔ NOT PRODUCING — agent is {if Map.get(ws, :status) == :unreachable, do: "unreachable", else: "stuck reconnecting"}. If this persists, the WorkerAgent is likely crash-looping (a stage overrunning its budget): journalctl -u listsignal@worker on the node.</div>
+            <% end %>
+            <%= if sev == :danger and not conn_bad do %>
               <div class="health-banner health-banner-danger">⛔ QUARANTINED — this node's rows are being DROPPED ({wh.dropped} so far). Enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (min 90%). Fix the node, then LS.Cluster.Inserter.release_worker("{node_name}").</div>
             <% end %>
             <%= if sev == :warn do %>
