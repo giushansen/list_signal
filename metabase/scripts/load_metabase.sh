@@ -98,6 +98,11 @@ make_card "07 · Crawler errors (24h)"              07_http_errors_24h.sql      
 make_card "08 · Stage failure ratios (48h)"        08_stage_failure_ratios_48h.sql    line  '{"graph.dimensions":["hour"],"graph.metrics":["dns_empty","http_no_response","http_error_rate","http_5xx","unclassified","rdap_errors","bgp_empty"]}'
 make_card "09 · Business model mix (24h vs prev)"  09_business_model_mix_24h_vs_prev.sql table '{}'
 make_card "10 · Pipeline freshness"                10_pipeline_freshness.sql          table '{}'
+make_card "11 · Good domains daily (real businesses)" 11_good_domains_daily.sql       line  '{"graph.dimensions":["day"],"graph.metrics":["good_domains","good_with_tranco"]}'
+make_card "12 · Bad / suspicious domains daily"    12_bad_domains_daily.sql           line  '{"graph.dimensions":["day"],"graph.metrics":["flagged_malware","flagged_phishing","dead_dns","parked_hint"]}'
+make_card "13 · Blacklist candidates (junk repeaters)" 13_blacklist_candidates.sql    table '{}'
+make_card "14 · Crawl gap on legit domains daily"  14_crawl_gap_daily.sql             line  '{"graph.dimensions":["day"],"graph.metrics":["crawl_ok","rate_limited","waf_blocked","need_better_crawler_pct"]}'
+make_card "15 · Duplicate churn daily (exact)"     15_duplicate_churn_daily.sql       line  '{"graph.dimensions":["day"],"graph.metrics":["dupe_rows","dupe_pct"]}'
 
 # ── 5. Dashboard ────────────────────────────────────────────────────────────
 DASH_ID=$(api GET "/collection/$COLL_ID/items" | jq -r '.data[]? | select(.model=="dashboard" and .name=="ListSignal Health") | .id' | head -1)
