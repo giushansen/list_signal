@@ -281,7 +281,8 @@ defmodule LS.Pipeline do
   Build a complete enrichment row from DNS/HTTP/BGP/RDAP results.
   Used by both Pipeline.run (ctl defaults to %{}) and WorkerAgent (passes CTL data).
   """
-  def merge_row(domain, dns_data, http, bgp, rdap, worker, now, ctl \\ %{}) do
+  def merge_row(domain, dns_data, http, bgp, rdap, worker, now, ctl \\ %{}, opts \\ []) do
+    ml_mode = Keyword.get(opts, :ml, :inline)
     d = dns_data[:dns] || %{}
 
     # DNS-based tech enrichment (CNAME/IP/TXT signals)
@@ -310,19 +311,22 @@ defmodule LS.Pipeline do
       nav_links: nav_links
     })
 
-    # Tier 2: ML classifier fallback when heuristic confidence is low
-    classify_result = if classify_result.confidence < 0.55 and MLClassifier.ready?() do
-      ml_text = Enum.join([http[:http_title] || "", h1, http[:http_meta_description] || "", body_text], " ")
-      ml_text = String.trim(ml_text)
-      if byte_size(ml_text) > 20 do
-        ml = MLClassifier.classify(ml_text)
-        merge_classification(classify_result, ml)
+    # Tier 2: ML classifier fallback when heuristic confidence is low.
+    # :defer stashes the text on the row so the caller can batch-classify the
+    # whole batch in one serving run (WorkerAgent.finalize_ml + apply_ml/2).
+    {classify_result, ml_defer} =
+      if classify_result.confidence < 0.55 and (ml_mode == :defer or MLClassifier.ready?()) do
+        ml_text = Enum.join([http[:http_title] || "", h1, http[:http_meta_description] || "", body_text], " ")
+        ml_text = String.trim(ml_text)
+
+        cond do
+          byte_size(ml_text) <= 20 -> {classify_result, nil}
+          ml_mode == :defer -> {classify_result, {ml_text, classify_result}}
+          true -> {merge_classification(classify_result, MLClassifier.classify(ml_text)), nil}
+        end
       else
-        classify_result
+        {classify_result, nil}
       end
-    else
-      classify_result
-    end
 
     # Reputation — pure ETS reads
     maj = Majestic.lookup(domain)
@@ -387,7 +391,29 @@ defmodule LS.Pipeline do
       is_disposable_email: if(bl == :disposable, do: "true", else: "")
     }
     |> add_revenue_estimate()
+    |> then(fn row ->
+      # :defer bookkeeping rides on the row until WorkerAgent finalizes it
+      case ml_defer do
+        {text, heuristic} -> Map.merge(row, %{_ml_text: text, _ml_heuristic: heuristic})
+        nil -> row
+      end
+    end)
   end
+
+  @doc """
+  Finish a :defer-mode row with its batched ML result — the exact counterpart
+  of the inline path: same merge_classification, same three row fields.
+  """
+  def apply_ml(row, ml) do
+    r = merge_classification(row[:_ml_heuristic], ml)
+
+    row
+    |> Map.drop([:_ml_text, :_ml_heuristic])
+    |> Map.merge(%{business_model: r.business_model, industry: r.industry, classification_confidence: r.confidence})
+  end
+
+  @doc "Drop defer bookkeeping from a row that needed no ML."
+  def strip_ml_defer(row), do: Map.drop(row, [:_ml_text, :_ml_heuristic])
 
   defp add_revenue_estimate(row) do
     rev = RevenueEstimator.estimate(row)

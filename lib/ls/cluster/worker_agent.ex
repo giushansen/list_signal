@@ -156,7 +156,7 @@ defmodule LS.Cluster.WorkerAgent do
     queue = {LS.Cluster.WorkQueue, s.master_node}
     cyc = Map.get(stages, :cycle_ms, 0)
     known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
-    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
+    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
     GenServer.cast(queue, {:complete, bid, results})
     errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
     new_s = %{s |
@@ -450,8 +450,37 @@ defmodule LS.Cluster.WorkerAgent do
       http = Map.get(http_res, domain, %{})
       bgp = Map.get(bgp_res, domain, %{})
       rdap = Map.get(rdap_res, domain, %{})
-      LS.Pipeline.merge_row(domain, dns, http, bgp, rdap, worker, now, ctl)
+      LS.Pipeline.merge_row(domain, dns, http, bgp, rdap, worker, now, ctl, ml: :defer)
     end)
+    |> finalize_ml()
+  end
+
+  # One batched inference for the whole batch's ML-fallback texts (the serving
+  # is compiled batch_size 8 — single calls were padding 7 of 8 slots).
+  defp finalize_ml(rows) do
+    {t_us, finalized} = :timer.tc(fn ->
+      indexed = Enum.with_index(rows)
+      needs = for {row, i} <- indexed, is_binary(row[:_ml_text]), do: {i, row[:_ml_text]}
+
+      case needs do
+        [] ->
+          Enum.map(rows, &LS.Pipeline.strip_ml_defer/1)
+
+        _ ->
+          results = LS.ML.Classifier.classify_batch(Enum.map(needs, &elem(&1, 1)))
+          ml_by_index = Enum.zip(Enum.map(needs, &elem(&1, 0)), results) |> Map.new()
+
+          Enum.map(indexed, fn {row, i} ->
+            case ml_by_index do
+              %{^i => ml} -> LS.Pipeline.apply_ml(row, ml)
+              _ -> LS.Pipeline.strip_ml_defer(row)
+            end
+          end)
+      end
+    end)
+
+    :persistent_term.put({__MODULE__, :last_ml_ms}, div(t_us, 1000))
+    finalized
   end
 
   # ==========================================================================
