@@ -321,9 +321,19 @@ defmodule LS.Cluster.WorkerAgent do
   end
 
   defp classify_rdap(dns_results) do
+    # Same quality gate as the HTTP stage (2026-07-27): registry lookups are
+    # politeness-limited to 2/s, which made RDAP the slowest stage of every
+    # batch (~108s of a ~250s cycle) while ~93% of its candidates were domains
+    # that will never pass the crawl gate. Now only crawl-worthy domains
+    # (resolvable + high-value TLD + MX + SPF via DomainFilter.should_crawl?)
+    # spend registry budget — RDAP wall time tracks the HTTP stage it runs in
+    # parallel with, instead of dominating it.
     Enum.reduce(dns_results, [], fn {domain, data}, acc ->
       ip = data.dns[:a] |> List.wrap() |> List.first()
-      if ip && ip != "" && Cache.rdap_lookup(domain) == :miss && !Blocklist.blocked?(domain) && !LS.Reputation.TLDFilter.is_registry?(domain) && !LS.Reputation.TLDFilter.is_registry?(domain) do
+      mx = data.dns[:mx] |> List.wrap() |> Enum.join("|")
+      txt = data.dns[:txt] |> List.wrap() |> Enum.join(" ")
+      if ip && ip != "" && Cache.rdap_lookup(domain) == :miss && !Blocklist.blocked?(domain) &&
+           !LS.Reputation.TLDFilter.is_registry?(domain) && DomainFilter.should_crawl?(domain, mx, txt) do
         [domain | acc]
       else
         acc
