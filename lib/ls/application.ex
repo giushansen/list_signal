@@ -23,8 +23,32 @@ defmodule LS.Application do
     end
 
     LS.RateLimiter.init()
+    pin_vm_resolver()
     children = common_children() ++ role_children(role, mode)
     Supervisor.start_link(children, strategy: :one_for_one, name: LS.Supervisor)
+  end
+
+  # Point the whole BEAM's name resolution at local Unbound, the same server
+  # LS.DNS.Resolver pins explicitly.
+  #
+  # Without this the VM falls back to /etc/resolv.conf for everything that
+  # resolves a hostname itself — Mint (LS.HTTP.Client), Team Cymru whois
+  # (LS.BGP.Resolver) and RDAP — while the DNS enrichment stage keeps working,
+  # because it passes `nameservers:` on every lookup. On 2026-07-04 the h1
+  # worker's /etc/resolv.conf broke and produced exactly that split brain: DNS
+  # resolved fine, then HTTP returned `transport::nxdomain` for the very domain
+  # it had just resolved, and BGP/RDAP silently returned nothing. It ran that
+  # way for 21 days and wrote ~56M empty rows over good data.
+  #
+  # Pinning here makes a broken OS resolver impossible to hit: either Unbound
+  # is up and everything resolves, or it's down and DNS enrichment fails loudly
+  # too, which the dashboards already alert on.
+  defp pin_vm_resolver do
+    :inet_db.set_lookup([:dns])
+    :inet_db.add_ns({127, 0, 0, 1})
+    Logger.info("🌐 VM resolver pinned to Unbound (127.0.0.1:53) — HTTP/BGP/RDAP included")
+  rescue
+    e -> Logger.error("Failed to pin VM resolver: #{Exception.message(e)}")
   end
 
   @impl true

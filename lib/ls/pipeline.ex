@@ -81,7 +81,9 @@ defmodule LS.Pipeline do
             Map.put(acc, d, data)
           {:error, reason} ->
             Logger.debug("[PIPELINE][RDAP] #{d} FAILED: #{inspect(reason)}")
-            acc
+            # Keep the failure — dropping it here is what made rdap_error
+            # permanently "" and hid every RDAP outage from the dashboards.
+            Map.put(acc, d, %{error: format_rdap_error(reason)})
         end
       end)
     end)
@@ -235,6 +237,20 @@ defmodule LS.Pipeline do
     end
   end
 
+  # Stable, low-cardinality strings — rdap_error is LowCardinality(String) in
+  # ClickHouse, so don't feed it unbounded inspect() output.
+  defp format_rdap_error(reason) do
+    case reason do
+      :no_rdap_server -> "no_rdap_server"
+      :not_found -> "not_found"
+      :rate_limited -> "rate_limited"
+      {:http, status} -> "http_#{status}"
+      atom when is_atom(atom) -> to_string(atom)
+      binary when is_binary(binary) -> String.slice(binary, 0, 60)
+      other -> other |> inspect() |> String.slice(0, 60)
+    end
+  end
+
   def tranco(domain), do: Tranco.lookup(domain)
   def majestic(domain), do: Majestic.lookup(domain)
   def blocklist(domain), do: Blocklist.lookup(domain)
@@ -362,7 +378,7 @@ defmodule LS.Pipeline do
       rdap_registrar_iana_id: rdap[:registrar_iana_id] || "",
       rdap_nameservers: rdap[:nameservers] || "",
       rdap_status: rdap[:status] || "",
-      rdap_error: "",
+      rdap_error: rdap[:error] || "",
       tranco_rank: Tranco.lookup(domain),
       majestic_rank: if(maj, do: maj.rank, else: nil),
       majestic_ref_subnets: if(maj, do: maj.ref_subnets, else: nil),

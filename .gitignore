@@ -67,3 +67,7 @@ rel/*
 
 # Local prod backups + analytics exports (never commit — 16G ClickHouse archive lives here)
 /backups/
+
+# Metabase local secrets
+/metabase/.env.local
+.secrets/

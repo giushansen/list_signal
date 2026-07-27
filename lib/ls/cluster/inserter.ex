@@ -39,10 +39,16 @@ defmodule LS.Cluster.Inserter do
 
   def columns, do: @columns
 
-  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  def insert(rows) when is_list(rows), do: GenServer.cast(__MODULE__, {:insert, rows})
-  def flush, do: GenServer.call(__MODULE__, :flush, 30_000)
-  def stats, do: GenServer.call(__MODULE__, :stats)
+  # `:name` is overridable so tests can run an isolated instance instead of
+  # sharing the supervised singleton's buffer and guard state.
+  def start_link(opts \\ []),
+    do: GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
+
+  def insert(server \\ __MODULE__, rows) when is_list(rows),
+    do: GenServer.cast(server, {:insert, rows})
+
+  def flush(server \\ __MODULE__), do: GenServer.call(server, :flush, 30_000)
+  def stats(server \\ __MODULE__), do: GenServer.call(server, :stats)
 
   @impl true
   def init(_opts) do
@@ -50,17 +56,53 @@ defmodule LS.Cluster.Inserter do
     schedule_flush()
     Logger.info("💾 Inserter started (#{length(@columns)} columns, flush: #{@flush_size}/#{div(@flush_interval_ms, 1000)}s)")
     {:ok, %{buffer: [], buffer_size: 0, total_inserted: 0, total_batches: 0,
-            total_errors: 0, last_insert_at: nil, start_time: System.monotonic_time(:second)}}
+            total_errors: 0, last_insert_at: nil, start_time: System.monotonic_time(:second),
+            worker_health: %{}}}
   end
+
+  @doc """
+  Per-worker health as tracked by the quality guard.
+
+  `%{"worker_lsny1@10.0.0.2" => %{ratio: 0.99, quarantined: false, dropped: 0}, ...}`
+  Clear a quarantine with `release_worker/1` once the node is fixed.
+  """
+  def worker_health(server \\ __MODULE__), do: GenServer.call(server, :worker_health)
+
+  def release_worker(server \\ __MODULE__, worker),
+    do: GenServer.call(server, {:release_worker, worker})
 
   @impl true
   def handle_cast({:insert, rows}, state) do
+    {rows, state} = guard_batch(rows, state)
     state = %{state | buffer: rows ++ state.buffer, buffer_size: state.buffer_size + length(rows)}
     if state.buffer_size >= @flush_size, do: {:noreply, do_flush(state)}, else: {:noreply, state}
   end
 
   @impl true
   def handle_call(:flush, _from, state), do: {:reply, :ok, do_flush(state)}
+
+  @impl true
+  def handle_call(:worker_health, _from, state) do
+    report =
+      Map.new(state.worker_health, fn {w, h} ->
+        {w, %{ratio: h.ratio, quarantined: h.quarantined, dropped: h.dropped}}
+      end)
+
+    {:reply, report, state}
+  end
+
+  @impl true
+  def handle_call({:release_worker, worker}, _from, state) do
+    case Map.fetch(state.worker_health, worker) do
+      {:ok, h} ->
+        Logger.warning("[GUARD] Releasing #{worker} from quarantine (#{h.dropped} rows were dropped)")
+        health = %{h | quarantined: false, seen: 0, good: 0, dropped: 0}
+        {:reply, :ok, put_health(state, worker, health)}
+
+      :error ->
+        {:reply, {:error, :unknown_worker}, state}
+    end
+  end
 
   @impl true
   def handle_call(:stats, _from, state) do
@@ -114,6 +156,80 @@ defmodule LS.Cluster.Inserter do
       {:error, e} -> {:error, inspect(e)}
     end
   rescue e -> {:error, Exception.message(e)}
+  end
+
+  # ── Data-quality guard ──────────────────────────────────────────────────────
+  #
+  # Catches a worker whose enrichment stages have silently died while DNS still
+  # works, so it keeps claiming batches and writing hollow rows. Because
+  # `domains_current` is a ReplacingMergeTree(enriched_at) keyed on domain, a
+  # hollow row REPLACES good data — a sick worker actively destroys the dataset.
+  # h1 did exactly this from 2026-07-04 for 21 days: ~56M empty rows, ~933K
+  # domains degraded from good to blank, nothing alerted.
+  #
+  # Metric: of rows where DNS resolved, the fraction that got ANY enrichment
+  # beyond DNS (HTTP status, BGP or RDAP). Over 30 days of history the five
+  # healthy workers never dropped below 0.984 in any hour (median 1.000) while
+  # h1 sat at exactly 0.000 for all 686 of its hours — so 0.5 is far from both.
+  #
+  # Dropping a sick worker's rows is strictly safer than writing them: the
+  # domain keeps its previous good data and stays eligible for recrawl.
+  @guard_min_sample 2_000
+  @guard_min_ratio 0.5
+
+  defp guard_batch(rows, state) do
+    rows
+    |> Enum.group_by(&Map.get(&1, :worker, "unknown"))
+    |> Enum.reduce({[], state}, fn {worker, wrows}, {kept, st} ->
+      health = Map.get(st.worker_health, worker, %{seen: 0, good: 0, ratio: nil,
+                                                   quarantined: false, dropped: 0})
+
+      if health.quarantined do
+        health = %{health | dropped: health.dropped + length(wrows)}
+        if rem(health.dropped, 50_000) < length(wrows) do
+          Logger.error("[GUARD] #{worker} still QUARANTINED — #{health.dropped} rows dropped. " <>
+                       "Fix the node, then LS.Cluster.Inserter.release_worker(#{inspect(worker)})")
+        end
+        {kept, put_health(st, worker, health)}
+      else
+        eligible = Enum.count(wrows, &(Map.get(&1, :dns_a, "") != ""))
+        good = Enum.count(wrows, &enriched_beyond_dns?/1)
+        health = %{health | seen: health.seen + eligible, good: health.good + good}
+
+        {health, st} = evaluate(worker, health, st)
+        {wrows ++ kept, put_health(st, worker, health)}
+      end
+    end)
+  end
+
+  defp evaluate(worker, %{seen: seen} = health, st) when seen >= @guard_min_sample do
+    ratio = health.good / seen
+
+    health =
+      if ratio < @guard_min_ratio do
+        Logger.error("[GUARD] QUARANTINING #{worker} — only #{Float.round(ratio * 100, 1)}% of " <>
+                     "DNS-resolved rows got any enrichment beyond DNS (min #{@guard_min_ratio * 100}%, " <>
+                     "sample #{seen}). Its rows are now DROPPED so they can't overwrite good data. " <>
+                     "Likely a broken OS resolver or blocked egress on that node.")
+        %{health | quarantined: true, ratio: ratio}
+      else
+        %{health | ratio: ratio}
+      end
+
+    # reset the rolling window either way
+    {%{health | seen: 0, good: 0}, st}
+  end
+
+  defp evaluate(_worker, health, st), do: {health, st}
+
+  defp put_health(st, worker, health),
+    do: %{st | worker_health: Map.put(st.worker_health, worker, health)}
+
+  defp enriched_beyond_dns?(row) do
+    Map.get(row, :dns_a, "") != "" and
+      (Map.get(row, :http_status) != nil or
+         Map.get(row, :bgp_asn_number, "") != "" or
+         Map.get(row, :rdap_registrar, "") != "")
   end
 
   defp row_to_tsv(row), do: @columns |> Enum.map(fn c -> escape_tsv(Map.get(row, c, "")) end) |> Enum.join("\t")
