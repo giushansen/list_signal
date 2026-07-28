@@ -38,6 +38,7 @@ defmodule LS.Cluster.WorkQueue do
   @inflight_check_ms 60_000        # 1 minute
 
   # Counter indices
+  @rate_window_ms 20_000
   @idx_enqueued 1
   @idx_dropped 2
 
@@ -114,6 +115,7 @@ defmodule LS.Cluster.WorkQueue do
 
     schedule_cleanup()
     schedule_inflight_check()
+    Process.send_after(self(), :sample_rates, @rate_window_ms)
 
     max = case Integer.parse(System.get_env("LS_QUEUE_MAX", "")) do
       {n, _} when n > 0 -> n
@@ -126,7 +128,12 @@ defmodule LS.Cluster.WorkQueue do
       total_dequeued: 0,
       total_completed: 0,
       total_requeued: 0,
-      start_time: System.monotonic_time(:second)
+      start_time: System.monotonic_time(:second),
+      # Trailing-window rates (not lifetime averages) — truthful right after a
+      # restart. rate_sample = {mono_seconds, enqueued_then, completed_then}.
+      rate_sample: {System.monotonic_time(:second), 0, 0},
+      enqueue_rate_win: 0.0,
+      drain_rate_win: 0.0
     }}
   end
 
@@ -165,13 +172,11 @@ defmodule LS.Cluster.WorkQueue do
     total_enqueued = :counters.get(ref, @idx_enqueued)
     total_dropped = :counters.get(ref, @idx_dropped)
 
-    drain_rate = if uptime > 0,
-      do: Float.round(state.total_completed / uptime * 60, 1),
-      else: 0.0
-
-    enqueue_rate = if uptime > 0,
-      do: Float.round(total_enqueued / uptime * 60, 1),
-      else: 0.0
+    # Lifetime averages kept for reference; the dashboard uses the windowed rates
+    # below (total/uptime lied for hours after every restart — cold dedup cache
+    # burst + averaging).
+    drain_rate_lifetime = if uptime > 0, do: Float.round(state.total_completed / uptime * 60, 1), else: 0.0
+    enqueue_rate_lifetime = if uptime > 0, do: Float.round(total_enqueued / uptime * 60, 1), else: 0.0
 
     stats = %{
       queue_depth: queue_size,
@@ -183,8 +188,10 @@ defmodule LS.Cluster.WorkQueue do
       total_completed: state.total_completed,
       total_requeued: state.total_requeued,
       total_dropped: total_dropped,
-      enqueue_rate_per_min: enqueue_rate,
-      drain_rate_per_min: drain_rate,
+      enqueue_rate_per_min: state.enqueue_rate_win,
+      drain_rate_per_min: state.drain_rate_win,
+      enqueue_rate_lifetime: enqueue_rate_lifetime,
+      drain_rate_lifetime: drain_rate_lifetime,
       uptime_seconds: uptime
     }
 
@@ -220,6 +227,26 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   # TTL cleanup — drop domains older than 24h
+  # Recompute enqueue/drain rates over the trailing window and re-anchor.
+  @impl true
+  def handle_info(:sample_rates, state) do
+    now = System.monotonic_time(:second)
+    enq_now = :counters.get(counter_ref(), @idx_enqueued)
+    comp_now = state.total_completed
+    {t0, enq0, comp0} = state.rate_sample
+    dt = now - t0
+
+    {eqr, dr} =
+      if dt > 0 do
+        {Float.round((enq_now - enq0) / dt * 60, 1), Float.round((comp_now - comp0) / dt * 60, 1)}
+      else
+        {state.enqueue_rate_win, state.drain_rate_win}
+      end
+
+    Process.send_after(self(), :sample_rates, @rate_window_ms)
+    {:noreply, %{state | rate_sample: {now, enq_now, comp_now}, enqueue_rate_win: eqr, drain_rate_win: dr}}
+  end
+
   @impl true
   def handle_info(:cleanup_ttl, state) do
     cutoff = System.system_time(:millisecond) - @ttl_ms
