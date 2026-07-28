@@ -116,6 +116,8 @@ defmodule LSWeb.DashboardLive do
       .stage-input { border: 1px solid #10b981 !important; box-shadow: 0 0 0 1px #10b981, 0 0 14px rgba(16,185,129,0.25); background: rgba(16,185,129,0.06) !important; }
       .hm-dim { opacity: 0.5; }
       .hm-ok { color: #34d399; }
+      .worker-cache { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: #64748b; margin: 2px 0 8px 0; }
+      .worker-cache b { color: #94a3b8; font-weight: 600; }
       .worker-card { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
       .worker-card-danger { border: 2px solid #dc2626; background: #1c0f12; box-shadow: 0 0 0 1px #dc2626, 0 0 18px rgba(220,38,38,.35); }
       .worker-card-warn { border: 2px solid #d97706; background: #1a1408; }
@@ -320,14 +322,20 @@ defmodule LSWeb.DashboardLive do
               <span class={badge_class(ws)}>{badge_text(ws)}</span>
               <%= case sev do %>
                 <% :danger -> %><span class="health-chip health-chip-danger">DATA QUALITY FAIL</span>
-                <% :warn -> %><span class="health-chip health-chip-warn">quality {if wh && wh.ratio, do: Float.round(wh.ratio * 100, 1)}%</span>
-                <% :ok -> %><%= if wh && wh.ratio do %><span class="health-chip health-chip-ok">quality {Float.round(wh.ratio * 100, 1)}%</span><% end %>
+                <% :warn -> %><span class="health-chip health-chip-warn" title="% of this node's DNS-resolved domains that ALSO got HTTP/BGP/RDAP data. Below 90% the node is quarantined (it is producing hollow rows). 100% = every resolvable domain fully enriched.">enriched {if wh && wh.ratio, do: Float.round(wh.ratio * 100, 1)}%</span>
+                <% :ok -> %><%= if wh && wh.ratio do %><span class="health-chip health-chip-ok" title="% of this node's DNS-resolved domains that ALSO got HTTP/BGP/RDAP data. Below 90% the node is quarantined (it is producing hollow rows). 100% = every resolvable domain fully enriched.">enriched {Float.round(wh.ratio * 100, 1)}%</span><% end %>
               <% end %>
               <span class="worker-batch-info">
                 {Map.get(ws, :total_batches, 0)} batches · {fmt(Map.get(ws, :total_enriched, 0))} enriched · {Map.get(ws, :domains_per_sec, 0)}/s
                 <%= if (ec = Map.get(ws, :error_count, 0)) > 0 do %> · <span class="text-red">{ec} err</span><% end %>
               </span>
             </div>
+            <% wc = worker_cache(@worker_caches, node_name) %>
+            <%= if wc do %>
+              <div class="worker-cache" title="Per-node ETS cache: hit-rate · #entries. 'empty' = cold after a restart; a hit-rate climbing over time means we are reusing lookups instead of re-fetching.">
+                cache&nbsp; RDAP <b>{cache_cell(wc, :rdap)}</b> · BGP <b>{cache_cell(wc, :bgp)}</b> · HTTP <b>{cache_cell(wc, :http)}</b>
+              </div>
+            <% end %>
             <%= if stages = Map.get(ws, :last_stages) do %>
               <%!-- WORKER PIPELINE: DNS → fork[ HTTP | BGP | RDAP ] → Merge+Rep → Output --%>
               <div class="wp">
@@ -460,17 +468,33 @@ defmodule LSWeb.DashboardLive do
   # aggregate a true fleet hit-ratio: "are we reusing lookups or re-fetching?".
   defp collect_worker_caches do
     Node.list()
-    |> Enum.map(fn node ->
+    |> Enum.reduce(%{}, fn node, acc ->
       case :rpc.call(node, LS.Cache, :stats, [], 3_000) do
-        %{} = st -> st
-        _ -> nil
+        %{} = st -> Map.put(acc, Atom.to_string(node), st)
+        _ -> acc
       end
     end)
-    |> Enum.reject(&is_nil/1)
+  end
+
+  # This worker's cache snapshot (or nil if it didn't answer / off-master).
+  defp worker_cache(caches, node_name), do: Map.get(caches, to_string(node_name))
+
+  # Render one cache cell: hit% + entry count, or "empty" (ETS cold after restart),
+  # or "N idle" (warm but no reads since boot).
+  def cache_cell(cache, key) do
+    sub = Map.get(cache, key, %{})
+    e = Map.get(sub, :entries, 0)
+    reads = Map.get(sub, :hits, 0) + Map.get(sub, :misses, 0)
+    cond do
+      e == 0 -> "empty"
+      reads == 0 -> "#{fmt(e)} idle"
+      true -> "#{round(Map.get(sub, :hits, 0) / reads * 100)}% · #{fmt(e)}"
+    end
   end
 
   # Fleet hit-ratio for a cache key (:http | :bgp | :rdap), or nil if no traffic yet.
   def fleet_hit_ratio(caches, key) do
+    caches = if is_map(caches), do: Map.values(caches), else: caches
     {h, m} =
       Enum.reduce(caches, {0, 0}, fn c, {ah, am} ->
         sub = Map.get(c, key, %{})
