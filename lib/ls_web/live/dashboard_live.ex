@@ -287,10 +287,6 @@ defmodule LSWeb.DashboardLive do
         <div class="rep-chip">Tranco <b class="rep-ok">{fmt(rep_val(@master_stats, :tranco))}</b></div>
         <div class="rep-chip">Majestic <b class="rep-ok">{fmt(rep_val(@master_stats, :majestic))}</b></div>
         <div class="rep-chip">Blocklist <b class={if(rep_val(@master_stats, :blocklist) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(rep_val(@master_stats, :blocklist))}</b></div>
-        <% hr = fn key -> case fleet_hit_ratio(@worker_caches, key) do nil -> "—"; r -> "#{r}%" end end %>
-        <div class="rep-chip">RDAP hit <b class="rep-ok">{hr.(:rdap)}</b></div>
-        <div class="rep-chip">BGP hit <b class="rep-ok">{hr.(:bgp)}</b></div>
-        <div class="rep-chip">HTTP hit <b class="rep-ok">{hr.(:http)}</b></div>
       </div>
 
       <%!-- WORKER NODES --%>
@@ -332,8 +328,8 @@ defmodule LSWeb.DashboardLive do
             </div>
             <% wc = worker_cache(@worker_caches, node_name) %>
             <%= if wc do %>
-              <div class="worker-cache" title="Per-node ETS cache: hit-rate · #entries. 'empty' = cold after a restart; a hit-rate climbing over time means we are reusing lookups instead of re-fetching.">
-                cache&nbsp; RDAP <b>{cache_cell(wc, :rdap)}</b> · BGP <b>{cache_cell(wc, :bgp)}</b> · HTTP <b>{cache_cell(wc, :http)}</b>
+              <div class="worker-cache" title="Per-node ETS cache: hit-rate · #entries. 'empty' = cold after a restart; a rising hit-rate means we reuse lookups instead of re-fetching. BGP caches inside its resolver; DNS is cached by Unbound.">
+                cache&nbsp; RDAP <b>{cache_cell(wc, :rdap)}</b> · HTTP <b>{cache_cell(wc, :http)}</b>
               </div>
             <% end %>
             <%= if stages = Map.get(ws, :last_stages) do %>
