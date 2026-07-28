@@ -20,6 +20,9 @@ defmodule LS.Cache do
     :ets.new(@http_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
     :ets.new(@bgp_cache, [:set, :public, :named_table, read_concurrency: true])
     :ets.new(@rdap_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    # Lock-free hit/miss counters: [http_hit, http_miss, bgp_hit, bgp_miss, rdap_hit, rdap_miss].
+    # Feeds the admin dashboard's per-worker cache hit-ratio (are we re-fetching or reusing?).
+    :persistent_term.put({__MODULE__, :counters}, :atomics.new(6, signed: false))
     schedule_cleanup()
     Logger.info("✅ Cache: CTL 5M + HTTP politeness + BGP IP→ASN + RDAP domains")
     {:ok, %{}}
@@ -99,18 +102,39 @@ defmodule LS.Cache do
     Logger.info("🧹 CTL eviction: dropped #{@eviction_batch} oldest")
   end
 
+  # hit_idx/miss_idx per cache in the atomics vector
+  defp bump(idx) do
+    case :persistent_term.get({__MODULE__, :counters}, nil) do
+      nil -> :ok
+      ref -> :atomics.add(ref, idx, 1)
+    end
+  end
+
   # === HTTP ===
-  def http_lookup(domain), do: (case :ets.lookup(@http_cache, domain) do [{_, _}] -> :hit; [] -> :miss end)
+  def http_lookup(domain) do
+    case :ets.lookup(@http_cache, domain) do
+      [{_, _}] -> bump(1); :hit
+      [] -> bump(2); :miss
+    end
+  end
   def http_insert(domain), do: :ets.insert(@http_cache, {domain, System.system_time(:second)})
 
   # === BGP ===
   def bgp_lookup(ip) do
-    case :ets.lookup(@bgp_cache, ip) do [{^ip, {result, _}}] -> {:hit, result}; [] -> :miss end
+    case :ets.lookup(@bgp_cache, ip) do
+      [{^ip, {result, _}}] -> bump(3); {:hit, result}
+      [] -> bump(4); :miss
+    end
   end
   def bgp_insert(ip, result), do: :ets.insert(@bgp_cache, {ip, {result, System.system_time(:second)}})
 
   # === RDAP (90-day TTL) ===
-  def rdap_lookup(domain), do: (case :ets.lookup(@rdap_cache, domain) do [{_, _}] -> :hit; [] -> :miss end)
+  def rdap_lookup(domain) do
+    case :ets.lookup(@rdap_cache, domain) do
+      [{_, _}] -> bump(5); :hit
+      [] -> bump(6); :miss
+    end
+  end
   def rdap_insert(domain), do: :ets.insert(@rdap_cache, {domain, System.system_time(:second)})
 
   # === DNS stubs ===
@@ -120,11 +144,20 @@ defmodule LS.Cache do
   # === Stats ===
   def stats do
     mem_fn = fn t -> Float.round((:ets.info(t, :memory) || 0) * :erlang.system_info(:wordsize) / 1_048_576, 1) end
+    {hh, hm, bh, bm, rh, rm} = counters()
     %{
       ctl: ctl_stats(),
-      http: %{entries: :ets.info(@http_cache, :size), memory_mb: mem_fn.(@http_cache)},
-      bgp: %{entries: :ets.info(@bgp_cache, :size), memory_mb: mem_fn.(@bgp_cache)},
-      rdap: %{entries: :ets.info(@rdap_cache, :size), memory_mb: mem_fn.(@rdap_cache)}
+      http: %{entries: :ets.info(@http_cache, :size), memory_mb: mem_fn.(@http_cache), hits: hh, misses: hm},
+      bgp: %{entries: :ets.info(@bgp_cache, :size), memory_mb: mem_fn.(@bgp_cache), hits: bh, misses: bm},
+      rdap: %{entries: :ets.info(@rdap_cache, :size), memory_mb: mem_fn.(@rdap_cache), hits: rh, misses: rm}
     }
+  end
+
+  defp counters do
+    case :persistent_term.get({__MODULE__, :counters}, nil) do
+      nil -> {0, 0, 0, 0, 0, 0}
+      ref -> {:atomics.get(ref, 1), :atomics.get(ref, 2), :atomics.get(ref, 3),
+              :atomics.get(ref, 4), :atomics.get(ref, 5), :atomics.get(ref, 6)}
+    end
   end
 end

@@ -20,6 +20,7 @@ defmodule LSWeb.DashboardLive do
        master_stats: collect_master_stats(),
        worker_stats: collect_worker_stats(),
        worker_health: collect_worker_health(),
+       worker_caches: collect_worker_caches(),
        all_errors: collect_all_errors(),
        peek: nil, peek_data: nil, show_errors: false
      )}
@@ -33,6 +34,7 @@ defmodule LSWeb.DashboardLive do
        master_stats: collect_master_stats(),
        worker_stats: collect_worker_stats(),
        worker_health: collect_worker_health(),
+       worker_caches: collect_worker_caches(),
        all_errors: if(socket.assigns.show_errors, do: collect_all_errors(), else: socket.assigns.all_errors)
      )}
   end
@@ -111,6 +113,9 @@ defmodule LSWeb.DashboardLive do
       .rep-chip .rep-warn { color: #fbbf24; }
 
       /* Worker cards */
+      .stage-input { border: 1px solid #10b981 !important; box-shadow: 0 0 0 1px #10b981, 0 0 14px rgba(16,185,129,0.25); background: rgba(16,185,129,0.06) !important; }
+      .hm-dim { opacity: 0.5; }
+      .hm-ok { color: #34d399; }
       .worker-card { background: #111827; border: 1px solid #1e293b; border-radius: 8px; padding: 16px; margin-bottom: 12px; }
       .worker-card-danger { border: 2px solid #dc2626; background: #1c0f12; box-shadow: 0 0 0 1px #dc2626, 0 0 18px rgba(220,38,38,.35); }
       .worker-card-warn { border: 2px solid #d97706; background: #1a1408; }
@@ -213,13 +218,17 @@ defmodule LSWeb.DashboardLive do
         <span class={"health-dot " <> health_color}></span>
         <span class="health-label">{health_msg}</span>
         <div class="health-metrics">
-          <span class="hm">in <b>{pr(@master_stats.poller)}/s</b></span>
-          <span class="hm">out <b>{fmt_rate(qv(@master_stats.queue, :drain_rate_per_min))}/s</b></span>
+          <span class="hm hm-dim">CTL {ctl_per_min(@master_stats)}/m</span>
+          <span class="hm">input <b>{qv(@master_stats.queue, :enqueue_rate_per_min)}/m</b></span>
+          <span class="hm">drain <b>{qv(@master_stats.queue, :drain_rate_per_min)}/m</b></span>
           <span class="hm">ratio <b>{capacity_ratio(@master_stats)}</b></span>
           <span class="hm">workers <b>{length(@worker_stats)}</b></span>
           <span class="hm">CH err <b class={if(iv(@master_stats.inserter, :total_errors) > 0, do: "hm-warn", else: "")}>{iv(@master_stats.inserter, :total_errors)}</b></span>
-          <%= if workers_needed > length(@worker_stats) do %>
-            <span class="hm hm-warn">need ~{workers_needed}</span>
+          <% surplus = worker_surplus(@master_stats) %>
+          <%= cond do %>
+            <% surplus > 0 -> %><span class="hm hm-ok">surplus ~{surplus}</span>
+            <% workers_needed > length(@worker_stats) -> %><span class="hm hm-warn">need ~{workers_needed}</span>
+            <% true -> %><span class="hm">at capacity</span>
           <% end %>
         </div>
       </div>
@@ -248,20 +257,20 @@ defmodule LSWeb.DashboardLive do
       <div class="pipeline">
         <div class="stage">
           <div class="stage-name">CTL Poller</div>
-          <div class="stage-value">{pr(@master_stats.poller)}<span class="stage-unit">/s</span></div>
-          <div class="stage-sub">{plc(@master_stats.poller)} logs active<br/>{fmt(@master_stats.cache.ctl.entries)} seen · {@master_stats.cache.ctl.memory_mb} MB</div>
+          <div class="stage-value">{ctl_per_min(@master_stats)}<span class="stage-unit">/m</span></div>
+          <div class="stage-sub">{plc(@master_stats.poller)} logs active<br/>passes filter · incl. duplicate certs</div>
         </div>
-        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{pr(@master_stats.poller)}/s</span></div>
-        <div class="stage">
-          <div class="stage-name">Queue</div>
-          <div class="stage-value">{fmt(qv(@master_stats.queue, :queue_depth))}</div>
-          <div class="stage-sub">{qv(@master_stats.queue, :queue_pct)}% full<br/>{fmt(qv(@master_stats.queue, :total_completed))} done · {fmt(qv(@master_stats.queue, :total_requeued))} retry</div>
+        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">dedup</span></div>
+        <div class="stage stage-input">
+          <div class="stage-name">Enqueued ★ real input</div>
+          <div class="stage-value">{qv(@master_stats.queue, :enqueue_rate_per_min)}<span class="stage-unit">/m</span></div>
+          <div class="stage-sub">new domains only<br/>queue {fmt(qv(@master_stats.queue, :queue_depth))} · {qv(@master_stats.queue, :queue_pct)}% full</div>
         </div>
         <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{qv(@master_stats.queue, :drain_rate_per_min)}/m</span></div>
         <div class="stage">
           <div class="stage-name">Workers</div>
-          <div class="stage-value">{length(@worker_stats)}</div>
-          <div class="stage-sub">{qv(@master_stats.queue, :drain_rate_per_min)}/m drain<br/>{qv(@master_stats.queue, :inflight_batches)} in-flight</div>
+          <div class="stage-value">{qv(@master_stats.queue, :drain_rate_per_min)}<span class="stage-unit">/m</span></div>
+          <div class="stage-sub">{length(@worker_stats)} nodes · {qv(@master_stats.queue, :inflight_batches)} in-flight<br/>{fmt(qv(@master_stats.queue, :total_completed))} done · {fmt(qv(@master_stats.queue, :total_requeued))} retry</div>
         </div>
         <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{iv(@master_stats.inserter, :insert_rate_per_min)}/m</span></div>
         <div class="stage">
@@ -276,7 +285,10 @@ defmodule LSWeb.DashboardLive do
         <div class="rep-chip">Tranco <b class="rep-ok">{fmt(rep_val(@master_stats, :tranco))}</b></div>
         <div class="rep-chip">Majestic <b class="rep-ok">{fmt(rep_val(@master_stats, :majestic))}</b></div>
         <div class="rep-chip">Blocklist <b class={if(rep_val(@master_stats, :blocklist) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(rep_val(@master_stats, :blocklist))}</b></div>
-        <div class="rep-chip">RDAP cache <b>{fmt(@master_stats.cache.rdap.entries)}</b> · {@master_stats.cache.rdap.memory_mb} MB</div>
+        <% hr = fn key -> case fleet_hit_ratio(@worker_caches, key) do nil -> "—"; r -> "#{r}%" end end %>
+        <div class="rep-chip">RDAP hit <b class="rep-ok">{hr.(:rdap)}</b></div>
+        <div class="rep-chip">BGP hit <b class="rep-ok">{hr.(:bgp)}</b></div>
+        <div class="rep-chip">HTTP hit <b class="rep-ok">{hr.(:http)}</b></div>
       </div>
 
       <%!-- WORKER NODES --%>
@@ -443,6 +455,31 @@ defmodule LSWeb.DashboardLive do
     :exit, _ -> %{}
   end
 
+  # Fleet cache stats — RDAP/BGP/HTTP caches live on the WORKERS (the master
+  # never crawls, so its caches are empty). Pull each worker's LS.Cache and
+  # aggregate a true fleet hit-ratio: "are we reusing lookups or re-fetching?".
+  defp collect_worker_caches do
+    Node.list()
+    |> Enum.map(fn node ->
+      case :rpc.call(node, LS.Cache, :stats, [], 3_000) do
+        %{} = st -> st
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Fleet hit-ratio for a cache key (:http | :bgp | :rdap), or nil if no traffic yet.
+  def fleet_hit_ratio(caches, key) do
+    {h, m} =
+      Enum.reduce(caches, {0, 0}, fn c, {ah, am} ->
+        sub = Map.get(c, key, %{})
+        {ah + Map.get(sub, :hits, 0), am + Map.get(sub, :misses, 0)}
+      end)
+
+    if h + m > 0, do: Float.round(h / (h + m) * 100, 1), else: nil
+  end
+
   # Health entry for a connected worker card.
   defp health_for(health, node_name), do: Map.get(health, to_string(node_name))
 
@@ -503,8 +540,6 @@ defmodule LSWeb.DashboardLive do
   defp qv(q, k), do: Map.get(q, k, 0)
   defp iv(nil, _), do: 0
   defp iv(i, k), do: Map.get(i, k, 0)
-  defp pr(nil), do: "0"
-  defp pr(p), do: "#{Map.get(p, :domains_per_sec, 0)}"
   defp plc(nil), do: 0
   defp plc(p), do: Map.get(p, :active_logs, 0)
 
@@ -512,34 +547,48 @@ defmodule LSWeb.DashboardLive do
   defp rep_val(ms, :majestic), do: get_in(ms, [:majestic, :domains_loaded]) || 0
   defp rep_val(ms, :blocklist), do: get_in(ms, [:blocklist, :total]) || 0
 
+  # Measured single-worker throughput (domains/min). Fleet is homogeneous
+  # 1-core/2GB boxes + h1; peak fleet drain ~5800/min over 11 ≈ 525/worker.
+  # Used only to estimate surplus/needed — the real "are we keeping up" signal
+  # is the queue staying empty (drain >= enqueue), not this constant.
+  @per_worker_per_min 500
+
+  # The REAL input is the new-domain ENQUEUE rate, not the CTL poller's
+  # domains_per_sec (that counts duplicate cert-renewals + is a lifetime avg,
+  # which is why this box used to scream "need 21" while the queue sat empty).
   defp pipeline_health(ms) do
-    inflow = case ms.poller do nil -> 0; p -> Map.get(p, :domains_per_sec, 0) end
-    drain = qv(ms.queue, :drain_rate_per_min) / 60.0
+    enq = qv(ms.queue, :enqueue_rate_per_min)
+    drain = qv(ms.queue, :drain_rate_per_min)
+    qpct = qv(ms.queue, :queue_pct)
     wc = length(Node.list())
+    needed = if enq > 0, do: max(1, ceil(enq / @per_worker_per_min)), else: 0
     cond do
-      inflow == 0 -> {"health-green", "No CTL inflow", 0}
-      drain == 0 and wc == 0 -> {"health-red", "No workers — queue growing", 1}
-      drain == 0 -> {"health-red", "Workers not draining", max(wc, 1)}
-      true ->
-        ratio = drain / inflow
-        per_w = if wc > 0, do: drain / wc, else: drain
-        needed = if per_w > 0, do: ceil(inflow / per_w), else: 99
-        cond do
-          ratio >= 0.9 -> {"health-green", "Workers keeping up", needed}
-          ratio >= 0.5 -> {"health-amber", "Queue growing slowly", needed}
-          true -> {"health-red", "Queue growing fast", needed}
-        end
+      wc == 0 -> {"health-red", "No workers connected", 1}
+      enq == 0 -> {"health-green", "No new domains inbound", 0}
+      qpct >= 90 -> {"health-red", "Queue full — add workers", needed}
+      drain < enq * 0.9 and qpct >= 25 -> {"health-amber", "Queue backing up", needed}
+      true -> {"health-green", "Workers keeping up", needed}
     end
   end
 
+  # drain / true-enqueue. ~100% with an empty queue = perfectly matched.
   defp capacity_ratio(ms) do
-    inflow = case ms.poller do nil -> 0; p -> Map.get(p, :domains_per_sec, 0) end
-    drain = qv(ms.queue, :drain_rate_per_min) / 60.0
-    if inflow > 0, do: "#{Float.round(drain / inflow * 100, 0)}%", else: "-"
+    enq = qv(ms.queue, :enqueue_rate_per_min)
+    drain = qv(ms.queue, :drain_rate_per_min)
+    if enq > 0, do: "#{Float.round(drain / enq * 100, 0)}%", else: "-"
   end
 
-  defp fmt_rate(per_min) when is_number(per_min), do: "#{Float.round(per_min / 60.0, 1)}"
-  defp fmt_rate(_), do: "0"
+  # Surplus workers at current load (estimate). Positive = spare capacity.
+  defp worker_surplus(ms) do
+    enq = qv(ms.queue, :enqueue_rate_per_min)
+    wc = length(Node.list())
+    needed = if enq > 0, do: max(1, ceil(enq / @per_worker_per_min)), else: 0
+    wc - needed
+  end
+
+  # per-minute rate helpers (one unit across the whole pipeline)
+  defp ctl_per_min(ms), do: round((case ms.poller do nil -> 0.0; p -> Map.get(p, :domains_per_sec, 0.0) end) * 60)
+
 
   defp dns_pct(%{input: 0}), do: 0
   defp dns_pct(%{input: i, output: o}), do: round(o / i * 100)
