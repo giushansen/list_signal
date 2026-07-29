@@ -25,7 +25,7 @@ SELECT
     uniqIf(domain, (tranco_rank IS NOT NULL OR dns_mx != '')
                    AND http_status >= 400)                                     AS http_4xx_5xx,
     round(100 * (attempted - crawl_ok) / nullIf(attempted, 0), 1)              AS need_better_crawler_pct
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 90 DAY
 GROUP BY day
 ORDER BY day

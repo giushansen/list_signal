@@ -16,7 +16,7 @@ SELECT
               / nullIf(uniq(domain), 0), 2)                                    AS dead_dns_pct,
     uniqIf(domain, dns_a != '' AND dns_mx = '' AND http_title = ''
                    AND (http_status IS NULL OR http_status >= 400))            AS parked_hint
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 90 DAY
 GROUP BY day
 ORDER BY day

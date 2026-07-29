@@ -7,7 +7,7 @@ SELECT
     count()                                 AS enriched,
     countIf(http_tech LIKE '%Shopify%')     AS shopify,
     countIf(business_model = 'SaaS')        AS saas
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 7 DAY
 GROUP BY hour
 ORDER BY hour

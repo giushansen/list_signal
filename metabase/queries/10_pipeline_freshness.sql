@@ -6,5 +6,5 @@ SELECT
     countIf(enriched_at >= now() - INTERVAL 1 HOUR)    AS rows_last_hour,
     countIf(enriched_at >= now() - INTERVAL 24 HOUR)   AS rows_last_24h,
     uniqExactIf(worker, enriched_at >= now() - INTERVAL 1 HOUR) AS workers_active_last_hour
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 24 HOUR

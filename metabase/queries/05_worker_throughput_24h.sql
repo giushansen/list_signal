@@ -8,7 +8,7 @@ SELECT
     dateDiff('minute', max(enriched_at), now())      AS minutes_since_last,
     round(avg(http_status IS NULL), 3)               AS http_null_ratio,
     round(avg(dns_a = ''), 3)                        AS dns_empty_ratio
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 24 HOUR
 GROUP BY worker
 ORDER BY enriched DESC

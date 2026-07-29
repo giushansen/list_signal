@@ -7,7 +7,7 @@ SELECT
     uniqExact(domain)                         AS shopify_seen,
     uniqExactIf(domain, http_emails != '')    AS with_email,
     uniqExactIf(domain, dns_mx != '')         AS with_mx
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 30 DAY
   AND http_tech LIKE '%Shopify%'
   AND http_status BETWEEN 200 AND 399

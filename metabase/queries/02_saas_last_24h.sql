@@ -9,7 +9,7 @@ SELECT
     round(classification_confidence, 2)    AS confidence,
     estimated_revenue,
     enriched_at
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 24 HOUR
   AND business_model = 'SaaS'
 ORDER BY coalesce(tranco_rank, 99999999) ASC, enriched_at DESC

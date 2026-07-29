@@ -3,7 +3,7 @@
 -- malware/phishing. Segment %s are among good domains that day.
 -- leadgen_sales definition: Agency/Consulting business model in the
 -- 'Marketing' industry label (closest labels the classifier emits).
--- Window: 90d (enrichments TTL). Domain-level (uniq), not row-level.
+-- Window: 90d (domains_history TTL). Domain-level (uniq), not row-level.
 SELECT
     toDate(enriched_at)                                                        AS day,
     uniq(domain)                                                               AS domains_seen,
@@ -34,7 +34,7 @@ SELECT
                    AND business_model IN ('Agency', 'Consulting')
                    AND industry = 'Marketing')
               / nullIf(good_domains, 0), 1)                                    AS pct_leadgen_sales
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 90 DAY
 GROUP BY day
 ORDER BY day

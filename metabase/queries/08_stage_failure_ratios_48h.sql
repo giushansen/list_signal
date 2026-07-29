@@ -35,7 +35,7 @@ SELECT
     -- of RDAP lookups actually attempted
     round(avgIf(rdap_error != '',
                 rdap_registrar != '' OR rdap_error != ''), 3)           AS rdap_fail_of_attempted
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 48 HOUR
 GROUP BY hour
 ORDER BY hour

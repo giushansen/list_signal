@@ -12,7 +12,7 @@ SELECT
     any(ctl_tld)                                   AS tld,
     anyIf(http_error, http_error != '')            AS sample_error,
     countIf(is_malware = 'true' OR is_phishing = 'true') > 0 AS flagged
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 30 DAY
   AND dns_mx = ''
   AND tranco_rank IS NULL

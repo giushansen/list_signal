@@ -7,7 +7,7 @@ SELECT
     tranco_rank,
     estimated_revenue,
     enriched_at
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 24 HOUR
   AND http_tech LIKE '%Shopify%'
 ORDER BY coalesce(tranco_rank, 99999999) ASC, enriched_at DESC

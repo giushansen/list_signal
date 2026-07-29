@@ -8,7 +8,7 @@ SELECT
           / sum(countIf(enriched_at >= now() - INTERVAL 24 HOUR)) OVER (), 3) AS share_24h,
     round(countIf(enriched_at <  now() - INTERVAL 24 HOUR)
           / sum(countIf(enriched_at <  now() - INTERVAL 24 HOUR)) OVER (), 3) AS share_prev
-FROM enrichments
+FROM domains_history
 WHERE enriched_at >= now() - INTERVAL 48 HOUR
 GROUP BY model
 ORDER BY last_24h DESC

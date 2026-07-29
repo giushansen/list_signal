@@ -13,7 +13,7 @@ SELECT
     countIf(cnt > 1)                                  AS domains_hit_twice_plus
 FROM (
     SELECT toDate(enriched_at) AS day, domain, count() AS cnt
-    FROM enrichments
+    FROM domains_history
     WHERE enriched_at >= now() - INTERVAL 30 DAY
     GROUP BY day, domain
 )
