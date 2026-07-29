@@ -51,9 +51,9 @@ defmodule LS.Enrichment.Browser do
               status: payload["status"],
               final_url: payload["final_url"],
               perf: %{
-                lcp_ms: payload["lcp_ms"],
-                cls: payload["cls"],
-                ttfb_ms: payload["ttfb_ms"]
+                lcp_ms: non_negative(payload["lcp_ms"]),
+                cls: non_negative(payload["cls"]),
+                ttfb_ms: non_negative(payload["ttfb_ms"])
               }
             }}
 
@@ -69,4 +69,10 @@ defmodule LS.Enrichment.Browser do
   end
 
   defp url, do: System.get_env("LS_BROWSER_URL")
+
+  # Browser timings can come back negative (clock-skewed navigation entries).
+  # The perf_* columns are unsigned, so a raw -5 fails the TabSeparated parse
+  # and takes the WHOLE insert batch down with it. Garbage timing = no timing.
+  defp non_negative(n) when is_number(n) and n >= 0, do: n
+  defp non_negative(_), do: nil
 end

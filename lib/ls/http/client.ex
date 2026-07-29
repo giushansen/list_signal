@@ -86,30 +86,37 @@ defmodule LS.HTTP.Client do
     path = Keyword.get(opts, :path, "/")
     recv_timeout = Keyword.get(opts, :timeout, @receive_timeout)
     max_bytes = Keyword.get(opts, :max_bytes, @max_body_bytes)
+    retries = Keyword.get(opts, :politeness_retries, 1)
 
-    # Check rate limiter FIRST - DON'T sleep beyond the spacing window
+    attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries)
+  end
+
+  # We used to sleep the full politeness interval and then give up WITHOUT
+  # sending the request — paying the entire latency cost for no data. Enriching
+  # one business hits the same IP several times (products.json ×2,
+  # collections.json, /contact, /pricing, /careers), so with 1s spacing most of
+  # those calls returned :rate_limited and the child tables came out far
+  # emptier than the crawl suggested.
+  #
+  # Waiting and then proceeding is strictly MORE polite than before: the full
+  # interval still elapses between attempts, we just stop wasting it. The
+  # retry count is BOUNDED (`:politeness_retries`, default 1) so heavy
+  # contention can never turn into an unbounded wait loop. The enrichment lane
+  # passes 3: on a node that also runs discovery, CDN IPs (Cloudflare et al.)
+  # are so contended that a single retry lost most secondary pages — measured
+  # on prod 2026-07-29: only 65 of 299 contact-page domains yielded contacts.
+  # Discovery keeps the default 1; it is throughput-bound and disposable.
+  defp attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left) do
     case IPRateLimiter.check_and_update(ip, 1000) do
       :ok ->
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes)
 
-      {:wait, wait_ms} ->
-        # We used to sleep the full politeness interval and then give up
-        # WITHOUT sending the request — paying the entire latency cost for no
-        # data. Enriching one business hits the same IP several times
-        # (products.json ×2, collections.json, /contact, /pricing, /careers),
-        # so with 1s spacing most of those calls returned :rate_limited and the
-        # child tables came out far emptier than the crawl suggested.
-        #
-        # Waiting and then proceeding is strictly MORE polite than before: the
-        # full interval still elapses, we just stop wasting it. Exactly one
-        # retry — if the slot is taken again we genuinely back off, so heavy
-        # contention can never turn into an unbounded wait loop.
+      {:wait, wait_ms} when retries_left > 0 ->
         Process.sleep(wait_ms)
+        attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left - 1)
 
-        case IPRateLimiter.check_and_update(ip, 1000) do
-          :ok -> fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes)
-          {:wait, _} -> {:error, "rate_limited", :rate_limited}
-        end
+      {:wait, _} ->
+        {:error, "rate_limited", :rate_limited}
     end
   end
 

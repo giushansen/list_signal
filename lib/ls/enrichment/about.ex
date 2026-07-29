@@ -67,7 +67,7 @@ defmodule LS.Enrichment.About do
     with [path | _] <- Regex.run(@about_link, careers_html, capture: :all_but_first),
          path <- normalise(path, domain),
          {:ok, %{status: s, body: body}} when s in 200..399 <-
-           Client.fetch(domain, ip, path: path, timeout: @timeout) do
+           Client.fetch(domain, ip, path: path, timeout: @timeout, politeness_retries: 3) do
       body
     else
       _ -> nil

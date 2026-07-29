@@ -100,7 +100,10 @@ defmodule LS.Enrichment.Shopify do
     path = "/products.json?limit=#{@per_page}&page=#{page}"
 
     with {:ok, %{status: 200, body: body}} <-
-           Client.fetch(domain, ip, path: path, timeout: @timeout, max_bytes: @max_json_bytes),
+           Client.fetch(domain, ip,
+             path: path, timeout: @timeout, max_bytes: @max_json_bytes,
+             politeness_retries: 3
+           ),
          {:ok, %{"products" => products}} <- Jason.decode(body) do
       products
     else
@@ -153,7 +156,8 @@ defmodule LS.Enrichment.Shopify do
            Client.fetch(domain, ip,
              path: "/collections.json?limit=#{@per_page}",
              timeout: @timeout,
-             max_bytes: @max_json_bytes),
+             max_bytes: @max_json_bytes,
+             politeness_retries: 3),
          {:ok, %{"collections" => collections}} <- Jason.decode(body) do
       collections
       |> Enum.take(@max_collections_stored)

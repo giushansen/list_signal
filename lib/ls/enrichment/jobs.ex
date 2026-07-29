@@ -159,7 +159,7 @@ defmodule LS.Enrichment.Jobs do
   end
 
   defp fetch_json(url) do
-    case Client.fetch_url(url, timeout: @timeout) do
+    case Client.fetch_url(url, timeout: @timeout, politeness_retries: 3) do
       {:ok, %{status: 200, body: body}} ->
         case Jason.decode(body) do
           {:ok, payload} -> {:ok, payload}

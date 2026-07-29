@@ -131,7 +131,8 @@ defmodule LS.Enrichment.Agent do
   # plain HTTP. No browser fallback: these pages are optional extras, and
   # spending a scarce browser slot on one would starve a homepage render.
   defp fetch_page(domain, ip, path) do
-    case Client.fetch(domain, ip, path: path, timeout: @page_timeout) do
+    case Client.fetch(domain, ip,
+           path: path, timeout: @page_timeout, politeness_retries: 3) do
       {:ok, %{status: s, body: body}} when s in 200..399 and byte_size(body) > 500 ->
         %{html: body, perf: %{}, source: "http"}
 
