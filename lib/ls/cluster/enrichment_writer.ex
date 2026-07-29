@@ -30,8 +30,14 @@ defmodule LS.Cluster.EnrichmentWriter do
     insert("biz_contact", ~w(domain email source_page seen_at),
       Enum.flat_map(results, & &1[:contacts] || []))
 
+    # The agent stamps :seen_at on every job row (crawl time). The put_new is
+    # only a guard against an older agent still in flight during a rolling
+    # deploy — an empty posted_at used to leak in here and fail the whole
+    # batch's DateTime parse, which is why prod biz_career stayed at 0 rows.
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
+
     insert("biz_career", ~w(domain job_id title location url posted_at seen_at),
-      results |> Enum.flat_map(& &1[:jobs] || []) |> Enum.map(&Map.put_new(&1, :seen_at, &1[:posted_at] || "")))
+      results |> Enum.flat_map(& &1[:jobs] || []) |> Enum.map(&Map.put_new(&1, :seen_at, now)))
 
     insert("biz_pricing", ~w(domain price currency seen_at),
       Enum.flat_map(results, & &1[:pricing] || []))

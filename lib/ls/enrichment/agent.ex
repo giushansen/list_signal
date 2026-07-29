@@ -88,7 +88,10 @@ defmodule LS.Enrichment.Agent do
       domain: domain,
       enriched_at: now(),
       contacts: contacts(visited, domain),
-      jobs: Enum.map(jobs, &Map.put(&1, :domain, domain)),
+      # seen_at = crawl time, exactly like contacts. posted_at is NOT a
+      # substitute: HTML-scraped jobs have no posted date, and an empty string
+      # in the DateTime column killed the whole biz_career insert batch.
+      jobs: Enum.map(jobs, &(&1 |> Map.put(:domain, domain) |> Map.put(:seen_at, now()))),
       pricing: pricing(visited, domain),
       products: shopify.products,
       collections: shopify.collections,
