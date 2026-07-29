@@ -11,7 +11,7 @@ defmodule LS.Cluster.Inserter do
   @flush_size 5_000
   @ch_url "http://127.0.0.1:8123/"
   @ch_db "ls"
-  @ch_table "enrichments"
+  @ch_table "domains_history"
 
   @columns [
     :enriched_at, :worker, :domain,
@@ -71,6 +71,23 @@ defmodule LS.Cluster.Inserter do
   def release_worker(server \\ __MODULE__, worker),
     do: GenServer.call(server, {:release_worker, worker})
 
+  @doc """
+  Forget a **permanently decommissioned** worker.
+
+  `worker_health` is keyed by node name and only ever grows: any worker that
+  sent rows this session stays in the map forever. That is what the dashboard
+  reads to decide a node "produced rows this session but has left the cluster",
+  so destroying a VM leaves a red DISAPPEARED banner until the master restarts.
+
+  Use this after removing a node from the fleet — not for a node that is merely
+  down, whose absence you still want to see:
+
+      LS.Cluster.Inserter.forget_worker("worker_lsny3@10.0.0.8")
+  """
+  @spec forget_worker(GenServer.server(), String.t()) :: :ok | {:error, :unknown_worker}
+  def forget_worker(server \\ __MODULE__, worker),
+    do: GenServer.call(server, {:forget_worker, worker})
+
   @impl true
   def handle_cast({:insert, rows}, state) do
     {rows, state} = guard_batch(rows, state)
@@ -98,6 +115,19 @@ defmodule LS.Cluster.Inserter do
         Logger.warning("[GUARD] Releasing #{worker} from quarantine (#{h.dropped} rows were dropped)")
         health = %{h | quarantined: false, seen: 0, good: 0, dropped: 0}
         {:reply, :ok, put_health(state, worker, health)}
+
+      :error ->
+        {:reply, {:error, :unknown_worker}, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:forget_worker, worker}, _from, state) do
+    case Map.fetch(state.worker_health, worker) do
+      {:ok, h} ->
+        Logger.warning("[GUARD] Forgetting decommissioned worker #{worker} " <>
+                       "(ratio #{inspect(h.ratio)}, #{h.dropped} rows dropped)")
+        {:reply, :ok, %{state | worker_health: Map.delete(state.worker_health, worker)}}
 
       :error ->
         {:reply, {:error, :unknown_worker}, state}

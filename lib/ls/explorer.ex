@@ -329,6 +329,29 @@ defmodule LS.Explorer do
     else: ["industry IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
+  # ── Segment-specific filters (pipeline-2 depth data) ───────────────────────
+  #
+  # One table, two audiences. A commerce buyer filters on catalog size and
+  # price; a SaaS buyer filters on pricing tiers and hiring. The UI shows only
+  # the block that fits the chosen segment (see `segment_filters/1`), but the
+  # SQL is the same flat scan either way — no joins, so latency stays flat.
+
+  defp filter_clause({:min_products, v}), do: numeric_gte("product_count", v)
+  defp filter_clause({:max_products, v}), do: numeric_lte("product_count", v)
+  defp filter_clause({:min_price_avg, v}), do: numeric_gte("price_avg", v)
+  defp filter_clause({:max_price_avg, v}), do: numeric_lte("price_avg", v)
+  defp filter_clause({:min_new_products_30d, v}), do: numeric_gte("new_products_30d", v)
+  defp filter_clause({:min_job_count, v}), do: numeric_gte("job_count", v)
+  defp filter_clause({:min_seo_score, v}), do: numeric_gte("seo_score", v)
+
+  defp filter_clause({:ats_platform, v}) when is_binary(v) and v != "",
+    do: ["ats_platform = '#{esc(v)}'"]
+
+  defp filter_clause({:has_pricing, "true"}), do: ["pricing_points > 0"]
+  defp filter_clause({:has_email, "true"}), do: ["http_emails != ''"]
+  defp filter_clause({:hiring, "true"}), do: ["job_count > 0"]
+
+
   defp filter_clause({:revenue, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
     if length(values) == 1, do: ["estimated_revenue = '#{esc(hd(values))}'"],
@@ -368,6 +391,34 @@ defmodule LS.Explorer do
   end
 
   defp filter_clause(_), do: []
+
+  defp numeric_gte(col, v), do: numeric(col, ">=", v)
+  defp numeric_lte(col, v), do: numeric(col, "<=", v)
+
+  # Filters come from query params, so never interpolate them as-is: parse to a
+  # number or drop the clause entirely.
+  defp numeric(col, op, v) do
+    case v |> to_string() |> Float.parse() do
+      {n, _} -> ["#{col} #{op} #{n}"]
+      :error -> []
+    end
+  end
+
+  @doc """
+  Filter keys the UI should offer for a segment. The dashboard asks for these
+  so a commerce user is never shown "min plans" and a SaaS user is never shown
+  "out-of-stock ratio".
+  """
+  @spec segment_filters(String.t() | nil) :: [atom()]
+  def segment_filters("Shopify"),
+    do: [:min_products, :max_products, :min_price_avg, :max_price_avg,
+         :min_new_products_30d, :has_email, :min_seo_score]
+
+  def segment_filters(model) when model in ["SaaS", "Tool", "Marketplace", "Agency"],
+    do: [:has_pricing, :min_price_avg, :hiring, :min_job_count, :ats_platform,
+         :has_email, :min_seo_score]
+
+  def segment_filters(_), do: [:has_email, :min_seo_score]
 
   defp esc(str), do: Clickhouse.escape_public(str)
 

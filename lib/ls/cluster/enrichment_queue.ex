@@ -1,0 +1,137 @@
+defmodule LS.Cluster.EnrichmentQueue do
+  @moduledoc """
+  Work queue for the **enrichment lane** (pipeline 2). Master-only.
+
+  Deliberately separate from `LS.Cluster.WorkQueue` rather than a lane inside
+  it: discovery runs at thousands of items/minute with disposable items, while
+  enrichment runs at tens/minute with items that cost ~40s of browser time.
+  Mixing them would mean one set of tuning constants serving two very
+  different workloads, and any bug here would put discovery at risk.
+
+  **Durability by refill, not by disk.** The queue is in-memory, but every item
+  is derived from a ClickHouse query ("businesses whose depth data is stale"),
+  so a master restart loses nothing that a refill cannot reconstruct. That is
+  simpler and less fragile than a write-ahead queue on disk.
+
+  Refill cadence is `@refill_interval_ms`; the queue tops up to
+  `@target_depth` and never grows beyond it, so enrichment can never starve
+  the box the way an unbounded queue could.
+  """
+
+  use GenServer
+  require Logger
+
+  @table :enrichment_queue
+  @inflight :enrichment_inflight
+  @target_depth 5_000
+  @refill_interval_ms 300_000
+  @batch_timeout_ms 900_000
+
+  def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
+
+  @doc "Queue depth, in-flight batches and lifetime totals."
+  @spec stats() :: map()
+  def stats, do: GenServer.call(__MODULE__, :stats)
+
+  @doc "Force an immediate refill from ClickHouse (normally every 5 min)."
+  def refill_now, do: send(__MODULE__, :refill) && :ok
+
+  @impl true
+  def init(_opts) do
+    :ets.new(@table, [:ordered_set, :public, :named_table])
+    :ets.new(@inflight, [:set, :public, :named_table])
+    send(self(), :refill)
+    Process.send_after(self(), :check_inflight, 60_000)
+    Logger.info("🔬 EnrichmentQueue started (target depth: #{@target_depth})")
+    {:ok, %{enqueued: 0, completed: 0, refills: 0}}
+  end
+
+  @impl true
+  def handle_call({:dequeue_lane, :enrichment, count}, _from, state) do
+    case take(count) do
+      [] ->
+        {:reply, :empty, state}
+
+      items ->
+        batch_id = :erlang.unique_integer([:monotonic, :positive])
+        :ets.insert(@inflight, {batch_id, items, System.system_time(:millisecond)})
+        {:reply, {:ok, batch_id, items}, state}
+    end
+  end
+
+  @impl true
+  def handle_call(:stats, _from, state) do
+    {:reply,
+     Map.merge(state, %{
+       queue_depth: :ets.info(@table, :size),
+       inflight_batches: :ets.info(@inflight, :size)
+     }), state}
+  end
+
+  @impl true
+  def handle_cast({:complete_enrichment, batch_id, results}, state) do
+    :ets.delete(@inflight, batch_id)
+    LS.Cluster.EnrichmentWriter.write(results)
+    {:noreply, %{state | completed: state.completed + length(results)}}
+  end
+
+  @impl true
+  def handle_info(:refill, state) do
+    missing = max(@target_depth - :ets.info(@table, :size), 0)
+
+    added =
+      if missing > 0 do
+        case LS.Clickhouse.businesses_needing_enrichment(missing) do
+          {:ok, rows} ->
+            Enum.each(rows, fn item ->
+              :ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), item})
+            end)
+
+            length(rows)
+
+          _ ->
+            0
+        end
+      else
+        0
+      end
+
+    if added > 0, do: Logger.info("[ENRICH] refilled #{added} domains")
+    Process.send_after(self(), :refill, @refill_interval_ms)
+    {:noreply, %{state | enqueued: state.enqueued + added, refills: state.refills + 1}}
+  end
+
+  @impl true
+  def handle_info(:check_inflight, state) do
+    cutoff = System.system_time(:millisecond) - @batch_timeout_ms
+
+    requeued =
+      :ets.tab2list(@inflight)
+      |> Enum.filter(fn {_id, _items, started} -> started < cutoff end)
+      |> Enum.map(fn {id, items, _} ->
+        :ets.delete(@inflight, id)
+        Enum.each(items, &:ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), &1}))
+        length(items)
+      end)
+      |> Enum.sum()
+
+    if requeued > 0, do: Logger.warning("[ENRICH] requeued #{requeued} stranded items")
+    Process.send_after(self(), :check_inflight, 60_000)
+    {:noreply, state}
+  end
+
+  defp take(count) do
+    Enum.reduce_while(1..count, [], fn _, acc ->
+      case :ets.first(@table) do
+        :"$end_of_table" ->
+          {:halt, acc}
+
+        key ->
+          case :ets.lookup(@table, key) do
+            [{^key, item}] -> :ets.delete(@table, key); {:cont, [item | acc]}
+            [] -> {:cont, acc}
+          end
+      end
+    end)
+  end
+end

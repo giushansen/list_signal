@@ -24,6 +24,7 @@ defmodule LS.MixProject do
       main: "architecture",
       extras: [
         "docs/architecture.md",
+        "docs/pipelines.md": [title: "The two pipelines"],
         "docs/recovery-h1-resolver-2026-07.md": [title: "Case study: h1 resolver incident"]
       ],
       groups_for_modules: [

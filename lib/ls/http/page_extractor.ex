@@ -179,6 +179,20 @@ defmodule LS.HTTP.PageExtractor do
     "/account", "/dashboard", "/portal"
   ]
 
+  # Careers. Added 2026-07-28: these were missing entirely, so only 2,213 of
+  # 6.36M businesses had a careers path recorded and the jobs enrichment had
+  # nothing to visit. Multi-language because hiring pages are rarely English-
+  # only on EU domains.
+  @career_patterns [
+    "/careers", "/career", "/jobs", "/job", "/join-us", "/join",
+    "/work-with-us", "/we-are-hiring", "/hiring", "/opportunities",
+    "/emplois", "/carrieres", "/recrutement", "/nous-rejoindre",
+    "/empleo", "/trabaja-con-nosotros", "/carreras",
+    "/karriere", "/stellenangebote", "/jobsuche",
+    "/carriere", "/lavora-con-noi", "/vagas", "/carreiras",
+    "/vacatures", "/werken-bij"
+  ]
+
   # ============================================================================
   # COMBINED PATTERNS - BUILT ONCE AT COMPILE TIME
   # ============================================================================
@@ -200,7 +214,8 @@ defmodule LS.HTTP.PageExtractor do
   # Build ALL page patterns ONCE
   @all_page_patterns (
     @all_pricing_patterns ++ @all_contact_patterns ++
-    @signup_patterns_en ++ @docs_patterns_en ++ @login_patterns_en
+    @signup_patterns_en ++ @docs_patterns_en ++ @login_patterns_en ++
+    @career_patterns
   )
 
   # Build MapSets ONCE using pre-combined lists
@@ -210,6 +225,58 @@ defmodule LS.HTTP.PageExtractor do
   @signup_set MapSet.new(@signup_patterns_en)
   @login_set MapSet.new(@login_patterns_en)
   @docs_set MapSet.new(@docs_patterns_en)
+  @career_set MapSet.new(@career_patterns)
+
+  @doc """
+  Classify a path recorded in `http_pages` into the kind of page it is.
+
+  **Single source of truth for both pipelines**: discovery records the paths
+  here, and the enrichment pipeline asks this function which ones are worth a
+  visit — so the two can never disagree about what "the pricing page" means.
+
+      iex> LS.HTTP.PageExtractor.page_kind("/contactez-nous")
+      :contact
+      iex> LS.HTTP.PageExtractor.page_kind("/blog")
+      nil
+  """
+  @spec page_kind(String.t()) :: :contact | :pricing | :career | :login | :signup | :docs | nil
+  def page_kind(path) when is_binary(path) do
+    p = String.downcase(path)
+
+    cond do
+      MapSet.member?(@contact_set, p) -> :contact
+      MapSet.member?(@pricing_set, p) -> :pricing
+      MapSet.member?(@career_set, p) -> :career
+      MapSet.member?(@login_set, p) -> :login
+      MapSet.member?(@signup_set, p) -> :signup
+      MapSet.member?(@docs_set, p) -> :docs
+      true -> nil
+    end
+  end
+
+  def page_kind(_), do: nil
+
+  @doc """
+  Pick the paths worth a browser visit from a stored `http_pages` string,
+  at most one per kind (visiting five contact-page variants is waste).
+
+      LS.HTTP.PageExtractor.pages_to_visit("/contact|/pricing|/blog")
+      #=> [contact: "/contact", pricing: "/pricing"]
+  """
+  @spec pages_to_visit(String.t() | nil, [atom()]) :: [{atom(), String.t()}]
+  def pages_to_visit(pages, kinds \\ [:contact, :pricing, :career, :login])
+
+  def pages_to_visit(pages, kinds) when is_binary(pages) and pages != "" do
+    pages
+    |> String.split("|", trim: true)
+    |> Enum.reduce(%{}, fn path, acc ->
+      kind = page_kind(path)
+      if kind in kinds and not Map.has_key?(acc, kind), do: Map.put(acc, kind, path), else: acc
+    end)
+    |> Enum.sort_by(fn {kind, _} -> Enum.find_index(kinds, &(&1 == kind)) end)
+  end
+
+  def pages_to_visit(_, _), do: []
 
   # ===========================================================================
   # PUBLIC API

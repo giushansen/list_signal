@@ -214,11 +214,47 @@
   </div>
 </section>
 
+
+<%!-- SCORING METHODOLOGY — every score we publish, explained. Placed low on the
+     page deliberately: it is for the visitor who has decided the data might be
+     useful and now wants to know whether to trust it. --%>
+<section class="py-20 border-t border-white/[0.07]">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="text-center max-w-[620px] mx-auto mb-12">
+      <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight mb-3">How every score is calculated</h2>
+      <p class="text-white/60 leading-relaxed">No black boxes. Each score is a documented, weighted method with its evidence attached to the record — so you can check it, filter on it, and quote it to a prospect.</p>
+    </div>
+    <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <a href="/scoring/seo-score" class="group p-7 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/30 transition-colors">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-5 bg-accent/10">&#128269;</div>
+        <h3 class="font-display text-base font-semibold mb-2 group-hover:text-accent transition-colors">SEO Score</h3>
+        <p class="text-sm text-white/60 leading-relaxed">15 weighted on-page checks plus Core Web Vitals, with every failure named.</p>
+      </a>
+      <a href="/scoring/reputation" class="group p-7 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-blue-500/30 transition-colors">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-5 bg-blue-500/10">&#128737;</div>
+        <h3 class="font-display text-base font-semibold mb-2 group-hover:text-blue-400 transition-colors">Reputation Signals</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Tranco traffic rank, Majestic link authority and threat blocklists.</p>
+      </a>
+      <a href="/scoring/revenue-estimation" class="group p-7 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-amber-500/30 transition-colors">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-5 bg-amber-500/10">&#128200;</div>
+        <h3 class="font-display text-base font-semibold mb-2 group-hover:text-amber-400 transition-colors">Revenue Estimation</h3>
+        <p class="text-sm text-white/60 leading-relaxed">25 infrastructure signals, five brackets, a confidence value and a full evidence trail.</p>
+      </a>
+      <a href="/scoring/shopify-store-score" class="group p-7 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/30 transition-colors">
+        <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-5 bg-accent/10">&#128722;</div>
+        <h3 class="font-display text-base font-semibold mb-2 group-hover:text-accent transition-colors">Shopify Store Score</h3>
+        <p class="text-sm text-white/60 leading-relaxed">Catalog size, price positioning, growth velocity and stock health — measured, not estimated.</p>
+      </a>
+    </div>
+  </div>
+</section>
+
 <footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
   <div class="mx-auto max-w-[1200px] px-6">
     <p class="text-white/40 mb-4">ListSignal — Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Updated daily.</p>
     <div class="mb-3">
       <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
+      <a href="/scoring/seo-score" class="text-white/50 hover:text-white transition-colors mx-3">How scoring works</a>
       <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-3">Pricing</a>
       <a href="/store" class="text-white/50 hover:text-white transition-colors mx-3">Search Stores</a>
       <a href="/new-stores" class="text-white/50 hover:text-white transition-colors mx-3">New Stores</a>

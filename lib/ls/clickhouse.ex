@@ -121,6 +121,10 @@ defmodule LS.Clickhouse do
           countIf(tranco_rank IS NOT NULL AND tranco_rank <= 100000) AS top_100k_count
         FROM domains_fast
         WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
+        -- JSON output quotes UInt64 by default, so count() arrived as "766890"
+        -- (a string) and every consumer doing arithmetic on it broke. Scoped to
+        -- this query: other call sites may rely on the string form.
+        SETTINGS output_format_json_quote_64bit_integers = 0
         """,
         @tech_stats_timeout
       )
@@ -283,21 +287,21 @@ defmodule LS.Clickhouse do
   end
 
   def scan_rate_per_minute do
-    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
+    case query("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
   end
 
   def scan_rate_per_second do
-    case query("SELECT count() / 60.0 FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
+    case query("SELECT count() / 60.0 FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
       {:ok, [[rate]]} when is_number(rate) -> Float.round(rate / 1.0, 1)
       _ -> nil
     end
   end
 
   def stores_last_hour do
-    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR") do
+    case query("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
@@ -305,10 +309,10 @@ defmodule LS.Clickhouse do
 
   def shopify_stores_last_hour do
     # NB: `is_shopify` only exists on domains_fast (materialized on the MV
-    # inner table) — on the raw enrichments log we must use the expression it
+    # inner table) — on the raw domains_history log we must use the expression it
     # materializes. The previous version queried `is_shopify` here, got
     # UNKNOWN_IDENTIFIER on every call, and silently returned nil.
-    case query("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR AND http_tech LIKE '%Shopify%'") do
+    case query("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR AND http_tech LIKE '%Shopify%'") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
@@ -351,7 +355,225 @@ defmodule LS.Clickhouse do
     end
   end
 
+  # ── Pipeline 2: enrichment queue + compaction ──
+
+  @doc """
+  Domains due for depth enrichment, newest-value-first by commercial value.
+
+  Picks businesses whose `biz_enrichment` is missing or stale, preferring the
+  ones a customer is most likely to filter on (ranked, then Shopify/SaaS).
+  Returns the context the enrichment agent needs so it does not have to
+  re-query per domain: the recorded `http_pages`, the detected tech, and
+  whether the site previously blocked us (which is what makes it a browser
+  job rather than a plain HTTP one).
+  """
+  @spec businesses_needing_enrichment(pos_integer()) :: {:ok, [map()]} | {:error, term()}
+  def businesses_needing_enrichment(limit) do
+    sql = """
+    SELECT b.domain, b.http_pages, b.http_tech, b.last_http_blocked, b.last_http_status
+    FROM businesses b
+    LEFT JOIN biz_enrichment s ON b.domain = s.domain
+    -- WAF-blocked businesses (never a 2xx, so crawlable = 0) are included on
+    -- purpose: enrichment renders the homepage with camoufox, which is exactly
+    -- the client that gets past the block. Excluding them meant a business
+    -- could stay "blocked" forever even though the browser could reach it.
+    -- The OR mirrors the compactor's HAVING that admitted them to `businesses`.
+    WHERE (b.crawlable
+           OR b.last_http_blocked != ''
+           OR b.last_http_status IN (401, 403, 429))
+      AND b.dns_alive
+      AND (s.enriched_at IS NULL OR s.enriched_at < now() - INTERVAL 30 DAY)
+    ORDER BY coalesce(b.tranco_rank, 99999999) ASC
+    LIMIT #{limit}
+    """
+
+    case query(sql) do
+      {:ok, rows} ->
+        {:ok,
+         Enum.map(rows, fn [d, pages, tech, blocked, status] ->
+           %{domain: d, http_pages: pages, http_tech: tech,
+             http_blocked: blocked, last_http_status: status}
+         end)}
+
+      err ->
+        err
+    end
+  end
+
+  @doc """
+  Refresh `businesses` rows for domains touched since `since_unix`.
+
+  Coalesces "last non-empty per signal unit" from `domains_history` and folds
+  in `biz_enrichment`. Insert-only: `businesses` is a ReplacingMergeTree keyed on
+  domain, so a fresh row supersedes the old one at merge time.
+
+  Returns `{:ok, rows_written}`.
+  """
+  @spec compact_businesses(integer()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def compact_businesses(since_unix) do
+    with {:ok, _} <- query_raw(compact_sql(since_unix), 120_000),
+         {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
+      {:ok, n}
+    else
+      {:ok, _} -> {:ok, 0}
+      err -> err
+    end
+  end
+
+  @doc "Full `businesses` rebuild — repair tool, ~8 min. See `LS.Cluster.Compactor`."
+  def rebuild_businesses_full, do: query_raw(compact_sql(0), 30 * 60_000)
+
+  # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
+  # anti-erasure rule: a later empty row cannot overwrite an earlier good value.
+  defp compact_sql(since_unix) do
+    scope =
+      if since_unix > 0 do
+        """
+        WHERE s_domain IN (
+          SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})
+          UNION DISTINCT
+          SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})
+        )
+        """
+      else
+        ""
+      end
+
+    """
+    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd)
+    SELECT
+      h.domain AS domain,
+      h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
+      h.last_http_status, h.last_http_error,
+      -- `last_http_blocked` means "outstanding: nothing has reached this site
+      -- since the block". A camoufox render that succeeded AFTER the block was
+      -- recorded is a success, so the flag clears — otherwise a WAF that
+      -- rejects plain HTTP keeps a business marked blocked forever even though
+      -- the browser lane reads it fine. (s.* are NULL when no enrichment row
+      -- exists — join_use_nulls — so the condition is false and h wins.)
+      if(s.render_engine = 'camoufox' AND s.enriched_at > h._blk_at,
+         '', h.last_http_blocked) AS last_http_blocked,
+      h.dns_alive,
+      h.ctl_tld, h.ctl_issuer, h.ctl_subdomain_count, h.ctl_subdomains,
+      h.dns_a, h.dns_aaaa, h.dns_mx, h.dns_txt, h.dns_cname,
+      h.http_status, h.http_response_time, h.http_blocked, h.http_content_type,
+      h.http_tech, h.http_apps, h.http_language, h.http_title,
+      h.http_meta_description, h.http_pages, h.http_emails, h.http_h1,
+      h.business_model, h.industry, h.classification_confidence,
+      h.http_schema_type, h.http_og_type,
+      h.bgp_ip, h.bgp_asn_number, h.bgp_asn_org, h.bgp_asn_country, h.bgp_asn_prefix,
+      h.inferred_country,
+      h.rdap_domain_created_at, h.rdap_domain_expires_at, h.rdap_domain_updated_at,
+      h.rdap_registrar, h.rdap_registrar_iana_id, h.rdap_nameservers, h.rdap_status,
+      h.tranco_rank, h.majestic_rank, h.majestic_ref_subnets,
+      h.is_disposable_email,
+      h.estimated_revenue, h.estimated_employees, h.revenue_confidence, h.revenue_evidence,
+      s.product_count, s.price_min, s.price_avg, s.price_max, s.new_products_30d,
+      s.last_product_at, s.oos_ratio, s.discount_depth, s.vendor_count,
+      s.catalog_age_days, s.product_types,
+      s.job_count, s.ats_platform, s.job_departments, s.job_locations,
+      s.seo_score, s.seo_issues, s.seo_word_count, s.seo_alt_ratio,
+      s.perf_lcp_ms, s.perf_cls, s.perf_ttfb_ms,
+      s.render_engine, s.enriched_at AS depth_enriched_at,
+      s.about_text, s.mission, s.hq_location, s.job_locations_top, s.positions_overview,
+      p.pricing_points, n.news_count, n.last_funding_usd
+    FROM (
+      SELECT s_domain AS domain,
+        min(s_enriched_at) AS first_seen,
+        max(s_enriched_at) AS as_of,
+        maxIf(s_enriched_at, s_http_status BETWEEN 200 AND 399) AS last_verified_at,
+        argMax(s_worker, s_enriched_at) AS last_worker,
+        max(s_http_status BETWEEN 200 AND 399) AS crawlable,
+        argMaxIf(s_http_status, s_enriched_at, s_http_status IS NOT NULL) AS last_http_status,
+        maxIf(s_enriched_at, s_http_error != '') AS _err_at,
+        if(_err_at > last_verified_at,
+           argMaxIf(s_http_error, s_enriched_at, s_http_error != ''), '') AS last_http_error,
+        maxIf(s_enriched_at, s_http_blocked != '') AS _blk_at,
+        if(_blk_at > last_verified_at,
+           argMaxIf(s_http_blocked, s_enriched_at, s_http_blocked != ''), '') AS last_http_blocked,
+        argMax(s_dns_a != '' OR s_dns_cname != '', s_enriched_at) AS dns_alive,
+        argMaxIf(s_http_status, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_status,
+        argMaxIf(s_http_response_time, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_response_time,
+        argMaxIf(s_http_blocked, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_blocked,
+        argMaxIf(s_http_content_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_content_type,
+        argMaxIf(s_http_tech, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_tech,
+        argMaxIf(s_http_apps, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_apps,
+        argMaxIf(s_http_language, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_language,
+        argMaxIf(s_http_title, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_title,
+        argMaxIf(s_http_meta_description, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_meta_description,
+        argMaxIf(s_http_pages, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_pages,
+        argMaxIf(s_http_h1, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_h1,
+        argMaxIf(s_http_schema_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_schema_type,
+        argMaxIf(s_http_og_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_og_type,
+        argMaxIf(s_business_model, s_enriched_at, s_business_model != '') AS business_model,
+        argMaxIf(s_industry, s_enriched_at, s_business_model != '') AS industry,
+        argMaxIf(s_classification_confidence, s_enriched_at, s_business_model != '') AS classification_confidence,
+        argMaxIf(s_bgp_ip, s_enriched_at, s_bgp_asn_number != '') AS bgp_ip,
+        argMaxIf(s_bgp_asn_number, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_number,
+        argMaxIf(s_bgp_asn_org, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_org,
+        argMaxIf(s_bgp_asn_country, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_country,
+        argMaxIf(s_bgp_asn_prefix, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_prefix,
+        argMaxIf(s_rdap_domain_created_at, s_enriched_at, s_rdap_registrar != '') AS rdap_domain_created_at,
+        argMaxIf(s_rdap_domain_expires_at, s_enriched_at, s_rdap_registrar != '') AS rdap_domain_expires_at,
+        argMaxIf(s_rdap_domain_updated_at, s_enriched_at, s_rdap_registrar != '') AS rdap_domain_updated_at,
+        argMaxIf(s_rdap_registrar, s_enriched_at, s_rdap_registrar != '') AS rdap_registrar,
+        argMaxIf(s_rdap_registrar_iana_id, s_enriched_at, s_rdap_registrar != '') AS rdap_registrar_iana_id,
+        argMaxIf(s_rdap_nameservers, s_enriched_at, s_rdap_registrar != '') AS rdap_nameservers,
+        argMaxIf(s_rdap_status, s_enriched_at, s_rdap_registrar != '') AS rdap_status,
+        argMaxIf(s_ctl_tld, s_enriched_at, s_ctl_issuer != '') AS ctl_tld,
+        argMaxIf(s_ctl_issuer, s_enriched_at, s_ctl_issuer != '') AS ctl_issuer,
+        argMaxIf(s_ctl_subdomain_count, s_enriched_at, s_ctl_issuer != '') AS ctl_subdomain_count,
+        argMaxIf(s_ctl_subdomains, s_enriched_at, s_ctl_issuer != '') AS ctl_subdomains,
+        argMaxIf(s_estimated_revenue, s_enriched_at, s_estimated_revenue != '') AS estimated_revenue,
+        argMaxIf(s_estimated_employees, s_enriched_at, s_estimated_revenue != '') AS estimated_employees,
+        argMaxIf(s_revenue_confidence, s_enriched_at, s_estimated_revenue != '') AS revenue_confidence,
+        argMaxIf(s_revenue_evidence, s_enriched_at, s_estimated_revenue != '') AS revenue_evidence,
+        argMaxIf(s_dns_a, s_enriched_at, s_dns_a != '') AS dns_a,
+        argMaxIf(s_dns_aaaa, s_enriched_at, s_dns_aaaa != '') AS dns_aaaa,
+        argMaxIf(s_dns_mx, s_enriched_at, s_dns_mx != '') AS dns_mx,
+        argMaxIf(s_dns_txt, s_enriched_at, s_dns_txt != '') AS dns_txt,
+        argMaxIf(s_dns_cname, s_enriched_at, s_dns_cname != '') AS dns_cname,
+        argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
+        argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
+        argMaxIf(s_tranco_rank, s_enriched_at, s_tranco_rank IS NOT NULL) AS tranco_rank,
+        argMaxIf(s_majestic_rank, s_enriched_at, s_majestic_rank IS NOT NULL) AS majestic_rank,
+        argMaxIf(s_majestic_ref_subnets, s_enriched_at, s_majestic_ref_subnets IS NOT NULL) AS majestic_ref_subnets,
+        if(max(s_is_malware = 'true'), 'true', '') AS is_malware,
+        if(max(s_is_phishing = 'true'), 'true', '') AS is_phishing,
+        if(max(s_is_disposable_email = 'true'), 'true', '') AS is_disposable_email
+      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
+      #{scope}
+      GROUP BY s_domain
+      HAVING (is_malware = '' AND is_phishing = '')
+         AND ((business_model != '' AND crawlable)
+              OR ((last_http_blocked != '' OR last_http_status IN (401, 403, 429)) AND dns_mx != ''))
+    ) h
+    LEFT JOIN (SELECT * FROM biz_enrichment FINAL) s ON h.domain = s.domain
+    LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing GROUP BY domain) p
+           ON h.domain = p.domain
+    LEFT JOIN (SELECT domain, count() AS news_count,
+                      max(amount_usd) AS last_funding_usd
+               FROM biz_news GROUP BY domain) n ON h.domain = n.domain
+    SETTINGS max_bytes_before_external_group_by = 1500000000, max_threads = 2,
+             join_use_nulls = 1
+    """
+  end
+
   # ── Raw + Public ──
+
+  @doc "POST a prepared INSERT (`sql`) with a TabSeparated `body`. Used by the enrichment writer."
+  @spec insert_raw(String.t(), String.t()) :: :ok | {:error, term()}
+  def insert_raw(sql, body) do
+    url = "#{@ch_url}?database=#{@ch_db}&query=#{URI.encode(sql)}"
+
+    case Req.post(url, body: body <> "\n", receive_timeout: 30_000) do
+      {:ok, %{status: 200}} -> :ok
+      {:ok, %{status: s, body: b}} -> {:error, "CH #{s}: #{String.slice(to_string(b), 0, 200)}"}
+      {:error, reason} -> {:error, inspect(reason)}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
 
   def query_raw(sql, receive_timeout \\ @timeout) do
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact"

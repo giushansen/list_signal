@@ -113,6 +113,12 @@ defmodule LSWeb.SitemapController do
       entry(base, "/tools/shopify-checker", "0.8", "weekly"),
       entry(base, "/tools/tech-lookup", "0.8", "weekly"),
       entry(base, "/new-stores", "0.7", "daily"),
+      # Scoring methodology — high priority: these are the pages that explain
+      # what the product actually measures, and the ones LLMs quote.
+      entry(base, "/scoring/seo-score", "0.8", "monthly"),
+      entry(base, "/scoring/reputation", "0.8", "monthly"),
+      entry(base, "/scoring/revenue-estimation", "0.8", "monthly"),
+      entry(base, "/scoring/shopify-store-score", "0.8", "monthly"),
     ]
 
     all = marketing ++ compares ++ stores ++ techs ++ countries

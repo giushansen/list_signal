@@ -24,16 +24,23 @@ defmodule LS.Cluster.Optimizer do
 
   @impl true
   def handle_info(:optimize, state) do
-    started = System.monotonic_time(:millisecond)
+    # Both product tables are ReplacingMergeTree, which only collapses rows at
+    # merge time. `businesses` is written every 5 minutes by the compactor, so
+    # without this it accumulates one row per refresh per domain — measured at
+    # 5,691 duplicates across 18,362 domains before this ran. Readers that
+    # forget FINAL then see the same company twice, with the stale row winning
+    # by luck of ordering.
+    Enum.each(["domains_current", "businesses"], fn table ->
+      started = System.monotonic_time(:millisecond)
 
-    case LS.Clickhouse.query_raw("OPTIMIZE TABLE domains_current FINAL", @optimize_timeout) do
-      {:ok, _} ->
-        elapsed = System.monotonic_time(:millisecond) - started
-        Logger.info("[Optimizer] OPTIMIZE domains_current FINAL done in #{elapsed}ms")
+      case LS.Clickhouse.query_raw("OPTIMIZE TABLE #{table} FINAL", @optimize_timeout) do
+        {:ok, _} ->
+          Logger.info("[Optimizer] OPTIMIZE #{table} FINAL done in #{System.monotonic_time(:millisecond) - started}ms")
 
-      {:error, reason} ->
-        Logger.warning("[Optimizer] OPTIMIZE domains_current FINAL failed: #{inspect(reason)}")
-    end
+        {:error, reason} ->
+          Logger.warning("[Optimizer] OPTIMIZE #{table} FINAL failed: #{inspect(reason)}")
+      end
+    end)
 
     schedule()
     {:noreply, state}

@@ -174,6 +174,8 @@ defmodule LS.DataContractTest do
           Clickhouse.query_raw("""
           SELECT count() FROM domains_current
           WHERE http_tech LIKE '%Klaviyo%' AND http_title != ''
+          -- same unquoting as tech_stats: JSON output stringifies UInt64
+          SETTINGS output_format_json_quote_64bit_integers = 0
           """)
 
         # Rows arrive continuously, so allow a little drift rather than equality.

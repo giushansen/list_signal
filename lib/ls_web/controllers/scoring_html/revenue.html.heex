@@ -1,0 +1,72 @@
+<.shell
+  title="Revenue estimation: the model, its signals, and its confidence"
+  lede="Twenty-five infrastructure signals, additively scored into five revenue brackets, with a published confidence value and a full evidence trail for every record.">
+
+  <h2 class="font-display text-2xl font-bold mb-3 mt-2">The brackets</h2>
+  <div class="rounded-[18px] border border-white/[0.07] bg-white/[0.02] p-6 mb-8 overflow-x-auto">
+    <table class="w-full text-left">
+      <thead><tr class="border-b border-white/[0.1]">
+        <th class="pb-3 pr-4 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Bracket</th>
+        <th class="pb-3 pr-4 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Revenue</th>
+        <th class="pb-3 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Employees</th>
+      </tr></thead>
+      <tbody>
+        <.check name="Micro" weight="&lt;$1M" why="1–10" />
+        <.check name="Small" weight="$1M–$10M" why="11–50" />
+        <.check name="Mid-market" weight="$10M–$100M" why="51–500" />
+        <.check name="Enterprise" weight="$100M–$1B" why="501–5000" />
+        <.check name="Large enterprise" weight="$1B+" why="5001+" />
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="font-display text-2xl font-bold mb-3">How it works</h2>
+  <p class="text-white/60 mb-5 leading-relaxed">
+    No financial data is used — none is publicly available for most companies. Instead the model reads what a company's <em>infrastructure choices</em> reveal about its budget. Each signal contributes points to one or more brackets; points are summed, normalised, and the leading bracket wins if it clears the confidence threshold.
+  </p>
+
+  <h3 class="font-display text-lg font-semibold mb-3 mt-8">The strongest signals</h3>
+  <div class="rounded-[18px] border border-white/[0.07] bg-white/[0.02] p-6 mb-8 overflow-x-auto">
+    <table class="w-full text-left">
+      <thead><tr class="border-b border-white/[0.1]">
+        <th class="pb-3 pr-4 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Signal</th>
+        <th class="pb-3 pr-4 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Weight</th>
+        <th class="pb-3 text-[11px] uppercase tracking-wider text-white/40 font-semibold">What it reveals</th>
+      </tr></thead>
+      <tbody>
+        <.check name="Tranco rank" weight="strongest" why="The single best predictor. Top-1k contributes 20 points toward large enterprise." />
+        <.check name="Registrar tier" weight="high" why="MarkMonitor and CSC serve enterprise brand-protection clients; GoDaddy and Namecheap serve everyone else." />
+        <.check name="Email provider + SPF" weight="high" why="Proofpoint and Mimecast are enterprise procurement. A long SPF include chain means many paid SaaS tools." />
+        <.check name="Marketing automation" weight="high" why="Marketo or Salesforce in the SPF record implies a funded marketing team; Mailchimp implies a small one." />
+        <.check name="Subdomain count" weight="medium" why="Hundreds of subdomains means many internal systems, which means many people." />
+        <.check name="CMS and CDN tier" weight="medium" why="Sitecore or Adobe plus Akamai is a six-figure stack. Wix is not." />
+        <.check name="Enterprise pages" weight="medium" why="/investors, /security, /partners and /careers appear when a company has those functions." />
+        <.check name="Domain age + DMARC" weight="medium" why="A 1998 domain with an enforcing DMARC policy is a mature, governed organisation." />
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="font-display text-2xl font-bold mb-3">Confidence — and when we publish nothing</h2>
+  <p class="text-white/60 mb-5 leading-relaxed">
+    Confidence is the normalised margin between the winning bracket and the rest. Two guards apply: the estimate must reach <span class="text-white/85">0.40 confidence</span> and be supported by at least <span class="text-white/85">three independent signals</span>. Below either threshold no estimate is published.
+  </p>
+  <.aside title="A blank is more honest than a guess">
+    Roughly a third of records carry no revenue estimate. That is intentional. A wrong bracket sends a rep into a call with the wrong pitch and the wrong price — far more expensive than an empty field they can see and route around.
+  </.aside>
+
+  <h2 class="font-display text-2xl font-bold mb-3 mt-10">The evidence trail</h2>
+  <p class="text-white/60 mb-5 leading-relaxed">
+    Every record carries the list of signals that fired and the bracket each favoured, for example <code class="text-accent text-sm">tranco:top_100k | registrar:markmonitor | spf:marketo | pages:/investors</code>. You can audit any estimate, and you can filter on the evidence itself when a particular signal matters more to you than the bracket.
+  </p>
+  <.aside title="Stability across re-crawls" tone="blue">
+    Rank data wobbles daily around the bracket boundaries. Rather than let that flip a company between brackets, the estimate only moves when the new reading jumps two brackets or is meaningfully more confident. You get a stable field you can build a workflow on.
+  </.aside>
+
+  <h2 class="font-display text-2xl font-bold mb-3 mt-10">Why this decides your pricing and your pitch</h2>
+  <.aside title="Territory and quota design">
+    Bracket plus country plus industry is enough to build territories from a raw domain list — no manual research pass. Employee ranges are derived per business model using sector-appropriate revenue-per-employee, so a SaaS and an ecommerce brand at the same revenue get realistically different headcounts.
+  </.aside>
+  <.aside title="Knowing when to walk away" tone="amber">
+    The most valuable use is negative. If your product needs a $10M+ customer, filtering out micro and small removes most of a list before a human ever reads it — and the confidence value tells you which exclusions to trust.
+  </.aside>
+</.shell>

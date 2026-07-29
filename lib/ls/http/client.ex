@@ -36,36 +36,89 @@ defmodule LS.HTTP.Client do
   def fetch(domain, ip), do: fetch(domain, ip, [])
 
   @doc """
+  Fetch an absolute URL on a **third-party host** (ATS job boards, etc).
+
+  Resolves the host, then goes through the ordinary `fetch/3` path so the
+  per-IP politeness limiter still applies — API hosts like
+  `boards-api.greenhouse.io` serve thousands of our targets from a handful of
+  IPs, so they are exactly the case that must not be hammered.
+  """
+  @spec fetch_url(String.t(), keyword()) :: {:ok, map()} | {:error, term()} | {:error, term(), term()}
+  def fetch_url(url, opts \\ []) when is_binary(url) do
+    uri = URI.parse(url)
+    path = [uri.path || "/", if(uri.query, do: "?" <> uri.query, else: "")] |> Enum.join()
+
+    case uri.host && LS.DNS.Resolver.lookup(uri.host) do
+      {:ok, %{a: [ip | _]}} -> fetch(uri.host, ip, Keyword.put(opts, :path, path))
+      _ -> {:error, :no_ip}
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
   Fetch a specific `path` on `domain` (default "/"), reusing the SAME per-IP rate
   limiter, TLS connection logic, and `@max_body_bytes` cap. Options:
 
-    * `:path`    — request path, defaults to "/"
-    * `:timeout` — receive timeout in ms, defaults to `@receive_timeout`
+    * `:path`      — request path, defaults to "/"
+    * `:timeout`   — receive timeout in ms, defaults to `@receive_timeout`
+    * `:max_bytes` — body cap, defaults to `@max_body_bytes` (512 KB).
+
+  Raise `:max_bytes` only for structured endpoints we chose deliberately
+  (e.g. Shopify `/products.json`): the default guards against multi-megabyte
+  HTML, but silently truncating a JSON document makes it undecodable, which
+  looks like "no data" rather than an error.
 
   Used for best-effort secondary-page (login/pricing) tech detection. The rate
   limiter is ALWAYS consulted so secondary fetches stay polite.
   """
+  # No IP, no fetch. The per-IP rate limiter keys on the resolved address, so
+  # without one there is no way to stay polite — and politeness is what keeps
+  # our source IPs off blocklists. We refuse rather than bypass the limiter.
+  #
+  # This clause also stops a silent failure: `IPRateLimiter.check_and_update/2`
+  # is guarded by `is_binary(ip)`, so a nil IP used to raise FunctionClauseError.
+  # Callers that wrap fetches in a `rescue` (LS.Enrichment.Shopify) turned that
+  # crash into "this store has no catalog", losing data with no error logged.
+  def fetch(_domain, nil, opts) when is_list(opts), do: {:error, "no_ip", :no_ip}
+
   def fetch(domain, ip, opts) when is_list(opts) do
     path = Keyword.get(opts, :path, "/")
     recv_timeout = Keyword.get(opts, :timeout, @receive_timeout)
+    max_bytes = Keyword.get(opts, :max_bytes, @max_body_bytes)
 
     # Check rate limiter FIRST - DON'T sleep beyond the spacing window
     case IPRateLimiter.check_and_update(ip, 1000) do
       :ok ->
-        fetch_with_redirects(domain, ip, 0, path, recv_timeout)
+        fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes)
 
       {:wait, wait_ms} ->
+        # We used to sleep the full politeness interval and then give up
+        # WITHOUT sending the request — paying the entire latency cost for no
+        # data. Enriching one business hits the same IP several times
+        # (products.json ×2, collections.json, /contact, /pricing, /careers),
+        # so with 1s spacing most of those calls returned :rate_limited and the
+        # child tables came out far emptier than the crawl suggested.
+        #
+        # Waiting and then proceeding is strictly MORE polite than before: the
+        # full interval still elapses, we just stop wasting it. Exactly one
+        # retry — if the slot is taken again we genuinely back off, so heavy
+        # contention can never turn into an unbounded wait loop.
         Process.sleep(wait_ms)
-        {:error, "rate_limited", :rate_limited}
+
+        case IPRateLimiter.check_and_update(ip, 1000) do
+          :ok -> fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes)
+          {:wait, _} -> {:error, "rate_limited", :rate_limited}
+        end
     end
   end
 
-  defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout)
+  defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout, _max_bytes)
        when redirect_count > @max_redirects do
     {:error, "too_many_redirects", :too_many_redirects}
   end
 
-  defp fetch_with_redirects(domain, _ip, redirect_count, path, recv_timeout) do
+  defp fetch_with_redirects(domain, _ip, redirect_count, path, recv_timeout, max_bytes) do
     start_time = System.monotonic_time(:millisecond)
 
     # Mint connection options
@@ -85,7 +138,7 @@ defmodule LS.HTTP.Client do
 
     case Mint.HTTP.connect(:https, domain, 443, opts) do
       {:ok, conn} ->
-        perform_request(conn, domain, start_time, redirect_count, path, recv_timeout)
+        perform_request(conn, domain, start_time, redirect_count, path, recv_timeout, max_bytes)
 
       {:error, error} ->
         reason = format_error(error)
@@ -99,12 +152,12 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp perform_request(conn, domain, start_time, redirect_count, path, recv_timeout) do
+  defp perform_request(conn, domain, start_time, redirect_count, path, recv_timeout, max_bytes) do
     headers = build_headers(domain)
 
     case Mint.HTTP.request(conn, "GET", path, headers, nil) do
       {:ok, conn, request_ref} ->
-        receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout)
+        receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes)
 
       {:error, _conn, error} ->
         reason = format_error(error)
@@ -119,7 +172,7 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout) do
+  defp receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes) do
     # Start receive timeout
     receive_deadline = System.monotonic_time(:millisecond) + recv_timeout
 
@@ -129,7 +182,7 @@ defmodule LS.HTTP.Client do
       body: <<>>,
       size: 0,
       elapsed_ms: 0
-    }, receive_deadline)
+    }, receive_deadline, max_bytes)
 
     Mint.HTTP.close(conn)
 
@@ -145,7 +198,7 @@ defmodule LS.HTTP.Client do
               # Follow redirect
               case URI.parse(location) do
                 %URI{host: new_host} when is_binary(new_host) and new_host != "" ->
-                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1, path, recv_timeout)
+                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1, path, recv_timeout, max_bytes)
                 _ ->
                   {:ok, %{response | elapsed_ms: elapsed_ms}}
               end
@@ -168,7 +221,7 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp do_receive_response(conn, request_ref, acc, deadline) do
+  defp do_receive_response(conn, request_ref, acc, deadline, max_bytes) do
     # Check timeout
     now = System.monotonic_time(:millisecond)
     if now >= deadline do
@@ -180,15 +233,15 @@ defmodule LS.HTTP.Client do
         message ->
           case Mint.HTTP.stream(conn, message) do
             {:ok, conn, responses} ->
-              case process_responses(responses, request_ref, acc) do
+              case process_responses(responses, request_ref, acc, max_bytes) do
                 {:done, response} ->
                   {:ok, response}
 
                 {:continue, new_acc} ->
-                  if new_acc.size >= @max_body_bytes do
+                  if new_acc.size >= max_bytes do
                     {:ok, new_acc}
                   else
-                    do_receive_response(conn, request_ref, new_acc, deadline)
+                    do_receive_response(conn, request_ref, new_acc, deadline, max_bytes)
                   end
 
                 {:error, reason} ->
@@ -199,7 +252,7 @@ defmodule LS.HTTP.Client do
               {:error, format_error(error)}
 
             :unknown ->
-              do_receive_response(conn, request_ref, acc, deadline)
+              do_receive_response(conn, request_ref, acc, deadline, max_bytes)
           end
       after
         timeout_ms -> {:error, "receive_timeout"}
@@ -207,24 +260,24 @@ defmodule LS.HTTP.Client do
     end
   end
 
-  defp process_responses([], _request_ref, acc), do: {:continue, acc}
-  defp process_responses([response | rest], request_ref, acc) do
+  defp process_responses([], _request_ref, acc, _max_bytes), do: {:continue, acc}
+  defp process_responses([response | rest], request_ref, acc, max_bytes) do
     case response do
       {:status, ^request_ref, status} ->
-        process_responses(rest, request_ref, %{acc | status: status})
+        process_responses(rest, request_ref, %{acc | status: status}, max_bytes)
 
       {:headers, ^request_ref, headers} ->
         all_headers = acc.headers ++ headers
-        process_responses(rest, request_ref, %{acc | headers: all_headers})
+        process_responses(rest, request_ref, %{acc | headers: all_headers}, max_bytes)
 
       {:data, ^request_ref, chunk} ->
         new_body = acc.body <> chunk
         new_size = acc.size + byte_size(chunk)
 
-        if new_size >= @max_body_bytes do
+        if new_size >= max_bytes do
           {:done, %{acc | body: new_body, size: new_size}}
         else
-          process_responses(rest, request_ref, %{acc | body: new_body, size: new_size})
+          process_responses(rest, request_ref, %{acc | body: new_body, size: new_size}, max_bytes)
         end
 
       {:done, ^request_ref} ->
@@ -234,7 +287,7 @@ defmodule LS.HTTP.Client do
         {:error, format_error(reason)}
 
       _other ->
-        process_responses(rest, request_ref, acc)
+        process_responses(rest, request_ref, acc, max_bytes)
     end
   end
 

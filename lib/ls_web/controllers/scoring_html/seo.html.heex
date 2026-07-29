@@ -1,0 +1,59 @@
+<.shell
+  title="How the SEO score is calculated"
+  lede="A transparent, weighted checklist — not a black box. Every point is attributable, and every failure is named on the record so you can act on it.">
+
+  <h2 class="font-display text-2xl font-bold mb-3 mt-2">The 15 on-page checks</h2>
+  <p class="text-white/60 mb-6 leading-relaxed">Each check runs against the rendered HTML and carries a fixed weight. The score is <span class="text-white/85 font-medium">earned ÷ available × 100</span>.</p>
+
+  <div class="rounded-[18px] border border-white/[0.07] bg-white/[0.02] p-6 mb-8 overflow-x-auto">
+    <table class="w-full text-left">
+      <thead><tr class="border-b border-white/[0.1]">
+        <th class="pb-3 pr-4 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Check</th>
+        <th class="pb-3 pr-4 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Points</th>
+        <th class="pb-3 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Why it matters</th>
+      </tr></thead>
+      <tbody>
+        <.check name="Title present" weight="12" why="The single strongest on-page ranking element. Absent means the page is competing blind." />
+        <.check name="Title length 10–60" weight="6" why="Outside this range search results truncate or look thin." />
+        <.check name="Meta description" weight="10" why="Controls the snippet. Missing means the engine invents one." />
+        <.check name="Description length 50–160" weight="5" why="Too short wastes the slot; too long is cut off." />
+        <.check name="H1 present" weight="10" why="Declares the page topic to crawlers and screen readers." />
+        <.check name="Only one H1" weight="4" why="Multiple H1s dilute the topic signal." />
+        <.check name="Canonical tag" weight="8" why="Prevents duplicate-content splits across parameters and variants." />
+        <.check name="JSON-LD structured data" weight="10" why="Required for rich results. Its absence is the most common gap we see." />
+        <.check name="Open Graph tags" weight="8" why="Governs how the page renders when shared — a direct traffic lever." />
+        <.check name="Twitter card" weight="3" why="Same, for X/Twitter previews." />
+        <.check name="Viewport meta" weight="6" why="Without it, mobile rendering is broken and mobile ranking suffers." />
+        <.check name="html lang attribute" weight="4" why="Signals language for regional targeting and accessibility." />
+        <.check name="Image alt coverage ≥ 80%" weight="6" why="Accessibility plus image-search visibility." />
+        <.check name="Body content ≥ 300 words" weight="8" why="Below this, pages rarely rank for anything competitive." />
+        <.check name="Not noindex" weight="10" why="A stray noindex removes the page from search entirely — worth catching first." />
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="font-display text-2xl font-bold mb-3">Core Web Vitals — when we can measure them</h2>
+  <p class="text-white/60 mb-5 leading-relaxed">
+    LCP and CLS are only observable in a real browser. When a page is rendered by our browser engine, three further checks apply at Google's "good" thresholds:
+    <span class="text-white/85">LCP ≤ 2500 ms</span> (10 pts), <span class="text-white/85">CLS ≤ 0.1</span> (5 pts), <span class="text-white/85">TTFB ≤ 800 ms</span> (5 pts).
+  </p>
+  <.aside title="A site is never punished for a measurement we did not take" tone="blue">
+    If a page was fetched over plain HTTP, the performance checks are excluded from <em>both</em> the earned and the available points. That keeps scores comparable instead of quietly penalising pages we simply did not render.
+  </.aside>
+
+  <h2 class="font-display text-2xl font-bold mb-3 mt-10">What about XML sitemaps and robots.txt?</h2>
+  <p class="text-white/60 mb-5 leading-relaxed">
+    Deliberately excluded from the page score. A sitemap is a <em>site-wide</em> fact, not a property of one page, and folding it in would make two pages on the same domain score differently for a reason neither of them controls. We fetch <code class="text-accent text-sm">/sitemap.xml</code> and <code class="text-accent text-sm">/robots.txt</code> at the domain level and report them as separate flags, which is also how you would want to filter on them.
+  </p>
+
+  <h2 class="font-display text-2xl font-bold mb-3 mt-10">Why agencies buy this</h2>
+  <.aside title="For SEO agencies — a prospect list that opens itself">
+    Filter for sites with real traffic (Tranco-ranked) that score badly. <code class="text-accent text-sm">seo_issues</code> names the exact failures, so your outreach can say "your product pages have no structured data and three of your top templates are missing canonicals" instead of "we noticed some SEO issues". That is the difference between a reply and a delete.
+  </.aside>
+  <.aside title="For design and web-build agencies — the redesign trigger" tone="amber">
+    A low score paired with slow LCP and a dated CMS is a site that is costing its owner money right now. Combine with revenue estimation to find the ones that can afford the rebuild, and with hiring signals to find the ones already investing.
+  </.aside>
+  <.aside title="For anyone selling to ecommerce" tone="blue">
+    Every score carries its evidence. You can quote a specific, checkable fact in the first line of an email — the single highest-leverage thing in cold outreach.
+  </.aside>
+</.shell>

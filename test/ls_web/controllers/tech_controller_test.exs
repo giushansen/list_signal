@@ -27,38 +27,60 @@ defmodule LSWeb.TechControllerTest do
     end
   end
 
+  # These five tests assert what the page shows when EVERY aggregate errors —
+  # the state production reached when tech_stats blew its 10s timeout. That
+  # premise only holds when nothing answers on 127.0.0.1:8123; on a laptop
+  # running the .ch/ dev harness a live ClickHouse turns the aggregates into
+  # successes and the assertions become meaningless. Same conditional pattern
+  # as LS.DataContractTest, just inverted. The deterministic core of this
+  # regression stays covered unconditionally by "build_stats/1" and
+  # "rendering with stores listed but stats unavailable" below.
+  defp when_ch_down(body) do
+    if match?({:error, _}, LS.Clickhouse.query_raw("SELECT 1")), do: body.(), else: :ok
+  end
+
   describe "unavailable stats (ClickHouse down — exactly the timeout scenario)" do
-    setup %{conn: conn} do
-      # No ClickHouse in the test env, so every aggregate errors: the same state
-      # the page reached in production when tech_stats blew its 10s timeout.
-      %{html: conn |> get("/tech/google-analytics") |> response(200)}
+    defp down_html(conn), do: conn |> get("/tech/google-analytics") |> response(200)
+
+    test "does not claim a store count it could not measure", %{conn: conn} do
+      when_ch_down(fn ->
+        html = down_html(conn)
+        refute html =~ ~r/\b100\+/
+        refute html =~ "ListSignal tracks"
+        refute html =~ ~r/\d+\+ Shopify stores use/
+      end)
     end
 
-    test "does not claim a store count it could not measure", %{html: html} do
-      refute html =~ ~r/\b100\+/
-      refute html =~ "ListSignal tracks"
-      refute html =~ ~r/\d+\+ Shopify stores use/
+    test "does not render placeholder zeros for the stat tiles", %{conn: conn} do
+      when_ch_down(fn ->
+        html = down_html(conn)
+        refute html =~ "Returned HTTP 200"
+        refute html =~ "Top 100K Sites"
+      end)
     end
 
-    test "does not render placeholder zeros for the stat tiles", %{html: html} do
-      refute html =~ "Returned HTTP 200"
-      refute html =~ "Top 100K Sites"
+    test "never describes stores as 'currently online'", %{conn: conn} do
+      when_ch_down(fn -> refute down_html(conn) =~ "currently online" end)
     end
 
-    test "never describes stores as 'currently online'", %{html: html} do
-      refute html =~ "currently online"
+    test "the page title carries no fabricated number", %{conn: conn} do
+      when_ch_down(fn ->
+        assert down_html(conn) =~ "<title>Google Analytics — Shopify Stores Using Google Analytics"
+      end)
     end
 
-    test "the page title carries no fabricated number", %{html: html} do
-      assert html =~ "<title>Google Analytics — Shopify Stores Using Google Analytics"
-    end
+    test "schema.org payload omits aggregateRating when the count is unknown", %{conn: conn} do
+      when_ch_down(fn ->
+        [json] =
+          Regex.run(~r|<script type="application/ld\+json">(.*?)</script>|s, down_html(conn),
+            capture: :all_but_first
+          )
 
-    test "schema.org payload omits aggregateRating when the count is unknown", %{html: html} do
-      [json] = Regex.run(~r|<script type="application/ld\+json">(.*?)</script>|s, html, capture: :all_but_first)
-      decoded = Jason.decode!(json)
+        decoded = Jason.decode!(json)
 
-      assert decoded["name"] == "Google Analytics"
-      refute Map.has_key?(decoded, "aggregateRating")
+        assert decoded["name"] == "Google Analytics"
+        refute Map.has_key?(decoded, "aggregateRating")
+      end)
     end
   end
 

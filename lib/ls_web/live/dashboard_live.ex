@@ -22,6 +22,10 @@ defmodule LSWeb.DashboardLive do
        worker_health: collect_worker_health(),
        worker_caches: collect_worker_caches(),
        all_errors: collect_all_errors(),
+       tab: "discovery",
+       enrichment_stats: collect_enrichment_stats(),
+       table_counts: collect_table_counts(),
+       node_resources: collect_node_resources(),
        peek: nil, peek_data: nil, show_errors: false
      )}
   end
@@ -35,6 +39,9 @@ defmodule LSWeb.DashboardLive do
        worker_stats: collect_worker_stats(),
        worker_health: collect_worker_health(),
        worker_caches: collect_worker_caches(),
+       enrichment_stats: collect_enrichment_stats(),
+       table_counts: collect_table_counts(),
+       node_resources: collect_node_resources(),
        all_errors: if(socket.assigns.show_errors, do: collect_all_errors(), else: socket.assigns.all_errors)
      )}
   end
@@ -51,6 +58,11 @@ defmodule LSWeb.DashboardLive do
       :exit, _ -> []
     end
     {:noreply, assign(socket, peek: %{worker: worker, stage: stage}, peek_data: samples)}
+  end
+
+  @impl true
+  def handle_event("tab", %{"tab" => tab}, socket) when tab in ["discovery", "enrichment"] do
+    {:noreply, assign(socket, tab: tab)}
   end
 
   @impl true
@@ -76,6 +88,17 @@ defmodule LSWeb.DashboardLive do
       .header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid #1a2235; padding-bottom: 16px; }
       .header h1 { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: #e8edf4; letter-spacing: -0.5px; }
       .role-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: #38bdf8; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
+      .tabs { display: flex; gap: 4px; margin-left: 20px; }
+      .tab { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: #64748b;
+             background: transparent; border: 1px solid #1e293b; border-radius: 4px; padding: 4px 14px;
+             cursor: pointer; text-transform: uppercase; letter-spacing: 1px; transition: all 0.15s; }
+      .tab:hover { border-color: #334155; color: #94a3b8; }
+      .tab.on { color: #38bdf8; border-color: rgba(56,189,248,0.4); background: rgba(56,189,248,0.08); }
+      .res { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 18px; }
+      .res-node { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #94a3b8;
+                  border: 1px solid #1a2235; border-radius: 4px; padding: 6px 12px; background: #0d1320; }
+      .res-node b { color: #e8edf4; font-weight: 600; }
+      .res-node .hot { color: #f59e0b; }
       .err-toggle { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #64748b; background: transparent; border: 1px solid #1e293b; border-radius: 4px; padding: 3px 10px; cursor: pointer; margin-left: auto; transition: all 0.15s; }
       .err-toggle:hover { border-color: #334155; color: #94a3b8; }
       .err-toggle.has-errors { color: #fbbf24; border-color: rgba(251,191,36,0.3); }
@@ -197,11 +220,46 @@ defmodule LSWeb.DashboardLive do
       <div class="header">
         <h1>ListSignal</h1>
         <span class="role-badge">{@role}</span>
+        <div class="tabs">
+          <button class={"tab" <> if(@tab == "discovery", do: " on", else: "")}
+                  phx-click="tab" phx-value-tab="discovery">1 · Discovery</button>
+          <button class={"tab" <> if(@tab == "enrichment", do: " on", else: "")}
+                  phx-click="tab" phx-value-tab="enrichment">2 · Enrichment</button>
+        </div>
         <button class={"err-toggle" <> if(length(@all_errors) > 0, do: " has-errors", else: "")} phx-click="toggle_errors">
           <%= if @show_errors do %>✕ hide errors<% else %>{length(@all_errors)} errors<% end %>
         </button>
       </div>
 
+      <%!-- END-TABLE TOTALS — the two numbers that say how big the product is --%>
+      <% tc = @table_counts %>
+      <div class="res">
+        <div class="res-node" title="Rows in domains_current: one row per domain discovered by pipeline 1.">
+          <b>domains</b>&nbsp; {fmt(Map.get(tc, :domains, 0))}
+          <span style="color:#4a5568">· {fmt(Map.get(tc, :domain_rows, 0))} crawl rows</span>
+        </div>
+        <div class="res-node" title="Rows in businesses: the compiled product table, one row per real business.">
+          <b>businesses</b>&nbsp; {fmt(Map.get(tc, :businesses, 0))}
+          <span style="color:#4a5568">· {fmt(Map.get(tc, :businesses_enriched, 0))} deep-enriched</span>
+        </div>
+      </div>
+
+      <%!-- NODE RESOURCES — live, from /proc on each node (sar is for history) --%>
+      <div class="res">
+        <%= for {node, r} <- @node_resources do %>
+          <div class="res-node">
+            <b>{short_node(node)}</b>
+            &nbsp;cpu <span class={load_class(r)}>{fmt_load(r)}</span>/{r.cores}c
+            <%= if r.mem.used_pct do %>
+              &nbsp;· ram <span class={mem_class(r)}>{r.mem.used_pct}%</span>
+              ({r.mem.avail_mb}MB free)
+            <% end %>
+            &nbsp;· beam {r.beam_mb}MB
+          </div>
+        <% end %>
+      </div>
+
+      <%= if @tab == "discovery" do %>
       <%= if @master_stats.queue && @master_stats.queue.queue_pct >= 80.0 do %>
         <div class="alert-warn">⚠ Queue at {@master_stats.queue.queue_pct}% — add workers</div>
       <% end %>
@@ -409,6 +467,110 @@ defmodule LSWeb.DashboardLive do
       <% end %>
 
       <%!-- PEEK PANEL --%>
+      <% end %>
+
+      <%!-- ══════════════ PIPELINE 2 · ENRICHMENT ══════════════ --%>
+      <%= if @tab == "enrichment" do %>
+        <% o = @enrichment_stats.output %>
+        <% eq = @enrichment_stats.queue %>
+        <% ec = @enrichment_stats.compactor %>
+        <% agents = @enrichment_stats.agents %>
+
+        <%= if agents == [] do %>
+          <div class="alert-danger">⛔ No enrichment lane running — start one with <b>make dev-enrichment</b> (or LS_LANES=enrichment on a node)</div>
+        <% end %>
+
+        <%!-- HEALTH SUMMARY --%>
+        <% epm = Map.get(o, :per_min, 0) %>
+        <div class="health-bar">
+          <span class={"health-dot " <> cond do
+            agents == [] -> "health-red"
+            epm > 0 -> "health-green"
+            true -> "health-amber"
+          end}></span>
+          <span class="health-label">
+            <%= cond do %>
+              <% agents == [] -> %>No enrichment agent connected
+              <% epm > 0 -> %>Enriching {epm} domains/min across {length(agents)} node(s)
+              <% true -> %>Agent connected but idle — queue {(eq && eq.queue_depth) || 0}
+            <% end %>
+          </span>
+          <div class="health-metrics">
+            <span class="hm hm-dim">{fmt(Map.get(o, :last_hour, 0))}/hr</span>
+            <span class="hm hm-dim">{fmt(Map.get(o, :enriched, 0))} enriched</span>
+            <span class="hm hm-dim">{fmt(Map.get(o, :businesses_enriched, 0))}/{fmt(Map.get(o, :businesses, 0))} businesses</span>
+          </div>
+        </div>
+
+        <%!-- PIPELINE FLOW: businesses → queue → agents → biz_* → businesses --%>
+        <div class="section-label" style="margin-top: 0;">Pipeline Flow</div>
+        <div class="pipeline">
+          <div class="stage">
+            <div class="stage-name">Source</div>
+            <div class="stage-value">{fmt(Map.get(o, :businesses, 0))}</div>
+            <div class="stage-sub">businesses table<br/>{fmt(Map.get(o, :businesses_enriched, 0))} already deep-enriched</div>
+          </div>
+          <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">stale&gt;30d</span></div>
+          <div class="stage stage-input">
+            <div class="stage-name">Queue ★ real input</div>
+            <div class="stage-value">{fmt((eq && eq.queue_depth) || 0)}</div>
+            <div class="stage-sub">{(eq && eq.refills) || 0} refills · {(eq && eq.inflight_batches) || 0} in-flight<br/>best Tranco first</div>
+          </div>
+          <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{epm}/m</span></div>
+          <div class="stage">
+            <div class="stage-name">Agents</div>
+            <div class="stage-value">{epm}<span class="stage-unit">/m</span></div>
+            <div class="stage-sub">{length(agents)} node(s) · max 3 browsers<br/>{fmt((eq && eq.completed) || 0)} completed</div>
+          </div>
+          <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">biz_*</span></div>
+          <div class="stage">
+            <div class="stage-name">Compactor</div>
+            <div class="stage-value">{(ec && ec.passes) || 0}<span class="stage-unit"> passes</span></div>
+            <div class="stage-sub">{fmt((ec && ec.domains) || 0)} folded<br/>last {(ec && ec.last_ms && "#{ec.last_ms}ms") || "—"} · every 5m</div>
+          </div>
+        </div>
+
+        <%!-- WHAT IT PRODUCED --%>
+        <div class="rep-bar">
+          <div class="rep-chip">Contacts <b class={if(Map.get(o, :contacts, 0) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(Map.get(o, :contacts, 0))}</b></div>
+          <div class="rep-chip">Pricing <b class={if(Map.get(o, :pricing, 0) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(Map.get(o, :pricing, 0))}</b></div>
+          <div class="rep-chip">Jobs <b class={if(Map.get(o, :jobs, 0) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(Map.get(o, :jobs, 0))}</b></div>
+          <div class="rep-chip">News <b class={if(Map.get(o, :news, 0) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(Map.get(o, :news, 0))}</b></div>
+          <div class="rep-chip">SEO scored <b class="rep-ok">{fmt(Map.get(o, :with_seo, 0))}</b></div>
+          <div class="rep-chip">Catalogs <b class="rep-ok">{fmt(Map.get(o, :with_catalog, 0))}</b></div>
+          <div class="rep-chip">Via browser <b class={if(Map.get(o, :via_browser, 0) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(Map.get(o, :via_browser, 0))}</b></div>
+        </div>
+
+        <%!-- ENRICHMENT NODES — same card as discovery --%>
+        <div class="section-label">Enrichment Nodes</div>
+        <%= if agents == [] do %>
+          <div class="no-workers">No enrichment lane connected</div>
+        <% else %>
+          <%= for {node, a} <- agents do %>
+            <div class="worker-card">
+              <div class="worker-header">
+                <span class="worker-name">{node}</span>
+                <span class={if a.browser, do: "badge badge-green", else: "badge badge-yellow"}>
+                  {if a.browser, do: "browser ready", else: "http only"}
+                </span>
+                <%= if a.browser do %>
+                  <span class="health-chip health-chip-ok" title="camoufox/nodriver sidecar reachable — blocked and JS-only pages can be rendered. Capped at 3 concurrent renders per node.">camoufox · max 3</span>
+                <% else %>
+                  <span class="health-chip health-chip-warn" title="No LS_BROWSER_URL — WAF-blocked and JS-only pages will be skipped on this node.">no sidecar</span>
+                <% end %>
+                <span class="worker-batch-info">
+                  {a.batches} batches · {fmt(a.total)} enriched
+                  <%= if a.last_ms do %> · last {a.last_ms}ms<% end %>
+                </span>
+              </div>
+              <div class="worker-cache" title="What this lane fetches per domain: catalog JSON, ATS job boards, contact/pricing pages, then an SEO audit of the homepage.">
+                stages&nbsp; <b>shopify</b> · <b>jobs</b> · <b>contact</b> · <b>pricing</b> · <b>seo+perf</b> · <b>about</b>
+              </div>
+            </div>
+          <% end %>
+        <% end %>
+      <% end %>
+
       <%= if @peek do %>
         <div class="peek-panel">
           <div class="peek-header">
@@ -437,6 +599,229 @@ defmodule LSWeb.DashboardLive do
   # DATA COLLECTION
   # ==========================================================================
 
+
+
+  # ── view helpers for the resources bar ─────────────────────────────────────
+
+  defp short_node(node) do
+    node |> to_string() |> String.split("@") |> List.first() |> String.replace("worker_", "")
+  end
+
+  defp fmt_load(%{cpu_load: [l | _]}) when is_number(l), do: :erlang.float_to_binary(l * 1.0, decimals: 2)
+  defp fmt_load(_), do: "—"
+
+  # Load is per-core: >1.0x cores means tasks are queueing for CPU.
+  defp load_class(%{cpu_load: [l | _], cores: c}) when is_number(l) and is_integer(c) and c > 0 do
+    if l / c > 1.0, do: "hot", else: ""
+  end
+  defp load_class(_), do: ""
+
+  defp mem_class(%{mem: %{used_pct: p}}) when is_integer(p) and p >= 85, do: "hot"
+  defp mem_class(_), do: ""
+
+  # ── Pipeline 2 (enrichment) ────────────────────────────────────────────────
+
+  # Mirrors collect_master_stats/0 but for the depth pipeline: where the work
+  # comes from (queue), who is doing it (agents on each node), and what it has
+  # produced (biz_* row counts + rate).
+  # Row counts of the two end tables. Deliberately its own small query: the
+  # dashboard refreshes every 3s and these are the numbers you check first.
+  defp collect_table_counts do
+    sql = """
+    SELECT
+      (SELECT count() FROM domains_current)                   AS domains,
+      (SELECT count() FROM domains_history)                   AS domain_rows,
+      (SELECT count() FROM businesses FINAL)                  AS businesses,
+      (SELECT countIf(depth_enriched_at IS NOT NULL) FROM businesses FINAL) AS businesses_enriched
+    """
+
+    case LS.Clickhouse.query_raw(sql, 5_000) do
+      {:ok, [row]} ->
+        [:domains, :domain_rows, :businesses, :businesses_enriched]
+        |> Enum.zip(Enum.map(row, &to_int/1))
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp collect_enrichment_stats do
+    queue = sc(LS.Cluster.EnrichmentQueue, :stats)
+    compactor = sc(LS.Cluster.Compactor, :stats)
+
+    agents =
+      [Node.self() | Node.list()]
+      |> Enum.map(fn n ->
+        stats = try do
+          GenServer.call({LS.Enrichment.Agent, n}, :stats, 2_000)
+        catch
+          :exit, _ -> nil
+        end
+        {n, stats}
+      end)
+      |> Enum.reject(fn {_, s} -> is_nil(s) end)
+
+    %{queue: queue, compactor: compactor, agents: agents, output: enrichment_output()}
+  end
+
+  # One round-trip for every counter the tab shows, so the 3s refresh stays cheap.
+  defp enrichment_output do
+    sql = """
+    SELECT
+      (SELECT count() FROM biz_enrichment) AS enriched,
+      (SELECT count() FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 1 MINUTE) AS per_min,
+      (SELECT count() FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 1 HOUR) AS last_hour,
+      (SELECT count() FROM biz_contact) AS contacts,
+      (SELECT count() FROM biz_career) AS jobs,
+      (SELECT count() FROM biz_pricing) AS pricing,
+      (SELECT count() FROM biz_news) AS news,
+      (SELECT countIf(seo_score IS NOT NULL) FROM biz_enrichment) AS with_seo,
+      (SELECT countIf(product_count IS NOT NULL) FROM biz_enrichment) AS with_catalog,
+      (SELECT countIf(render_engine = 'camoufox') FROM biz_enrichment) AS via_browser,
+      (SELECT count() FROM businesses) AS businesses,
+      (SELECT countIf(depth_enriched_at IS NOT NULL) FROM businesses) AS businesses_enriched
+    """
+
+    case LS.Clickhouse.query_raw(sql, 5_000) do
+      {:ok, [row]} ->
+        ~w(enriched per_min last_hour contacts jobs pricing news with_seo
+           with_catalog via_browser businesses businesses_enriched)a
+        |> Enum.zip(Enum.map(row, &to_int/1))
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp to_int(v) when is_integer(v), do: v
+  defp to_int(v) when is_binary(v), do: String.to_integer(v)
+  defp to_int(_), do: 0
+
+  # ── Node resources (sysstat / /proc) ───────────────────────────────────────
+
+  # Read straight from the BEAM and /proc rather than shelling out to `sar`:
+  # the dashboard refreshes every 3s and needs *current* load, which is what
+  # /proc/loadavg and /proc/meminfo give for free. `sar` remains the tool for
+  # historical questions ("what happened last Tuesday"), not live ones.
+  defp collect_node_resources do
+    [Node.self() | Node.list()]
+    |> Enum.map(fn n ->
+      res = try do
+        :erpc.call(n, __MODULE__, :local_resources, [], 2_000)
+      catch
+        _, _ -> nil
+      end
+      {n, res}
+    end)
+    |> Enum.reject(fn {_, r} -> is_nil(r) end)
+  end
+
+  @doc false
+  # Public because :erpc calls it on remote nodes.
+  def local_resources do
+    %{
+      cpu_load: read_loadavg(),
+      cores: System.schedulers_online(),
+      mem: read_meminfo(),
+      beam_mb: div(:erlang.memory(:total), 1_048_576)
+    }
+  end
+
+  # Linux nodes expose /proc; dev Macs do not. Support both rather than showing
+  # "—" on the machine the developer is actually looking at.
+  defp read_loadavg do
+    case File.read("/proc/loadavg") do
+      {:ok, c} ->
+        c |> String.split() |> Enum.take(3) |> Enum.map(&parse_float/1)
+
+      _ ->
+        # macOS: sysctl -n vm.loadavg  ->  "{ 3.25 3.59 3.75 }"
+        case System.cmd("sysctl", ["-n", "vm.loadavg"], stderr_to_stdout: true) do
+          {out, 0} ->
+            out
+            |> String.replace(["{", "}"], "")
+            |> String.split()
+            |> Enum.take(3)
+            |> Enum.map(&parse_float/1)
+
+          _ ->
+            [nil, nil, nil]
+        end
+    end
+  rescue
+    _ -> [nil, nil, nil]
+  end
+
+  defp read_meminfo do
+    case File.read("/proc/meminfo") do
+      {:ok, c} -> linux_meminfo(c)
+      _ -> darwin_meminfo()
+    end
+  rescue
+    _ -> %{total_mb: nil, avail_mb: nil, used_pct: nil}
+  end
+
+  defp linux_meminfo(contents) do
+    vals =
+      contents
+      |> String.split("\n")
+      |> Enum.reduce(%{}, fn line, acc ->
+        case String.split(line, ~r/:\s+/) do
+          [k, v] -> Map.put(acc, k, v |> String.replace(" kB", "") |> parse_int())
+          _ -> acc
+        end
+      end)
+
+    mb(Map.get(vals, "MemTotal", 0) * 1024, Map.get(vals, "MemAvailable", 0) * 1024)
+  end
+
+  # macOS: total from sysctl, free from vm_stat's page counters. "Available" is
+  # free + inactive + speculative, which is what the OS can hand out on demand.
+  defp darwin_meminfo do
+    with {total_s, 0} <- System.cmd("sysctl", ["-n", "hw.memsize"], stderr_to_stdout: true),
+         {vm, 0} <- System.cmd("vm_stat", [], stderr_to_stdout: true) do
+      total = parse_int(total_s)
+      page = Regex.run(~r/page size of (\d+)/, vm) |> pick_int(4096)
+
+      pages = fn name ->
+        case Regex.run(~r/#{name}:\s+(\d+)/, vm) do
+          [_, n] -> parse_int(n)
+          _ -> 0
+        end
+      end
+
+      avail = (pages.("Pages free") + pages.("Pages inactive") + pages.("Pages speculative")) * page
+      mb(total, avail)
+    else
+      _ -> %{total_mb: nil, avail_mb: nil, used_pct: nil}
+    end
+  end
+
+  defp pick_int([_, n], _default), do: parse_int(n)
+  defp pick_int(_, default), do: default
+
+  defp mb(total_bytes, avail_bytes) when total_bytes > 0 do
+    %{total_mb: div(total_bytes, 1_048_576), avail_mb: div(avail_bytes, 1_048_576),
+      used_pct: round((total_bytes - avail_bytes) / total_bytes * 100)}
+  end
+
+  defp mb(_, _), do: %{total_mb: nil, avail_mb: nil, used_pct: nil}
+
+  defp parse_float(s) do
+    case Float.parse(s) do
+      {f, _} -> f
+      :error -> nil
+    end
+  end
+  defp parse_int(s) do
+    case Integer.parse(String.trim(s)) do
+      {i, _} -> i
+      :error -> 0
+    end
+  end
+
   defp collect_master_stats do
     queue = sc(LS.Cluster.WorkQueue, :stats)
     inserter = sc(LS.Cluster.Inserter, :stats)
@@ -462,6 +847,17 @@ defmodule LSWeb.DashboardLive do
   # Fleet cache stats — RDAP/BGP/HTTP caches live on the WORKERS (the master
   # never crawls, so its caches are empty). Pull each worker's LS.Cache and
   # aggregate a true fleet hit-ratio: "are we reusing lookups or re-fetching?".
+  # A node reports its own lanes; if it is too old to answer, assume discovery
+  # (that was the only lane before pipeline 2 existed).
+  defp runs_lane?(node, lane) do
+    case :erpc.call(node, LS.Application, :worker_lanes, [], 2_000) do
+      lanes when is_list(lanes) -> lane in lanes
+      _ -> lane == "discovery"
+    end
+  catch
+    _, _ -> lane == "discovery"
+  end
+
   defp collect_worker_caches do
     Node.list()
     |> Enum.reduce(%{}, fn node, acc ->
@@ -521,6 +917,7 @@ defmodule LSWeb.DashboardLive do
 
   defp collect_worker_stats do
     Node.list()
+    |> Enum.filter(&runs_lane?(&1, "discovery"))
     |> Enum.map(fn node ->
       raw = try do
         GenServer.call({LS.Cluster.WorkerAgent, node}, :detailed_stats, 5_000)

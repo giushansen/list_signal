@@ -24,6 +24,7 @@ defmodule LS.CTL.Poller do
 
   alias LS.CTL.{DomainParser, SharedHostingFilter}
   alias LS.Cache
+  alias LS.CTL.PlatformRegistry
 
   @ets_work_queue :ctl_work_queue
 
@@ -412,13 +413,26 @@ defmodule LS.CTL.Poller do
         {:ok, cert_data} ->
           domain = cert_data.ctl_domain
 
-          # Step 1: Manual filter (fastest - known platforms)
-          if SharedHostingFilter.shared_platform?(domain) do
+          # Step 1: Manual filter (fastest - known platforms), then the persistent
+          # registry — a platform we have already identified is skipped on sight,
+          # without re-running the velocity heuristic. Before the registry this
+          # knowledge lived only in the evicting in-memory cache, so the fleet
+          # re-learned "Shopify is a platform" every day.
+          if SharedHostingFilter.shared_platform?(domain) or PlatformRegistry.known?(domain) do
             %{acc | processed: acc.processed + 1, filtered: acc.filtered + 1}
           else
             # Step 2: Track in smart cache (updates cert_count, subdomain_count)
             track_result = Cache.ctl_track(domain, cert_data.ctl_subdomain_count)
             if Cache.ctl_is_platform?(domain) do
+              # Feed the registry. It applies its own grace window, so a startup
+              # that briefly spikes subdomains is not promoted permanently.
+              PlatformRegistry.observe(domain, %{
+                reason: "cert_rate",
+                cert_count: Cache.ctl_cert_count(domain),
+                max_subdomain_count: cert_data.ctl_subdomain_count || 0,
+                estimated_hosted_domains: Cache.ctl_cert_count(domain)
+              })
+
               %{acc | filtered: acc.filtered + 1}
             else
               if track_result == :new do

@@ -8,7 +8,19 @@ defmodule LS.DNS.Resolver do
   use GenServer
   require Logger
 
-  @dns_server {{127, 0, 0, 1}, 53}
+  # Local Unbound in production. Overridable with LS_DNS_SERVER purely so a dev
+  # machine (which has no Unbound) can run the pipelines; prod leaves it unset
+  # and keeps the pinned resolver that prevents the h1-style split brain.
+  @default_dns {127, 0, 0, 1}
+  defp dns_server do
+    case System.get_env("LS_DNS_SERVER") do
+      nil -> {@default_dns, 53}
+      ip -> case :inet.parse_address(String.to_charlist(ip)) do
+              {:ok, addr} -> {addr, 53}
+              _ -> {@default_dns, 53}
+            end
+    end
+  end
   @dns_timeout 8000
   @max_retries 3
 
@@ -112,7 +124,7 @@ defmodule LS.DNS.Resolver do
   end
 
   defp lookup_record(char_domain, type) do
-    case :inet_res.lookup(char_domain, :in, type, nameservers: [@dns_server], timeout: @dns_timeout) do
+    case :inet_res.lookup(char_domain, :in, type, nameservers: [dns_server()], timeout: @dns_timeout) do
       [] -> []
       results when is_list(results) -> format_results(type, results)
       _ -> []
@@ -123,7 +135,7 @@ defmodule LS.DNS.Resolver do
 
   # CNAME lookup - returns the canonical name(s)
   defp lookup_cname(char_domain) do
-    case :inet_res.lookup(char_domain, :in, :cname, nameservers: [@dns_server], timeout: @dns_timeout) do
+    case :inet_res.lookup(char_domain, :in, :cname, nameservers: [dns_server()], timeout: @dns_timeout) do
       [] -> []
       results when is_list(results) ->
         Enum.map(results, fn cname ->

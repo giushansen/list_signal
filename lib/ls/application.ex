@@ -57,6 +57,24 @@ defmodule LS.Application do
     :ok
   end
 
+  @doc """
+  Lanes this worker runs, from `LS_LANES` (default `["discovery"]`).
+
+  Unknown values are ignored and an empty result falls back to discovery, so a
+  typo can never leave a node silently doing nothing.
+  """
+  @spec worker_lanes() :: [String.t()]
+  def worker_lanes do
+    System.get_env("LS_LANES", "discovery")
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&(&1 in ["discovery", "enrichment"]))
+    |> case do
+      [] -> ["discovery"]
+      lanes -> lanes
+    end
+  end
+
   defp common_children do
     [
       LSWeb.Telemetry, LS.Repo,
@@ -85,17 +103,32 @@ defmodule LS.Application do
       LS.Cluster.Optimizer,
       LS.Cluster.Monitor,
       LS.Recrawl.Scheduler,
+      # Pipeline 2 (depth): its own queue, plus the compactor that folds
+      # discovery + enrichment into the `businesses` product table every 5 min.
+      LS.Cluster.EnrichmentQueue,
+      LS.Cluster.Compactor,
       LSWeb.Endpoint
     ]
-    if mode == "ctl_live", do: master ++ [LS.CTL.Poller],
+    if mode == "ctl_live", do: master ++ [LS.CTL.PlatformRegistry, LS.CTL.Poller],
     else: (Logger.info("📭 CTL polling disabled (mode=#{mode})"); master)
   end
 
+  # A worker runs one or both lanes, set by `LS_LANES` (default "discovery"):
+  #
+  #     LS_LANES=discovery              small VPS — breadth, the CT firehose
+  #     LS_LANES=discovery,enrichment   big node — also does depth
+  #     LS_LANES=enrichment             dedicated depth node (e.g. the home NUC,
+  #                                     where a residential IP and camoufox let
+  #                                     us read sites that block the VPS fleet)
+  #
+  # Both lanes share every resolver, cache and rate limiter below — that is the
+  # point: enrichment must be exactly as polite as discovery.
   defp role_children("worker", _mode) do
     LS.Signatures.load_all()
     LS.HTTP.DomainFilter.load_tlds()
     LS.HTTP.IPRateLimiter.init()
-    [
+
+    shared = [
       LS.DNS.Resolver,
       LS.BGP.Resolver,
       LS.RDAP.Client,
@@ -103,9 +136,15 @@ defmodule LS.Application do
       LS.Reputation.Majestic,
       LS.Reputation.Blocklist,
       LS.ML.Classifier,
-      LS.HTTP.PerformanceTracker,
-      LS.Cluster.WorkerAgent
+      LS.HTTP.PerformanceTracker
     ]
+
+    lanes = worker_lanes()
+    Logger.info("🛣️  Worker lanes: #{Enum.join(lanes, ", ")}")
+
+    shared ++
+      if("discovery" in lanes, do: [LS.Cluster.WorkerAgent], else: []) ++
+      if("enrichment" in lanes, do: [LS.Enrichment.Agent], else: [])
   end
 
   defp role_children("standalone", mode) do

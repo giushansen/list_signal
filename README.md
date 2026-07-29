@@ -4,6 +4,45 @@ Domain intelligence platform. Ingests SSL certificates in real-time, enriches do
 
 No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's it.
 
+## Two pipelines
+
+```
+CT logs ─► DISCOVERY (10 VPS, fast peek) ─► domains_history ─► domains_current
+                                                                    │
+                                                     "real businesses?"
+                                                                    ▼
+           ENRICHMENT (big nodes + home NUC) ◄──── EnrichmentQueue
+              /products.json · ATS job APIs · /contact · /pricing
+              camoufox only when HTTP is refused or JS is required
+                                    │
+                     biz_contact · biz_career · biz_pricing · biz_summary
+                                    │
+                              COMPACTOR (every 5 min)
+                                    ▼
+                            businesses  ← the product (app · API · CSV)
+```
+
+**Discovery** is breadth: millions of domains, 5s timeout, homepage only.
+**Enrichment** is depth: the pages that make a record sellable — emails, plans,
+open roles, catalog size, SEO score.
+
+They write to *different tables*, which is what makes it impossible for one to
+blank the other's data. Full explanation and drawings:
+[`docs/pipelines.md`](docs/pipelines.md); system overview:
+[`docs/architecture.md`](docs/architecture.md).
+
+Run `mix docs && open doc/index.html` for the browsable version.
+
+### Lanes
+
+Each worker runs whichever lanes `LS_LANES` names — `discovery` (default),
+`enrichment`, or both. The home NUC runs `enrichment` because a residential IP
+plus camoufox reads sites that block the VPS fleet.
+
+**Politeness is shared and non-negotiable**: both lanes go through
+`LS.HTTP.Client`, so the per-IP rate limiter and politeness caches apply
+identically. Browser work is capped at 3 concurrent per node.
+
 ## User-Facing Application
 
 ### Auth & Accounts

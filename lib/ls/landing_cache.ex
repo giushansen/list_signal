@@ -82,7 +82,7 @@ defmodule LS.LandingCache do
   end
 
   defp fetch_all do
-    insert_last_min = fetch_count("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 MINUTE")
+    insert_last_min = fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE")
     %{
       store_count: fetch_count("SELECT count() FROM domains_current WHERE http_tech LIKE '%Shopify%'"),
       total_domains: fetch_count("SELECT count() FROM domains_current"),
@@ -91,7 +91,7 @@ defmodule LS.LandingCache do
       scan_rate: insert_last_min,
       ch_insert_rate: insert_last_min,
       ctl_rate_per_sec: fetch_ctl_rate(),
-      stores_last_hour: fetch_count("SELECT count() FROM enrichments WHERE enriched_at >= now() - INTERVAL 1 HOUR"),
+      stores_last_hour: fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR"),
       recent_stores: fetch_recent_stores(),
       top_stores: fetch_top_stores(),
       refreshed_at: DateTime.utc_now()
