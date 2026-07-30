@@ -574,7 +574,13 @@ defmodule LS.Clickhouse do
   @doc "POST a prepared INSERT (`sql`) with a TabSeparated `body`. Used by the enrichment writer."
   @spec insert_raw(String.t(), String.t()) :: :ok | {:error, term()}
   def insert_raw(sql, body) do
-    url = "#{@ch_url}?database=#{@ch_db}&query=#{URI.encode(sql)}"
+    # A trailing newline after "FORMAT TabSeparated" in the query param makes
+    # ClickHouse treat the remainder as inline data and mis-frame the first
+    # body row ("expected '\t' before ..."). Heredoc-built SQL always carries
+    # that newline — the platforms flush failed on every attempt for a day
+    # while byte-identical data inserted fine from single-line SQL. Trim here
+    # so no caller can trip on it again.
+    url = "#{@ch_url}?database=#{@ch_db}&query=#{URI.encode(String.trim_trailing(sql))}"
 
     case Req.post(url, body: body <> "\n", receive_timeout: 30_000) do
       {:ok, %{status: 200}} -> :ok
