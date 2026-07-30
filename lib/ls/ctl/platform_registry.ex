@@ -78,12 +78,26 @@ defmodule LS.CTL.PlatformRegistry do
   """
   @spec known?(String.t()) :: boolean()
   def known?(domain) when is_binary(domain) do
-    :ets.member(@table, domain)
+    suffix_known?(domain)
   rescue
     ArgumentError -> false
   end
 
   def known?(_), do: false
+
+  # Walk the domain's parent suffixes: "shop.foo.pages.dev" checks itself,
+  # then "foo.pages.dev", then "pages.dev". Each step is an O(1) ETS hash
+  # lookup, so the cost is O(labels) — versus the old SharedHostingFilter
+  # `Enum.any?(list, ends_with?)`, an O(list) scan per certificate at ~4K
+  # certs/min. Label-boundary matching also fixes a real bug: plain
+  # ends_with? made "mypages.dev" match the "pages.dev" platform.
+  defp suffix_known?(domain) do
+    :ets.member(@table, domain) or
+      case String.split(domain, ".", parts: 2) do
+        [_label, rest] when rest != "" -> suffix_known?(rest)
+        _ -> false
+      end
+  end
 
   @doc """
   Record that the CT poller's heuristic flagged `domain` as a platform.
@@ -117,6 +131,15 @@ defmodule LS.CTL.PlatformRegistry do
   def init(_opts) do
     :ets.new(@table, [:set, :public, :named_table, read_concurrency: true])
     :ets.new(@pending, [:set, :public, :named_table, write_concurrency: true])
+
+    # The registry is the ONE platform lookup. The static curated list
+    # (signatures/shared_hosting_platforms.txt, still owned by
+    # SharedHostingFilter) is absorbed into the same ETS set here, so the
+    # poller makes a single known?/1 call instead of two differently-shaped
+    # checks — and static entries never reach ClickHouse, keeping the
+    # `platforms` table = seed + velocity-learned rows only.
+    static = LS.CTL.SharedHostingFilter.list_platforms()
+    Enum.each(static, &:ets.insert(@table, {&1, true}))
 
     loaded = load_known()
 

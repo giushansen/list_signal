@@ -31,13 +31,25 @@ defmodule LS.Enrichment.Agent do
   require Logger
 
   alias LS.Enrichment.{Shopify, Jobs, SEO, About, Browser}
-  alias LS.HTTP.{Client, PageExtractor}
+  alias LS.HTTP.{Client, IPRateLimiter, PageExtractor}
 
   # A browser page costs ~5-15s and a lot of RAM; three at a time is what a
-  # 16-core node sustains without the render queue thrashing.
+  # 16-core node sustains without the render queue thrashing. This caps
+  # RENDERS (the sidecar's own semaphore queues the excess), not the batch.
   @browser_concurrency 3
+  # Concurrent enrichments per node. 88% of eligible businesses were plainly
+  # HTTP-crawlable in discovery and never touch the browser, so the batch can
+  # run far wider than the render cap — per-target-IP politeness is enforced
+  # by IPRateLimiter regardless of how many enrichments run at once.
+  @enrich_concurrency 12
   @page_timeout 10_000
   @idle_wait_ms 30_000
+  # Between page visits on the SAME site: a human does not open /contact,
+  # /pricing and /careers in the same 50ms. The per-IP limiter already spaces
+  # requests 1s apart; the jitter varies the rhythm so it does not look like a
+  # metronome.
+  @page_jitter_base_ms 400
+  @page_jitter_rand_ms 1200
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -57,20 +69,25 @@ defmodule LS.Enrichment.Agent do
     ip = item[:ip] || resolve(domain)
     pages = PageExtractor.pages_to_visit(item[:http_pages])
 
-    # The homepage is ALWAYS browser-rendered when a sidecar is available.
-    # LCP, CLS and TTFB exist only inside a real browser — plain HTTP cannot
-    # measure them at any cost — and the SEO score is meant to reflect the
-    # rendered DOM, not the raw server response. Previously the browser was
-    # used only as a *fallback* when HTTP failed, so for every business whose
-    # HTTP fetch succeeded (i.e. essentially all of them) camoufox never ran:
-    # 6,411 enriched rows carried render_engine="http" and zero perf metrics.
+    # Homepage routing (2026-07-30): the browser is reserved for businesses
+    # that NEED it — WAF-blocked or 401/403/429 at discovery (~12% of the
+    # eligible set). The other 88% proved plainly crawlable in pipeline 1, so
+    # they are fetched by HTTP first and only fall back to camoufox when that
+    # fetch fails. Renders are the scarce resource (3 per node); HTTP is not.
+    # Cost of the trade: HTTP-enriched rows carry an ESTIMATED perf_lcp_ms
+    # derived from the measured fetch time and no CLS — render_engine says
+    # which kind every row is.
     #
     # Secondary pages stay on HTTP. They are read for text (contacts, prices,
     # jobs), never measured, so rendering them would multiply browser cost by
-    # ~4 for no data. One render per business keeps us inside the 3-concurrent
-    # per-node budget that protects our IPs.
-    home = fetch_home(domain, ip)
-    visited = Enum.map(pages, fn {kind, path} -> {kind, fetch_page(domain, ip, path)} end)
+    # ~4 for no data.
+    home = fetch_home(domain, ip, item)
+
+    visited =
+      Enum.map(pages, fn {kind, path} ->
+        Process.sleep(@page_jitter_base_ms + :rand.uniform(@page_jitter_rand_ms))
+        {kind, fetch_page(domain, ip, path)}
+      end)
 
     careers_html = html_of(visited, :career)
 
@@ -114,15 +131,29 @@ defmodule LS.Enrichment.Agent do
 
   # ── page fetching ──────────────────────────────────────────────────────────
 
-  # The homepage: browser first, HTTP as the fallback — the opposite order to
-  # every other page. Only the browser yields perf metrics, so trying HTTP
-  # first and stopping on success is what silently zeroed the perf columns.
-  #
-  # If the sidecar is down or the render fails we still fall back to HTTP, so a
-  # business is never lost — it just arrives with SEO but no perf, which
-  # `render_engine` records honestly.
-  defp fetch_home(domain, ip) do
+  # Blocked at discovery = plain HTTP already failed there; going browser-first
+  # for these is the whole reason camoufox exists.
+  defp needs_browser?(item),
+    do: item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403, 429]
+
+  defp fetch_home(domain, ip, item) do
+    if needs_browser?(item) do
+      render_home(domain, ip)
+    else
+      case fetch_page(domain, ip, "/") do
+        %{source: "http"} = page -> estimate_perf(page)
+        _failed -> render_home(domain, ip)
+      end
+    end
+  end
+
+  # One render, behind the SAME per-IP limiter as every HTTP fetch on this
+  # node — the browser is not a side-channel around politeness. If the slot
+  # stays contended (or the render fails) we fall back to HTTP, which waits
+  # politely on its own.
+  defp render_home(domain, ip) do
     with true <- Browser.available?(),
+         :ok <- polite_render_slot(ip),
          {:ok, %{html: html, perf: perf}} when is_binary(html) <- Browser.render(domain, "/") do
       %{html: html, perf: perf, source: "camoufox"}
     else
@@ -130,14 +161,35 @@ defmodule LS.Enrichment.Agent do
     end
   end
 
+  defp polite_render_slot(nil), do: :ok
+  defp polite_render_slot(ip), do: polite_render_slot(ip, 3)
+  defp polite_render_slot(_ip, 0), do: :contended
+
+  defp polite_render_slot(ip, retries) do
+    case IPRateLimiter.check_and_update(ip, 1000) do
+      :ok -> :ok
+      {:wait, ms} -> Process.sleep(ms) && polite_render_slot(ip, retries - 1)
+    end
+  end
+
+  # LCP and CLS exist only inside a browser. For HTTP-enriched rows we derive
+  # an ESTIMATE of LCP from the measured full-page fetch time (headers + HTML
+  # body): rendering adds roughly 60% on top for a typical page. It is
+  # deliberately coarse; render_engine="http" marks every row it applies to,
+  # and CLS stays NULL rather than pretending we watched a layout settle.
+  defp estimate_perf(%{elapsed_ms: ms} = page) when is_integer(ms) and ms > 0,
+    do: %{page | perf: %{lcp_ms: round(ms * 1.6), cls: nil, ttfb_ms: nil}}
+
+  defp estimate_perf(page), do: page
+
   # Secondary pages are read for text only, never measured — so they are always
   # plain HTTP. No browser fallback: these pages are optional extras, and
   # spending a scarce browser slot on one would starve a homepage render.
   defp fetch_page(domain, ip, path) do
     case Client.fetch(domain, ip,
            path: path, timeout: @page_timeout, politeness_retries: 3) do
-      {:ok, %{status: s, body: body}} when s in 200..399 and byte_size(body) > 500 ->
-        %{html: body, perf: %{}, source: "http"}
+      {:ok, %{status: s, body: body} = resp} when s in 200..399 and byte_size(body) > 500 ->
+        %{html: body, perf: %{}, source: "http", elapsed_ms: resp[:elapsed_ms]}
 
       _ ->
         %{html: nil, perf: %{}, source: "failed"}
@@ -282,7 +334,7 @@ defmodule LS.Enrichment.Agent do
           results =
             items
             |> Task.async_stream(&enrich/1,
-              max_concurrency: @browser_concurrency, timeout: 120_000, on_timeout: :kill_task)
+              max_concurrency: @enrich_concurrency, timeout: 120_000, on_timeout: :kill_task)
             |> Enum.flat_map(fn
               {:ok, r} -> [r]
               _ -> []
@@ -332,7 +384,7 @@ defmodule LS.Enrichment.Agent do
   end
 
   defp safe_dequeue(queue) do
-    GenServer.call(queue, {:dequeue_lane, :enrichment, @browser_concurrency * 2}, 15_000)
+    GenServer.call(queue, {:dequeue_lane, :enrichment, @enrich_concurrency * 2}, 15_000)
   catch
     :exit, _ -> :empty
   end

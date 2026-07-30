@@ -111,6 +111,7 @@ pages per domain.
 
 | Data | Source | Why buyers pay |
 |---|---|---|
+| `perf_lcp_ms` on `render_engine="http"` rows | measured fetch time × 1.6 | ESTIMATE — real LCP/CLS only exist where camoufox rendered (blocked sites + HTTP-failures) |
 | `product_count`, `price_avg`, `new_products_30d` | Shopify `/products.json` | store size + price tier + is it actually growing |
 | `last_product_at` | same | best dead-store signal there is |
 | `job_count` + departments | Greenhouse/Lever/Ashby JSON | the best public proxy for growth and funding |

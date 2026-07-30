@@ -22,7 +22,7 @@ defmodule LS.CTL.Poller do
   use GenServer
   require Logger
 
-  alias LS.CTL.{DomainParser, SharedHostingFilter}
+  alias LS.CTL.DomainParser
   alias LS.Cache
   alias LS.CTL.PlatformRegistry
 
@@ -413,12 +413,11 @@ defmodule LS.CTL.Poller do
         {:ok, cert_data} ->
           domain = cert_data.ctl_domain
 
-          # Step 1: Manual filter (fastest - known platforms), then the persistent
-          # registry — a platform we have already identified is skipped on sight,
-          # without re-running the velocity heuristic. Before the registry this
-          # knowledge lived only in the evicting in-memory cache, so the fleet
-          # re-learned "Shopify is a platform" every day.
-          if SharedHostingFilter.shared_platform?(domain) or PlatformRegistry.known?(domain) do
+          # Step 1: ONE platform check. The registry's ETS holds the static
+          # curated list (absorbed at boot), the seeds, the persisted table and
+          # every velocity-learned platform — an O(labels) suffix walk instead
+          # of the old O(list) SharedHostingFilter scan per certificate.
+          if PlatformRegistry.known?(domain) do
             %{acc | processed: acc.processed + 1, filtered: acc.filtered + 1}
           else
             # Step 2: Track in smart cache (updates cert_count, subdomain_count)
