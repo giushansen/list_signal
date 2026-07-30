@@ -13,37 +13,65 @@ defmodule LSWeb.DashboardLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: Process.send_after(self(), :refresh, @refresh_interval)
+    # Mount assigns only what is LOCAL and fast (master processes + one CH
+    # query). Everything that talks to other nodes is gathered by an async
+    # task (see :refresh): the per-node GenServer.calls carry 2-5s timeouts
+    # each, and doing them inline kept this LiveView process busy for
+    # seconds per cycle — clicks sat in the mailbox and the tabs felt dead.
+    if connected?(socket), do: send(self(), :refresh)
+
     {:ok,
      assign(socket,
        role: System.get_env("LS_ROLE", "standalone"),
        master_stats: collect_master_stats(),
-       worker_stats: collect_worker_stats(),
-       worker_health: collect_worker_health(),
-       worker_caches: collect_worker_caches(),
-       all_errors: collect_all_errors(),
+       worker_stats: [],
+       worker_health: [],
+       worker_caches: [],
+       all_errors: [],
        tab: "discovery",
-       enrichment_stats: collect_enrichment_stats(),
+       enrichment_stats: %{queue: nil, compactor: nil, agents: [], output: %{}},
        table_counts: collect_table_counts(),
-       node_resources: collect_node_resources(),
+       node_resources: [],
        peek: nil, peek_data: nil, show_errors: false
      )}
   end
 
   @impl true
   def handle_info(:refresh, socket) do
+    parent = self()
+    show_errors = socket.assigns.show_errors
+
+    # The gather runs OFF the LiveView process so events stay instant. The
+    # next cycle is scheduled from :refresh_result, never here — a slow
+    # gather therefore stretches the interval instead of piling up.
+    Task.start(fn ->
+      stats =
+        try do
+          [
+            master_stats: collect_master_stats(),
+            worker_stats: collect_worker_stats(),
+            worker_health: collect_worker_health(),
+            worker_caches: collect_worker_caches(),
+            enrichment_stats: collect_enrichment_stats(),
+            table_counts: collect_table_counts(),
+            node_resources: collect_node_resources()
+          ] ++ if(show_errors, do: [all_errors: collect_all_errors()], else: [])
+        rescue
+          _ -> []
+        catch
+          :exit, _ -> []
+        end
+
+      send(parent, {:refresh_result, stats})
+    end)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info({:refresh_result, stats}, socket) do
     Process.send_after(self(), :refresh, @refresh_interval)
-    {:noreply,
-     assign(socket,
-       master_stats: collect_master_stats(),
-       worker_stats: collect_worker_stats(),
-       worker_health: collect_worker_health(),
-       worker_caches: collect_worker_caches(),
-       enrichment_stats: collect_enrichment_stats(),
-       table_counts: collect_table_counts(),
-       node_resources: collect_node_resources(),
-       all_errors: if(socket.assigns.show_errors, do: collect_all_errors(), else: socket.assigns.all_errors)
-     )}
+    {:noreply, assign(socket, stats)}
   end
 
   @peek_stages %{"dns" => :dns, "http" => :http, "bgp" => :bgp, "rdap" => :rdap, "merged" => :merged}
