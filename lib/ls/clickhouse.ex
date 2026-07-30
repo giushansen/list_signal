@@ -332,6 +332,16 @@ defmodule LS.Clickhouse do
   Digital businesses (Ecommerce, SaaS, Tool, Marketplace, Agency) → stale after `weekly_days`.
   Everything else → stale after `monthly_days`.
   Returns {:ok, [domain, ...]} or {:error, reason}.
+
+  A domain qualifies when it was ever crawled (`http_status`) *or* is known
+  DNS-alive (`dns_a`). The old `http_status IS NOT NULL`-only filter
+  permanently orphaned any domain whose newest row was hollow — the 2026-07
+  h1 resolver incident produced ~45M such rows, hiding its victims from the
+  very scheduler that could heal them.
+
+  `enriched_at ASC` as tie-break makes selection among equal-rank (mostly
+  unranked) domains oldest-first, so recrawl is eventually-complete instead
+  of arbitrary — unranked domains could otherwise starve indefinitely.
   """
   def stale_domains(weekly_days, monthly_days, limit \\ 5000) do
     # Digital business models that get weekly crawling
@@ -344,8 +354,8 @@ defmodule LS.Clickhouse do
       OR
       (business_model NOT IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{monthly_days} DAY)
     )
-    AND http_status IS NOT NULL
-    ORDER BY tranco_rank ASC NULLS LAST
+    AND (http_status IS NOT NULL OR dns_a != '')
+    ORDER BY tranco_rank ASC NULLS LAST, enriched_at ASC
     LIMIT #{limit}
     """
 
