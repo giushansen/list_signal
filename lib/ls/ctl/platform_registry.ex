@@ -119,6 +119,26 @@ defmodule LS.CTL.PlatformRegistry do
     :ets.new(@pending, [:set, :public, :named_table, write_concurrency: true])
 
     loaded = load_known()
+
+    # Cold start: an empty table means the registry has never persisted (fresh
+    # box, or the 2026-07-29 poison-row window where every flush failed). The
+    # seed apexes are permanent facts — write them instead of waiting for the
+    # velocity heuristic to re-learn what we already know. Note the ORDER of
+    # checks in the poller: SharedHostingFilter fires before known?/1, so the
+    # famous platforms rarely reach observe() — this table grows mainly with
+    # NEWLY EMERGING platforms, at a few rows a day, not thousands.
+    loaded =
+      if loaded == 0 do
+        Enum.each(@seed, fn {domain, {_name, _cat}} ->
+          :ets.insert(@table, {domain, true})
+          :ets.insert(@pending, {domain, @min_detections, %{reason: "seed"}})
+        end)
+
+        flush_pending()
+      else
+        loaded
+      end
+
     Logger.info("🏗️  PlatformRegistry: #{loaded} known platforms loaded (skipped on sight)")
     Process.send_after(self(), :flush, @flush_interval_ms)
     {:ok, %{flushed: 0}}
