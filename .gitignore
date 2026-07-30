@@ -71,3 +71,4 @@ rel/*
 # Metabase local secrets
 /metabase/.env.local
 .secrets/
+.claude/worktrees/
