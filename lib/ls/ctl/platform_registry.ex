@@ -172,7 +172,12 @@ defmodule LS.CTL.PlatformRegistry do
             now,
             "auto"
           ]
-          |> Enum.map_join("\t", &to_string/1)
+          # CT logs occasionally emit garbage names with embedded whitespace;
+          # one raw tab/newline breaks the whole TabSeparated batch, and the
+          # retry buffer then re-sends the same poison row every flush.
+          |> Enum.map_join("\t", fn v ->
+            v |> to_string() |> String.replace(["\t", "\n", "\r"], " ")
+          end)
         end)
 
       sql = """
