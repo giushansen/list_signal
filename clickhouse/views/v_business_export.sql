@@ -49,7 +49,10 @@ SELECT
     b.http_language                                 AS language,
 
     -- ── contact ───────────────────────────────────────────────────────────
-    concat_ws('|', b.http_emails, c.emails)         AS all_emails,
+    -- arrayFilter, not concat_ws: concat_ws keeps empty parts, so a business
+    -- with no homepage emails exported as "|hello@x.com" (leading pipe).
+    arrayStringConcat(
+      arrayFilter(x -> x != '', [b.http_emails, c.emails]), '|') AS all_emails,
     c.email_count,
     b.dns_mx != ''                                  AS has_mail,
 
