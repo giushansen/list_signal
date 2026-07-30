@@ -96,10 +96,16 @@ defmodule LS.Cluster.EnrichmentQueue do
 
     added =
       if missing > 0 do
-        case LS.Clickhouse.businesses_needing_enrichment(missing) do
+        # Over-fetch 5x: the SQL LIMIT applies BEFORE the cooldown filter, so
+        # when the tranco-frontier sits in a band of recently-attempted
+        # domains, fetching exactly `missing` returns the same rejected slice
+        # every refill and the queue starves with millions of candidates
+        # below. Five times the ask rides past a full cooled-down band.
+        case LS.Clickhouse.businesses_needing_enrichment(missing * 5) do
           {:ok, rows} ->
             rows
             |> Enum.reject(&recently_attempted?(&1.domain))
+            |> Enum.take(missing)
             |> tap(fn fresh ->
               Enum.each(fresh, fn item ->
                 :ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), item})
