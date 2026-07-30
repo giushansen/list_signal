@@ -59,6 +59,12 @@ defmodule LS.Reputation.Majestic do
         %{state | error: inspect(reason)}
     end
     Process.send_after(self(), :download, @refresh_ms)
+    # Loading streams millions of CSV lines through this heap; the live data
+    # lives in ETS, so everything on the heap afterwards is garbage. Without
+    # this, ~150-300MB of loading residue sat here until the NEXT load —
+    # part of what pushed the master past its memory cap (5 SIGKILLs on
+    # 2026-07-30).
+    :erlang.garbage_collect()
     {:noreply, state}
   end
 
