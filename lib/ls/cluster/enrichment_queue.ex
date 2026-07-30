@@ -23,9 +23,19 @@ defmodule LS.Cluster.EnrichmentQueue do
 
   @table :enrichment_queue
   @inflight :enrichment_inflight
+  @attempted :enrichment_attempted
   @target_depth 5_000
   @refill_interval_ms 300_000
   @batch_timeout_ms 900_000
+  # A domain whose enrichment crashes or exceeds the agent's 120s task timeout
+  # produces NO biz_enrichment row, so the refill query re-selects it forever:
+  # on 2026-07-29 the queue reached a tranco band dense with WAF/dead domains
+  # and spent the whole night re-attempting the same ones (~1,200 dequeued/h,
+  # ~50 written/h). Remembering attempts in memory caps that to one try per
+  # domain per day. Deliberately NOT a "failed" marker row in biz_enrichment —
+  # a newer empty row would supersede a good one at merge time (ReplacingMergeTree),
+  # which is exactly the blanking the pipeline design forbids.
+  @attempt_cooldown_ms 24 * 3_600_000
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -40,6 +50,7 @@ defmodule LS.Cluster.EnrichmentQueue do
   def init(_opts) do
     :ets.new(@table, [:ordered_set, :public, :named_table])
     :ets.new(@inflight, [:set, :public, :named_table])
+    :ets.new(@attempted, [:set, :public, :named_table])
     send(self(), :refill)
     Process.send_after(self(), :check_inflight, 60_000)
     Logger.info("🔬 EnrichmentQueue started (target depth: #{@target_depth})")
@@ -54,7 +65,9 @@ defmodule LS.Cluster.EnrichmentQueue do
 
       items ->
         batch_id = :erlang.unique_integer([:monotonic, :positive])
-        :ets.insert(@inflight, {batch_id, items, System.system_time(:millisecond)})
+        now = System.system_time(:millisecond)
+        :ets.insert(@inflight, {batch_id, items, now})
+        Enum.each(items, &:ets.insert(@attempted, {&1.domain, now}))
         {:reply, {:ok, batch_id, items}, state}
     end
   end
@@ -79,15 +92,20 @@ defmodule LS.Cluster.EnrichmentQueue do
   def handle_info(:refill, state) do
     missing = max(@target_depth - :ets.info(@table, :size), 0)
 
+    prune_attempted()
+
     added =
       if missing > 0 do
         case LS.Clickhouse.businesses_needing_enrichment(missing) do
           {:ok, rows} ->
-            Enum.each(rows, fn item ->
-              :ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), item})
+            rows
+            |> Enum.reject(&recently_attempted?(&1.domain))
+            |> tap(fn fresh ->
+              Enum.each(fresh, fn item ->
+                :ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), item})
+              end)
             end)
-
-            length(rows)
+            |> length()
 
           _ ->
             0
@@ -118,6 +136,18 @@ defmodule LS.Cluster.EnrichmentQueue do
     if requeued > 0, do: Logger.warning("[ENRICH] requeued #{requeued} stranded items")
     Process.send_after(self(), :check_inflight, 60_000)
     {:noreply, state}
+  end
+
+  defp recently_attempted?(domain) do
+    case :ets.lookup(@attempted, domain) do
+      [{_, ts}] -> System.system_time(:millisecond) - ts < @attempt_cooldown_ms
+      [] -> false
+    end
+  end
+
+  defp prune_attempted do
+    cutoff = System.system_time(:millisecond) - @attempt_cooldown_ms
+    :ets.select_delete(@attempted, [{{:_, :"$1"}, [{:<, :"$1", cutoff}], [true]}])
   end
 
   defp take(count) do

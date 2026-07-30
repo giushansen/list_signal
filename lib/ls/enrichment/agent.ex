@@ -288,6 +288,15 @@ defmodule LS.Enrichment.Agent do
               _ -> []
             end)
 
+          # A killed task (>120s: WAF walls, dead hosts) vanishes from results.
+          # Say so — a silent drop looks identical to a healthy small batch,
+          # which is how a whole night of queue churn went unnoticed once.
+          if length(results) < length(items) do
+            Logger.warning(
+              "[ENRICH] #{length(items) - length(results)}/#{length(items)} domains exceeded 120s and were dropped"
+            )
+          end
+
           GenServer.cast({LS.Cluster.EnrichmentQueue, master}, {:complete_enrichment, batch_id, results})
           send(parent, {:batch_done, length(results), System.monotonic_time(:millisecond) - t0})
 
