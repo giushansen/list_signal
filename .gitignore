@@ -72,3 +72,4 @@ rel/*
 /metabase/.env.local
 .secrets/
 .claude/worktrees/
+run_mac_worker.sh
