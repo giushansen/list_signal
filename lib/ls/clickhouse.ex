@@ -380,7 +380,18 @@ defmodule LS.Clickhouse do
   @spec businesses_needing_enrichment(pos_integer()) :: {:ok, [map()]} | {:error, term()}
   def businesses_needing_enrichment(limit) do
     sql = """
-    SELECT b.domain, b.http_pages, b.http_tech, b.last_http_blocked, b.last_http_status
+    SELECT b.domain, b.http_pages, b.http_tech, b.last_http_blocked, b.last_http_status,
+      -- Depth tier from signals we already hold. FULL treatment for businesses
+      -- worth the extra pages: any rank, any email, a mail server plus solid
+      -- classification, or a commerce fingerprint (catalog data pays). The
+      -- rest get the LIGHT pass — homepage + contact only, no browser
+      -- fallback — at roughly a third of the cost. Nothing is excluded;
+      -- the tail is just crawled proportionally to its value.
+      if(b.tranco_rank IS NOT NULL OR b.majestic_rank IS NOT NULL
+         OR b.http_emails != ''
+         OR (b.dns_mx != '' AND b.classification_confidence >= 0.6)
+         OR positionCaseInsensitive(concat(b.http_tech, b.http_apps), 'shopify') > 0,
+         'full', 'light') AS tier
     FROM businesses b
     LEFT JOIN biz_enrichment s ON b.domain = s.domain
     -- WAF-blocked businesses (never a 2xx, so crawlable = 0) are included on
@@ -393,7 +404,14 @@ defmodule LS.Clickhouse do
            OR b.last_http_status IN (401, 403, 429))
       AND b.dns_alive
       AND (s.enriched_at IS NULL OR s.enriched_at < now() - INTERVAL 30 DAY)
-    ORDER BY coalesce(b.tranco_rank, 99999999) ASC
+    -- Value-first ordering, not Tranco-only: only 5.4% of businesses carry a
+    -- Tranco rank (storeradar-shaped SMBs carry none), so pure tranco order
+    -- left 94% of the table in arbitrary order. Majestic (backlinks) is an
+    -- independent second rank, scaled 1M->4.2M; unranked businesses are then
+    -- ordered by commercial signals instead of nothing.
+    ORDER BY
+      least(coalesce(b.tranco_rank, 99999999), coalesce(b.majestic_rank * 4, 99999999)) ASC,
+      (b.http_emails != '') + (b.dns_mx != '') + (b.classification_confidence >= 0.6) DESC
     -- businesses is read WITHOUT FINAL (a FINAL sort-scan of 6.7M rows every
     -- 5 minutes is not worth it), so every compactor pass contributes another
     -- version row per changed domain. Without this, each version became its
@@ -406,9 +424,9 @@ defmodule LS.Clickhouse do
     case query(sql) do
       {:ok, rows} ->
         {:ok,
-         Enum.map(rows, fn [d, pages, tech, blocked, status] ->
+         Enum.map(rows, fn [d, pages, tech, blocked, status, tier] ->
            %{domain: d, http_pages: pages, http_tech: tech,
-             http_blocked: blocked, last_http_status: status}
+             http_blocked: blocked, last_http_status: status, tier: tier}
          end)}
 
       err ->

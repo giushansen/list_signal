@@ -136,6 +136,19 @@ defmodule LS.EnrichmentTest do
     test "nil html is safe" do
       assert {%{job_count: 0}, []} = Jobs.analyze("acme.com", nil)
     end
+
+    # The board APIs themselves are fetched over the network (not exercised
+    # here); what must not silently rot are the endpoint shapes.
+    test "every ATS url builder produces the documented public endpoint" do
+      assert Jobs.greenhouse_url("acme") == "https://boards-api.greenhouse.io/v1/boards/acme/jobs"
+      assert Jobs.lever_url("acme") == "https://api.lever.co/v0/postings/acme?mode=json"
+      assert Jobs.ashby_url("acme") == "https://api.ashbyhq.com/posting-api/job-board/acme"
+      assert Jobs.workable_url("acme") =~ "apply.workable.com/api/v1/widget/accounts/acme"
+      assert Jobs.smartrecruiters_url("Acme1") == "https://api.smartrecruiters.com/v1/companies/Acme1/postings"
+      assert Jobs.recruitee_url("acme") == "https://acme.recruitee.com/api/offers/"
+      assert Jobs.bamboohr_url("acme") == "https://acme.bamboohr.com/careers/list"
+      assert Jobs.breezy_url("acme") == "https://acme.breezy.hr/json"
+    end
   end
 
   describe "Shopify.shopify?/1" do

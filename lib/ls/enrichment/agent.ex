@@ -81,7 +81,18 @@ defmodule LS.Enrichment.Agent do
   @spec enrich(map()) :: map()
   def enrich(%{domain: domain} = item) do
     ip = item[:ip] || resolve(domain)
-    pages = PageExtractor.pages_to_visit(item[:http_pages])
+
+    # LIGHT tier (unranked, no emails, weak classification — computed by the
+    # refill query from columns discovery already filled): homepage + contact
+    # page only, no browser fallback. Roughly a third of the cost of a full
+    # pass; the row records what it is via the ordinary column emptiness, and
+    # the 30-day recrawl upgrades any business whose signals improve.
+    light? = item[:tier] == "light"
+
+    pages =
+      if light?,
+        do: PageExtractor.pages_to_visit(item[:http_pages], [:contact]),
+        else: PageExtractor.pages_to_visit(item[:http_pages])
 
     # Homepage routing (2026-07-30): the browser is reserved for businesses
     # that NEED it — WAF-blocked or 401/403/429 at discovery (~12% of the
@@ -95,7 +106,14 @@ defmodule LS.Enrichment.Agent do
     # Secondary pages stay on HTTP. They are read for text (contacts, prices,
     # jobs), never measured, so rendering them would multiply browser cost by
     # ~4 for no data.
-    home = fetch_home(domain, ip, item)
+    home =
+      if light? do
+        # No camoufox for the tail: a render slot spent here is one a
+        # WAF-blocked or ranked business did not get.
+        fetch_page(domain, ip, "/") |> estimate_perf()
+      else
+        fetch_home(domain, ip, item)
+      end
 
     visited =
       Enum.map(pages, fn {kind, path} ->

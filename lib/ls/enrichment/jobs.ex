@@ -23,12 +23,27 @@ defmodule LS.Enrichment.Jobs do
   @timeout 12_000
 
   # ATS board URL patterns. `{name, url_builder, parser}`; the slug is captured
-  # from any link on the careers page pointing at that ATS.
+  # from any link on the careers page pointing at that ATS. Order matters:
+  # first match wins, so more specific hosts come before generic ones.
+  #
+  # Coverage note (2026-07-31): 81% of job rows were coming from the HTML
+  # scrape because only 3 ATSes were spoken. Every entry here is a PUBLIC,
+  # unauthenticated JSON board endpoint; all fetches ride fetch_url/2, i.e.
+  # the same resolver + per-IP politeness as everything else. Known gaps,
+  # deliberate: Workday (POST-only API — Client speaks GET), Personio (XML),
+  # Teamtailor/iCIMS/JazzHR (no public JSON board).
   @ats [
-    {"greenhouse", ~r{boards\.greenhouse\.io/([a-z0-9_-]+)}i,
+    {"greenhouse", ~r{boards\.greenhouse\.io/(?:embed/job_board\?(?:[^"'\s]*&)?for=)?([a-z0-9_-]+)}i,
      &__MODULE__.greenhouse_url/1, :greenhouse},
     {"lever", ~r{jobs\.lever\.co/([a-z0-9_-]+)}i, &__MODULE__.lever_url/1, :lever},
-    {"ashby", ~r{jobs\.ashbyhq\.com/([a-z0-9_-]+)}i, &__MODULE__.ashby_url/1, :ashby}
+    {"ashby", ~r{jobs\.ashbyhq\.com/([a-z0-9_-]+)}i, &__MODULE__.ashby_url/1, :ashby},
+    {"workable", ~r{apply\.workable\.com/(?:api/[^"'\s]+/)?([a-z0-9-]+)}i,
+     &__MODULE__.workable_url/1, :workable},
+    {"smartrecruiters", ~r{(?:jobs|careers)\.smartrecruiters\.com/([A-Za-z0-9]+)},
+     &__MODULE__.smartrecruiters_url/1, :smartrecruiters},
+    {"recruitee", ~r{//([a-z0-9-]+)\.recruitee\.com}i, &__MODULE__.recruitee_url/1, :recruitee},
+    {"bamboohr", ~r{//([a-z0-9-]+)\.bamboohr\.com}i, &__MODULE__.bamboohr_url/1, :bamboohr},
+    {"breezy", ~r{//([a-z0-9-]+)\.breezy\.hr}i, &__MODULE__.breezy_url/1, :breezy}
   ]
 
   @empty_summary %{job_count: nil, ats_platform: "", job_departments: "", job_locations: ""}
@@ -62,6 +77,16 @@ defmodule LS.Enrichment.Jobs do
   def lever_url(slug), do: "https://api.lever.co/v0/postings/#{slug}?mode=json"
   @doc false
   def ashby_url(slug), do: "https://api.ashbyhq.com/posting-api/job-board/#{slug}"
+  @doc false
+  def workable_url(slug), do: "https://apply.workable.com/api/v1/widget/accounts/#{slug}?details=true"
+  @doc false
+  def smartrecruiters_url(slug), do: "https://api.smartrecruiters.com/v1/companies/#{slug}/postings"
+  @doc false
+  def recruitee_url(slug), do: "https://#{slug}.recruitee.com/api/offers/"
+  @doc false
+  def bamboohr_url(slug), do: "https://#{slug}.bamboohr.com/careers/list"
+  @doc false
+  def breezy_url(slug), do: "https://#{slug}.breezy.hr/json"
 
   # ── ATS detection + parsing ────────────────────────────────────────────────
 
@@ -90,6 +115,42 @@ defmodule LS.Enrichment.Jobs do
 
   defp parse(:ashby, %{"jobs" => jobs}) do
     Enum.map(jobs, fn j -> job(j["title"], j["location"], j["jobUrl"], j["publishedAt"]) end)
+  end
+
+  defp parse(:workable, %{"jobs" => jobs}) do
+    Enum.map(jobs, fn j ->
+      loc = [j["city"], j["country"]] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(", ")
+      job(j["title"], loc, j["url"], j["published_on"] || j["created_at"])
+    end)
+  end
+
+  defp parse(:smartrecruiters, %{"content" => posts}) do
+    Enum.map(posts, fn p ->
+      job(p["name"], get_in(p, ["location", "city"]), p["ref"], p["releasedDate"])
+    end)
+  end
+
+  defp parse(:recruitee, %{"offers" => offers}) do
+    Enum.map(offers, fn o ->
+      job(o["title"], o["location"], o["careers_url"], o["published_at"])
+    end)
+  end
+
+  defp parse(:bamboohr, %{"result" => list}) when is_list(list) do
+    Enum.map(list, fn j ->
+      loc =
+        [get_in(j, ["location", "city"]), get_in(j, ["location", "state"])]
+        |> Enum.reject(&(&1 in [nil, ""]))
+        |> Enum.join(", ")
+
+      job(j["jobOpeningName"], loc, j["jobOpeningShareUrl"], nil)
+    end)
+  end
+
+  defp parse(:breezy, positions) when is_list(positions) do
+    Enum.map(positions, fn p ->
+      job(p["name"], get_in(p, ["location", "name"]), p["url"], p["published_date"])
+    end)
   end
 
   defp parse(_, _), do: []

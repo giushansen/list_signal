@@ -51,8 +51,15 @@ defmodule LS.Cluster.EnrichmentWriter do
       ~w(domain collection_id title handle products_count updated_at seen_at),
       Enum.flat_map(results, & &1[:collections] || []))
 
-    insert("biz_enrichment", summary_columns(),
-      results |> Enum.map(& &1[:summary]) |> Enum.reject(&(&1 in [nil, %{}])))
+    summaries = results |> Enum.map(& &1[:summary]) |> Enum.reject(&(&1 in [nil, %{}]))
+
+    insert("biz_enrichment", summary_columns(), summaries)
+
+    # Same rows, second destination: biz_enrichment_log is the append-only
+    # history (migration 004). biz_enrichment keeps only the LATEST row per
+    # domain (ReplacingMergeTree), which made depth trends — product_count,
+    # job_count, prices over time — unanswerable at the business level.
+    insert("biz_enrichment_log", summary_columns(), summaries)
 
     :ok
   end
