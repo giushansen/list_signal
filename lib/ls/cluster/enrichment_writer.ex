@@ -91,15 +91,29 @@ defmodule LS.Cluster.EnrichmentWriter do
 
   # ClickHouse TabSeparated: NULLs are \N, and tabs/newlines must be escaped or
   # they silently shift every following column.
+  # Every *_count / *_id column in the biz_* schema is unsigned. Third-party
+  # JSON is not: a Shopify store reporting products_count = -2 failed the
+  # TabSeparated parse and dropped the ENTIRE batch (same failure mode as the
+  # negative camoufox timings). A negative count is meaningless anyway, so
+  # clamp at the boundary rather than trusting every upstream payload.
+  @unsigned_suffixes ["_count", "_id", "_ms", "_days"]
+
   defp tsv_value(row, col) do
     case Map.get(row, String.to_existing_atom(col)) do
       nil -> "\\N"
       true -> "1"
       false -> "0"
       v when is_binary(v) -> v |> String.replace("\t", " ") |> String.replace("\n", " ")
+      v when is_number(v) -> to_string(clamp_unsigned(col, v))
       v -> to_string(v)
     end
   rescue
     ArgumentError -> "\\N"
   end
+
+  defp clamp_unsigned(col, v) when v < 0 do
+    if String.ends_with?(col, @unsigned_suffixes), do: 0, else: v
+  end
+
+  defp clamp_unsigned(_col, v), do: v
 end
