@@ -101,10 +101,21 @@ defmodule LS.Cluster.EnrichmentQueue do
         # domains, fetching exactly `missing` returns the same rejected slice
         # every refill and the queue starves with millions of candidates
         # below. Five times the ask rides past a full cooled-down band.
+        # Belt to the SQL's braces: never enqueue a domain already sitting in
+        # the queue or in flight — duplicates burn a full enrichment each.
+        queued =
+          MapSet.new(
+            Enum.map(:ets.tab2list(@table), fn {_, item} -> item.domain end) ++
+              Enum.flat_map(:ets.tab2list(@inflight), fn {_, items, _} ->
+                Enum.map(items, & &1.domain)
+              end)
+          )
+
         case LS.Clickhouse.businesses_needing_enrichment(missing * 5) do
           {:ok, rows} ->
             rows
-            |> Enum.reject(&recently_attempted?(&1.domain))
+            |> Enum.reject(&(recently_attempted?(&1.domain) or MapSet.member?(queued, &1.domain)))
+            |> Enum.uniq_by(& &1.domain)
             |> Enum.take(missing)
             |> tap(fn fresh ->
               Enum.each(fresh, fn item ->

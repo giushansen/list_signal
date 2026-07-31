@@ -394,6 +394,12 @@ defmodule LS.Clickhouse do
       AND b.dns_alive
       AND (s.enriched_at IS NULL OR s.enriched_at < now() - INTERVAL 30 DAY)
     ORDER BY coalesce(b.tranco_rank, 99999999) ASC
+    -- businesses is read WITHOUT FINAL (a FINAL sort-scan of 6.7M rows every
+    -- 5 minutes is not worth it), so every compactor pass contributes another
+    -- version row per changed domain. Without this, each version became its
+    -- own queue entry — top domains appeared up to 9x and ~80% of enrichment
+    -- capacity was spent re-enriching the same businesses (2026-07-31).
+    LIMIT 1 BY b.domain
     LIMIT #{limit}
     """
 
