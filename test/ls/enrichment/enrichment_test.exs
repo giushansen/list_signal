@@ -151,6 +151,30 @@ defmodule LS.EnrichmentTest do
     end
   end
 
+  # Three separate prod incidents dropped whole insert batches through this
+  # one function: a raw newline (platforms), a negative count, and a
+  # backslash in a Shopify product title. It is the single choke point for
+  # every biz_* write, so it gets tested directly.
+  describe "EnrichmentWriter TSV escaping" do
+    test "escapes TabSeparated control characters without shifting columns" do
+      row = %{domain: "x.com", title: "60s Print 2pc Set\\", product_count: -2, price: 9.99}
+      v = fn col -> LS.Cluster.EnrichmentWriter.tsv_value_public(row, col) end
+
+      # backslash doubled (TabSeparated escape), so the next tab still delimits
+      assert v.("title") == "60s Print 2pc Set\\\\"
+      # negative value in an unsigned column clamped, not passed through
+      assert v.("product_count") == "0"
+      # ordinary values untouched
+      assert v.("price") == "9.99"
+      assert v.("domain") == "x.com"
+    end
+
+    test "tabs and newlines become spaces" do
+      row = %{title: "a\tb\nc"}
+      assert LS.Cluster.EnrichmentWriter.tsv_value_public(row, "title") == "a b c"
+    end
+  end
+
   describe "Shopify.shopify?/1" do
     test "detects from the tech string produced by discovery" do
       assert Shopify.shopify?("Shopify|Klaviyo")

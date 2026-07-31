@@ -98,12 +98,16 @@ defmodule LS.Cluster.EnrichmentWriter do
   # clamp at the boundary rather than trusting every upstream payload.
   @unsigned_suffixes ["_count", "_id", "_ms", "_days"]
 
+  @doc false
+  # Exposed for tests: three prod incidents have come through this function.
+  def tsv_value_public(row, col), do: tsv_value(row, col)
+
   defp tsv_value(row, col) do
     case Map.get(row, String.to_existing_atom(col)) do
       nil -> "\\N"
       true -> "1"
       false -> "0"
-      v when is_binary(v) -> v |> String.replace("\t", " ") |> String.replace("\n", " ")
+      v when is_binary(v) -> escape_tsv(v)
       v when is_number(v) -> to_string(clamp_unsigned(col, v))
       v -> to_string(v)
     end
@@ -116,4 +120,18 @@ defmodule LS.Cluster.EnrichmentWriter do
   end
 
   defp clamp_unsigned(_col, v), do: v
+
+  # BACKSLASH FIRST — it is TabSeparated's escape character, so a product
+  # titled `60s Print 2pc Set\` swallowed the following tab as an escape,
+  # shifted every later column, and dropped the whole batch (2026-07-31,
+  # luckyvintageseattle.com). Escaping it after the tab/newline pass would
+  # re-escape our own replacements, so the order here is load-bearing.
+  # Tabs/newlines become spaces rather than `\t`/`\n` escapes: these are
+  # human-readable product titles and job descriptions, and a literal space
+  # is what a reader wants anyway.
+  defp escape_tsv(v) do
+    v
+    |> String.replace("\\", "\\\\")
+    |> String.replace(["\t", "\n", "\r"], " ")
+  end
 end
