@@ -107,12 +107,18 @@ defmodule LS.Enrichment.Agent do
     # jobs), never measured, so rendering them would multiply browser cost by
     # ~4 for no data.
     home =
-      if light? do
-        # No camoufox for the tail: a render slot spent here is one a
-        # WAF-blocked or ranked business did not get.
-        fetch_page(domain, ip, "/") |> estimate_perf()
-      else
-        fetch_home(domain, ip, item)
+      cond do
+        # A WAF-walled business is browser-or-nothing, whatever its tier:
+        # plain HTTP is precisely what got refused at discovery, so an
+        # HTTP-only attempt is a GUARANTEED failure that still costs a fetch,
+        # a queue slot and a 30-day cooldown. Measured 2026-07-31: ~8K of the
+        # ~10K failures in four hours were 403/429/401 domains the light tier
+        # had steered away from camoufox.
+        needs_browser?(item) -> fetch_home(domain, ip, item)
+        # Light tier, reachable business: no camoufox — a render slot spent
+        # here is one a WAF-blocked or ranked business did not get.
+        light? -> fetch_page(domain, ip, "/") |> estimate_perf()
+        true -> fetch_home(domain, ip, item)
       end
 
     visited =
