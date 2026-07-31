@@ -37,11 +37,25 @@ defmodule LS.Enrichment.Agent do
   # 16-core node sustains without the render queue thrashing. This caps
   # RENDERS (the sidecar's own semaphore queues the excess), not the batch.
   @browser_concurrency 3
-  # Concurrent enrichments per node. 88% of eligible businesses were plainly
-  # HTTP-crawlable in discovery and never touch the browser, so the batch can
-  # run far wider than the render cap — per-target-IP politeness is enforced
-  # by IPRateLimiter regardless of how many enrichments run at once.
-  @enrich_concurrency 12
+  # Concurrent enrichments per node — set per box with LS_ENRICH_CONCURRENCY.
+  # 88% of eligible businesses are plainly HTTP-crawlable and never touch the
+  # browser, so the batch runs wider than the render cap; per-target-IP
+  # politeness is enforced by IPRateLimiter regardless of width. Defaults to
+  # 12; the 16-core NUC takes ~28, the thrashing 2-core VPS boxes go DOWN to
+  # 10 (load 15 on 2 cores costs more in latency than the extra lane returns).
+  defp enrich_concurrency do
+    case Integer.parse(System.get_env("LS_ENRICH_CONCURRENCY", "12")) do
+      {n, _} when n > 0 -> n
+      _ -> 12
+    end
+  end
+
+  # Residential nodes (LS_RESIDENTIAL=true — home IPs) announce themselves to
+  # the queue and get WAF-blocked items first: a residential fingerprint is
+  # what actually gets past Cloudflare-class walls.
+  defp node_class do
+    if System.get_env("LS_RESIDENTIAL") in ["true", "1"], do: :residential, else: :datacenter
+  end
   @page_timeout 10_000
   @idle_wait_ms 30_000
   # Between page visits on the SAME site: a human does not open /contact,
@@ -334,7 +348,7 @@ defmodule LS.Enrichment.Agent do
           results =
             items
             |> Task.async_stream(&enrich/1,
-              max_concurrency: @enrich_concurrency, timeout: 120_000, on_timeout: :kill_task)
+              max_concurrency: enrich_concurrency(), timeout: 120_000, on_timeout: :kill_task)
             |> Enum.flat_map(fn
               {:ok, r} -> [r]
               _ -> []
@@ -384,7 +398,7 @@ defmodule LS.Enrichment.Agent do
   end
 
   defp safe_dequeue(queue) do
-    GenServer.call(queue, {:dequeue_lane, :enrichment, @enrich_concurrency * 2}, 15_000)
+    GenServer.call(queue, {:dequeue_lane, :enrichment, enrich_concurrency() * 2, node_class()}, 15_000)
   catch
     :exit, _ -> :empty
   end

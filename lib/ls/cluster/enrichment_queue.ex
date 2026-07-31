@@ -22,6 +22,14 @@ defmodule LS.Cluster.EnrichmentQueue do
   require Logger
 
   @table :enrichment_queue
+  # Browser-needing items (WAF-blocked / 401 / 403 / 429 at discovery) live in
+  # their own bucket so RESIDENTIAL nodes (home IPs — what actually beats a
+  # WAF) can ask for them first, while datacenter nodes prefer plain-HTTP
+  # items. Neither class is exclusive: datacenter nodes also run camoufox and
+  # take browser work whenever it piles up (or nothing else is queued), and
+  # residential nodes top up with normal items — the affinity just steers each
+  # item to the node class most likely to succeed at it.
+  @table_browser :enrichment_queue_browser
   @inflight :enrichment_inflight
   @attempted :enrichment_attempted
   @target_depth 5_000
@@ -49,6 +57,7 @@ defmodule LS.Cluster.EnrichmentQueue do
   @impl true
   def init(_opts) do
     :ets.new(@table, [:ordered_set, :public, :named_table])
+    :ets.new(@table_browser, [:ordered_set, :public, :named_table])
     :ets.new(@inflight, [:set, :public, :named_table])
     :ets.new(@attempted, [:set, :public, :named_table])
     send(self(), :refill)
@@ -57,9 +66,14 @@ defmodule LS.Cluster.EnrichmentQueue do
     {:ok, %{enqueued: 0, completed: 0, refills: 0}}
   end
 
+  # Old agents (pre residential-affinity) send the 3-tuple: treat as datacenter.
   @impl true
-  def handle_call({:dequeue_lane, :enrichment, count}, _from, state) do
-    case take(count) do
+  def handle_call({:dequeue_lane, :enrichment, count}, from, state),
+    do: handle_call({:dequeue_lane, :enrichment, count, :datacenter}, from, state)
+
+  @impl true
+  def handle_call({:dequeue_lane, :enrichment, count, node_class}, _from, state) do
+    case take_for(node_class, count) do
       [] ->
         {:reply, :empty, state}
 
@@ -76,7 +90,8 @@ defmodule LS.Cluster.EnrichmentQueue do
   def handle_call(:stats, _from, state) do
     {:reply,
      Map.merge(state, %{
-       queue_depth: :ets.info(@table, :size),
+       queue_depth: :ets.info(@table, :size) + :ets.info(@table_browser, :size),
+       browser_depth: :ets.info(@table_browser, :size),
        inflight_batches: :ets.info(@inflight, :size)
      }), state}
   end
@@ -90,7 +105,7 @@ defmodule LS.Cluster.EnrichmentQueue do
 
   @impl true
   def handle_info(:refill, state) do
-    missing = max(@target_depth - :ets.info(@table, :size), 0)
+    missing = max(@target_depth - :ets.info(@table, :size) - :ets.info(@table_browser, :size), 0)
 
     prune_attempted()
 
@@ -105,7 +120,7 @@ defmodule LS.Cluster.EnrichmentQueue do
         # the queue or in flight — duplicates burn a full enrichment each.
         queued =
           MapSet.new(
-            Enum.map(:ets.tab2list(@table), fn {_, item} -> item.domain end) ++
+            Enum.map(:ets.tab2list(@table) ++ :ets.tab2list(@table_browser), fn {_, item} -> item.domain end) ++
               Enum.flat_map(:ets.tab2list(@inflight), fn {_, items, _} ->
                 Enum.map(items, & &1.domain)
               end)
@@ -119,7 +134,7 @@ defmodule LS.Cluster.EnrichmentQueue do
             |> Enum.take(missing)
             |> tap(fn fresh ->
               Enum.each(fresh, fn item ->
-                :ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), item})
+                :ets.insert(bucket_for(item), {:erlang.unique_integer([:monotonic, :positive]), item})
               end)
             end)
             |> length()
@@ -145,7 +160,7 @@ defmodule LS.Cluster.EnrichmentQueue do
       |> Enum.filter(fn {_id, _items, started} -> started < cutoff end)
       |> Enum.map(fn {id, items, _} ->
         :ets.delete(@inflight, id)
-        Enum.each(items, &:ets.insert(@table, {:erlang.unique_integer([:monotonic, :positive]), &1}))
+        Enum.each(items, &:ets.insert(bucket_for(&1), {:erlang.unique_integer([:monotonic, :positive]), &1}))
         length(items)
       end)
       |> Enum.sum()
@@ -167,15 +182,39 @@ defmodule LS.Cluster.EnrichmentQueue do
     :ets.select_delete(@attempted, [{{:_, :"$1"}, [{:<, :"$1", cutoff}], [true]}])
   end
 
-  defp take(count) do
+  # WAF-blocked / auth-walled at discovery = the browser bucket.
+  defp bucket_for(item) do
+    if item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403, 429],
+      do: @table_browser,
+      else: @table
+  end
+
+  # Residential nodes drain the browser bucket first (home IPs beat WAFs),
+  # then top up with normal items. Datacenter nodes do the opposite — but they
+  # DO take browser work: they run camoufox too, and leaving the browser
+  # bucket to residential nodes alone would bottleneck on two machines. The
+  # order alone expresses the preference; nothing is reserved.
+  defp take_for(:residential, count) do
+    browser = take(@table_browser, count)
+    browser ++ take(@table, count - length(browser))
+  end
+
+  defp take_for(_datacenter, count) do
+    normal = take(@table, count)
+    normal ++ take(@table_browser, count - length(normal))
+  end
+
+  defp take(_table, count) when count <= 0, do: []
+
+  defp take(table, count) do
     Enum.reduce_while(1..count, [], fn _, acc ->
-      case :ets.first(@table) do
+      case :ets.first(table) do
         :"$end_of_table" ->
           {:halt, acc}
 
         key ->
-          case :ets.lookup(@table, key) do
-            [{^key, item}] -> :ets.delete(@table, key); {:cont, [item | acc]}
+          case :ets.lookup(table, key) do
+            [{^key, item}] -> :ets.delete(table, key); {:cont, [item | acc]}
             [] -> {:cont, acc}
           end
       end
