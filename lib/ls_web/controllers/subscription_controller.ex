@@ -1,6 +1,7 @@
 defmodule LSWeb.SubscriptionController do
   @moduledoc "Checkout/portal redirects and plan management against Stripe."
   use LSWeb, :controller
+  require Logger
 
   alias LS.Accounts
 
@@ -21,11 +22,27 @@ defmodule LSWeb.SubscriptionController do
          }) do
       redirect(conn, external: session.url)
     else
-      _ ->
-        conn
-        |> put_flash(:error, "Unable to start checkout. Please try again.")
-        |> redirect(to: ~p"/dashboard")
+      # Log WHY. This branch swallowed every cause for weeks: prod was deployed
+      # with placeholder Stripe keys, so create_checkout_session always errored
+      # and every user saw the same useless "please try again".
+      nil ->
+        Logger.error("[Checkout] no price id configured for #{plan}/#{period}")
+        checkout_failed(conn)
+
+      {:error, reason} ->
+        Logger.error("[Checkout] stripe error for #{plan}/#{period}: #{inspect(reason)}")
+        checkout_failed(conn)
+
+      other ->
+        Logger.error("[Checkout] unexpected failure for #{plan}/#{period}: #{inspect(other)}")
+        checkout_failed(conn)
     end
+  end
+
+  defp checkout_failed(conn) do
+    conn
+    |> put_flash(:error, "Unable to start checkout. Please try again.")
+    |> redirect(to: ~p"/dashboard")
   end
 
   def create_billing_portal_session(conn, _params) do
@@ -38,7 +55,9 @@ defmodule LSWeb.SubscriptionController do
          }) do
       redirect(conn, external: session.url)
     else
-      _ ->
+      other ->
+        Logger.error("[BillingPortal] failed: #{inspect(other)}")
+
         conn
         |> put_flash(:error, "Unable to open billing portal. Please try again.")
         |> redirect(to: ~p"/users/settings")

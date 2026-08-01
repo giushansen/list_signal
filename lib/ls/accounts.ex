@@ -4,6 +4,7 @@ defmodule LS.Accounts do
   """
 
   import Ecto.Query, warn: false
+  require Logger
   alias LS.Repo
 
   alias LS.Accounts.{User, UserToken, UserNotifier}
@@ -79,10 +80,40 @@ defmodule LS.Accounts do
 
   """
   def register_user(attrs) do
-    %User{}
-    |> User.email_changeset(attrs)
-    |> Repo.insert()
+    case %User{} |> User.email_changeset(attrs) |> Repo.insert() do
+      {:ok, user} -> {:ok, attach_stripe_customer(user)}
+      error -> error
+    end
   end
+
+  # Every user gets a Stripe customer at signup, free plan included — same as
+  # mailbloc and opsbloc. Creating it lazily at checkout time meant the first
+  # thing a paying customer ever did depended on a second API call succeeding,
+  # and a free user had no billing identity at all until they tried to pay.
+  #
+  # Signup NEVER fails because Stripe is unhappy: an account the user can log
+  # into is worth more than a billing record, and `ensure_stripe_customer/1`
+  # in the subscription controller still backfills on demand.
+  defp attach_stripe_customer(%User{stripe_customer_id: sid} = user)
+       when is_binary(sid) and sid != "",
+       do: user
+
+  defp attach_stripe_customer(%User{} = user) do
+    case stripe_client().create_customer(%{email: user.email, metadata: %{user_id: user.id}}) do
+      {:ok, customer} ->
+        user |> Ecto.Changeset.change(stripe_customer_id: customer.id) |> Repo.update!()
+
+      {:error, reason} ->
+        Logger.warning("[Accounts] Stripe customer creation failed for #{user.id}: #{inspect(reason)}")
+        user
+    end
+  rescue
+    e ->
+      Logger.warning("[Accounts] Stripe customer creation crashed for #{user.id}: #{Exception.message(e)}")
+      user
+  end
+
+  defp stripe_client, do: Application.get_env(:ls, :stripe_client)
 
   ## Settings
 
