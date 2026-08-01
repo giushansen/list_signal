@@ -65,10 +65,13 @@ defmodule LS.ExplorerDepthTest do
 
     test "an un-enriched business degrades to empty, never to zeros" do
       with_ch(fn ->
+        # From `businesses` — that is the explorer's table now. A domain in
+        # domains_current but absent from businesses has no detail page at
+        # all, which is a different case.
         domain =
           one("""
-          SELECT domain FROM domains_current
-          WHERE domain NOT IN (SELECT domain FROM biz_enrichment)
+          SELECT domain FROM businesses FINAL
+          WHERE depth_enriched_at IS NULL
           LIMIT 1
           """)
 
@@ -94,6 +97,66 @@ defmodule LS.ExplorerDepthTest do
           {:ok, detail} = Explorer.get_detail(domain)
           assert length(detail["products"]) <= 100
           assert length(detail["contacts"]) <= 50
+        end
+      end)
+    end
+  end
+
+  describe "depth filters (they queried columns that did not exist)" do
+    # Every one of these referenced a column on domains_current that is not
+    # there — product_count, seo_score, job_count, pricing_points. The UI
+    # offered them, and using one returned an error rather than results.
+    test "each depth filter runs and can match rows" do
+      with_ch(fn ->
+        for {label, filter} <- [
+              {"min_products", %{min_products: "1"}},
+              {"max_products", %{max_products: "10000"}},
+              {"has_pricing", %{has_pricing: "true"}},
+              {"hiring", %{hiring: "true"}},
+              {"min_seo_score", %{min_seo_score: "1"}},
+              {"min_job_count", %{min_job_count: "1"}},
+              {"has_email", %{has_email: "true"}},
+              {"shopify_app", %{shopify_app: "klaviyo"}}
+            ] do
+          assert {:ok, count} = Explorer.count(filter), "#{label} filter errored"
+          assert is_integer(count), "#{label} did not return a count"
+        end
+      end)
+    end
+  end
+
+  describe "sorting" do
+    test "sortable columns actually change the order" do
+      with_ch(fn ->
+        {:ok, desc} = Explorer.list(%{min_products: "1"}, per_page: 5, sort: "product_count", dir: "desc")
+        {:ok, asc} = Explorer.list(%{min_products: "1"}, per_page: 5, sort: "product_count", dir: "asc")
+
+        if desc != [] and asc != [] do
+          top_desc = hd(desc)["product_count"]
+          top_asc = hd(asc)["product_count"]
+          assert to_string(top_desc) != to_string(top_asc)
+        end
+      end)
+    end
+
+    test "an unknown or hostile sort column falls back to the default order" do
+      # The sort value reaches ORDER BY, so the allow-list is the only thing
+      # between a query string and SQL injection.
+      with_ch(fn ->
+        {:ok, default} = Explorer.list(%{}, per_page: 3)
+        {:ok, hostile} = Explorer.list(%{}, per_page: 3, sort: "domain; DROP TABLE businesses--", dir: "desc")
+        {:ok, unknown} = Explorer.list(%{}, per_page: 3, sort: "not_a_column", dir: "desc")
+
+        assert Enum.map(default, & &1["domain"]) == Enum.map(hostile, & &1["domain"])
+        assert Enum.map(default, & &1["domain"]) == Enum.map(unknown, & &1["domain"])
+      end)
+    end
+
+    test "every advertised sortable column is accepted" do
+      with_ch(fn ->
+        for column <- Explorer.sortable_columns() do
+          assert {:ok, _rows} = Explorer.list(%{}, per_page: 2, sort: column, dir: "desc"),
+                 "#{column} is offered as sortable but the query failed"
         end
       end)
     end

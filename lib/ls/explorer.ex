@@ -33,18 +33,38 @@ defmodule LS.Explorer do
   @dedupe "LIMIT 1 BY domain"
   @dedupe_slack 100
 
-  @columns_raw ~w(
+  # `as_of AS enriched_at` keeps the alias the templates already use while
+  # reading the column `businesses` actually has (the compactor's "newest
+  # data we hold for this domain"). Depth columns ride along so the results
+  # table can show and sort on what pipeline 2 found.
+  @columns_raw [
+    "domain", "http_title", "http_tech", "http_apps", "business_model", "industry",
+    "estimated_revenue", "estimated_employees", "http_language", "as_of AS enriched_at",
+    "tranco_rank", "majestic_rank", "http_response_time",
+    "product_count", "price_avg", "job_count", "seo_score", "pricing_points",
+    "depth_enriched_at"
+  ]
+
+  # The SELECT carries "as_of AS enriched_at"; the map keys must be the alias.
+  @column_names ~w(
     domain http_title http_tech http_apps business_model industry
     estimated_revenue estimated_employees http_language enriched_at
     tranco_rank majestic_rank http_response_time
+    product_count price_avg job_count seo_score pricing_points
+    depth_enriched_at
   )
 
   defp columns_sql do
     Enum.join(@columns_raw ++ ["inferred_country"], ", ")
   end
 
-  defp column_names, do: @columns_raw ++ ["inferred_country"]
+  defp column_names, do: @column_names ++ ["inferred_country"]
 
+  # NOTE: no is_malware/is_phishing here. `businesses` excludes flagged domains
+  # by construction (the compactor's HAVING drops them), so the columns were
+  # always empty and migration 003 removed them. The card's Reputation section
+  # no longer renders, which is correct: a flagged domain never reaches this
+  # table at all.
   @detail_columns ~w(
     domain http_title http_tech http_apps http_status http_response_time
     http_language http_emails http_content_type http_meta_description
@@ -57,8 +77,8 @@ defmodule LS.Explorer do
     tranco_rank majestic_rank majestic_ref_subnets
     business_model industry classification_confidence
     estimated_revenue estimated_employees revenue_confidence revenue_evidence
-    is_malware is_phishing is_disposable_email
-    enriched_at
+    is_disposable_email
+    as_of last_verified_at crawlable dns_alive last_http_status last_http_blocked
   )
 
   # Business-model and industry options are derived from the live data (distinct_by_count/2),
@@ -85,26 +105,66 @@ defmodule LS.Explorer do
     page = Keyword.get(opts, :page, 1)
     offset = (page - 1) * per_page
     where = build_where(filters)
+    order = order_clause(Keyword.get(opts, :sort), Keyword.get(opts, :dir))
 
     """
     SELECT #{columns_sql()}
-    FROM domains_current
+    FROM businesses FINAL
     WHERE domain IN (
       SELECT domain FROM (
         SELECT domain
-        FROM domains_current
+        FROM businesses FINAL
         #{where}
-        ORDER BY #{@order_by}
+        ORDER BY #{order}
         LIMIT #{offset + per_page + @dedupe_slack}
       )
       #{@dedupe}
       LIMIT #{per_page}
       OFFSET #{offset}
     )
-    ORDER BY #{@order_by}
+    ORDER BY #{order}
     #{@dedupe}
     LIMIT #{per_page}
     """
+  end
+
+  # Columns a user may sort by, and how each behaves when the value is absent.
+  # An allow-list, not free text: the value reaches ORDER BY, so anything else
+  # is an injection point. Unknown or missing => the default ranking.
+  #
+  # NULLS LAST throughout: sorting by "most products" must not open with a
+  # screenful of businesses we have never enriched.
+  @sortable %{
+    "domain" => "domain",
+    "tranco_rank" => "tranco_rank",
+    "product_count" => "product_count",
+    "price_avg" => "price_avg",
+    "job_count" => "job_count",
+    "seo_score" => "seo_score",
+    "new_products_30d" => "new_products_30d",
+    "pricing_points" => "pricing_points",
+    "estimated_revenue" => "estimated_revenue",
+    "depth_enriched_at" => "depth_enriched_at",
+    "last_verified_at" => "last_verified_at"
+  }
+
+  @doc "Columns the UI may offer as sortable headers."
+  def sortable_columns, do: Map.keys(@sortable)
+
+  defp order_clause(nil, _dir), do: @order_by
+  defp order_clause("", _dir), do: @order_by
+
+  defp order_clause(column, dir) do
+    case Map.fetch(@sortable, column) do
+      {:ok, sql_column} ->
+        direction = if dir in ["asc", :asc], do: "ASC", else: "DESC"
+        # domain breaks ties so pagination is stable: without it two pages can
+        # show the same row when many share a value.
+        "#{sql_column} #{direction} NULLS LAST, domain ASC"
+
+      :error ->
+        @order_by
+    end
   end
 
   def list(filters, opts \\ []) do
@@ -115,7 +175,7 @@ defmodule LS.Explorer do
   end
 
   @doc "SQL for the total-row count. Public so performance tests measure the real query."
-  def count_sql(filters), do: "SELECT count() FROM domains_current #{build_where(filters)}"
+  def count_sql(filters), do: "SELECT count() FROM businesses FINAL #{build_where(filters)}"
 
   def count(filters) do
     case Clickhouse.query_raw(count_sql(filters), @query_timeout) do
@@ -128,7 +188,7 @@ defmodule LS.Explorer do
   def get_detail(domain) when is_binary(domain) do
     sql = """
     SELECT #{Enum.join(@detail_columns, ", ")}
-    FROM domains_current
+    FROM businesses FINAL
     WHERE domain = '#{Clickhouse.escape_public(domain)}'
     LIMIT 1
     """
@@ -222,31 +282,22 @@ defmodule LS.Explorer do
 
   def export_rows(filters, limit) do
     where = build_where(filters)
-    depth_select = Enum.map_join(@export_depth_columns, ", ", &"b.#{&1}")
 
-    # Same two-phase shape as list_sql/2 — an export selects 40+ columns, so
-    # scanning them across the whole match set is even worse than for one page.
-    #
-    # The LEFT JOIN onto `businesses` is what puts pipeline-2 depth in the
-    # customer's file. It is a left join on purpose: a business we have not
-    # deep-enriched yet still belongs in the export, with empty depth columns
-    # rather than being silently dropped.
+    # `businesses` already holds both pipelines' columns, so the only join
+    # left is the contact list — the one genuinely 1:many field worth putting
+    # in a CSV, flattened to a pipe-separated cell.
     sql = """
-    SELECT #{Enum.map_join(@detail_columns, ", ", &"d.#{&1}")}, #{depth_select},
-           c.emails AS enriched_emails
-    FROM domains_current d
-    LEFT JOIN (SELECT * FROM businesses FINAL) b ON d.domain = b.domain
+    SELECT #{Enum.map_join(@detail_columns ++ @export_depth_columns, ", ", &"d.#{&1}")},
+           coalesce(c.emails, '') AS enriched_emails
+    FROM businesses AS d FINAL
     LEFT JOIN (
       SELECT domain, arrayStringConcat(groupArray(email), '|') AS emails
       FROM biz_contact FINAL GROUP BY domain
     ) c ON d.domain = c.domain
     WHERE d.domain IN (
-      SELECT domain FROM (
-        SELECT domain FROM domains_current
-        #{where}
-        ORDER BY #{@order_by}
-        LIMIT #{limit + @dedupe_slack}
-      )
+      SELECT domain FROM businesses FINAL
+      #{where}
+      ORDER BY #{@order_by}
       LIMIT #{limit}
     )
     ORDER BY #{qualified_order_by()}
@@ -274,7 +325,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT DISTINCT #{col_expr} AS #{col_alias}
-    FROM domains_current
+    FROM businesses FINAL
     WHERE #{col_alias} != '' #{prefix_clause}
     ORDER BY #{col_alias} ASC
     LIMIT #{limit}
@@ -292,7 +343,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_tech)) AS tech
-    FROM domains_current
+    FROM businesses FINAL
     WHERE http_tech != ''
     GROUP BY tech
     #{prefix_clause}
@@ -313,7 +364,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_apps)) AS app
-    FROM domains_current
+    FROM businesses FINAL
     WHERE http_apps != '' #{tech_clause}
     GROUP BY app
     #{prefix_clause}
@@ -335,7 +386,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT #{expr} AS v
-    FROM domains_current
+    FROM businesses FINAL
     WHERE #{expr} != ''
     GROUP BY v
     ORDER BY count() DESC
@@ -471,16 +522,19 @@ defmodule LS.Explorer do
     ["domain LIKE '%#{esc(String.downcase(v))}%'"]
   end
 
+  # `businesses` has no enriched_at: the compactor records `as_of` — the
+  # newest crawl of any kind we hold for that domain — which is exactly what
+  # "freshness" means to a customer.
   defp filter_clause({:freshness, "24h"}) do
-    ["enriched_at >= now() - INTERVAL 1 DAY"]
+    ["as_of >= now() - INTERVAL 1 DAY"]
   end
 
   defp filter_clause({:freshness, "7d"}) do
-    ["enriched_at >= now() - INTERVAL 7 DAY"]
+    ["as_of >= now() - INTERVAL 7 DAY"]
   end
 
   defp filter_clause({:freshness, "30d"}) do
-    ["enriched_at >= now() - INTERVAL 30 DAY"]
+    ["as_of >= now() - INTERVAL 30 DAY"]
   end
 
   defp filter_clause(_), do: []
