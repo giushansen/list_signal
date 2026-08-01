@@ -22,6 +22,14 @@ defmodule LSWeb.ExportController do
         {:ok, {columns, rows}} ->
           Accounts.increment_exports(user, length(rows))
 
+          # Evidence, not telemetry: a dispute is decided on whether we can
+          # show the customer received the data they paid for.
+          LS.Audit.record_from_conn(conn, "csv_export", %{
+            user_id: user.id,
+            email: user.email,
+            metadata: %{rows: length(rows), plan: plan, filters: inspect(filters)}
+          })
+
           csv_data = build_csv(columns, rows)
 
           conn

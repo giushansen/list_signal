@@ -73,6 +73,10 @@ defmodule LSWeb.Router do
 
     get "/new-stores", FeedController, :new_stores
 
+    # Purchased CSV download. Public by design: the buyer paid from a cold
+    # email and has no account — the unguessable token IS the credential.
+    get "/d/:token", CsvDownloadController, :show
+
     get "/privacy", LegalController, :privacy
     get "/terms", LegalController, :terms
 

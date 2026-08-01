@@ -53,6 +53,14 @@ defmodule LSWeb.StripeWebhookController do
           {:ok, updated} ->
             Logger.info("[StripeWebhook] #{type}: user #{updated.id} → plan=#{updated.plan}")
 
+            # The billing side of the same evidence trail: when the plan
+            # changed, and on whose authority.
+            LS.Audit.record("stripe_#{type}", %{
+              user_id: updated.id,
+              email: updated.email,
+              metadata: %{plan: updated.plan, subscription_status: updated.subscription_status}
+            })
+
           {:error, changeset} ->
             Logger.error("[StripeWebhook] Failed to update user #{user.id}: #{inspect(changeset.errors)}")
         end

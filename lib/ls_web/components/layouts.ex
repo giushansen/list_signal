@@ -216,7 +216,7 @@ defmodule LSWeb.Layouts do
               © 2026 <span itemprop="name">ListSignal</span>. All rights reserved.
             </p>
             <p class="mt-1 text-white/40">
-              A <span class="text-emerald-400/90 font-medium" itemprop="parentOrganization">ListSignal Pte Ltd</span> company,
+              ListSignal is a <span class="text-emerald-400/90 font-medium" itemprop="parentOrganization">Keybloc Pte Ltd</span> company,
               <span itemprop="address" itemscope itemtype="https://schema.org/PostalAddress">
                 registered in <span itemprop="addressCountry">Singapore</span>
               </span>.
