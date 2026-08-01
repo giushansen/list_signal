@@ -1,0 +1,83 @@
+defmodule LS.Enrichment.RegressionsTest do
+  @moduledoc """
+  One test per production incident. Each name states the failure it prevents,
+  so a future change that reintroduces it fails here with the story attached
+  rather than in prod at 3am.
+
+  The pattern these incidents share: a value arrives from a third party
+  (a Shopify payload, a browser timing, an HTML title) and reaches ClickHouse
+  without being made safe for TabSeparated or for an unsigned column. One bad
+  value fails the parse for the WHOLE batch, so a single hostile product title
+  silently costs an entire store's data.
+  """
+  use ExUnit.Case, async: true
+
+  alias LS.Cluster.EnrichmentWriter
+  alias LS.Enrichment.Agent
+
+  describe "homepage routing (2026-07-31: ~8K guaranteed failures in 4h)" do
+    test "WAF-walled businesses go to the browser even in the light tier" do
+      # The light tier was checked FIRST, so blocked domains in the tail were
+      # sent to plain HTTP — the exact client discovery had already been
+      # refused by. Guaranteed failure, plus a 30-day cooldown before retry.
+      for blocked <- [
+            %{http_blocked: "cloudflare", tier: "light"},
+            %{last_http_status: 403, tier: "light"},
+            %{last_http_status: 429, tier: "light"},
+            %{last_http_status: 401, tier: "light"}
+          ] do
+        assert Agent.home_strategy(blocked) == :browser_first,
+               "a blocked business must reach camoufox regardless of tier: #{inspect(blocked)}"
+      end
+    end
+
+    test "reachable tail businesses stay off the browser" do
+      # The whole point of the light tier: a render slot spent on an unranked
+      # tail site is one a ranked or blocked business did not get.
+      assert Agent.home_strategy(%{tier: "light"}) == :http_only
+      assert Agent.home_strategy(%{tier: "light", last_http_status: 200}) == :http_only
+    end
+
+    test "full-tier reachable businesses try HTTP first, browser as fallback" do
+      assert Agent.home_strategy(%{tier: "full"}) == :http_then_browser
+      assert Agent.home_strategy(%{}) == :http_then_browser
+    end
+  end
+
+  describe "TabSeparated safety (three separate batch-loss incidents)" do
+    test "a backslash in a product title cannot shift the following columns" do
+      # luckyvintageseattle.com: a title ending in `\` swallowed the next tab
+      # as an escape and dropped the whole biz_products batch.
+      assert EnrichmentWriter.tsv_value_public(%{title: "60s Print 2pc Set\\"}, "title") ==
+               "60s Print 2pc Set\\\\"
+
+      assert EnrichmentWriter.tsv_value_public(%{title: "a\\b"}, "title") == "a\\\\b"
+    end
+
+    test "tabs, newlines and carriage returns become spaces" do
+      # A raw newline in a CT-log domain name broke every platforms flush.
+      assert EnrichmentWriter.tsv_value_public(%{title: "a\tb\nc\rd"}, "title") == "a b c d"
+    end
+
+    test "negative values in unsigned columns are clamped, not passed through" do
+      # A Shopify store reported products_count = -2; camoufox reported a
+      # negative TTFB. Both are unsigned columns in ClickHouse.
+      assert EnrichmentWriter.tsv_value_public(%{products_count: -2}, "products_count") == "0"
+      assert EnrichmentWriter.tsv_value_public(%{perf_ttfb_ms: -5}, "perf_ttfb_ms") == "0"
+      assert EnrichmentWriter.tsv_value_public(%{job_count: -1}, "job_count") == "0"
+      # ...but a legitimately signed column keeps its sign.
+      assert EnrichmentWriter.tsv_value_public(%{discount_depth: -0.5}, "discount_depth") == "-0.5"
+    end
+
+    test "nil becomes ClickHouse NULL, not an empty string" do
+      # An empty string in a DateTime column is a parse error; \\N is not.
+      assert EnrichmentWriter.tsv_value_public(%{seen_at: nil}, "seen_at") == "\\N"
+    end
+
+    test "a column absent from the row degrades to NULL rather than raising" do
+      # Rolling deploys mean a mid-flight agent can send rows shaped by the
+      # previous release; one raise here would kill the batch.
+      assert EnrichmentWriter.tsv_value_public(%{}, "definitely_not_a_column_xyz") == "\\N"
+    end
+  end
+end

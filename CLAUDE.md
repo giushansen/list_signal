@@ -20,6 +20,36 @@ instructions — follow them without being asked again.
   Commits end with the `Co-Authored-By` trailer.
 - Run `mix test` (and `mix compile --warnings-as-errors`) before presenting work.
 
+## Tests — every bug and every feature, no exceptions
+
+- **A bug is not fixed until a test would have caught it.** Write the failing
+  test first if you can, but write it either way, in the same change as the
+  fix. Name it after the failure it prevents, not the function it calls:
+  `"WAF-walled businesses go to the browser even in the light tier"`, not
+  `"test home_strategy/1"`. Put the incident (date + what it cost) in the test
+  or describe block, so the next person changing that line learns why it is
+  shaped that way. `test/ls/enrichment/regressions_test.exs` is the model.
+- **A feature is not done until its behaviour is pinned by a test** — at
+  minimum the happy path plus the way it degrades on hostile input.
+- **Make the rule testable rather than testing around it.** If the logic that
+  broke is buried in a function that needs the network, extract the decision
+  as a pure function (`Agent.home_strategy/1`) and test that. Do not reach for
+  mocks to test an unextracted rule.
+- **Third-party data is hostile until proven otherwise.** Every value crossing
+  a boundary — Shopify JSON, browser timings, HTML titles, CT-log names — gets
+  a test for the empty, negative, oversized and control-character cases. Three
+  separate production incidents came from one unescaped value reaching a
+  TabSeparated insert and destroying an entire batch.
+- **Guard the data, not just the code.** `test/ls/data_contract_test.exs` runs
+  against a real ClickHouse and asserts that what the UI offers actually
+  matches rows (it skips when no CH is reachable, so `mix test` stays green on
+  a laptop). When you add a filter, a column or a page that promises a number,
+  add its contract check there. Bugs that unit tests structurally cannot see —
+  a query that compiles but matches nothing, an aggregate that silently
+  returns a string, a view that drops MATERIALIZED columns — belong here.
+- Green tests are not the goal; **a suite that fails when the product is wrong**
+  is. If a test cannot fail, delete it.
+
 ## Crawling — non-negotiable
 
 - **The politeness cache and per-IP rate limiter stay.** They protect our IPs

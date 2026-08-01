@@ -107,18 +107,10 @@ defmodule LS.Enrichment.Agent do
     # jobs), never measured, so rendering them would multiply browser cost by
     # ~4 for no data.
     home =
-      cond do
-        # A WAF-walled business is browser-or-nothing, whatever its tier:
-        # plain HTTP is precisely what got refused at discovery, so an
-        # HTTP-only attempt is a GUARANTEED failure that still costs a fetch,
-        # a queue slot and a 30-day cooldown. Measured 2026-07-31: ~8K of the
-        # ~10K failures in four hours were 403/429/401 domains the light tier
-        # had steered away from camoufox.
-        needs_browser?(item) -> fetch_home(domain, ip, item)
-        # Light tier, reachable business: no camoufox — a render slot spent
-        # here is one a WAF-blocked or ranked business did not get.
-        light? -> fetch_page(domain, ip, "/") |> estimate_perf()
-        true -> fetch_home(domain, ip, item)
+      case home_strategy(item) do
+        :browser_first -> render_home(domain, ip)
+        :http_only -> fetch_page(domain, ip, "/") |> estimate_perf()
+        :http_then_browser -> fetch_home(domain, ip, item)
       end
 
     visited =
@@ -173,6 +165,30 @@ defmodule LS.Enrichment.Agent do
   # for these is the whole reason camoufox exists.
   defp needs_browser?(item),
     do: item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403, 429]
+
+  @doc """
+  How the homepage should be fetched for `item`. Pure — the routing rule alone,
+  with no network — because getting this order wrong is expensive and silent.
+
+    * `:browser_first`     WAF-walled (blocked / 401 / 403 / 429). Plain HTTP is
+      exactly what got refused at discovery, so an HTTP-only attempt is a
+      GUARANTEED failure that still burns a fetch, a queue slot and a 30-day
+      cooldown. This wins over the tier: on 2026-07-31 the light tier was
+      checked first and ~8K of ~10K failures in four hours were blocked
+      domains steered away from camoufox.
+    * `:http_only`         light tier, reachable: no browser fallback — a render
+      slot spent on the tail is one a ranked or blocked business did not get.
+    * `:http_then_browser` full tier, reachable: cheap path first, camoufox
+      only if it fails.
+  """
+  @spec home_strategy(map()) :: :browser_first | :http_only | :http_then_browser
+  def home_strategy(item) do
+    cond do
+      needs_browser?(item) -> :browser_first
+      item[:tier] == "light" -> :http_only
+      true -> :http_then_browser
+    end
+  end
 
   defp fetch_home(domain, ip, item) do
     if needs_browser?(item) do
