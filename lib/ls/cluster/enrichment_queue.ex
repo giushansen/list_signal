@@ -215,19 +215,34 @@ defmodule LS.Cluster.EnrichmentQueue do
       else: @table
   end
 
-  # Residential nodes drain the browser bucket first (home IPs beat WAFs),
-  # then top up with normal items. Datacenter nodes do the opposite — but they
-  # DO take browser work: they run camoufox too, and leaving the browser
-  # bucket to residential nodes alone would bottleneck on two machines. The
-  # order alone expresses the preference; nothing is reserved.
+  @doc """
+  How many of `count` items a node of this class takes from the browser bucket
+  before touching the HTTP bucket. Public because the split is a contract: get
+  it wrong and paid-for camoufox capacity silently idles.
+  """
+  @spec browser_share(:residential | :datacenter, pos_integer()) :: non_neg_integer()
+  def browser_share(:residential, count), do: count
+  def browser_share(_datacenter, count), do: div(count, 3)
+
+  # Residential nodes drain the browser bucket first — home IPs are what beat
+  # WAFs — then top up with normal items.
   defp take_for(:residential, count) do
-    browser = take(@table_browser, count)
+    browser = take(@table_browser, browser_share(:residential, count))
     browser ++ take(@table, count - length(browser))
   end
 
+  # Datacenter nodes take a FIXED SHARE of browser work, not "browser only if
+  # the HTTP bucket happens to be empty". That ordering meant they never took
+  # any: the HTTP bucket is never empty, so nine camoufox-equipped nodes sat
+  # idle while one residential node carried the entire ~900K blocked backlog.
+  # A third of each batch keeps every sidecar fed; residential still gets
+  # first pick of the hardest work because it drains the same bucket first.
   defp take_for(_datacenter, count) do
-    normal = take(@table, count)
-    normal ++ take(@table_browser, count - length(normal))
+    browser = take(@table_browser, browser_share(:datacenter, count))
+    normal = take(@table, count - length(browser))
+    # If either bucket ran dry, backfill from the other so a node never idles.
+    short = count - length(browser) - length(normal)
+    browser ++ normal ++ take(@table_browser, short)
   end
 
   defp take(_table, count) when count <= 0, do: []

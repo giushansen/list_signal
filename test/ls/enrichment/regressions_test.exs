@@ -66,6 +66,22 @@ defmodule LS.Enrichment.RegressionsTest do
     end
   end
 
+  describe "browser work reaches every node (2026-08-01, second half)" do
+    # Reserving queue slots for browser work was not enough: datacenter nodes
+    # were written to take browser items only if the HTTP bucket ran dry, and
+    # it never does. Nine camoufox-equipped nodes idled while one residential
+    # node carried the whole blocked backlog. The dequeue split is therefore
+    # part of the contract, not an implementation detail.
+    test "a datacenter batch reserves a share for browser work" do
+      assert LS.Cluster.EnrichmentQueue.browser_share(:datacenter, 24) > 0,
+             "datacenter nodes must take browser work even when HTTP items are plentiful"
+
+      assert LS.Cluster.EnrichmentQueue.browser_share(:residential, 24) >=
+               LS.Cluster.EnrichmentQueue.browser_share(:datacenter, 24),
+             "residential nodes still get first pick of WAF-walled work"
+    end
+  end
+
   describe "TabSeparated safety (three separate batch-loss incidents)" do
     test "a backslash in a product title cannot shift the following columns" do
       # luckyvintageseattle.com: a title ending in `\` swallowed the next tab
