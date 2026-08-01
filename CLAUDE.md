@@ -47,6 +47,17 @@ instructions — follow them without being asked again.
   add its contract check there. Bugs that unit tests structurally cannot see —
   a query that compiles but matches nothing, an aggregate that silently
   returns a string, a view that drops MATERIALIZED columns — belong here.
+- **Grow the data checks with every edge case you meet.** The contract suite is
+  meant to get denser over time, not to stay as written. Whenever production
+  surprises you — a column that is silently always empty, a queue bucket that
+  reads zero while work waits, a count that arrives as a string, a lane that
+  starves because of how a query sorts — add the assertion that would have
+  shown it, and say in the test what it cost. Treat "we only found this by
+  looking" as a missing check, not as good luck.
+- **Prefer invariants over snapshots.** `every offered filter option matches
+  rows`, `the two enrichment lanes are disjoint`, `no unsigned column ever
+  receives a negative`, `a blocked business never routes to plain HTTP` — these
+  keep holding as the data grows. Assertions on today's numbers do not.
 - Green tests are not the goal; **a suite that fails when the product is wrong**
   is. If a test cannot fail, delete it.
 
