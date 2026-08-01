@@ -586,6 +586,18 @@ defmodule LSWeb.ExplorerLive do
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                   Export CSV<span class="ml-1 text-[11px] font-normal text-white/45 tabular-nums"><%= LS.Accounts.exports_remaining(@current_scope.user) %> left</span>
                 </a>
+                <%!-- Say what the file will and will not contain BEFORE they
+                     spend rows on it. The cap is a real constraint (a
+                     spreadsheet stops being useful long before it stops
+                     opening) and 1:many data cannot be one row per company,
+                     so summaries go in the file and full lists stay here. --%>
+                <p class="w-full mt-2 text-[11px] leading-relaxed text-white/35">
+                  Exports up to <%= if @plan == "pro", do: "5,000", else: "500" %> businesses per file, one row each, with contact addresses and depth summaries
+                  (catalogue size, price range, open roles, SEO). Full product, job and price lists stay here in the app.
+                  <%= if @total > export_cap_for(@plan) do %>
+                    <span class="text-amber-300/70">Your filter matches <%= format_number(@total) %> — narrow it so the file holds the ones you actually want.</span>
+                  <% end %>
+                </p>
               <% else %>
                 <button phx-click="show_upgrade"
                   class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600/40 text-white/60 rounded-lg text-sm font-semibold opacity-60 cursor-pointer transition hover:opacity-80">
@@ -943,6 +955,115 @@ defmodule LSWeb.ExplorerLive do
                     </div>
                   </.detail_section_badge>
 
+                  <%!-- ── Depth (pipeline 2) ─────────────────────────────
+                       Only drawn when the business has actually been
+                       deep-enriched: an empty "Products (0)" section reads
+                       as "this store has no products", which is a lie when
+                       the truth is "we have not looked yet". --%>
+                  <% depth = @detail["depth"] || %{} %>
+
+                  <%= if depth["depth_enriched_at"] do %>
+                    <%= if depth["seo_score"] do %>
+                      <.detail_section_badge icon="⚡" label="SEO & Performance" badge={"#{depth["seo_score"]}/100"}>
+                        <div class="grid grid-cols-2 gap-2.5">
+                          <.detail_card icon="🎯" label="SEO score" value={"#{depth["seo_score"]}/100"} />
+                          <.detail_card icon="📝" label="Words" value={depth["seo_word_count"]} />
+                          <.detail_card icon="🖼️" label="Alt coverage" value={depth["seo_alt_ratio"] && "#{round((depth["seo_alt_ratio"] || 0) * 100)}%"} />
+                          <.detail_card icon="⏱️" label={if depth["render_engine"] == "camoufox", do: "LCP (measured)", else: "LCP (estimated)"} value={depth["perf_lcp_ms"] && "#{depth["perf_lcp_ms"]}ms"} />
+                        </div>
+                        <%= if depth["seo_issues"] && depth["seo_issues"] != "" do %>
+                          <div class="mt-2 flex flex-wrap gap-1.5">
+                            <%= for issue <- String.split(depth["seo_issues"], "|", trim: true) do %>
+                              <span class="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300"><%= issue %></span>
+                            <% end %>
+                          </div>
+                        <% end %>
+                      </.detail_section_badge>
+                    <% end %>
+
+                    <%= if (@detail["contacts"] || []) != [] do %>
+                      <.detail_section_badge icon="✉️" label="Contacts" badge={"#{length(@detail["contacts"])}"}>
+                        <div class="space-y-1">
+                          <%= for c <- @detail["contacts"] do %>
+                            <div class="flex items-center justify-between text-[12px]">
+                              <a href={"mailto:#{c["email"]}"} class="text-blue-400 hover:underline truncate"><%= c["email"] %></a>
+                              <span class="text-white/30 text-[11px] flex-shrink-0 ml-2"><%= c["source_page"] %></span>
+                            </div>
+                          <% end %>
+                        </div>
+                      </.detail_section_badge>
+                    <% end %>
+
+                    <%= if (@detail["pricing"] || []) != [] do %>
+                      <.detail_section_badge icon="💵" label="Observed prices" badge={"#{length(@detail["pricing"])}"}>
+                        <div class="flex flex-wrap gap-1.5">
+                          <%= for p <- @detail["pricing"] do %>
+                            <span class="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300"><%= p["currency"] %> <%= p["price"] %></span>
+                          <% end %>
+                        </div>
+                        <p class="mt-2 text-[11px] text-white/30">Every amount printed on the pricing page — indicative, not verified plan tiers.</p>
+                      </.detail_section_badge>
+                    <% end %>
+
+                    <%= if (@detail["jobs"] || []) != [] do %>
+                      <.detail_section_badge icon="💼" label="Open roles" badge={"#{depth["job_count"] || length(@detail["jobs"])}"}>
+                        <%= if depth["ats_platform"] && depth["ats_platform"] != "" do %>
+                          <p class="mb-2 text-[11px] text-white/40">via <%= depth["ats_platform"] %></p>
+                        <% end %>
+                        <div class="space-y-1 max-h-[220px] overflow-y-auto">
+                          <%= for j <- @detail["jobs"] do %>
+                            <div class="text-[12px]">
+                              <a href={j["url"]} target="_blank" rel="noopener noreferrer" class="text-white/80 hover:text-blue-300 hover:underline"><%= j["title"] %></a>
+                              <%= if j["location"] && j["location"] != "" do %>
+                                <span class="text-white/30"> · <%= j["location"] %></span>
+                              <% end %>
+                            </div>
+                          <% end %>
+                        </div>
+                      </.detail_section_badge>
+                    <% end %>
+
+                    <%= if (@detail["products"] || []) != [] do %>
+                      <.detail_section_badge icon="🛍️" label="Catalogue" badge={"#{depth["product_count"] || length(@detail["products"])}"}>
+                        <div class="grid grid-cols-2 gap-2.5 mb-2">
+                          <.detail_card icon="💲" label="Avg price" value={depth["price_avg"]} />
+                          <.detail_card icon="🆕" label="New in 30d" value={depth["new_products_30d"]} />
+                          <.detail_card icon="🏷️" label="Vendors" value={depth["vendor_count"]} />
+                          <.detail_card icon="📉" label="Out of stock" value={depth["oos_ratio"] && "#{round((depth["oos_ratio"] || 0) * 100)}%"} />
+                        </div>
+                        <div class="space-y-1 max-h-[220px] overflow-y-auto">
+                          <%= for pr <- @detail["products"] do %>
+                            <div class="flex items-center justify-between text-[12px]">
+                              <span class="text-white/70 truncate"><%= pr["title"] %></span>
+                              <span class="text-white/40 flex-shrink-0 ml-2"><%= pr["price"] %></span>
+                            </div>
+                          <% end %>
+                        </div>
+                      </.detail_section_badge>
+                    <% end %>
+
+                    <%= if (@detail["collections"] || []) != [] do %>
+                      <.detail_section_badge icon="🗂️" label="Collections" badge={"#{length(@detail["collections"])}"}>
+                        <div class="flex flex-wrap gap-1.5">
+                          <%= for c <- @detail["collections"] do %>
+                            <span class="rounded-md bg-white/[0.06] px-2 py-0.5 text-[11px] text-white/60"><%= c["title"] %> <span class="text-white/30"><%= c["products_count"] %></span></span>
+                          <% end %>
+                        </div>
+                      </.detail_section_badge>
+                    <% end %>
+
+                    <%= if (depth["mission"] || "") != "" or (depth["hq_location"] || "") != "" do %>
+                      <.detail_section_badge icon="🏢" label="Company" badge={nil}>
+                        <%= if (depth["hq_location"] || "") != "" do %>
+                          <.detail_card icon="📍" label="HQ" value={depth["hq_location"]} />
+                        <% end %>
+                        <%= if (depth["mission"] || "") != "" do %>
+                          <p class="mt-2 text-[12px] text-white/60 leading-relaxed"><%= depth["mission"] %></p>
+                        <% end %>
+                      </.detail_section_badge>
+                    <% end %>
+                  <% end %>
+
                   <%!-- Reputation --%>
                   <%= if any_flag?(@detail) do %>
                     <.detail_section_badge icon="🛡️" label="Reputation" badge={nil}>
@@ -1269,6 +1390,12 @@ defmodule LSWeb.ExplorerLive do
       detail[k] in [true, 1, "1", "true"]
     end)
   end
+
+  # Mirrors LSWeb.ExportController.export_cap/1 — the UI must promise exactly
+  # what the controller will deliver, or the file silently disappoints.
+  defp export_cap_for("pro"), do: 5_000
+  defp export_cap_for("starter"), do: 500
+  defp export_cap_for(_), do: 0
 
   defp format_number(n) when is_integer(n) do
     n |> Integer.to_string() |> String.graphemes() |> Enum.reverse() |> Enum.chunk_every(3) |> Enum.join(",") |> String.reverse()

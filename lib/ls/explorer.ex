@@ -134,37 +134,130 @@ defmodule LS.Explorer do
     """
 
     case Clickhouse.query_raw(sql) do
-      {:ok, [row]} -> {:ok, row_to_map(row, @detail_columns)}
-      {:ok, []} -> {:ok, nil}
-      err -> err
+      {:ok, [row]} ->
+        {:ok, row |> row_to_map(@detail_columns) |> Map.merge(depth_detail(domain))}
+
+      {:ok, []} ->
+        {:ok, nil}
+
+      err ->
+        err
     end
+  end
+
+  # Pipeline 2's contribution to the detail card: the 1:1 depth signals plus
+  # the child rows (contacts, prices, jobs, catalogue). Absent for a business
+  # that has not been deep-enriched yet, which is most of them — so every
+  # caller must treat these keys as optional, and the card only draws a
+  # section when its list is non-empty.
+  #
+  # One query per child table rather than a join: these are tiny keyed
+  # lookups, and a five-way FINAL join on the master costs far more than five
+  # point reads (a JOIN measures ~9x a single-table scan here).
+  defp depth_detail(domain) do
+    d = Clickhouse.escape_public(domain)
+
+    %{
+      "depth" => depth_summary(d),
+      "contacts" => child_rows("SELECT email, source_page, seen_at FROM biz_contact FINAL WHERE domain = '#{d}' ORDER BY email LIMIT 50", ~w(email source_page seen_at)),
+      "pricing" => child_rows("SELECT price, currency, seen_at FROM biz_pricing FINAL WHERE domain = '#{d}' ORDER BY price LIMIT 50", ~w(price currency seen_at)),
+      "jobs" => child_rows("SELECT title, location, url, posted_at FROM biz_career FINAL WHERE domain = '#{d}' ORDER BY title LIMIT 100", ~w(title location url posted_at)),
+      "products" => child_rows("SELECT title, price, vendor, product_type, available FROM biz_products FINAL WHERE domain = '#{d}' ORDER BY price DESC LIMIT 100", ~w(title price vendor product_type available)),
+      "collections" => child_rows("SELECT title, products_count FROM biz_collections FINAL WHERE domain = '#{d}' ORDER BY products_count DESC LIMIT 50", ~w(title products_count))
+    }
+  end
+
+  @depth_columns ~w(
+    render_engine depth_enriched_at
+    product_count price_min price_avg price_max new_products_30d oos_ratio
+    discount_depth vendor_count catalog_age_days product_types
+    job_count ats_platform job_departments job_locations
+    seo_score seo_issues seo_word_count seo_alt_ratio
+    perf_lcp_ms perf_cls perf_ttfb_ms
+    about_text mission hq_location positions_overview
+    pricing_points news_count last_funding_usd
+  )
+
+  defp depth_summary(escaped_domain) do
+    sql = """
+    SELECT #{Enum.join(@depth_columns, ", ")}
+    FROM businesses FINAL
+    WHERE domain = '#{escaped_domain}'
+    LIMIT 1
+    """
+
+    case Clickhouse.query_raw(sql) do
+      {:ok, [row]} -> row_to_map(row, @depth_columns)
+      _ -> %{}
+    end
+  end
+
+  defp child_rows(sql, columns) do
+    case Clickhouse.query_raw(sql) do
+      {:ok, rows} when is_list(rows) -> Enum.map(rows, &row_to_map(&1, columns))
+      _ -> []
+    end
+  end
+
+  # Depth columns worth carrying into a CSV. Deliberately not every child row:
+  # a business with 400 products cannot be one CSV row, and exploding it into
+  # 400 rows breaks every "one row per company" assumption a buyer has. The
+  # 1:many data is therefore SUMMARISED here (counts, ranges, top values) and
+  # the full lists stay in the app and the API.
+  @export_depth_columns ~w(
+    product_count price_min price_avg price_max new_products_30d vendor_count
+    job_count ats_platform job_departments
+    seo_score perf_lcp_ms
+    hq_location mission
+    pricing_points depth_enriched_at
+  )
+
+  # `businesses` carries tranco_rank too, so an unqualified ORDER BY is
+  # ambiguous once the join is in play.
+  defp qualified_order_by do
+    @order_by
+    |> String.replace("tranco_rank", "d.tranco_rank")
+    |> String.replace(~r/(?<![\w.])domain\b/, "d.domain")
   end
 
   def export_rows(filters, limit) do
     where = build_where(filters)
+    depth_select = Enum.map_join(@export_depth_columns, ", ", &"b.#{&1}")
 
     # Same two-phase shape as list_sql/2 — an export selects 40+ columns, so
     # scanning them across the whole match set is even worse than for one page.
+    #
+    # The LEFT JOIN onto `businesses` is what puts pipeline-2 depth in the
+    # customer's file. It is a left join on purpose: a business we have not
+    # deep-enriched yet still belongs in the export, with empty depth columns
+    # rather than being silently dropped.
     sql = """
-    SELECT #{Enum.join(@detail_columns, ", ")}
-    FROM domains_current
-    WHERE domain IN (
+    SELECT #{Enum.map_join(@detail_columns, ", ", &"d.#{&1}")}, #{depth_select},
+           c.emails AS enriched_emails
+    FROM domains_current d
+    LEFT JOIN (SELECT * FROM businesses FINAL) b ON d.domain = b.domain
+    LEFT JOIN (
+      SELECT domain, arrayStringConcat(groupArray(email), '|') AS emails
+      FROM biz_contact FINAL GROUP BY domain
+    ) c ON d.domain = c.domain
+    WHERE d.domain IN (
       SELECT domain FROM (
         SELECT domain FROM domains_current
         #{where}
         ORDER BY #{@order_by}
         LIMIT #{limit + @dedupe_slack}
       )
-      #{@dedupe}
       LIMIT #{limit}
     )
-    ORDER BY #{@order_by}
-    #{@dedupe}
+    ORDER BY #{qualified_order_by()}
     LIMIT #{limit}
+    SETTINGS join_use_nulls = 1
     """
 
+    columns = @detail_columns ++ @export_depth_columns ++ ["enriched_emails"]
+
     case Clickhouse.query_raw(sql, @export_timeout) do
-      {:ok, rows} -> {:ok, {@detail_columns, rows}}
+      {:ok, rows} -> {:ok, {columns, rows}}
       err -> err
     end
   end
