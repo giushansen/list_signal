@@ -259,15 +259,19 @@ defmodule LSWeb.Layouts do
   def app(assigns) do
     ~H"""
     <div>
-      <div :if={Phoenix.Flash.get(@flash, :info)} class="fixed top-4 right-4 z-50">
-        <div class="bg-emerald-600/90 text-white px-4 py-2 rounded shadow text-sm max-w-sm"
+      <%!-- phx-hook="AutoClearFlash" is what makes these disappear on their
+           own. This layout used to hand-roll the markup without it, so every
+           flash sat there until the user clicked it. The id is required: a
+           hook without one is silently ignored by LiveView. --%>
+      <div :if={Phoenix.Flash.get(@flash, :info)} id="flash-info" phx-hook="AutoClearFlash" class="fixed top-4 right-4 z-50">
+        <div class="bg-emerald-600/90 text-white px-4 py-2 rounded shadow text-sm max-w-sm cursor-pointer"
           phx-click={Phoenix.LiveView.JS.push("lv:clear-flash", value: %{key: "info"})}
           role="alert">
           <%= Phoenix.Flash.get(@flash, :info) %>
         </div>
       </div>
-      <div :if={Phoenix.Flash.get(@flash, :error)} class="fixed top-4 right-4 z-50">
-        <div class="bg-red-600/90 text-white px-4 py-2 rounded shadow text-sm max-w-sm"
+      <div :if={Phoenix.Flash.get(@flash, :error)} id="flash-error" phx-hook="AutoClearFlash" class="fixed top-4 right-4 z-50">
+        <div class="bg-red-600/90 text-white px-4 py-2 rounded shadow text-sm max-w-sm cursor-pointer"
           phx-click={Phoenix.LiveView.JS.push("lv:clear-flash", value: %{key: "error"})}
           role="alert">
           <%= Phoenix.Flash.get(@flash, :error) %>

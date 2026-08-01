@@ -82,14 +82,16 @@ defmodule LS.AccountsPlanTest do
       assert Accounts.export_limit(user) == 0
     end
 
-    test "returns 500 for starter users", %{user: user} do
+    test "returns 5,000/month for starter users", %{user: user} do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
-      assert Accounts.export_limit(user) == 500
+      assert Accounts.export_limit(user) == 5_000
     end
 
-    test "returns 5000 for pro users", %{user: user} do
+    # Raised from 5,000 on 2026-08-01: a rep works 300-500 contacts a day, so
+    # the old quota ran out mid-campaign and sent Pro users to a competitor.
+    test "returns 50,000/month for pro users", %{user: user} do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_123"})
-      assert Accounts.export_limit(user) == 5_000
+      assert Accounts.export_limit(user) == 50_000
     end
   end
 

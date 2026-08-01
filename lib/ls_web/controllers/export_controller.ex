@@ -49,8 +49,13 @@ defmodule LSWeb.ExportController do
     end
   end
 
-  defp export_cap("pro"), do: 5_000
-  defp export_cap("starter"), do: 500
+  # Rows in ONE file, distinct from the monthly quota in Accounts.export_limit/1.
+  # A single CSV past ~25k rows stops being a working list and starts being a
+  # database dump: slow to open, impossible to review, and far easier to
+  # resell. Users who need more take several files, which is also what makes
+  # the monthly quota meaningful.
+  defp export_cap("pro"), do: 25_000
+  defp export_cap("starter"), do: 2_500
   defp export_cap(_), do: 0
 
   defp build_csv(columns, rows) do

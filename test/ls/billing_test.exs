@@ -92,8 +92,8 @@ defmodule LS.BillingTest do
       pro = %User{plan: "pro", stripe_subscription_id: "sub_2", exports_used_this_month: 0}
 
       assert Accounts.export_limit(free) == 0
-      assert Accounts.export_limit(starter) == 500
-      assert Accounts.export_limit(pro) == 5_000
+      assert Accounts.export_limit(starter) == 5_000
+      assert Accounts.export_limit(pro) == 50_000
 
       refute Accounts.can_export?(free)
       assert Accounts.can_export?(starter)
@@ -114,7 +114,7 @@ defmodule LS.BillingTest do
     end
 
     test "a paying user who burned their monthly quota cannot export" do
-      spent = %User{plan: "starter", stripe_subscription_id: "sub_3", exports_used_this_month: 500}
+      spent = %User{plan: "starter", stripe_subscription_id: "sub_3", exports_used_this_month: 5_000}
       assert Accounts.exports_remaining(spent) == 0
       refute Accounts.can_export?(spent)
     end

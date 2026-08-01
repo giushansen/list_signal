@@ -336,10 +336,15 @@ defmodule LS.Accounts do
     end
   end
 
+  # Monthly export quota. Raised 2026-08-01: 5,000/month is under two weeks of
+  # a single outreach sequence (a rep works 300-500 contacts/day), so Pro users
+  # hit the wall mid-campaign and had nowhere to go but a competitor. The cost
+  # to us is a ClickHouse scan, not per-row licensing, so the old numbers were
+  # protecting nothing.
   def export_limit(%User{} = user) do
     case User.effective_plan(user) do
-      "pro" -> 5_000
-      "starter" -> 500
+      "pro" -> 50_000
+      "starter" -> 5_000
       _ -> 0
     end
   end

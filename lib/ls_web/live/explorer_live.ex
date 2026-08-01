@@ -29,6 +29,8 @@ defmodule LSWeb.ExplorerLive do
         query_error: nil,
         expanded: nil,
         detail: nil,
+        sort: nil,
+        sort_dir: "desc",
         show_upgrade: false,
         query_ms: nil,
         open_dropdown: nil,
@@ -88,6 +90,25 @@ defmodule LSWeb.ExplorerLive do
     socket =
       socket
       |> assign(filters: filters, page: 1, loading: true, expanded: nil, detail: nil)
+      |> load_data()
+
+    {:noreply, socket}
+  end
+
+  # Clicking a sorted column flips direction; a new column starts at DESC,
+  # because "most products" is what a user means the first time. A third click
+  # clears back to the default ranking.
+  def handle_event("sort", %{"column" => column}, socket) do
+    {sort, dir} =
+      cond do
+        socket.assigns.sort != column -> {column, "desc"}
+        socket.assigns.sort_dir == "desc" -> {column, "asc"}
+        true -> {nil, "desc"}
+      end
+
+    socket =
+      socket
+      |> assign(sort: sort, sort_dir: dir, page: 1, loading: true, expanded: nil, detail: nil)
       |> load_data()
 
     {:noreply, socket}
@@ -266,7 +287,12 @@ defmodule LSWeb.ExplorerLive do
         # Run the page query and the total-count query concurrently.
         list_task =
           Task.async(fn ->
-            Explorer.list(filter_kw, per_page: socket.assigns.per_page, page: socket.assigns.page)
+            Explorer.list(filter_kw,
+              per_page: socket.assigns.per_page,
+              page: socket.assigns.page,
+              sort: socket.assigns.sort,
+              dir: socket.assigns.sort_dir
+            )
           end)
 
         count_task = Task.async(fn -> Explorer.count(filter_kw) end)
@@ -592,7 +618,7 @@ defmodule LSWeb.ExplorerLive do
                      opening) and 1:many data cannot be one row per company,
                      so summaries go in the file and full lists stay here. --%>
                 <p class="w-full mt-2 text-[11px] leading-relaxed text-white/35">
-                  Exports up to <%= if @plan == "pro", do: "5,000", else: "500" %> businesses per file, one row each, with contact addresses and depth summaries
+                  Exports up to <%= if @plan == "pro", do: "25,000", else: "2,500" %> businesses per file, one row each, with contact addresses and depth summaries
                   (catalogue size, price range, open roles, SEO). Full product, job and price lists stay here in the app.
                   <%= if @total > export_cap_for(@plan) do %>
                     <span class="text-amber-300/70">Your filter matches <%= format_number(@total) %> — narrow it so the file holds the ones you actually want.</span>
@@ -627,6 +653,16 @@ defmodule LSWeb.ExplorerLive do
                     <col data-col="revenue" style="width:90px" />
                     <col data-col="employees" style="width:80px" />
                     <col data-col="lang" style="width:55px" />
+                    <%!-- Depth columns, ordered by what our buyers actually
+                         qualify on: a Shopify agency sizes a store by catalogue
+                         and price tier, an app vendor by apps, a lead-gen team
+                         by whether there is a reachable address and whether
+                         the company is hiring (the cheapest public growth
+                         signal there is). --%>
+                    <col data-col="products" style="width:70px" />
+                    <col data-col="avgprice" style="width:70px" />
+                    <col data-col="jobs" style="width:55px" />
+                    <col data-col="seo" style="width:55px" />
                     <col data-col="fresh" style="width:65px" />
                     <col data-col="speed" style="width:60px" />
                   </colgroup>
@@ -642,6 +678,10 @@ defmodule LSWeb.ExplorerLive do
                       <.col_header label="Revenue" filter_field={:revenue} filters={@filters} />
                       <.col_header label="Employees" filter_field={:employees} filters={@filters} />
                       <.col_header label="Lang" filter_field={:language} filters={@filters} />
+                      <.sort_header label="Products" column="product_count" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="Avg $" column="price_avg" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="Jobs" column="job_count" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="SEO" column="seo_score" sort={@sort} dir={@sort_dir} />
                       <.col_header label="Fresh" filter_field={:freshness} filters={@filters} />
                       <.col_header label="Speed" filter_field={nil} filters={@filters} />
                     </tr>
@@ -678,6 +718,10 @@ defmodule LSWeb.ExplorerLive do
                         <td class="px-3 py-2.5 truncate text-gray-300"><%= row["estimated_revenue"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["estimated_employees"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["http_language"] %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_num(row["product_count"]) %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_money(row["price_avg"]) %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums"><%= if to_int(row["job_count"]) > 0 do %><span class="text-emerald-400"><%= row["job_count"] %></span><% else %><span class="text-gray-600">—</span><% end %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums"><%= seo_cell(row["seo_score"]) %></td>
                         <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= freshness_label(row["enriched_at"]) %></td>
                         <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= format_response_time(row["http_response_time"]) %></td>
                       </tr>
@@ -1160,6 +1204,29 @@ defmodule LSWeb.ExplorerLive do
 
   # ── Components ──
 
+  attr :label, :string, required: true
+  attr :column, :string, required: true
+  attr :sort, :string, default: nil
+  attr :dir, :string, default: "desc"
+
+  # Click to sort, click again to flip. The arrow is the only affordance the
+  # column has, so it must show BOTH that a column is sortable and which way
+  # it is currently sorted.
+  defp sort_header(assigns) do
+    ~H"""
+    <th class="px-3 py-2 text-right cursor-pointer select-none hover:text-white transition-colors group/sort"
+        phx-click="sort" phx-value-column={@column}
+        title={"Sort by #{@label}"}>
+      <span class={if @sort == @column, do: "text-blue-400", else: "text-gray-400"}>
+        <%= @label %>
+        <span class={if @sort == @column, do: "text-blue-400", else: "text-gray-700 group-hover/sort:text-gray-500"}>
+          <%= if @sort == @column and @dir == "asc", do: "↑", else: "↓" %>
+        </span>
+      </span>
+    </th>
+    """
+  end
+
   defp col_header(assigns) do
     active = if assigns.filter_field, do: filter_active?(assigns.filters, assigns.filter_field), else: false
     summary = if assigns.filter_field, do: col_filter_summary(assigns.filters, assigns.filter_field), else: nil
@@ -1393,9 +1460,73 @@ defmodule LSWeb.ExplorerLive do
 
   # Mirrors LSWeb.ExportController.export_cap/1 — the UI must promise exactly
   # what the controller will deliver, or the file silently disappoints.
-  defp export_cap_for("pro"), do: 5_000
-  defp export_cap_for("starter"), do: 500
+  defp export_cap_for("pro"), do: 25_000
+  defp export_cap_for("starter"), do: 2_500
   defp export_cap_for(_), do: 0
+
+  # Depth cells: an un-enriched business shows an em dash, never a zero.
+  # "0 products" reads as "sells nothing"; "—" reads as "not looked at yet",
+  # which is the truth and the difference a buyer cares about.
+  defp depth_num(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+  defp depth_num(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+
+  defp depth_num(v) do
+    case to_int(v) do
+      0 -> Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+      n -> format_number(n)
+    end
+  end
+
+  defp depth_money(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+  defp depth_money(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+
+  defp depth_money(v) do
+    case to_float(v) do
+      f when f > 0 -> "$" <> :erlang.float_to_binary(f, decimals: 0)
+      _ -> Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+    end
+  end
+
+  defp seo_cell(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+  defp seo_cell(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+
+  defp seo_cell(v) do
+    score = to_int(v)
+
+    colour =
+      cond do
+        score >= 80 -> "text-emerald-400"
+        score >= 50 -> "text-amber-400"
+        true -> "text-red-400"
+      end
+
+    Phoenix.HTML.raw(~s(<span class="#{colour}">#{score}</span>))
+  end
+
+  defp to_int(nil), do: 0
+  defp to_int(n) when is_integer(n), do: n
+  defp to_int(n) when is_float(n), do: trunc(n)
+
+  defp to_int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, _} -> n
+      :error -> 0
+    end
+  end
+
+  defp to_int(_), do: 0
+
+  defp to_float(n) when is_float(n), do: n
+  defp to_float(n) when is_integer(n), do: n * 1.0
+
+  defp to_float(s) when is_binary(s) do
+    case Float.parse(s) do
+      {f, _} -> f
+      :error -> 0.0
+    end
+  end
+
+  defp to_float(_), do: 0.0
 
   defp format_number(n) when is_integer(n) do
     n |> Integer.to_string() |> String.graphemes() |> Enum.reverse() |> Enum.chunk_every(3) |> Enum.join(",") |> String.reverse()
