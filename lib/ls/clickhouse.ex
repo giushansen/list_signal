@@ -368,6 +368,21 @@ defmodule LS.Clickhouse do
   # ── Pipeline 2: enrichment queue + compaction ──
 
   @doc """
+  SQL predicate selecting ONE enrichment lane. Exposed so a test can assert the
+  two lanes stay disjoint: if they ever overlap, the browser lane is back to
+  competing with seven million reachable businesses and starves to zero.
+  """
+  @spec enrichment_lane_filter(keyword()) :: String.t()
+  def enrichment_lane_filter(opts) do
+    if Keyword.get(opts, :browser_only, false) do
+      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403, 429))"
+    else
+      "b.crawlable AND b.last_http_blocked = '' AND " <>
+        "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403, 429))"
+    end
+  end
+
+  @doc """
   Domains due for depth enrichment, newest-value-first by commercial value.
 
   Picks businesses whose `biz_enrichment` is missing or stale, preferring the
@@ -377,8 +392,18 @@ defmodule LS.Clickhouse do
   whether the site previously blocked us (which is what makes it a browser
   job rather than a plain HTTP one).
   """
-  @spec businesses_needing_enrichment(pos_integer()) :: {:ok, [map()]} | {:error, term()}
-  def businesses_needing_enrichment(limit) do
+  @spec businesses_needing_enrichment(pos_integer(), keyword()) :: {:ok, [map()]} | {:error, term()}
+  def businesses_needing_enrichment(limit, opts \\ []) do
+    # The two lanes are selected SEPARATELY and never overlap, because they
+    # compete on incomparable terms. A WAF-walled business has no emails and
+    # weak classification precisely BECAUSE discovery could not read it, so in
+    # a single value-ordered query it sorts below seven million reachable
+    # businesses and is never reached: the browser bucket sat empty while
+    # ~900K blocked businesses waited and every camoufox on the fleet idled.
+    # Giving the browser lane its own budget is what keeps the renders fed.
+
+    lane_filter = enrichment_lane_filter(opts)
+
     sql = """
     SELECT b.domain, b.http_pages, b.http_tech, b.last_http_blocked, b.last_http_status,
       -- Depth tier from signals we already hold. FULL treatment for businesses
@@ -394,14 +419,8 @@ defmodule LS.Clickhouse do
          'full', 'light') AS tier
     FROM businesses b
     LEFT JOIN biz_enrichment s ON b.domain = s.domain
-    -- WAF-blocked businesses (never a 2xx, so crawlable = 0) are included on
-    -- purpose: enrichment renders the homepage with camoufox, which is exactly
-    -- the client that gets past the block. Excluding them meant a business
-    -- could stay "blocked" forever even though the browser could reach it.
-    -- The OR mirrors the compactor's HAVING that admitted them to `businesses`.
-    WHERE (b.crawlable
-           OR b.last_http_blocked != ''
-           OR b.last_http_status IN (401, 403, 429))
+    -- One lane at a time — see browser_only above.
+    WHERE #{lane_filter}
       AND b.dns_alive
       AND (s.enriched_at IS NULL OR s.enriched_at < now() - INTERVAL 30 DAY)
     -- Value-first ordering, not Tranco-only: only 5.4% of businesses carry a

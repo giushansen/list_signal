@@ -33,6 +33,12 @@ defmodule LS.Cluster.EnrichmentQueue do
   @inflight :enrichment_inflight
   @attempted :enrichment_attempted
   @target_depth 5_000
+  # Of that depth, this much is reserved for WAF-walled work. The natural
+  # arrival rate is ~12%, but the BACKLOG is ~900K blocked businesses against
+  # ~30 renders/min of fleet capacity, so the browser lane is deliberately
+  # over-fed until it clears: idle camoufox is paid-for capacity going to
+  # waste, and blocked domains are often the brands worth the most.
+  @browser_target_depth 1_500
   @refill_interval_ms 300_000
   @batch_timeout_ms 900_000
   # A domain whose enrichment crashes or exceeds the agent's 120s task timeout
@@ -105,48 +111,32 @@ defmodule LS.Cluster.EnrichmentQueue do
 
   @impl true
   def handle_info(:refill, state) do
-    missing = max(@target_depth - :ets.info(@table, :size) - :ets.info(@table_browser, :size), 0)
-
     prune_attempted()
 
-    added =
-      if missing > 0 do
-        # Over-fetch 5x: the SQL LIMIT applies BEFORE the cooldown filter, so
-        # when the tranco-frontier sits in a band of recently-attempted
-        # domains, fetching exactly `missing` returns the same rejected slice
-        # every refill and the queue starves with millions of candidates
-        # below. Five times the ask rides past a full cooled-down band.
-        # Belt to the SQL's braces: never enqueue a domain already sitting in
-        # the queue or in flight — duplicates burn a full enrichment each.
-        queued =
-          MapSet.new(
-            Enum.map(:ets.tab2list(@table) ++ :ets.tab2list(@table_browser), fn {_, item} -> item.domain end) ++
-              Enum.flat_map(:ets.tab2list(@inflight), fn {_, items, _} ->
-                Enum.map(items, & &1.domain)
-              end)
-          )
+    # Two budgets, refilled independently. A single query cannot serve both:
+    # blocked businesses have no emails and weak classification BECAUSE they
+    # could not be crawled, so any value ordering buries them under millions
+    # of reachable rows and the browser bucket starves at zero.
+    browser_added =
+      fill_bucket(
+        @table_browser,
+        max(@browser_target_depth - :ets.info(@table_browser, :size), 0),
+        browser_only: true
+      )
 
-        case LS.Clickhouse.businesses_needing_enrichment(missing * 5) do
-          {:ok, rows} ->
-            rows
-            |> Enum.reject(&(recently_attempted?(&1.domain) or MapSet.member?(queued, &1.domain)))
-            |> Enum.uniq_by(& &1.domain)
-            |> Enum.take(missing)
-            |> tap(fn fresh ->
-              Enum.each(fresh, fn item ->
-                :ets.insert(bucket_for(item), {:erlang.unique_integer([:monotonic, :positive]), item})
-              end)
-            end)
-            |> length()
+    normal_added =
+      fill_bucket(
+        @table,
+        max(@target_depth - @browser_target_depth - :ets.info(@table, :size), 0),
+        browser_only: false
+      )
 
-          _ ->
-            0
-        end
-      else
-        0
-      end
+    added = browser_added + normal_added
 
-    if added > 0, do: Logger.info("[ENRICH] refilled #{added} domains")
+    if added > 0 do
+      Logger.info("[ENRICH] refilled #{added} domains (#{browser_added} browser, #{normal_added} http)")
+    end
+
     Process.send_after(self(), :refill, @refill_interval_ms)
     {:noreply, %{state | enqueued: state.enqueued + added, refills: state.refills + 1}}
   end
@@ -168,6 +158,42 @@ defmodule LS.Cluster.EnrichmentQueue do
     if requeued > 0, do: Logger.warning("[ENRICH] requeued #{requeued} stranded items")
     Process.send_after(self(), :check_inflight, 60_000)
     {:noreply, state}
+  end
+
+  defp fill_bucket(_table, 0, _opts), do: 0
+
+  defp fill_bucket(table, missing, opts) do
+
+    # Over-fetch 5x: the SQL LIMIT applies BEFORE the cooldown filter, so when
+    # the frontier sits in a band of recently-attempted domains, fetching
+    # exactly `missing` returns the same rejected slice every refill and the
+    # bucket starves with millions of candidates below it.
+    # Belt to the SQL's braces: never enqueue a domain already queued or in
+    # flight — duplicates burn a full enrichment each.
+    queued =
+      MapSet.new(
+        Enum.map(:ets.tab2list(@table) ++ :ets.tab2list(@table_browser), fn {_, item} -> item.domain end) ++
+          Enum.flat_map(:ets.tab2list(@inflight), fn {_, items, _} ->
+            Enum.map(items, & &1.domain)
+          end)
+      )
+
+    case LS.Clickhouse.businesses_needing_enrichment(missing * 5, opts) do
+      {:ok, rows} ->
+        rows
+        |> Enum.reject(&(recently_attempted?(&1.domain) or MapSet.member?(queued, &1.domain)))
+        |> Enum.uniq_by(& &1.domain)
+        |> Enum.take(missing)
+        |> tap(fn fresh ->
+          Enum.each(fresh, fn item ->
+            :ets.insert(table, {:erlang.unique_integer([:monotonic, :positive]), item})
+          end)
+        end)
+        |> length()
+
+      _ ->
+        0
+    end
   end
 
   defp recently_attempted?(domain) do

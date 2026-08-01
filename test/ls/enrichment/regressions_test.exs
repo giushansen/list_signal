@@ -44,6 +44,28 @@ defmodule LS.Enrichment.RegressionsTest do
     end
   end
 
+  describe "browser lane budget (2026-08-01: paid camoufox capacity sat idle)" do
+    test "the browser lane is selected by its own query, not by value ranking" do
+      # A blocked business has no emails and weak classification BECAUSE
+      # discovery could not read it, so in one value-ordered query it sorts
+      # below ~7M reachable businesses and never reaches the queue: the
+      # browser bucket read 0 while ~900K blocked businesses waited and every
+      # sidecar on the fleet idled at busy=0.
+      #
+      # The two lanes must therefore be disjoint — no domain can satisfy both
+      # filters, or the lanes would compete for the same rows again.
+      browser = LS.Clickhouse.enrichment_lane_filter(browser_only: true)
+      http = LS.Clickhouse.enrichment_lane_filter(browser_only: false)
+
+      assert browser =~ "last_http_blocked != ''"
+      assert browser =~ "401, 403, 429"
+      # the HTTP lane must EXCLUDE everything the browser lane claims
+      assert http =~ "b.crawlable"
+      assert http =~ "last_http_blocked = ''"
+      assert http =~ "NOT IN (401, 403, 429)"
+    end
+  end
+
   describe "TabSeparated safety (three separate batch-loss incidents)" do
     test "a backslash in a product title cannot shift the following columns" do
       # luckyvintageseattle.com: a title ending in `\` swallowed the next tab
