@@ -32,6 +32,7 @@ defmodule LSWeb.ExplorerLive do
         sort: nil,
         sort_dir: "desc",
         active_segment: nil,
+        segment_counts: %{},
         show_upgrade: false,
         query_ms: nil,
         open_dropdown: nil,
@@ -45,6 +46,10 @@ defmodule LSWeb.ExplorerLive do
       :timer.send_interval(5_000, self(), :refresh_rate_stats)
       send(self(), :load_data)
       send(self(), :refresh_rate_stats)
+      # Segment counts load after the first paint: they are a nice-to-have on
+      # a toolbar, and making the page wait on them would trade a fast first
+      # render for a decoration.
+      send(self(), :load_segment_counts)
     end
 
     {:ok, socket}
@@ -63,6 +68,15 @@ defmodule LSWeb.ExplorerLive do
   end
 
   @impl true
+  def handle_info(:load_segment_counts, socket) do
+    counts =
+      segments()
+      |> Enum.map(&{&1.id, &1.filters})
+      |> Explorer.count_many()
+
+    {:noreply, assign(socket, segment_counts: counts)}
+  end
+
   def handle_info(:load_data, socket) do
     {:noreply, load_data(socket)}
   end
@@ -616,7 +630,7 @@ defmodule LSWeb.ExplorerLive do
             <%= for seg <- segments() do %>
               <button phx-click="apply_segment" phx-value-id={seg.id} title={seg.hint}
                 class={"h-7 px-3 rounded-full text-[12px] font-medium transition border " <> if(@active_segment == seg.id, do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300", else: "bg-white/[0.03] border-white/[0.08] text-gray-300 hover:border-white/20 hover:bg-white/[0.06]")}>
-                <%= seg.label %>
+                <%= seg.label %><%= if c = @segment_counts[seg.id] do %><span class="ml-1.5 text-[10px] tabular-nums opacity-60"><%= format_number(c) %></span><% end %>
               </button>
             <% end %>
             <%= if @active_segment do %>

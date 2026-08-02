@@ -205,6 +205,29 @@ defmodule LS.ExplorerDepthTest do
     end
   end
 
+  describe "batched segment counts" do
+    test "count_many agrees with counting each filter set separately" do
+      # The toolbar shows a number on every segment button. If the batched
+      # query disagrees with the real count, the button lies about the list
+      # the user is about to open.
+      with_ch(fn ->
+        segments = Enum.map(LSWeb.ExplorerLive.segments(), &{&1.id, &1.filters})
+        batched = Explorer.count_many(segments)
+
+        for {id, filters} <- segments do
+          {:ok, individual} = Explorer.count(filters)
+
+          assert batched[id] == individual,
+                 "segment #{id}: batched #{batched[id]} but counting alone gives #{individual}"
+        end
+      end)
+    end
+
+    test "an empty list does not produce a broken query" do
+      assert Explorer.count_many([]) == %{}
+    end
+  end
+
   describe "CSV export" do
     test "carries the depth columns a buyer is paying for" do
       with_ch(fn ->

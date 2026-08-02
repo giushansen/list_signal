@@ -185,6 +185,51 @@ defmodule LS.Explorer do
     end
   end
 
+  @doc """
+  Count several filter sets in ONE query.
+
+  The segment bar shows a count on every button, and six round trips to
+  ClickHouse to draw one toolbar is six times the work for the same answer.
+  A single scan with a countIf per segment costs barely more than one count,
+  because the expensive part is reading the rows, not evaluating predicates.
+
+  Takes `[{id, filters}]`, returns `%{id => count}`.
+  """
+  @spec count_many([{String.t() | atom(), map()}]) :: map()
+  def count_many([]), do: %{}
+
+  def count_many(labelled_filters) do
+    selects =
+      Enum.map_join(labelled_filters, ", ", fn {id, filters} ->
+        case build_where(filters) do
+          "" -> "count() AS `#{id}`"
+          "WHERE " <> predicate -> "countIf(#{predicate}) AS `#{id}`"
+        end
+      end)
+
+    case Clickhouse.query_raw("SELECT #{selects} FROM businesses FINAL", @query_timeout) do
+      {:ok, [row]} ->
+        labelled_filters
+        |> Enum.map(fn {id, _} -> id end)
+        |> Enum.zip(Enum.map(row, &to_count/1))
+        |> Map.new()
+
+      _ ->
+        %{}
+    end
+  end
+
+  defp to_count(n) when is_integer(n), do: n
+
+  defp to_count(n) when is_binary(n) do
+    case Integer.parse(n) do
+      {v, _} -> v
+      :error -> 0
+    end
+  end
+
+  defp to_count(_), do: 0
+
   def get_detail(domain) when is_binary(domain) do
     sql = """
     SELECT #{Enum.join(@detail_columns, ", ")}
