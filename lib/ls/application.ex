@@ -80,7 +80,8 @@ defmodule LS.Application do
       LSWeb.Telemetry, LS.Repo,
       {Ecto.Migrator, repos: Application.fetch_env!(:ls, :ecto_repos), skip: skip_migrations?()},
       {Phoenix.PubSub, name: LS.PubSub},
-      LS.Cache
+      LS.Cache,
+      LS.UICache
     ]
   end
 

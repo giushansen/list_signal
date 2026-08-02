@@ -33,6 +33,7 @@ defmodule LSWeb.ExplorerLive do
         sort_dir: "desc",
         active_segment: nil,
         segment_counts: %{},
+        feedback_open: false,
         show_upgrade: false,
         query_ms: nil,
         open_dropdown: nil,
@@ -70,9 +71,11 @@ defmodule LSWeb.ExplorerLive do
   @impl true
   def handle_info(:load_segment_counts, socket) do
     counts =
-      segments()
-      |> Enum.map(&{&1.id, &1.filters})
-      |> Explorer.count_many()
+      LS.UICache.fetch(:segment_counts, 600, fn ->
+        segments()
+        |> Enum.map(&{&1.id, &1.filters})
+        |> Explorer.count_many()
+      end)
 
     {:noreply, assign(socket, segment_counts: counts)}
   end
@@ -175,6 +178,27 @@ defmodule LSWeb.ExplorerLive do
     {:noreply, socket}
   end
 
+  def handle_event("toggle_feedback", _params, socket) do
+    {:noreply, assign(socket, feedback_open: not socket.assigns.feedback_open)}
+  end
+
+  def handle_event("send_feedback", params, socket) do
+    # The domain and the reporter's address are the payload; the text is a
+    # bonus. Both always present, so an empty send is still a usable lead.
+    LS.Feedback.report(
+      socket.assigns.expanded,
+      socket.assigns.current_scope.user.email,
+      params["text"]
+    )
+
+    socket =
+      socket
+      |> assign(feedback_open: false)
+      |> put_flash(:info, "Thanks — your report is on its way.")
+
+    {:noreply, socket}
+  end
+
   def handle_event("page", %{"page" => page}, socket) do
     page = String.to_integer(page)
 
@@ -187,6 +211,7 @@ defmodule LSWeb.ExplorerLive do
   end
 
   def handle_event("expand", %{"domain" => domain}, socket) do
+    socket = assign(socket, feedback_open: false)
     if socket.assigns.expanded == domain do
       {:noreply, assign(socket, expanded: nil, detail: nil)}
     else
@@ -314,25 +339,36 @@ defmodule LSWeb.ExplorerLive do
   defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 
+  # Cached fleet-wide: these DISTINCTs scan 7.7M rows and their answer is the
+  # same for every user. First click pays ClickHouse; the next half hour of
+  # clicks pay an ETS lookup. This is what made opening a filter feel slow.
+  @options_ttl 1_800
+
   defp fetch_techs do
-    case Explorer.distinct_techs("", 800) do
-      {:ok, techs} -> techs
-      _ -> []
-    end
+    LS.UICache.fetch({:dropdown, :tech}, @options_ttl, fn ->
+      case Explorer.distinct_techs("", 800) do
+        {:ok, techs} -> techs
+        _ -> []
+      end
+    end)
   end
 
   defp fetch_apps(opts) do
-    case Explorer.distinct_apps("", 800, opts) do
-      {:ok, apps} -> apps
-      _ -> []
-    end
+    LS.UICache.fetch({:dropdown, :apps, opts}, @options_ttl, fn ->
+      case Explorer.distinct_apps("", 800, opts) do
+        {:ok, apps} -> apps
+        _ -> []
+      end
+    end)
   end
 
   defp fetch_distinct_by_count(column) do
-    case Explorer.distinct_by_count(column, 300) do
-      {:ok, values} -> values
-      _ -> []
-    end
+    LS.UICache.fetch({:dropdown, column}, @options_ttl, fn ->
+      case Explorer.distinct_by_count(column, 300) do
+        {:ok, values} -> values
+        _ -> []
+      end
+    end)
   end
 
   defp load_data(socket) do
@@ -356,7 +392,13 @@ defmodule LSWeb.ExplorerLive do
             )
           end)
 
-        count_task = Task.async(fn -> Explorer.count(filter_kw) end)
+        # Counts are cacheable in a way row pages are not: the number changes
+        # slowly (a few thousand an hour on 7.9M) and nobody paginates by it.
+        # The unfiltered count on first load is the expensive one.
+        count_task =
+          Task.async(fn ->
+            LS.UICache.fetch({:count, filter_kw}, 300, fn -> Explorer.count(filter_kw) end)
+          end)
 
         # A failed query must never masquerade as "0 results" — that reads as
         # "your filter matched nothing" and sends people hunting for a data bug
@@ -657,6 +699,71 @@ defmodule LSWeb.ExplorerLive do
         <div class="py-5 space-y-3">
           <%!-- Segments: one click to a list a buyer would actually pay for.
                Ordered by how often our four buyer types ask for them. --%>
+          <%!-- Line 1: search + category filters + export, in that order.
+               z-50 keeps dropdown triggers above the click-outside backdrop. --%>
+          <div class="flex items-center gap-2 flex-wrap relative z-50">
+            <div class="relative flex-shrink-0 w-full sm:w-auto">
+              <input type="text" name="domain_search" value={@filters.domain_search} form="filter_form" phx-debounce="400" placeholder="Search domain..."
+                class="h-9 w-full sm:w-48 bg-[#141C30] border border-white/[0.08] rounded-lg px-3 pl-8 text-sm text-white placeholder-gray-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition" />
+              <svg class="absolute left-2.5 top-2.5 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+              <%= if @filters.domain_search != "" do %>
+                <button type="button" phx-click="clear_filter" phx-value-field="domain_search" class="absolute right-2 top-2 w-5 h-5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-gray-400 hover:text-white transition">
+                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              <% end %>
+            </div>
+            <%!-- Export lives with the filters because that is what it acts
+                 on: whatever is filtered right now. It is an icon with a
+                 tooltip rather than a labelled block — the row is already
+                 dense, and the arrow-into-tray is the one download glyph
+                 everyone reads without thinking. --%>
+            <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
+            <%= for {field, label, icon, searchable} <- [
+              {"tech", "Tech", "🔧", true},
+              {"country", "Country", "🌍", true},
+              {"business_model", "Business", "🏢", true},
+              {"industry", "Industry", "🏭", true},
+              {"revenue", "Revenue", "💰", true},
+              {"employees", "Employees", "👥", true},
+              {"language", "Language", "🗣️", true},
+              {"freshness", "Freshness", "🕐", true}
+            ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>
+              <.filter_dropdown
+                field={field} label={label} icon={icon} searchable={searchable}
+                filters={@filters}
+                open_dropdown={@open_dropdown}
+                dropdown_query={@dropdown_query}
+                dropdown_options={@dropdown_options}
+              />
+            <% end %>
+
+            <div class="ml-auto flex-shrink-0">
+              <%!-- Label above glyph, as specified: the word carries the
+                   quota so the number is visible without hovering; details
+                   stay in the tooltip. --%>
+              <%= if @plan in ["starter", "pro"] do %>
+                <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
+                  title={"Export this filtered list as CSV — up to #{format_number(export_cap_for(@plan))} rows per file"}
+                  class="inline-flex flex-col items-center justify-center h-12 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition leading-none gap-1"
+                  aria-label="Export CSV">
+                  <span class="text-[10px] font-semibold tracking-wide">Export (<%= format_number(LS.Accounts.exports_remaining(@current_scope.user)) %>)</span>
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
+                  </svg>
+                </a>
+              <% else %>
+                <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
+                  class="inline-flex flex-col items-center justify-center h-12 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition leading-none gap-1"
+                  aria-label="Export CSV — upgrade required">
+                  <span class="text-[10px] font-semibold tracking-wide">Export</span>
+                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
+                  </svg>
+                </button>
+              <% end %>
+            </div>
+          </div>
+
           <%!-- Suggestions, not navigation: one quiet scrollable row so more
                can be added later (agencies, verticals) without eating height. --%>
           <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
@@ -714,90 +821,29 @@ defmodule LSWeb.ExplorerLive do
             </div>
           <% end %>
 
-          <%!-- Row 1: Domain search + active filter tags --%>
-          <div class="flex items-center gap-2 flex-wrap min-h-[36px]">
-            <div class="relative flex-shrink-0">
-              <%!-- w-full on phones so the search is not a thin strip beside
-                   the filter tags; fixed width once there is room. --%>
-              <input type="text" name="domain_search" value={@filters.domain_search} form="filter_form" phx-debounce="400" placeholder="Search domain..."
-                class="h-9 w-full sm:w-52 bg-[#141C30] border border-white/[0.08] rounded-lg px-3 pl-8 text-sm text-white placeholder-gray-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition" />
-              <svg class="absolute left-2.5 top-2.5 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-              <%= if @filters.domain_search != "" do %>
-                <button type="button" phx-click="clear_filter" phx-value-field="domain_search" class="absolute right-2 top-2 w-5 h-5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-gray-400 hover:text-white transition">
-                  <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          <%!-- Active filter tags, clearable --%>
+          <%= if active_filter_tags(@filters) != [] do %>
+            <div class="flex items-center gap-2 flex-wrap">
+              <%= for tag <- active_filter_tags(@filters) do %>
+                <div
+                  phx-click="remove_tag"
+                  phx-value-field={to_string(tag.field)}
+                  phx-value-value={tag.value}
+                  class="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 bg-white/[0.06] border border-white/[0.10] rounded-full text-[12px] text-gray-300 font-medium cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.06] group/tag transition"
+                >
+                  <span class="text-gray-500 text-[10px] uppercase"><%= tag.label %>:</span>
+                  <span><%= tag.value %></span>
+                  <svg class="w-3 h-3 text-gray-500 group-hover/tag:text-red-400 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
+                </div>
+              <% end %>
+              <%= if active_filter_count(@filters) > 1 do %>
+                <button type="button" phx-click="clear_all_filters"
+                  class="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] text-red-400/70 hover:text-red-400 font-medium transition">
+                  Clear all
                 </button>
               <% end %>
             </div>
-
-            <%!-- Active filter tags --%>
-            <%= for tag <- active_filter_tags(@filters) do %>
-              <div
-                phx-click="remove_tag"
-                phx-value-field={to_string(tag.field)}
-                phx-value-value={tag.value}
-                class="inline-flex items-center gap-1.5 h-7 pl-2.5 pr-2 bg-white/[0.06] border border-white/[0.10] rounded-full text-[12px] text-gray-300 font-medium cursor-pointer hover:border-red-500/30 hover:bg-red-500/[0.06] group/tag transition"
-              >
-                <span class="text-gray-500 text-[10px] uppercase"><%= tag.label %>:</span>
-                <span><%= tag.value %></span>
-                <svg class="w-3 h-3 text-gray-500 group-hover/tag:text-red-400 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12" /></svg>
-              </div>
-            <% end %>
-            <%= if active_filter_count(@filters) > 1 do %>
-              <button type="button" phx-click="clear_all_filters"
-                class="inline-flex items-center gap-1 h-7 px-2.5 text-[11px] text-red-400/70 hover:text-red-400 font-medium transition">
-                Clear all
-              </button>
-            <% end %>
-          </div>
-
-          <%!-- Row 2: Filter dropdown selectors (z-50 keeps triggers above the click-outside backdrop) --%>
-          <div class="flex items-center gap-2 flex-wrap relative z-50">
-            <%!-- Export lives with the filters because that is what it acts
-                 on: whatever is filtered right now. It is an icon with a
-                 tooltip rather than a labelled block — the row is already
-                 dense, and the arrow-into-tray is the one download glyph
-                 everyone reads without thinking. --%>
-            <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
-            <%= for {field, label, icon, searchable} <- [
-              {"tech", "Tech", "🔧", true},
-              {"country", "Country", "🌍", true},
-              {"business_model", "Business", "🏢", true},
-              {"industry", "Industry", "🏭", true},
-              {"revenue", "Revenue", "💰", true},
-              {"employees", "Employees", "👥", true},
-              {"language", "Language", "🗣️", true},
-              {"freshness", "Freshness", "🕐", true}
-            ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>
-              <.filter_dropdown
-                field={field} label={label} icon={icon} searchable={searchable}
-                filters={@filters}
-                open_dropdown={@open_dropdown}
-                dropdown_query={@dropdown_query}
-                dropdown_options={@dropdown_options}
-              />
-            <% end %>
-
-            <div class="ml-auto flex-shrink-0">
-              <%= if @plan in ["starter", "pro"] do %>
-                <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
-                  title={"Export this filtered list as CSV — up to #{format_number(export_cap_for(@plan))} rows per file, #{format_number(LS.Accounts.exports_remaining(@current_scope.user))} rows left this month"}
-                  class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition"
-                  aria-label="Export CSV">
-                  <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
-                  </svg>
-                </a>
-              <% else %>
-                <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
-                  class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition"
-                  aria-label="Export CSV — upgrade required">
-                  <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
-                  </svg>
-                </button>
-              <% end %>
-            </div>
-          </div>
+          <% end %>
 
           <%!-- Row 3: Info bar --%>
           <div class="flex items-center justify-between gap-3 flex-wrap">
@@ -957,10 +1003,25 @@ defmodule LSWeb.ExplorerLive do
                         <% end %>
                       </div>
                     </div>
-                    <button phx-click="expand" phx-value-domain={@expanded} class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/[0.06] text-gray-500 hover:text-white transition flex-shrink-0 ml-2">
-                      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-                    </button>
+                    <div class="flex items-center gap-1 flex-shrink-0 ml-2">
+                      <button phx-click="toggle_feedback" title="Report an issue with this business"
+                        class={"flex items-center justify-center w-7 h-7 rounded-lg transition " <> if(@feedback_open, do: "bg-amber-500/15 text-amber-400", else: "hover:bg-white/[0.06] text-gray-500 hover:text-amber-400")}>
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 2H21l-3 6 3 6h-8.5l-1-2H5a2 2 0 00-2 2z" /></svg>
+                      </button>
+                      <button phx-click="expand" phx-value-domain={@expanded} class="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-white/[0.06] text-gray-500 hover:text-white transition">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                      </button>
+                    </div>
                   </div>
+                  <%= if @feedback_open do %>
+                    <form phx-submit="send_feedback" class="mt-3">
+                      <textarea name="text" rows="2" placeholder="What's wrong with this record? (optional — sending with no text still flags it)"
+                        class="w-full bg-[#141C30] border border-white/[0.08] rounded-lg px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-amber-500/50 focus:outline-none resize-none"></textarea>
+                      <div class="flex justify-end mt-1.5">
+                        <button type="submit" class="h-7 px-3 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-black text-[12px] font-semibold transition">Send</button>
+                      </div>
+                    </form>
+                  <% end %>
                 </div>
 
                 <%!-- Body --%>
