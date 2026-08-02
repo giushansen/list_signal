@@ -726,9 +726,11 @@ defmodule LSWeb.ExplorerLive do
           <%!-- Line 1: search + category filters + export, in that order.
                z-50 keeps dropdown triggers above the click-outside backdrop. --%>
           <div class="flex items-center gap-2 flex-wrap relative z-50">
-            <div class="relative flex-shrink-0 w-full sm:w-auto">
+            <%!-- Fixed width on every screen size. w-full on phones made it
+                 swallow the whole line, which read as broken, not adaptive. --%>
+            <div class="relative flex-shrink-0">
               <input type="text" name="domain_search" value={@filters.domain_search} form="filter_form" phx-debounce="400" placeholder="Search domain..."
-                class="h-9 w-full sm:w-48 bg-[#141C30] border border-white/[0.08] rounded-lg px-3 pl-8 text-sm text-white placeholder-gray-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition" />
+                class="h-9 w-40 sm:w-48 bg-[#141C30] border border-white/[0.08] rounded-lg px-3 pl-8 text-sm text-white placeholder-gray-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition" />
               <svg class="absolute left-2.5 top-2.5 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               <%= if @filters.domain_search != "" do %>
                 <button type="button" phx-click="clear_filter" phx-value-field="domain_search" class="absolute right-2 top-2 w-5 h-5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-gray-400 hover:text-white transition">
