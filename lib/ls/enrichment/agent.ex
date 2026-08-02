@@ -164,13 +164,13 @@ defmodule LS.Enrichment.Agent do
   # Blocked at discovery = plain HTTP already failed there; going browser-first
   # for these is the whole reason camoufox exists.
   defp needs_browser?(item),
-    do: item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403, 429]
+    do: item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403]
 
   @doc """
   How the homepage should be fetched for `item`. Pure — the routing rule alone,
   with no network — because getting this order wrong is expensive and silent.
 
-    * `:browser_first`     WAF-walled (blocked / 401 / 403 / 429). Plain HTTP is
+    * `:browser_first`     WAF-walled (blocked / 401 / 403). Plain HTTP is
       exactly what got refused at discovery, so an HTTP-only attempt is a
       GUARANTEED failure that still burns a fetch, a queue slot and a 30-day
       cooldown. This wins over the tier: on 2026-07-31 the light tier was

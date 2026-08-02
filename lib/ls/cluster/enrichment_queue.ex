@@ -210,7 +210,12 @@ defmodule LS.Cluster.EnrichmentQueue do
 
   # WAF-blocked / auth-walled at discovery = the browser bucket.
   defp bucket_for(item) do
-    if item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403, 429],
+    # 429 deliberately absent: a rate limit is not a wall a browser gets past,
+    # it is a request to come back later. Sending those to the render path
+    # made them 83% of all failures (2026-08-02) while consuming the scarcest
+    # resource we have — and hammering a CDN that already said "slow down"
+    # is exactly how source IPs get blacklisted.
+    if item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403],
       do: @table_browser,
       else: @table
   end

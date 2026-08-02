@@ -23,7 +23,6 @@ defmodule LS.Enrichment.RegressionsTest do
       for blocked <- [
             %{http_blocked: "cloudflare", tier: "light"},
             %{last_http_status: 403, tier: "light"},
-            %{last_http_status: 429, tier: "light"},
             %{last_http_status: 401, tier: "light"}
           ] do
         assert Agent.home_strategy(blocked) == :browser_first,
@@ -58,11 +57,12 @@ defmodule LS.Enrichment.RegressionsTest do
       http = LS.Clickhouse.enrichment_lane_filter(browser_only: false)
 
       assert browser =~ "last_http_blocked != ''"
-      assert browser =~ "401, 403, 429"
+      # 429 is deliberately NOT here — see the "429 is not a wall" describe.
+      assert browser =~ "401, 403"
       # the HTTP lane must EXCLUDE everything the browser lane claims
       assert http =~ "b.crawlable"
       assert http =~ "last_http_blocked = ''"
-      assert http =~ "NOT IN (401, 403, 429)"
+      assert http =~ "NOT IN (401, 403)"
     end
   end
 
@@ -79,6 +79,32 @@ defmodule LS.Enrichment.RegressionsTest do
       assert LS.Cluster.EnrichmentQueue.browser_share(:residential, 24) >=
                LS.Cluster.EnrichmentQueue.browser_share(:datacenter, 24),
              "residential nodes still get first pick of WAF-walled work"
+    end
+  end
+
+  describe "429 is not a wall (2026-08-02: 83% of all failures)" do
+    test "a rate-limited business is not sent to the browser" do
+      # 429 means "come back later", not "you need a better fingerprint".
+      # Routing those to camoufox made them 83% of every failure while
+      # consuming the scarcest resource in the fleet — and re-asking a CDN
+      # that already said slow down is how source IPs get blacklisted.
+      assert Agent.home_strategy(%{last_http_status: 429}) == :http_then_browser
+      assert Agent.home_strategy(%{last_http_status: 429, tier: "light"}) == :http_only
+
+      # Real walls still go to the browser.
+      assert Agent.home_strategy(%{last_http_status: 403}) == :browser_first
+      assert Agent.home_strategy(%{last_http_status: 401}) == :browser_first
+      assert Agent.home_strategy(%{http_blocked: "cloudflare"}) == :browser_first
+    end
+
+    test "the browser lane query excludes rate-limited businesses" do
+      browser_lane = LS.Clickhouse.enrichment_lane_filter(browser_only: true)
+
+      refute browser_lane =~ "429",
+             "the browser bucket must not be filled with domains that only need patience"
+
+      assert browser_lane =~ "401"
+      assert browser_lane =~ "403"
     end
   end
 

@@ -375,10 +375,10 @@ defmodule LS.Clickhouse do
   @spec enrichment_lane_filter(keyword()) :: String.t()
   def enrichment_lane_filter(opts) do
     if Keyword.get(opts, :browser_only, false) do
-      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403, 429))"
+      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403))"
     else
       "b.crawlable AND b.last_http_blocked = '' AND " <>
-        "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403, 429))"
+        "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403))"
     end
   end
 
@@ -423,6 +423,10 @@ defmodule LS.Clickhouse do
     WHERE #{lane_filter}
       AND b.dns_alive
       AND (s.enriched_at IS NULL OR s.enriched_at < now() - INTERVAL 30 DAY)
+      -- A domain that rate-limited us is not worth retrying on the ordinary
+      -- cadence: it asked for patience, and re-asking daily is how a source
+      -- IP earns a permanent block. Give it a fortnight.
+      AND (b.last_http_status != 429 OR b.as_of < now() - INTERVAL 14 DAY)
     -- Value-first ordering, not Tranco-only: only 5.4% of businesses carry a
     -- Tranco rank (storeradar-shaped SMBs carry none), so pure tranco order
     -- left 94% of the table in arbitrary order. Majestic (backlinks) is an
