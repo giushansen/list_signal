@@ -39,3 +39,14 @@ body {
 .dark-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(16, 185, 129, 0.4);
 }
+
+
+/* Horizontal suggestion rows scroll without a visible bar: the row is a hint,
+   and a scrollbar under six pills reads like a broken layout. */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

@@ -43,7 +43,7 @@ defmodule LSWeb.ExplorerLive do
 
     if connected?(socket) do
       RateLimiter.init()
-      :timer.send_interval(5_000, self(), :refresh_rate_stats)
+      :timer.send_interval(15_000, self(), :refresh_rate_stats)
       send(self(), :load_data)
       send(self(), :refresh_rate_stats)
       # Segment counts load after the first paint: they are a nice-to-have on
@@ -84,27 +84,37 @@ defmodule LSWeb.ExplorerLive do
   def handle_info(:refresh_rate_stats, socket) do
     user = socket.assigns.current_scope.user
     plan = User.effective_plan(user)
-    {:noreply, assign(socket, rate_stats: RateLimiter.stats(user.id, plan))}
+    stats = RateLimiter.stats(user.id, plan)
+    current = socket.assigns.rate_stats
+
+    # Assign ONLY when the displayed numbers change. `reset_in` ticks down
+    # every second, so assigning the whole map on a timer re-rendered the
+    # toolbar constantly — which is what made scrolling feel like the page
+    # kept snatching itself back.
+    if stats[:used] == current[:used] and stats[:remaining] == current[:remaining] do
+      {:noreply, socket}
+    else
+      {:noreply, assign(socket, rate_stats: stats)}
+    end
   end
 
   @impl true
   def handle_event("filter", params, socket) do
-    filters = %{
-      tech: params["tech"] || "",
-      shopify_app: params["shopify_app"] || "",
-      country: params["country"] || "",
-      business_model: params["business_model"] || "",
-      industry: params["industry"] || "",
-      revenue: params["revenue"] || "",
-      employees: params["employees"] || "",
-      language: params["language"] || "",
-      domain_search: params["domain_search"] || "",
-      freshness: params["freshness"] || ""
-    }
+    # Derived from default_filters/0 rather than a hand-written list: the old
+    # version enumerated ten fields, so every depth input (products, price,
+    # SEO) was silently dropped on change — the boxes accepted a number and
+    # nothing happened. Any field added to defaults now works automatically.
+    filters =
+      default_filters()
+      |> Map.keys()
+      |> Map.new(fn key ->
+        {key, params[Atom.to_string(key)] || Map.get(socket.assigns.filters, key, "")}
+      end)
 
     socket =
       socket
-      |> assign(filters: filters, page: 1, loading: true, expanded: nil, detail: nil)
+      # Touching a filter by hand means the user is no longer on a preset.
+      |> assign(filters: filters, active_segment: nil, page: 1, loading: true, expanded: nil, detail: nil)
       |> load_data()
 
     {:noreply, socket}
@@ -426,6 +436,28 @@ defmodule LSWeb.ExplorerLive do
 
   def segments, do: @segments
 
+  # Which depth controls make sense for what the user has already chosen.
+  # :commerce -> catalogue and price band; :saas -> published pricing;
+  # :any -> nothing narrowed yet, so offer everything; :none -> keep the
+  # toolbar quiet until they have told us something.
+  defp filter_shape(filters) do
+    model = Map.get(filters, :business_model, "")
+    tech = Map.get(filters, :tech, "")
+    depth_in_use? = Enum.any?(~w(has_email hiring has_pricing min_products max_products
+                                 min_price_avg max_price_avg min_seo_score max_seo_score)a,
+                              &(Map.get(filters, &1, "") != ""))
+
+    commerce? = model =~ ~r/shopify|ecommerce/i or tech =~ ~r/shopify|woocommerce|magento|bigcommerce/i
+    saas? = model =~ ~r/saas|tool|marketplace/i
+
+    cond do
+      commerce? -> :commerce
+      saas? -> :saas
+      model != "" or tech != "" or depth_in_use? -> :any
+      true -> :none
+    end
+  end
+
   defp default_filters do
     %{
       tech: "", shopify_app: "", country: "", business_model: "", industry: "",
@@ -625,54 +657,70 @@ defmodule LSWeb.ExplorerLive do
         <div class="py-5 space-y-3">
           <%!-- Segments: one click to a list a buyer would actually pay for.
                Ordered by how often our four buyer types ask for them. --%>
-          <div class="flex items-center gap-2 flex-wrap">
-            <span class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Segments</span>
+          <%!-- Suggestions, not navigation: one quiet scrollable row so more
+               can be added later (agencies, verticals) without eating height. --%>
+          <div class="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+            <span class="text-[10px] uppercase tracking-wider text-gray-600 font-semibold flex-shrink-0">Try</span>
             <%= for seg <- segments() do %>
               <button phx-click="apply_segment" phx-value-id={seg.id} title={seg.hint}
-                class={"h-7 px-3 rounded-full text-[12px] font-medium transition border " <> if(@active_segment == seg.id, do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300", else: "bg-white/[0.03] border-white/[0.08] text-gray-300 hover:border-white/20 hover:bg-white/[0.06]")}>
+                class={"h-6 px-2.5 rounded-full text-[11px] font-medium transition border whitespace-nowrap flex-shrink-0 " <> if(@active_segment == seg.id, do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300", else: "bg-white/[0.02] border-white/[0.06] text-gray-400 hover:text-white hover:border-white/15")}>
                 <%= seg.label %><%= if c = @segment_counts[seg.id] do %><span class="ml-1.5 text-[10px] tabular-nums opacity-60"><%= format_number(c) %></span><% end %>
               </button>
             <% end %>
             <%= if @active_segment do %>
-              <button phx-click="clear_all" class="h-7 px-2.5 rounded-full text-[12px] text-gray-500 hover:text-white transition">clear</button>
+              <button phx-click="clear_all" class="h-6 px-2 rounded-full text-[11px] text-gray-500 hover:text-white transition flex-shrink-0">clear</button>
             <% end %>
           </div>
 
-          <%!-- Depth filters. Free text goes through phx-debounce so a typed
-               number does not fire a ClickHouse query per keystroke. --%>
-          <div class="flex items-center gap-2 flex-wrap text-[12px]">
-            <span class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Depth</span>
+          <%!-- Depth filters, shown only when they apply.
+               A commerce filter set in front of someone searching SaaS is
+               noise they have to read past every time; a pricing-page filter
+               in front of a Shopify search is meaningless. So the row follows
+               the business type already chosen above. --%>
+          <% shape = filter_shape(@filters) %>
+          <%= if shape != :none do %>
+            <div class="flex items-center gap-2 flex-wrap text-[12px]">
+              <span class="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Depth</span>
 
-            <.toggle_filter label="Has email" field="has_email" filters={@filters} />
-            <.toggle_filter label="Hiring" field="hiring" filters={@filters} />
-            <.toggle_filter label="Has pricing" field="has_pricing" filters={@filters} />
+              <.toggle_filter label="Has email" field="has_email" filters={@filters} />
+              <.toggle_filter label="Hiring" field="hiring" filters={@filters} />
 
-            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
-              <span class="text-gray-500">Products</span>
-              <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-              <span class="text-gray-600">–</span>
-              <input type="number" name="max_products" value={@filters.max_products} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+              <%= if shape in [:saas, :any] do %>
+                <.toggle_filter label="Has pricing" field="has_pricing" filters={@filters} />
+              <% end %>
+
+              <%= if shape in [:commerce, :any] do %>
+                <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+                  <span class="text-gray-500">Products</span>
+                  <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+                  <span class="text-gray-600">–</span>
+                  <input type="number" name="max_products" value={@filters.max_products} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+                </div>
+
+                <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+                  <span class="text-gray-500">Avg $</span>
+                  <input type="number" name="min_price_avg" value={@filters.min_price_avg} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+                  <span class="text-gray-600">–</span>
+                  <input type="number" name="max_price_avg" value={@filters.max_price_avg} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+                </div>
+              <% end %>
+
+              <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+                <span class="text-gray-500">SEO</span>
+                <input type="number" name="min_seo_score" value={@filters.min_seo_score} form="filter_form" phx-debounce="500" placeholder="min" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+                <span class="text-gray-600">–</span>
+                <input type="number" name="max_seo_score" value={@filters.max_seo_score} form="filter_form" phx-debounce="500" placeholder="max" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+              </div>
             </div>
+          <% end %>
 
-            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
-              <span class="text-gray-500">Avg $</span>
-              <input type="number" name="min_price_avg" value={@filters.min_price_avg} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-              <span class="text-gray-600">–</span>
-              <input type="number" name="max_price_avg" value={@filters.max_price_avg} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-            </div>
-
-            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
-              <span class="text-gray-500">SEO</span>
-              <input type="number" name="min_seo_score" value={@filters.min_seo_score} form="filter_form" phx-debounce="500" placeholder="min" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
-              <span class="text-gray-600">–</span>
-              <input type="number" name="max_seo_score" value={@filters.max_seo_score} form="filter_form" phx-debounce="500" placeholder="max" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
-            </div>
-          </div>
           <%!-- Row 1: Domain search + active filter tags --%>
           <div class="flex items-center gap-2 flex-wrap min-h-[36px]">
             <div class="relative flex-shrink-0">
+              <%!-- w-full on phones so the search is not a thin strip beside
+                   the filter tags; fixed width once there is room. --%>
               <input type="text" name="domain_search" value={@filters.domain_search} form="filter_form" phx-debounce="400" placeholder="Search domain..."
-                class="h-9 w-52 bg-[#141C30] border border-white/[0.08] rounded-lg px-3 pl-8 text-sm text-white placeholder-gray-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition" />
+                class="h-9 w-full sm:w-52 bg-[#141C30] border border-white/[0.08] rounded-lg px-3 pl-8 text-sm text-white placeholder-gray-500 focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition" />
               <svg class="absolute left-2.5 top-2.5 w-4 h-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
               <%= if @filters.domain_search != "" do %>
                 <button type="button" phx-click="clear_filter" phx-value-field="domain_search" class="absolute right-2 top-2 w-5 h-5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] flex items-center justify-center text-gray-400 hover:text-white transition">
@@ -704,6 +752,11 @@ defmodule LSWeb.ExplorerLive do
 
           <%!-- Row 2: Filter dropdown selectors (z-50 keeps triggers above the click-outside backdrop) --%>
           <div class="flex items-center gap-2 flex-wrap relative z-50">
+            <%!-- Export lives with the filters because that is what it acts
+                 on: whatever is filtered right now. It is an icon with a
+                 tooltip rather than a labelled block — the row is already
+                 dense, and the arrow-into-tray is the one download glyph
+                 everyone reads without thinking. --%>
             <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
             <%= for {field, label, icon, searchable} <- [
               {"tech", "Tech", "🔧", true},
@@ -723,10 +776,31 @@ defmodule LSWeb.ExplorerLive do
                 dropdown_options={@dropdown_options}
               />
             <% end %>
+
+            <div class="ml-auto flex-shrink-0">
+              <%= if @plan in ["starter", "pro"] do %>
+                <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
+                  title={"Export this filtered list as CSV — up to #{format_number(export_cap_for(@plan))} rows per file, #{format_number(LS.Accounts.exports_remaining(@current_scope.user))} rows left this month"}
+                  class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition"
+                  aria-label="Export CSV">
+                  <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
+                  </svg>
+                </a>
+              <% else %>
+                <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
+                  class="inline-flex items-center justify-center h-9 w-9 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition"
+                  aria-label="Export CSV — upgrade required">
+                  <svg class="w-[18px] h-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
+                  </svg>
+                </button>
+              <% end %>
+            </div>
           </div>
 
           <%!-- Row 3: Info bar --%>
-          <div class="flex items-center justify-between">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
             <div class="flex items-center gap-4 text-sm">
               <span class="text-gray-400">
                 <%= if @loading do %>
@@ -744,42 +818,19 @@ defmodule LSWeb.ExplorerLive do
                 <% end %>
               </span>
               <%= if @query_ms && !@loading do %>
-                <span class="text-gray-600 text-xs"><%= @query_ms %>ms</span>
+                <span class="text-gray-600 text-xs whitespace-nowrap">in <%= @query_ms %>ms</span>
               <% end %>
               <%= if active_filter_count(@filters) > 0 do %>
-                <span class="text-gray-600 text-xs"><%= active_filter_count(@filters) %> filter<%= if active_filter_count(@filters) > 1, do: "s" %> active</span>
+                <span class="text-gray-600 text-xs whitespace-nowrap hidden sm:inline"><%= active_filter_count(@filters) %> filter<%= if active_filter_count(@filters) > 1, do: "s" %></span>
               <% end %>
             </div>
-            <div class="flex items-center gap-4">
+            <%!-- Pagination owns the right edge. The timing used to sit in
+                 this group and overflowed into it on narrow viewports. --%>
+            <div class="flex items-center gap-3 flex-shrink-0">
               <%= if @total_pages > 1 do %>
                 <.pagination page={@page} total_pages={@total_pages} compact={true} />
               <% end %>
-              <%= if @plan in ["starter", "pro"] do %>
-                <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
-                  title={"#{LS.Accounts.exports_remaining(@current_scope.user)} export rows remaining this month"}
-                  class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                  Export CSV<span class="ml-1 text-[11px] font-normal text-white/45 tabular-nums"><%= LS.Accounts.exports_remaining(@current_scope.user) %> left</span>
-                </a>
-                <%!-- Say what the file will and will not contain BEFORE they
-                     spend rows on it. The cap is a real constraint (a
-                     spreadsheet stops being useful long before it stops
-                     opening) and 1:many data cannot be one row per company,
-                     so summaries go in the file and full lists stay here. --%>
-                <p class="w-full mt-2 text-[11px] leading-relaxed text-white/35">
-                  Exports up to <%= if @plan == "pro", do: "25,000", else: "2,500" %> businesses per file, one row each, with contact addresses and depth summaries
-                  (catalogue size, price range, open roles, SEO). Full product, job and price lists stay here in the app.
-                  <%= if @total > export_cap_for(@plan) do %>
-                    <span class="text-amber-300/70">Your filter matches <%= format_number(@total) %> — narrow it so the file holds the ones you actually want.</span>
-                  <% end %>
-                </p>
-              <% else %>
-                <button phx-click="show_upgrade"
-                  class="inline-flex items-center gap-2 h-9 px-4 bg-emerald-600/40 text-white/60 rounded-lg text-sm font-semibold opacity-60 cursor-pointer transition hover:opacity-80">
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                  Export CSV — Starter plan
-                </button>
-              <% end %>
+
             </div>
           </div>
         </div>
