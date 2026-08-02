@@ -487,6 +487,14 @@ defmodule LS.Explorer do
   defp filter_clause({:min_new_products_30d, v}), do: numeric_gte("new_products_30d", v)
   defp filter_clause({:min_job_count, v}), do: numeric_gte("job_count", v)
   defp filter_clause({:min_seo_score, v}), do: numeric_gte("seo_score", v)
+  # The "weak SEO" pitch list needs an upper bound, and it must exclude
+  # businesses we never scored: NULL seo_score is "unknown", not "bad".
+  defp filter_clause({:max_seo_score, v}) do
+    case numeric_lte("seo_score", v) do
+      [clause] -> ["(#{clause} AND seo_score IS NOT NULL)"]
+      other -> other
+    end
+  end
 
   defp filter_clause({:ats_platform, v}) when is_binary(v) and v != "",
     do: ["ats_platform = '#{esc(v)}'"]

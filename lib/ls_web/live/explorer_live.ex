@@ -31,6 +31,7 @@ defmodule LSWeb.ExplorerLive do
         detail: nil,
         sort: nil,
         sort_dir: "desc",
+        active_segment: nil,
         show_upgrade: false,
         query_ms: nil,
         open_dropdown: nil,
@@ -109,6 +110,42 @@ defmodule LSWeb.ExplorerLive do
     socket =
       socket
       |> assign(sort: sort, sort_dir: dir, page: 1, loading: true, expanded: nil, detail: nil)
+      |> load_data()
+
+    {:noreply, socket}
+  end
+
+  def handle_event("apply_segment", %{"id" => id}, socket) do
+    case Enum.find(segments(), &(&1.id == id)) do
+      nil ->
+        {:noreply, socket}
+
+      segment ->
+        # A segment REPLACES the filter set rather than merging into it:
+        # merging leaves a stray country or industry from the previous search
+        # and the count silently disagrees with the label on the button.
+        filters = Map.merge(default_filters(), segment.filters)
+        active = if socket.assigns.active_segment == id, do: nil, else: id
+        filters = if active, do: filters, else: default_filters()
+
+        socket =
+          socket
+          |> assign(filters: filters, active_segment: active, page: 1, loading: true, expanded: nil, detail: nil)
+          |> load_data()
+
+        {:noreply, socket}
+    end
+  end
+
+  def handle_event("toggle_filter", %{"field" => field}, socket) do
+    key = String.to_existing_atom(field)
+    current = Map.get(socket.assigns.filters, key)
+    filters = Map.put(socket.assigns.filters, key, if(current == "true", do: "", else: "true"))
+
+    socket =
+      socket
+      # Hand-editing a filter means the user has left the preset behind.
+      |> assign(filters: filters, active_segment: nil, page: 1, loading: true, expanded: nil, detail: nil)
       |> load_data()
 
     {:noreply, socket}
@@ -330,8 +367,61 @@ defmodule LSWeb.ExplorerLive do
     end) || :timeout
   end
 
+  # One-click segments, written from what our four buyer types actually ask
+  # for. A preset is just a filter set — it does not add capability, it removes
+  # the need to know which eleven fields to combine, which is where a new user
+  # gives up.
+  @segments [
+    %{
+      id: "shopify_reachable",
+      label: "Shopify + contact",
+      hint: "Stores with a catalogue and a published address — the app/agency pitch list",
+      filters: %{business_model: "Shopify", has_email: "true", min_products: "10"}
+    },
+    %{
+      id: "shopify_growing",
+      label: "Growing stores",
+      hint: "Added products in the last 30 days: spending money, worth a call",
+      filters: %{business_model: "Shopify", min_new_products_30d: "1", has_email: "true"}
+    },
+    %{
+      id: "shopify_premium",
+      label: "Premium stores",
+      hint: "Average product price over $100 — budget for design and apps",
+      filters: %{business_model: "Shopify", min_price_avg: "100", has_email: "true"}
+    },
+    %{
+      id: "saas_pricing",
+      label: "SaaS with pricing",
+      hint: "Published self-serve prices — competitive intel and partnership targets",
+      filters: %{business_model: "SaaS", has_pricing: "true"}
+    },
+    %{
+      id: "hiring",
+      label: "Hiring now",
+      hint: "Open roles on a public board — the cheapest growth signal there is",
+      filters: %{hiring: "true", has_email: "true"}
+    },
+    %{
+      id: "weak_seo",
+      label: "Weak SEO",
+      hint: "Scored under 50 with a reachable address — an SEO agency's pitch list",
+      filters: %{max_seo_score: "49", has_email: "true"}
+    }
+  ]
+
+  def segments, do: @segments
+
   defp default_filters do
-    %{tech: "", shopify_app: "", country: "", business_model: "", industry: "", revenue: "", employees: "", language: "", domain_search: "", freshness: ""}
+    %{
+      tech: "", shopify_app: "", country: "", business_model: "", industry: "",
+      revenue: "", employees: "", language: "", domain_search: "", freshness: "",
+      # Depth filters — the ones our buyers actually qualify on. The backend
+      # has supported these for a while; they were simply never exposed.
+      has_email: "", has_pricing: "", hiring: "",
+      min_products: "", max_products: "", min_price_avg: "", max_price_avg: "",
+      min_seo_score: "", max_seo_score: "", min_new_products_30d: "", ats_platform: ""
+    }
   end
 
   defp total_pages(total, per_page) when is_integer(total) and per_page > 0, do: div(total + per_page - 1, per_page)
@@ -519,6 +609,51 @@ defmodule LSWeb.ExplorerLive do
 
         <%!-- Toolbar --%>
         <div class="py-5 space-y-3">
+          <%!-- Segments: one click to a list a buyer would actually pay for.
+               Ordered by how often our four buyer types ask for them. --%>
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Segments</span>
+            <%= for seg <- segments() do %>
+              <button phx-click="apply_segment" phx-value-id={seg.id} title={seg.hint}
+                class={"h-7 px-3 rounded-full text-[12px] font-medium transition border " <> if(@active_segment == seg.id, do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300", else: "bg-white/[0.03] border-white/[0.08] text-gray-300 hover:border-white/20 hover:bg-white/[0.06]")}>
+                <%= seg.label %>
+              </button>
+            <% end %>
+            <%= if @active_segment do %>
+              <button phx-click="clear_all" class="h-7 px-2.5 rounded-full text-[12px] text-gray-500 hover:text-white transition">clear</button>
+            <% end %>
+          </div>
+
+          <%!-- Depth filters. Free text goes through phx-debounce so a typed
+               number does not fire a ClickHouse query per keystroke. --%>
+          <div class="flex items-center gap-2 flex-wrap text-[12px]">
+            <span class="text-[10px] uppercase tracking-wider text-gray-500 font-semibold mr-1">Depth</span>
+
+            <.toggle_filter label="Has email" field="has_email" filters={@filters} />
+            <.toggle_filter label="Hiring" field="hiring" filters={@filters} />
+            <.toggle_filter label="Has pricing" field="has_pricing" filters={@filters} />
+
+            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+              <span class="text-gray-500">Products</span>
+              <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+              <span class="text-gray-600">–</span>
+              <input type="number" name="max_products" value={@filters.max_products} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+            </div>
+
+            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+              <span class="text-gray-500">Avg $</span>
+              <input type="number" name="min_price_avg" value={@filters.min_price_avg} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+              <span class="text-gray-600">–</span>
+              <input type="number" name="max_price_avg" value={@filters.max_price_avg} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+            </div>
+
+            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+              <span class="text-gray-500">SEO</span>
+              <input type="number" name="min_seo_score" value={@filters.min_seo_score} form="filter_form" phx-debounce="500" placeholder="min" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+              <span class="text-gray-600">–</span>
+              <input type="number" name="max_seo_score" value={@filters.max_seo_score} form="filter_form" phx-debounce="500" placeholder="max" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+            </div>
+          </div>
           <%!-- Row 1: Domain search + active filter tags --%>
           <div class="flex items-center gap-2 flex-wrap min-h-[36px]">
             <div class="relative flex-shrink-0">
@@ -1224,6 +1359,24 @@ defmodule LSWeb.ExplorerLive do
         </span>
       </span>
     </th>
+    """
+  end
+
+  attr :label, :string, required: true
+  attr :field, :string, required: true
+  attr :filters, :map, required: true
+
+  # A boolean filter as a pill: on/off is obvious at a glance, and one click
+  # toggles it. Cheaper to scan than a checkbox row and it matches the tag
+  # styling already used for active filters.
+  defp toggle_filter(assigns) do
+    assigns = assign(assigns, :on, Map.get(assigns.filters, String.to_existing_atom(assigns.field)) == "true")
+
+    ~H"""
+    <button phx-click="toggle_filter" phx-value-field={@field}
+      class={"h-7 px-3 rounded-lg border transition " <> if(@on, do: "bg-emerald-500/15 border-emerald-500/40 text-emerald-300", else: "bg-[#141C30] border-white/[0.08] text-gray-400 hover:text-white hover:border-white/20")}>
+      <%= @label %>
+    </button>
     """
   end
 

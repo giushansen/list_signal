@@ -162,6 +162,49 @@ defmodule LS.ExplorerDepthTest do
     end
   end
 
+  describe "segment presets" do
+    # A preset is a promise on a button: "Shopify + contact" must return
+    # Shopify stores with contacts. The failure mode is silent — a preset
+    # referencing a filter the backend does not implement returns everything
+    # or nothing, and the label still looks right.
+    test "every segment uses filters the backend actually implements" do
+      with_ch(fn ->
+        for segment <- LSWeb.ExplorerLive.segments() do
+          assert {:ok, count} = Explorer.count(segment.filters),
+                 "segment #{segment.id} errored — it references a filter that does not exist"
+
+          assert is_integer(count)
+        end
+      end)
+    end
+
+    test "a segment narrows the result set rather than matching everything" do
+      with_ch(fn ->
+        {:ok, everything} = Explorer.count(%{})
+
+        for segment <- LSWeb.ExplorerLive.segments() do
+          {:ok, count} = Explorer.count(segment.filters)
+
+          assert count < everything,
+                 "segment #{segment.id} matched the whole table — its filters are not being applied"
+        end
+      end)
+    end
+
+    test "weak-SEO excludes businesses we never scored" do
+      # NULL seo_score means "not looked at", not "bad". Including them would
+      # fill an SEO agency's pitch list with companies that have no problem.
+      with_ch(fn ->
+        {:ok, rows} = Explorer.list(%{max_seo_score: "49"}, per_page: 20)
+
+        for row <- rows do
+          refute row["seo_score"] in [nil, ""],
+                 "#{row["domain"]} has no SEO score but appears in the weak-SEO segment"
+        end
+      end)
+    end
+  end
+
   describe "CSV export" do
     test "carries the depth columns a buyer is paying for" do
       with_ch(fn ->
