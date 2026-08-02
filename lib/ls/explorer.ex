@@ -113,7 +113,7 @@ defmodule LS.Explorer do
     WHERE domain IN (
       SELECT domain FROM (
         SELECT domain
-        FROM businesses FINAL
+        FROM businesses
         #{where}
         ORDER BY #{order}
         LIMIT #{offset + per_page + @dedupe_slack}
@@ -122,6 +122,7 @@ defmodule LS.Explorer do
       LIMIT #{per_page}
       OFFSET #{offset}
     )
+    #{and_where(where)}
     ORDER BY #{order}
     #{@dedupe}
     LIMIT #{per_page}
@@ -175,7 +176,7 @@ defmodule LS.Explorer do
   end
 
   @doc "SQL for the total-row count. Public so performance tests measure the real query."
-  def count_sql(filters), do: "SELECT count() FROM businesses FINAL #{build_where(filters)}"
+  def count_sql(filters), do: "SELECT count() FROM businesses #{build_where(filters)}"
 
   def count(filters) do
     case Clickhouse.query_raw(count_sql(filters), @query_timeout) do
@@ -207,7 +208,7 @@ defmodule LS.Explorer do
         end
       end)
 
-    case Clickhouse.query_raw("SELECT #{selects} FROM businesses FINAL", @query_timeout) do
+    case Clickhouse.query_raw("SELECT #{selects} FROM businesses", @query_timeout) do
       {:ok, [row]} ->
         labelled_filters
         |> Enum.map(fn {id, _} -> id end)
@@ -319,6 +320,15 @@ defmodule LS.Explorer do
 
   # `businesses` carries tranco_rank too, so an unqualified ORDER BY is
   # ambiguous once the join is in play.
+
+  # In the aliased export query the re-applied clause must reference d.*;
+  # only `domain` collides with the contacts join, the rest pass through.
+  defp qualify_where(clause), do: String.replace(clause, ~r/(?<![\w.])domain\b/, "d.domain")
+
+  # Re-attach a WHERE clause as a conjunction after "WHERE domain IN (...)".
+  defp and_where(""), do: ""
+  defp and_where("WHERE " <> rest), do: "AND #{rest}"
+
   defp qualified_order_by do
     @order_by
     |> String.replace("tranco_rank", "d.tranco_rank")
@@ -340,11 +350,12 @@ defmodule LS.Explorer do
       FROM biz_contact FINAL GROUP BY domain
     ) c ON d.domain = c.domain
     WHERE d.domain IN (
-      SELECT domain FROM businesses FINAL
+      SELECT domain FROM businesses
       #{where}
       ORDER BY #{@order_by}
       LIMIT #{limit}
     )
+    #{where |> and_where() |> qualify_where()}
     ORDER BY #{qualified_order_by()}
     LIMIT #{limit}
     SETTINGS join_use_nulls = 1

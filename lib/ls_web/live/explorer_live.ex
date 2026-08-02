@@ -34,6 +34,7 @@ defmodule LSWeb.ExplorerLive do
         active_segment: nil,
         segment_counts: %{},
         feedback_open: false,
+        count_loading: true,
         show_upgrade: false,
         query_ms: nil,
         open_dropdown: nil,
@@ -371,6 +372,14 @@ defmodule LSWeb.ExplorerLive do
     end)
   end
 
+  # Fully async search. The old version ran both queries INSIDE the event
+  # handler and awaited them, so a click on a filter froze the LiveView for
+  # the whole query — the loading state never even painted. Now the click
+  # paints instantly and two independent asyncs race: the row page (fast,
+  # LIMIT with early termination) fills the table the moment it lands, and
+  # the count (a full scan, the slow part) fills in the total afterwards.
+  # A newer search cancels the older one, so stale results can never
+  # overwrite fresh ones.
   defp load_data(socket) do
     user = socket.assigns.current_scope.user
     plan = User.effective_plan(user)
@@ -381,47 +390,62 @@ defmodule LSWeb.ExplorerLive do
       :ok ->
         t0 = System.monotonic_time(:millisecond)
 
-        # Run the page query and the total-count query concurrently.
-        list_task =
-          Task.async(fn ->
-            Explorer.list(filter_kw,
-              per_page: socket.assigns.per_page,
-              page: socket.assigns.page,
-              sort: socket.assigns.sort,
-              dir: socket.assigns.sort_dir
-            )
-          end)
-
-        # Counts are cacheable in a way row pages are not: the number changes
-        # slowly (a few thousand an hour on 7.9M) and nobody paginates by it.
-        # The unfiltered count on first load is the expensive one.
-        count_task =
-          Task.async(fn ->
-            LS.UICache.fetch({:count, filter_kw}, 300, fn -> Explorer.count(filter_kw) end)
-          end)
-
-        # A failed query must never masquerade as "0 results" — that reads as
-        # "your filter matched nothing" and sends people hunting for a data bug
-        # that isn't there. Surface it instead.
-        {results, total, error} =
-          # Must exceed LS.Explorer's own query timeout, or we kill the task before
-          # ClickHouse can report what went wrong and every failure looks alike.
-          case {Task.await(list_task, 25_000), Task.await(count_task, 25_000)} do
-            {{:ok, rows}, {:ok, count}} -> {rows, count, nil}
-            {list_result, count_result} -> {[], nil, query_error(list_result, count_result)}
-          end
-
-        query_ms = System.monotonic_time(:millisecond) - t0
+        list_opts = [
+          per_page: socket.assigns.per_page,
+          page: socket.assigns.page,
+          sort: socket.assigns.sort,
+          dir: socket.assigns.sort_dir
+        ]
 
         socket
-        |> assign(results: results, total: total, loading: false, query_ms: query_ms)
-        |> assign(query_error: error)
+        |> assign(query_error: nil, count_loading: true)
         |> assign(rate_stats: RateLimiter.stats(user.id, plan))
+        |> Phoenix.LiveView.cancel_async(:rows, :superseded)
+        |> Phoenix.LiveView.cancel_async(:count, :superseded)
+        |> Phoenix.LiveView.start_async(:rows, fn ->
+          {Explorer.list(filter_kw, list_opts), t0}
+        end)
+        |> Phoenix.LiveView.start_async(:count, fn ->
+          LS.UICache.fetch({:count, filter_kw}, 300, fn -> Explorer.count(filter_kw) end)
+        end)
 
       {:error, :rate_limited} ->
         socket
         |> assign(loading: false)
         |> put_flash(:error, "Too many requests. Please slow down.")
+    end
+  end
+
+  @impl true
+  def handle_async(:rows, {:ok, {result, t0}}, socket) do
+    query_ms = System.monotonic_time(:millisecond) - t0
+
+    case result do
+      {:ok, rows} ->
+        {:noreply, assign(socket, results: rows, loading: false, query_ms: query_ms)}
+
+      {:error, reason} ->
+        # A failed query must never masquerade as "0 results" — that reads as
+        # "your filter matched nothing" and sends people hunting for a data
+        # bug that isn't there.
+        {:noreply, assign(socket, results: [], loading: false, query_error: reason)}
+    end
+  end
+
+  def handle_async(:count, {:ok, result}, socket) do
+    case result do
+      {:ok, count} -> {:noreply, assign(socket, total: count, count_loading: false)}
+      {:error, _} -> {:noreply, assign(socket, count_loading: false)}
+    end
+  end
+
+  # :superseded exits are the cancel above doing its job; anything else is a
+  # real crash and must surface as an error, not as an empty result.
+  def handle_async(name, {:exit, reason}, socket) when name in [:rows, :count] do
+    case reason do
+      {:shutdown, :superseded} -> {:noreply, socket}
+      :superseded -> {:noreply, socket}
+      _ -> {:noreply, assign(socket, loading: false, count_loading: false, query_error: :crashed)}
     end
   end
 
@@ -738,28 +762,34 @@ defmodule LSWeb.ExplorerLive do
             <% end %>
 
             <div class="ml-auto flex-shrink-0">
-              <%!-- Label above glyph, as specified: the word carries the
-                   quota so the number is visible without hovering; details
-                   stay in the tooltip. --%>
-              <%= if @plan in ["starter", "pro"] do %>
-                <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
-                  title={"Export this filtered list as CSV — up to #{format_number(export_cap_for(@plan))} rows per file"}
-                  class="inline-flex flex-col items-center justify-center h-12 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition leading-none gap-1"
-                  aria-label="Export CSV">
-                  <span class="text-[10px] font-semibold tracking-wide">Export (<%= format_number(LS.Accounts.exports_remaining(@current_scope.user)) %>)</span>
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
-                  </svg>
-                </a>
-              <% else %>
-                <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
-                  class="inline-flex flex-col items-center justify-center h-12 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition leading-none gap-1"
-                  aria-label="Export CSV — upgrade required">
-                  <span class="text-[10px] font-semibold tracking-wide">Export</span>
-                  <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" />
-                  </svg>
-                </button>
+              <%= cond do %>
+                <% @plan not in ["starter", "pro"] -> %>
+                  <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
+                    class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition text-[12px] font-semibold"
+                    aria-label="Export CSV — upgrade required">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
+                    CSV
+                  </button>
+                <% is_integer(@total) and @total > export_cap_for(@plan) -> %>
+                  <%!-- Disabled, not hidden: the button explains WHY it is
+                       off. Exporting the top slice of an over-broad filter
+                       silently would hand the user a file that is not the
+                       list they thought they built. --%>
+                  <button disabled
+                    title={"Your filter matches #{format_number(@total)} businesses — a CSV caps at #{format_number(export_cap_for(@plan))} rows. Narrow the filter to export."}
+                    class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white/[0.04] text-gray-600 cursor-not-allowed text-[12px] font-semibold"
+                    aria-label="Export disabled — too many results">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
+                    CSV
+                  </button>
+                <% true -> %>
+                  <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
+                    title={"Export this list as CSV — #{format_number(LS.Accounts.exports_remaining(@current_scope.user))} rows left this month"}
+                    class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition text-[12px] font-semibold"
+                    aria-label="Export CSV">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
+                    CSV
+                  </a>
               <% end %>
             </div>
           </div>
@@ -859,7 +889,11 @@ defmodule LSWeb.ExplorerLive do
                     <span class="text-amber-400 font-medium">Search unavailable</span>
                     <span class="text-gray-500">— the query failed, this is not an empty result</span>
                   <% else %>
-                    <span class="text-white font-medium"><%= format_number(@total) %></span> results
+                    <%= if @count_loading do %>
+                      <span class="inline-block w-14 h-3.5 rounded bg-white/[0.08] animate-pulse align-middle"></span> results
+                    <% else %>
+                      <span class="text-white font-medium"><%= format_number(@total) %></span> results
+                    <% end %>
                   <% end %>
                 <% end %>
               </span>
