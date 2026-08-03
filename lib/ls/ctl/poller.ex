@@ -380,7 +380,7 @@ defmodule LS.CTL.Poller do
   defp fetch_entries(log_url, start_idx, end_idx) do
     url = "#{log_url}/get-entries"
 
-    case Req.get(url, params: [start: start_idx, end: end_idx], receive_timeout: 30_000, retry: false) do
+    case Req.get(url, params: [start: start_idx, end: end_idx], receive_timeout: 30_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
       {:ok, %{status: 200, body: %{"entries" => entries}}} ->
         {:ok, entries}
       {:ok, %{status: status}} ->
@@ -393,7 +393,7 @@ defmodule LS.CTL.Poller do
   defp get_tree_size(log_url) do
     url = "#{log_url}/get-sth"
 
-    case Req.get(url, receive_timeout: 10_000, retry: false) do
+    case Req.get(url, receive_timeout: 10_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
       {:ok, %{status: 200, body: %{"tree_size" => size}}} ->
         {:ok, size}
       {:ok, %{status: status}} ->

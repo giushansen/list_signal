@@ -629,7 +629,7 @@ defmodule LS.Clickhouse do
     # so no caller can trip on it again.
     url = "#{@ch_url}?database=#{@ch_db}&query=#{URI.encode(String.trim_trailing(sql))}"
 
-    case Req.post(url, body: body <> "\n", receive_timeout: 30_000) do
+    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: body <> "\n", receive_timeout: 30_000) do
       {:ok, %{status: 200}} -> :ok
       {:ok, %{status: s, body: b}} -> {:error, "CH #{s}: #{String.slice(to_string(b), 0, 200)}"}
       {:error, reason} -> {:error, inspect(reason)}
@@ -640,7 +640,7 @@ defmodule LS.Clickhouse do
 
   def query_raw(sql, receive_timeout \\ @timeout) do
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact"
-    case Req.post(url, body: sql, receive_timeout: receive_timeout) do
+    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       # DDL / OPTIMIZE / statements with no result set return an empty 200 body.
       {:ok, %{status: 200, body: body}} -> {:ok, body}
@@ -665,7 +665,7 @@ defmodule LS.Clickhouse do
   def measure(sql, receive_timeout \\ @timeout) do
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSON"
 
-    case Req.post(url, body: sql, receive_timeout: receive_timeout) do
+    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"statistics" => stats} = body}} ->
         {:ok,
          %{
@@ -689,7 +689,7 @@ defmodule LS.Clickhouse do
 
   defp query(sql) do
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact"
-    case Req.post(url, body: sql, receive_timeout: @timeout) do
+    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: @timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       {:ok, %{status: 200, body: body}} when is_binary(body) -> {:ok, body}
       {:ok, %{status: status, body: body}} -> {:error, "CH #{status}: #{inspect(body)}"}

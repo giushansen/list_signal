@@ -81,7 +81,16 @@ defmodule LS.Application do
       {Ecto.Migrator, repos: Application.fetch_env!(:ls, :ecto_repos), skip: skip_migrations?()},
       {Phoenix.PubSub, name: LS.PubSub},
       LS.Cache,
-      LS.UICache
+      LS.UICache,
+      # Dedicated HTTP pools. Both 2026-08-03 outages trace to one cause:
+      # every ClickHouse call AND the CT poller shared Req's default Finch
+      # pool, so a heavy compaction holding connections while inserts churned
+      # starved the pool — web queries then queued unboundedly and the site
+      # went dark while the BEAM stayed "active". Separate pools mean the
+      # crawler and the compactor can saturate THEIR pool without taking the
+      # customer-facing one down with them.
+      {Finch, name: LS.Finch.CH, pools: %{default: [size: 150, count: 1]}},
+      {Finch, name: LS.Finch.CTL, pools: %{default: [size: 30, count: 1]}}
     ]
   end
 
