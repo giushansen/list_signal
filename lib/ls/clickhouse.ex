@@ -458,17 +458,23 @@ defmodule LS.Clickhouse do
   end
 
   @doc """
-  Refresh `businesses` rows for domains touched since `since_unix`.
+  Refresh `businesses` rows for domains touched in `[since_unix, until_unix)`.
 
   Coalesces "last non-empty per signal unit" from `domains_history` and folds
-  in `biz_enrichment`. Insert-only: `businesses` is a ReplacingMergeTree keyed on
-  domain, so a fresh row supersedes the old one at merge time.
-
+  in `biz_enrichment`. Insert-only: `businesses` is a ReplacingMergeTree keyed
+  on domain, so a fresh row supersedes the old one at merge time.
   Returns `{:ok, rows_written}`.
+
+  `until_unix` exists because of the 2026-08-05 death spiral: the window was
+  open-ended ("everything since the last success"), so once one pass timed
+  out, every retry faced a strictly larger batch and compaction never
+  succeeded again — 50 straight failures while `businesses` went 19h stale.
+  A bounded slice makes each attempt the same size no matter how long the
+  compactor has been down.
   """
-  @spec compact_businesses(integer()) :: {:ok, non_neg_integer()} | {:error, term()}
-  def compact_businesses(since_unix) do
-    with {:ok, _} <- query_raw(compact_sql(since_unix), 120_000),
+  @spec compact_businesses(integer(), integer() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
+  def compact_businesses(since_unix, until_unix \\ nil) do
+    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 300_000),
          {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
       {:ok, n}
     else
@@ -482,14 +488,16 @@ defmodule LS.Clickhouse do
 
   # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
   # anti-erasure rule: a later empty row cannot overwrite an earlier good value.
-  defp compact_sql(since_unix) do
+  defp compact_sql(since_unix, until_unix \\ nil) do
+    upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
+
     scope =
       if since_unix > 0 do
         """
         WHERE s_domain IN (
-          SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})
+          SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
           UNION DISTINCT
-          SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})
+          SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
         )
         """
       else

@@ -72,16 +72,28 @@ defmodule LS.Cluster.Compactor do
     {:reply, result, s}
   end
 
+  # Max enrichment-window one pass may cover (~10K domains at current rates,
+  # ~2 min of query). This bound is the fix for the 2026-08-05 death spiral:
+  # an open-ended catch-up window meant one timeout guaranteed every retry a
+  # larger batch, and compaction never recovered — 19h of stale depth data.
+  @catchup_slice_s 1_800
+
+  @doc "Where this pass's window must stop. Pure, so the spiral-proof bound is testable."
+  def slice_until(since_s, now_s), do: min(now_s, since_s + @catchup_slice_s)
+
   @impl true
   def handle_info(:compact, s) do
     t0 = System.monotonic_time(:millisecond)
-    until = now_s()
+    now = now_s()
+    until = slice_until(s.since, now)
+    behind? = until < now - 120
 
     s =
-      case Clickhouse.compact_businesses(s.since - @lookback_slack_s) do
+      case Clickhouse.compact_businesses(s.since - @lookback_slack_s, until) do
         {:ok, count} ->
           if count > 0 do
-            Logger.info("[COMPACT] refreshed #{count} businesses in #{System.monotonic_time(:millisecond) - t0}ms")
+            lag = if behind?, do: " (catching up, #{div(now - until, 60)}m behind)", else: ""
+            Logger.info("[COMPACT] refreshed #{count} businesses in #{System.monotonic_time(:millisecond) - t0}ms#{lag}")
           end
 
           %{s |
@@ -92,12 +104,15 @@ defmodule LS.Cluster.Compactor do
             since: until}
 
         {:error, reason} ->
-          # Keep `since` unchanged so the next pass retries the same window.
+          # Keep `since` unchanged so the next pass retries the SAME bounded
+          # slice — never a bigger one.
           Logger.error("[COMPACT] failed: #{inspect(reason)}")
           %{s | passes: s.passes + 1}
       end
 
-    Process.send_after(self(), :compact, @interval_ms)
+    # When behind, run the next slice almost immediately instead of waiting a
+    # full interval — catch-up at ~2 min per 30-min slice, not 7 min each.
+    Process.send_after(self(), :compact, if(behind?, do: 2_000, else: @interval_ms))
     {:noreply, s}
   end
 
