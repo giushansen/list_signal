@@ -476,12 +476,25 @@ defmodule LS.Clickhouse do
   def compact_businesses(since_unix, until_unix \\ nil) do
     with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 300_000),
          {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
-      {:ok, n}
+      # ClickHouse JSON quotes UInt64 by default, so count() can arrive as a
+      # string — which would crash the compactor's stats arithmetic.
+      {:ok, to_count(n)}
     else
       {:ok, _} -> {:ok, 0}
       err -> err
     end
   end
+
+  defp to_count(n) when is_integer(n), do: n
+
+  defp to_count(n) when is_binary(n) do
+    case Integer.parse(n) do
+      {v, _} -> v
+      :error -> 0
+    end
+  end
+
+  defp to_count(_), do: 0
 
   @doc "Full `businesses` rebuild — repair tool, ~8 min. See `LS.Cluster.Compactor`."
   def rebuild_businesses_full, do: query_raw(compact_sql(0), 30 * 60_000)
@@ -491,18 +504,22 @@ defmodule LS.Clickhouse do
   defp compact_sql(since_unix, until_unix \\ nil) do
     upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
 
-    scope =
-      if since_unix > 0 do
-        """
-        WHERE s_domain IN (
-          SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
-          UNION DISTINCT
-          SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
-        )
-        """
-      else
-        ""
-      end
+    # The same bounded domain set scopes BOTH sides of every join. The
+    # 2026-08-05 MEMORY_LIMIT_EXCEEDED failures came from the join sides
+    # being unscoped: `SELECT * FROM biz_enrichment FINAL` materialised the
+    # whole table (2.6M wide rows) as a hash table before joining — a cost
+    # that grew with the product until it crossed the shared box's 6.5G cap.
+    # Scoped, every join is ~slice-sized (10K rows) and stays that way at
+    # 10M businesses or 100M.
+    domain_set =
+      """
+      SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
+      UNION DISTINCT
+      SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
+      """
+
+    scope = if since_unix > 0, do: "WHERE s_domain IN (#{domain_set})", else: ""
+    join_scope = if since_unix > 0, do: " WHERE domain IN (#{domain_set})", else: ""
 
     """
     INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd)
@@ -613,12 +630,12 @@ defmodule LS.Clickhouse do
          AND ((business_model != '' AND crawlable)
               OR ((last_http_blocked != '' OR last_http_status IN (401, 403, 429)) AND dns_mx != ''))
     ) h
-    LEFT JOIN (SELECT * FROM biz_enrichment FINAL) s ON h.domain = s.domain
-    LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing GROUP BY domain) p
+    LEFT JOIN (SELECT * FROM biz_enrichment FINAL#{join_scope}) s ON h.domain = s.domain
+    LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing#{join_scope} GROUP BY domain) p
            ON h.domain = p.domain
     LEFT JOIN (SELECT domain, count() AS news_count,
                       max(amount_usd) AS last_funding_usd
-               FROM biz_news GROUP BY domain) n ON h.domain = n.domain
+               FROM biz_news#{join_scope} GROUP BY domain) n ON h.domain = n.domain
     SETTINGS max_bytes_before_external_group_by = 1500000000, max_threads = 2,
              join_use_nulls = 1
     """
