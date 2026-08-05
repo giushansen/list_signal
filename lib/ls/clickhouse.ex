@@ -501,6 +501,9 @@ defmodule LS.Clickhouse do
 
   # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
   # anti-erasure rule: a later empty row cannot overwrite an earlier good value.
+  @doc false
+  def compact_sql_for_test(since_unix), do: compact_sql(since_unix)
+
   defp compact_sql(since_unix, until_unix \\ nil) do
     upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
 
@@ -520,6 +523,21 @@ defmodule LS.Clickhouse do
 
     scope = if since_unix > 0, do: "WHERE s_domain IN (#{domain_set})", else: ""
     join_scope = if since_unix > 0, do: " WHERE domain IN (#{domain_set})", else: ""
+
+    # The depth side reads only SUCCESSFUL enrichment rows. Without this, the
+    # newest row wins even when it is a failed attempt: a business enriched
+    # fully in July whose August recrawl hits a WAF would have its catalogue,
+    # SEO and jobs blanked by an empty "failed" row. Found 2026-08-06, three
+    # weeks before the first 30-day re-enrichment wave would have made it
+    # real at ~30% of all recrawls. A failed attempt is a fact about the
+    # CRAWL, not about the business — it must never erase what a successful
+    # crawl proved.
+    depth_scope =
+      if since_unix > 0 do
+        "WHERE render_engine != 'failed' AND domain IN (#{domain_set})"
+      else
+        "WHERE render_engine != 'failed'"
+      end
 
     """
     INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd)
@@ -630,7 +648,12 @@ defmodule LS.Clickhouse do
          AND ((business_model != '' AND crawlable)
               OR ((last_http_blocked != '' OR last_http_status IN (401, 403, 429)) AND dns_mx != ''))
     ) h
-    LEFT JOIN (SELECT * FROM biz_enrichment FINAL#{join_scope}) s ON h.domain = s.domain
+    LEFT JOIN (
+      SELECT * FROM biz_enrichment
+      #{depth_scope}
+      ORDER BY enriched_at DESC
+      LIMIT 1 BY domain
+    ) s ON h.domain = s.domain
     LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing#{join_scope} GROUP BY domain) p
            ON h.domain = p.domain
     LEFT JOIN (SELECT domain, count() AS news_count,

@@ -25,4 +25,19 @@ defmodule LS.CompactorSliceTest do
     now = 1_800_000_000
     assert Compactor.slice_until(now - 60, now) == now
   end
+
+  test "the depth join must never read failed enrichment rows" do
+    # A failed attempt is a fact about the CRAWL, not about the business.
+    # Without this filter the newest row wins even when it is a failed one,
+    # and every WAF-blocked recrawl of a previously-enriched business blanks
+    # its catalogue, SEO and jobs. Found 2026-08-06, three weeks before the
+    # first 30-day re-enrichment wave would have made it real at ~30% of all
+    # recrawls. This is a tripwire on the generated SQL: if the filter is
+    # ever dropped, this fails before production data does.
+    sql = LS.Clickhouse.compact_sql_for_test(0)
+    assert sql =~ "render_engine != 'failed'"
+
+    scoped = LS.Clickhouse.compact_sql_for_test(1_700_000_000)
+    assert scoped =~ "render_engine != 'failed'"
+  end
 end
