@@ -40,4 +40,18 @@ defmodule LS.CompactorSliceTest do
     scoped = LS.Clickhouse.compact_sql_for_test(1_700_000_000)
     assert scoped =~ "render_engine != 'failed'"
   end
+
+  test "depth columns merge per-column, never whole-row" do
+    # NULL means "could not look" (a sub-fetch failed inside an otherwise
+    # successful crawl); 0 means "looked, found none". Whole-row replacement
+    # cannot honour that distinction: a crawl whose ATS API call failed would
+    # blank job_count for a business whose jobs we counted last month. Every
+    # Nullable numeric must merge with argMaxIf(col, ts, col IS NOT NULL).
+    sql = LS.Clickhouse.compact_sql_for_test(1_700_000_000)
+
+    for column <- ~w(product_count job_count seo_score price_avg perf_lcp_ms) do
+      assert sql =~ "argMaxIf(#{column}, enriched_at, #{column} IS NOT NULL)",
+             "#{column} is not NULL-protected — a blind sub-fetch can erase it"
+    end
+  end
 end

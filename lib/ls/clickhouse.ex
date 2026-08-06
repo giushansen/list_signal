@@ -574,7 +574,7 @@ defmodule LS.Clickhouse do
       s.job_count, s.ats_platform, s.job_departments, s.job_locations,
       s.seo_score, s.seo_issues, s.seo_word_count, s.seo_alt_ratio,
       s.perf_lcp_ms, s.perf_cls, s.perf_ttfb_ms,
-      s.render_engine, s.enriched_at AS depth_enriched_at,
+      s.render_engine, s.enriched_at_newest AS depth_enriched_at,
       s.about_text, s.mission, s.hq_location, s.job_locations_top, s.positions_overview,
       p.pricing_points, n.news_count, n.last_funding_usd
     FROM (
@@ -649,10 +649,50 @@ defmodule LS.Clickhouse do
               OR ((last_http_blocked != '' OR last_http_status IN (401, 403, 429)) AND dns_mx != ''))
     ) h
     LEFT JOIN (
-      SELECT * FROM biz_enrichment
-      #{depth_scope}
-      ORDER BY enriched_at DESC
-      LIMIT 1 BY domain
+      SELECT
+        domain,
+        max(enriched_at) AS enriched_at_newest,
+        argMax(render_engine, enriched_at) AS render_engine,
+        /* Numerics are Nullable BY DESIGN: NULL = "could not look" (sub-fetch
+           failed inside an otherwise-successful crawl), 0 = "looked, found
+           none". argMaxIf(col, ts, col IS NOT NULL) keeps the last MEASURED
+           value — so a real newer measurement (including a genuine zero)
+           replaces, and a blind spot never erases. Same philosophy as the
+           h-side's 50 argMaxIfs, applied to depth. */
+        argMaxIf(product_count, enriched_at, product_count IS NOT NULL) AS product_count,
+        argMaxIf(price_min, enriched_at, price_min IS NOT NULL) AS price_min,
+        argMaxIf(price_avg, enriched_at, price_avg IS NOT NULL) AS price_avg,
+        argMaxIf(price_max, enriched_at, price_max IS NOT NULL) AS price_max,
+        argMaxIf(new_products_30d, enriched_at, new_products_30d IS NOT NULL) AS new_products_30d,
+        argMaxIf(last_product_at, enriched_at, last_product_at IS NOT NULL) AS last_product_at,
+        argMaxIf(oos_ratio, enriched_at, oos_ratio IS NOT NULL) AS oos_ratio,
+        argMaxIf(discount_depth, enriched_at, discount_depth IS NOT NULL) AS discount_depth,
+        argMaxIf(vendor_count, enriched_at, vendor_count IS NOT NULL) AS vendor_count,
+        argMaxIf(catalog_age_days, enriched_at, catalog_age_days IS NOT NULL) AS catalog_age_days,
+        argMaxIf(job_count, enriched_at, job_count IS NOT NULL) AS job_count,
+        argMaxIf(seo_score, enriched_at, seo_score IS NOT NULL) AS seo_score,
+        argMaxIf(seo_word_count, enriched_at, seo_word_count IS NOT NULL) AS seo_word_count,
+        argMaxIf(seo_alt_ratio, enriched_at, seo_alt_ratio IS NOT NULL) AS seo_alt_ratio,
+        argMaxIf(perf_lcp_ms, enriched_at, perf_lcp_ms IS NOT NULL) AS perf_lcp_ms,
+        argMaxIf(perf_cls, enriched_at, perf_cls IS NOT NULL) AS perf_cls,
+        argMaxIf(perf_ttfb_ms, enriched_at, perf_ttfb_ms IS NOT NULL) AS perf_ttfb_ms,
+        /* Strings use '' for both "none" and "could not look" (the writers
+           cannot tell them apart), so last non-empty wins. Trade-off: a store
+           that genuinely removes its about page keeps the old text until the
+           next full crawl that finds a replacement. Cheap next to the numeric
+           columns, which are what buyers filter on. */
+        argMaxIf(product_types, enriched_at, product_types != '') AS product_types,
+        argMaxIf(ats_platform, enriched_at, ats_platform != '') AS ats_platform,
+        argMaxIf(job_departments, enriched_at, job_departments != '') AS job_departments,
+        argMaxIf(job_locations, enriched_at, job_locations != '') AS job_locations,
+        argMaxIf(seo_issues, enriched_at, seo_issues != '') AS seo_issues,
+        argMaxIf(about_text, enriched_at, about_text != '') AS about_text,
+        argMaxIf(mission, enriched_at, mission != '') AS mission,
+        argMaxIf(hq_location, enriched_at, hq_location != '') AS hq_location,
+        argMaxIf(job_locations_top, enriched_at, job_locations_top != '') AS job_locations_top,
+        argMaxIf(positions_overview, enriched_at, positions_overview != '') AS positions_overview
+      FROM (SELECT * FROM biz_enrichment #{depth_scope})
+      GROUP BY domain
     ) s ON h.domain = s.domain
     LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing#{join_scope} GROUP BY domain) p
            ON h.domain = p.domain
