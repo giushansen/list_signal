@@ -88,6 +88,32 @@ defmodule LSWeb.AlternativesController do
       ],
       honest_note: "StoreLeads covers 403 ecommerce platforms. ListSignal currently specializes in Shopify with deep infrastructure data, plus broad SaaS coverage. If you need Magento, WooCommerce, or BigCommerce data today, StoreLeads is more complete. If you need the freshest Shopify data with infrastructure intelligence, ListSignal wins."
     },
+    "myip-ms" => %{
+      name: "MyIP.ms",
+      tagline: "Live business intelligence, not a static IP directory.",
+      price: "Free – $29/mo",
+      ls_price: "Free – $99/mo",
+      pros: [
+        "Large historical IP / hosting database",
+        "Free tier for basic lookups",
+        "Whois and DNS history"
+      ],
+      cons: [
+        "Infrastructure records, not business intelligence",
+        "No revenue, employee, or business classification data",
+        "No contact data — you find a server, not a merchant",
+        "No Shopify app or e-commerce detection",
+        "Data freshness is unclear and often stale"
+      ],
+      ls_wins: [
+        {"🏪", "Business profiles, not IP rows", "Revenue bracket, business model, industry, catalogue size and hiring on every record — MyIP.ms stops at the hosting layer."},
+        {"📧", "Contact data", "Published business contact addresses, so a lookup ends in an outreach, not a dead end."},
+        {"⚡", "Detected within hours", "New stores enter ListSignal within hours of going live. Static IP directories lag by weeks."},
+        {"🛍️", "E-commerce depth", "260+ Shopify apps, product counts and price bands across millions of stores."},
+        {"📤", "CRM-ready exports", "Filtered CSV exports designed for import — no scraping, no cleaning."},
+        {"🔍", "Transparent timestamps", "Every data point shows when it was collected."}
+      ]
+    },
     "zoominfo" => %{
       name: "ZoomInfo",
       tagline: "Domain intelligence without the enterprise price tag.",

@@ -111,16 +111,19 @@
     <%= if @landing.top_stores != [] do %>
       <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden relative anim">
         <div class="flex items-center justify-between px-6 py-3.5 bg-white/[0.02] border-b border-white/[0.07] flex-wrap gap-3">
-          <div class="text-sm text-white/60">Top stores tracked by <strong class="text-white font-semibold">ListSignal</strong></div>
+          <div class="text-sm text-white/60">What <strong class="text-white font-semibold">ListSignal</strong> knows about every store &mdash; not just the tech stack</div>
+          <div class="text-[12px] text-white/40">Revenue estimate &middot; catalogue &amp; price band &middot; hiring &middot; SEO &middot; contactability</div>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm border-collapse min-w-[620px]">
             <thead><tr>
               <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Domain</th>
-              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Title</th>
-              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Country</th>
-              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Technologies</th>
-              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Traffic Rank</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Est. Revenue</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Products</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Avg Price</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Hiring</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">SEO</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Contact</th>
             </tr></thead>
             <tbody>
               <%= for {store, idx} <- Enum.with_index(@landing.top_stores) do %>
@@ -132,10 +135,12 @@
                       <%= store.domain %>
                     <% end %>
                   </td>
-                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 truncate max-w-[180px]"><%= store.title %></td>
-                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= store.country %></td>
-                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 text-xs truncate max-w-[200px]"><%= store.tech %></td>
-                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store[:rank], do: "##{store.rank}" %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 font-medium text-emerald-300/90"><%= store.revenue %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= store.products %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= if store.price_avg, do: "$#{round(store.price_avg * 1.0)}" %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store.jobs && store.jobs > 0 do %><span class="text-emerald-400"><%= store.jobs %> roles</span><% else %><span class="text-white/25">—</span><% end %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= if store.seo, do: "#{store.seo}/100" %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store.has_contact do %><span class="text-emerald-400">&#10003;</span><% else %><span class="text-white/25">—</span><% end %></td>
                 </tr>
               <% end %>
             </tbody>

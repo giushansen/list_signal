@@ -95,10 +95,12 @@ defmodule LSWeb.Layouts do
   @doc "Links shown in the public navbar, in order. Single source of truth (also used by tests)."
   def nav_links do
     [
+      {"/new-stores", "Shopify"},
+      {"/hiring", "Hiring"},
       {"/features", "Features"},
       {"/pricing", "Pricing"},
       {"/apps", "Apps"},
-      {"/tools/shopify-checker", "Free Tools"}
+      {"/tools/shopify-checker", "Domain Analyzer"}
     ]
   end
 

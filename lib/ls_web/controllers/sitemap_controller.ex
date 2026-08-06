@@ -110,6 +110,8 @@ defmodule LSWeb.SitemapController do
       entry(base, "/alternatives/wappalyzer", "0.8", "weekly"),
       entry(base, "/alternatives/storeleads", "0.8", "weekly"),
       entry(base, "/alternatives/zoominfo", "0.8", "weekly"),
+      entry(base, "/alternatives/myip-ms", "0.8", "weekly"),
+      entry(base, "/hiring", "0.8", "daily"),
       entry(base, "/tools/shopify-checker", "0.8", "weekly"),
       entry(base, "/tools/tech-lookup", "0.8", "weekly"),
       entry(base, "/new-stores", "0.7", "daily"),

@@ -141,8 +141,11 @@ defmodule LS.LandingCache do
       {:ok, rows} ->
         Enum.map(rows, fn row ->
           %{domain: Enum.at(row, 0) || "", title: Enum.at(row, 1) || "",
-            tech: Enum.at(row, 2) || "", country: Enum.at(row, 3) || "",
-            rank: Enum.at(row, 4)}
+            country: Enum.at(row, 2) || "", rank: Enum.at(row, 3),
+            revenue: Enum.at(row, 4) || "", model: Enum.at(row, 5) || "",
+            products: Enum.at(row, 6), price_avg: Enum.at(row, 7),
+            jobs: Enum.at(row, 8), seo: Enum.at(row, 9),
+            has_contact: Enum.at(row, 10) in [1, "1", true]}
         end)
       _ -> []
     end

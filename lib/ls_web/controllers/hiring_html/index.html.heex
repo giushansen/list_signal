@@ -1,0 +1,54 @@
+<main class="pt-[140px] pb-20"><div class="mx-auto max-w-[1000px] px-6">
+  <div class="text-center max-w-[640px] mx-auto mb-12">
+    <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">Hiring Signals</div>
+    <h1 class="font-display text-[clamp(32px,4vw,48px)] font-bold tracking-tight leading-[1.1] mb-4">A business that is hiring<br/>is a business that is buying</h1>
+    <p class="text-lg text-white/60 leading-relaxed">ListSignal tracks open roles across the businesses it monitors — who is hiring, in which departments, and how fast. Growth you can see before it shows up anywhere else.</p>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 max-w-[560px] mx-auto mb-14 text-center">
+    <div class="p-6 rounded-2xl bg-white/[0.03] border border-white/[0.07]">
+      <div class="font-display text-[36px] font-extrabold tracking-tight text-emerald-400"><%= fmt(@stats.companies) %></div>
+      <div class="text-xs uppercase tracking-wider text-white/35 font-medium mt-1">Businesses hiring now</div>
+    </div>
+    <div class="p-6 rounded-2xl bg-white/[0.03] border border-white/[0.07]">
+      <div class="font-display text-[36px] font-extrabold tracking-tight"><%= fmt(@stats.roles) %></div>
+      <div class="text-xs uppercase tracking-wider text-white/35 font-medium mt-1">Open roles tracked</div>
+    </div>
+  </div>
+
+  <%= if @stats.departments != [] do %>
+    <div class="max-w-[640px] mx-auto mb-14">
+      <h2 class="font-display text-lg font-semibold text-center mb-6">Where they're hiring</h2>
+      <div class="space-y-2">
+        <% max = @stats.departments |> Enum.map(fn [_, c] -> c end) |> Enum.max() %>
+        <%= for [dept, count] <- @stats.departments do %>
+          <div class="flex items-center gap-3">
+            <div class="w-32 text-right text-[13px] text-white/60 truncate flex-shrink-0"><%= dept %></div>
+            <div class="flex-1 h-6 rounded bg-white/[0.03] overflow-hidden">
+              <div class="h-full rounded bg-gradient-to-r from-emerald-600/60 to-emerald-400/60" style={"width: #{max(round(count / max * 100), 3)}%"}></div>
+            </div>
+            <div class="w-16 text-[13px] text-white/50 tabular-nums flex-shrink-0"><%= fmt(count) %></div>
+          </div>
+        <% end %>
+      </div>
+      <p class="text-center text-[12px] text-white/30 mt-4">Companies with open roles per department, across the tracked dataset.</p>
+    </div>
+  <% end %>
+
+  <div class="max-w-[640px] mx-auto mb-12 grid md:grid-cols-3 gap-4 text-center">
+    <div class="p-5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+      <div class="text-xl mb-2">🎯</div>
+      <p class="text-[13px] text-white/60 leading-relaxed">Filter any search by <span class="text-white/85">&#8220;hiring now&#8221;</span> to reach companies with budget and momentum.</p>
+    </div>
+    <div class="p-5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+      <div class="text-xl mb-2">🏢</div>
+      <p class="text-[13px] text-white/60 leading-relaxed">See departments per company — a store hiring engineers buys different tools than one hiring support.</p>
+    </div>
+    <div class="p-5 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+      <div class="text-xl mb-2">📤</div>
+      <p class="text-[13px] text-white/60 leading-relaxed">Export hiring companies with contact data and their full profile as CSV.</p>
+    </div>
+  </div>
+
+  <div class="text-center"><a href="/signup" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover">Find hiring businesses free &#8594;</a></div>
+</div></main>

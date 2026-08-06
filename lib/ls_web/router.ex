@@ -72,6 +72,7 @@ defmodule LSWeb.Router do
     get "/api/tech/suggest", ToolsController, :api_tech_suggest
 
     get "/new-stores", FeedController, :new_stores
+    get "/hiring", HiringController, :index
 
     # Purchased CSV download. Public by design: the buyer paid from a cold
     # email and has no account — the unguessable token IS the credential.

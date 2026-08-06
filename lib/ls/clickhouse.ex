@@ -20,14 +20,45 @@ defmodule LS.Clickhouse do
     end
   end
 
+  # The landing-page teaser now sells what buyers actually pay for (revenue
+  # bracket, catalogue, hiring, reachability) instead of the commodity columns
+  # every scanner shows. Prefers deep-enriched stores so the depth cells are
+  # populated, not dashes.
   def sample_shopify_stores(limit \\ 6) do
     query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank
-    FROM domains_fast
-    WHERE is_shopify = 1 AND http_title != ''
+    SELECT domain, http_title, inferred_country, tranco_rank,
+           estimated_revenue, business_model, product_count, price_avg,
+           job_count, seo_score, http_emails != '' AS has_contact
+    FROM businesses FINAL
+    WHERE positionCaseInsensitive(http_tech, 'shopify') > 0
+      AND http_title != '' AND depth_enriched_at IS NOT NULL
+      AND estimated_revenue != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit}
     """)
+  end
+
+  @doc """
+  Aggregate hiring stats for the public /hiring page. Deliberately coarse:
+  department-level counts sell the depth of the dataset without exposing
+  which boards we read or any per-company detail a competitor could replay.
+  """
+  def hiring_overview do
+    with {:ok, [[companies, roles]]} <-
+           query("SELECT countIf(job_count > 0), toUInt64(sum(job_count)) FROM businesses FINAL SETTINGS max_threads=2"),
+         {:ok, depts} <-
+           query("""
+           SELECT dept, count() AS companies FROM (
+             SELECT arrayJoin(splitByChar('|', job_departments)) AS dept
+             FROM businesses FINAL
+             WHERE job_count > 0 AND job_departments != ''
+           )
+           WHERE dept != ''
+           GROUP BY dept ORDER BY companies DESC LIMIT 12
+           SETTINGS max_threads=2, max_bytes_before_external_group_by=1000000000
+           """) do
+      {:ok, %{companies: companies, roles: roles, departments: depts}}
+    end
   end
 
   def recent_stores(limit \\ 20) do
@@ -531,8 +562,8 @@ defmodule LS.Clickhouse do
       "FROM domains_history WHERE #{guard})"
     )
     |> String.replace(
-      "FROM biz_enrichment WHERE render_engine != 'failed'",
-      "FROM biz_enrichment WHERE #{guard} AND render_engine != 'failed'"
+      "FROM biz_enrichment_log WHERE render_engine != 'failed'",
+      "FROM biz_enrichment_log WHERE #{guard} AND render_engine != 'failed'"
     )
     |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
     |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
@@ -735,7 +766,7 @@ defmodule LS.Clickhouse do
         argMaxIf(hq_location, enriched_at, hq_location != '') AS hq_location,
         argMaxIf(job_locations_top, enriched_at, job_locations_top != '') AS job_locations_top,
         argMaxIf(positions_overview, enriched_at, positions_overview != '') AS positions_overview
-      FROM (SELECT * FROM biz_enrichment #{depth_scope})
+      FROM (SELECT * FROM biz_enrichment_log #{depth_scope})
       GROUP BY domain
     ) s ON h.domain = s.domain
     LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing#{join_scope} GROUP BY domain) p
