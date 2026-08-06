@@ -1084,7 +1084,7 @@ defmodule LSWeb.ExplorerLive do
 
                   <%!-- Country + Language --%>
                   <div class="grid grid-cols-2 gap-2.5">
-                    <% inferred = LS.CountryInferrer.infer(@detail["ctl_tld"], @detail["http_language"], nil, @detail["bgp_asn_country"]) %>
+                    <% inferred = LS.CountryInferrer.infer(@detail["ctl_tld"], @detail["http_language"], nil, @detail["bgp_asn_country"], @detail["bgp_asn_org"]) %>
                     <.detail_card icon="🌍" label="Country" value={if inferred != "", do: "#{country_flag(inferred)} #{country_name(inferred)}"} />
                     <.detail_card icon="🗣️" label="Language" value={if @detail["http_language"], do: language_name(@detail["http_language"])} />
                   </div>

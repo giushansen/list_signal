@@ -1,7 +1,65 @@
 defmodule LS.CountryInferrerTest do
+  @moduledoc """
+  Country attribution feeds every country filter, /top page and paid list.
+  2026-08-07 finding: "English -> US" plus trusting CDN ASNs fabricated
+  countries at scale — 99.5% of "Canadian" Shopify stores were
+  Cloudflare-fronted .coms and India's 39K stores sat in the US bucket, so a
+  buyer of a US list would get Indian stores that bounce. The rule:
+  unknown beats fabricated.
+  """
   use ExUnit.Case, async: true
 
   alias LS.CountryInferrer
+
+  @fixtures [
+    # {tld, lang, rdap, bgp_cc, asn_org, expected}
+    {"in", "en", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", "IN"},
+    {"co.in", "en", "", "US", "", "IN"},
+    {"com", "hi", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", "IN"},
+    {"com", "fr", "", "US", "", "FR"},
+    # The incident cases: English .com on infrastructure ASNs says NOTHING.
+    {"com", "en", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", ""},
+    {"com", "en-CA", "", "CA", "SHOPIFY - Shopify, Inc., CA", ""},
+    {"com", "en", "", "US", "AMAZON-02 - Amazon.com, Inc., US", ""},
+    # Non-infra hosting: BGP is a real (if weak) signal, keep it.
+    {"com", "en", "", "IN", "TATA COMMUNICATIONS, IN", "IN"},
+    {"com", "en", "", "", "", ""}
+  ]
+
+  test "the incident matrix — TLD beats language beats BGP; infra ASNs are mute" do
+    for {tld, lang, rdap, bgp, org, expected} <- @fixtures do
+      got = CountryInferrer.infer(tld, lang, rdap, bgp, org)
+
+      assert got == expected,
+             "infer(#{inspect(tld)}, #{inspect(lang)}, _, #{inspect(bgp)}, #{inspect(org)}) = #{inspect(got)}, want #{inspect(expected)}"
+    end
+  end
+
+  @tag :data_contract
+  test "the SQL expression agrees with the Elixir rules on every fixture" do
+    # Compaction recomputes country in ClickHouse from the same maps. If the
+    # implementations drift, `businesses` silently disagrees with the app.
+    case LS.Clickhouse.query_raw("SELECT 1") do
+      {:ok, _} ->
+        expr = CountryInferrer.sql_expr("tld", "lang", "bgp_cc", "asn_org")
+
+        for {tld, lang, _rdap, bgp, org, expected} <- @fixtures do
+          sql = """
+          SELECT #{expr} FROM (
+            SELECT '#{tld}' AS tld, '#{lang}' AS lang, '#{bgp}' AS bgp_cc, '#{org}' AS asn_org
+          )
+          """
+
+          {:ok, [[got]]} = LS.Clickhouse.query_raw(sql)
+
+          assert got == expected,
+                 "SQL disagrees with Elixir for #{inspect({tld, lang, bgp, org})}: SQL=#{inspect(got)} Elixir=#{inspect(expected)}"
+        end
+
+      _ ->
+        :ok
+    end
+  end
 
   describe "infer/4 — TLD priority (highest)" do
     test "single-part ccTLD maps to country" do
@@ -62,9 +120,10 @@ defmodule LS.CountryInferrerTest do
       assert CountryInferrer.infer("com", "sco", nil, "") == "GB"
     end
 
-    test "English defaults to US (not via language map)" do
-      assert CountryInferrer.infer("com", "en", nil, "") == "US"
-      assert CountryInferrer.infer("shop", "en", nil, "") == "US"
+    test "English alone attributes nothing" do
+      # Changed 2026-08-07: English says nothing about country.
+      assert CountryInferrer.infer("com", "en", nil, "") == ""
+      assert CountryInferrer.infer("shop", "en", nil, "") == ""
     end
 
     test "language with region suffix is handled" do
@@ -100,16 +159,18 @@ defmodule LS.CountryInferrerTest do
   end
 
   describe "infer/4 — default fallback" do
-    test "no signal at all defaults to US" do
-      assert CountryInferrer.infer("com", "", nil, "") == "US"
-      assert CountryInferrer.infer("", "", nil, "") == "US"
-      assert CountryInferrer.infer(nil, nil, nil, nil) == "US"
+    test "no signal at all is honest empty, never a default" do
+      # Changed 2026-08-07: no signal means "", never a fabricated US. The
+      # en->US default had swallowed India's 39K Shopify stores.
+      assert CountryInferrer.infer("com", "", nil, "") == ""
+      assert CountryInferrer.infer("", "", nil, "") == ""
+      assert CountryInferrer.infer(nil, nil, nil, nil) == ""
     end
   end
 
   describe "infer/4 — nil handling" do
     test "nil inputs are handled gracefully" do
-      assert CountryInferrer.infer(nil, nil, nil, nil) == "US"
+      assert CountryInferrer.infer(nil, nil, nil, nil) == ""
       assert CountryInferrer.infer(nil, "fr", nil, nil) == "FR"
       assert CountryInferrer.infer("de", nil, nil, nil) == "DE"
     end

@@ -72,7 +72,21 @@ defmodule LS.CountryInferrer do
     - rdap_country: registrant country from RDAP vCard (2-letter code or "")
     - bgp_country: server hosting country from BGP ASN (2-letter code)
   """
-  def infer(tld, language, rdap_country, bgp_country) do
+  # ASN orgs whose country says where the INFRASTRUCTURE is, never where the
+  # merchant is. 2026-08-07 finding: 99.5% of "Canadian" Shopify stores were
+  # Cloudflare-fronted .coms, and every English store defaulted to US — so a
+  # buyer of a US list got Indian stores that bounce. Unknown beats fabricated.
+  @infra_asn_markers ~w(cloudflare fastly akamai shopify squarespace amazon
+                        google microsoft wix netlify vercel automattic)
+
+  def infra_asn?(asn_org) when is_binary(asn_org) do
+    org = String.downcase(asn_org)
+    Enum.any?(@infra_asn_markers, &String.contains?(org, &1))
+  end
+
+  def infra_asn?(_), do: false
+
+  def infer(tld, language, rdap_country, bgp_country, asn_org \\ "") do
     tld = normalize(tld)
     lang = normalize_lang(language)
     rdap_cc = normalize_upper(rdap_country)
@@ -80,16 +94,44 @@ defmodule LS.CountryInferrer do
 
     # Priority 1: Country-code TLD
     from_tld(tld) ||
-      # Priority 2: Language → country
+      # Priority 2: Language → country (English says nothing about country)
       from_language(lang) ||
       # Priority 3: RDAP registrant country
       from_rdap(rdap_cc) ||
-      # Priority 4: English → default US
-      if(lang == "en", do: "US") ||
-      # Priority 5: BGP fallback (skip unreliable CDN countries)
-      from_bgp(bgp_cc) ||
-      # Default: US (most common for generic TLD with no signal)
-      "US"
+      # Priority 4: BGP — only when the ASN locates the business, not a CDN
+      if(infra_asn?(asn_org), do: nil, else: from_bgp(bgp_cc)) ||
+      # No signal: say so. "" is honest; a fabricated US/CA poisons every
+      # country-filtered list a customer pays for.
+      ""
+  end
+
+  @doc """
+  The SAME rules as `infer/5`, as a ClickHouse SQL expression over column
+  names. Compaction uses this to recompute country from stored signals, which
+  is also what makes backfill possible without recrawling. Generated from the
+  same maps as the Elixir path — the two cannot drift.
+  """
+  def sql_expr(tld_col, lang_col, bgp_cc_col, asn_org_col) do
+    two_part = sql_map(@two_part_cctld_to_country)
+    one_part = sql_map(@cctld_to_country)
+    langs = sql_map(@lang_to_country)
+    infra = Enum.map_join(@infra_asn_markers, " OR ", &"positionCaseInsensitive(#{asn_org_col}, '#{&1}') > 0")
+
+    """
+    multiIf(
+      transform(lower(#{tld_col}), #{two_part}, '') != '', transform(lower(#{tld_col}), #{two_part}, ''),
+      transform(lower(#{tld_col}), #{one_part}, '') != '', transform(lower(#{tld_col}), #{one_part}, ''),
+      transform(splitByChar('-', lower(#{lang_col}))[1], #{langs}, '') != '', transform(splitByChar('-', lower(#{lang_col}))[1], #{langs}, ''),
+      (#{infra}), '',
+      length(#{bgp_cc_col}) = 2, upper(#{bgp_cc_col}),
+      '')
+    """
+  end
+
+  defp sql_map(map) do
+    keys = Enum.map_join(map, ", ", fn {k, _} -> "'#{k}'" end)
+    values = Enum.map_join(map, ", ", fn {_, v} -> "'#{v}'" end)
+    "[#{keys}], [#{values}]"
   end
 
   defp from_tld(""), do: nil

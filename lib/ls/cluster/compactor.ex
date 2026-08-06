@@ -81,6 +81,36 @@ defmodule LS.Cluster.Compactor do
   @doc "Where this pass's window must stop. Pure, so the spiral-proof bound is testable."
   def slice_until(since_s, now_s), do: min(now_s, since_s + @catchup_slice_s)
 
+  @doc """
+  Kick a sharded full rebuild in the background (the backfill tool).
+  Runs OUTSIDE the GenServer so incremental compaction keeps its cadence;
+  progress lands in the log every shard.
+  """
+  def rebuild_sharded(total_shards \\ 256) do
+    Task.start(fn ->
+      t0 = System.monotonic_time(:millisecond)
+
+      failures =
+        Enum.reduce(0..(total_shards - 1), 0, fn shard, failed ->
+          case Clickhouse.compact_shard(shard, total_shards) do
+            {:ok, _} ->
+              if rem(shard + 1, 16) == 0 do
+                elapsed = div(System.monotonic_time(:millisecond) - t0, 60_000)
+                Logger.info("[COMPACT] backfill #{shard + 1}/#{total_shards} shards (#{elapsed}m, #{failed} failed)")
+              end
+
+              failed
+
+            {:error, reason} ->
+              Logger.error("[COMPACT] backfill shard #{shard} failed: #{inspect(reason)}")
+              failed + 1
+          end
+        end)
+
+      Logger.info("[COMPACT] backfill DONE: #{total_shards} shards, #{failures} failed, #{div(System.monotonic_time(:millisecond) - t0, 60_000)}m")
+    end)
+  end
+
   @impl true
   def handle_info(:compact, s) do
     t0 = System.monotonic_time(:millisecond)

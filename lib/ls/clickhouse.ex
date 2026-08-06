@@ -496,8 +496,39 @@ defmodule LS.Clickhouse do
 
   defp to_count(_), do: 0
 
-  @doc "Full `businesses` rebuild — repair tool, ~8 min. See `LS.Cluster.Compactor`."
+  @doc "Full `businesses` rebuild — repair tool. See `LS.Cluster.Compactor`."
   def rebuild_businesses_full, do: query_raw(compact_sql(0), 30 * 60_000)
+
+  @doc """
+  Rebuild one hash-shard of `businesses` — the memory-safe backfill unit.
+
+  A full rebuild in one query no longer fits the shared box (the unscoped
+  joins are the same memory bomb the compactor hit on 2026-08-05). Sharding
+  by domain hash keeps each pass slice-sized; 256 shards of ~37K domains run
+  ~1-2 min each and the whole table backfills in hours without touching the
+  6.5G cap.
+  """
+  def compact_shard(shard, total_shards) do
+    query_raw(compact_sql_shard(shard, total_shards), 300_000)
+  end
+
+  defp compact_sql_shard(shard, total) do
+    guard = "cityHash64(domain) % #{total} = #{shard}"
+
+    # Every table read must carry the shard guard — h-side AND the depth /
+    # child joins. One unsharded side is the whole memory problem back.
+    compact_sql(0)
+    |> String.replace(
+      "FROM domains_history)",
+      "FROM domains_history WHERE #{guard})"
+    )
+    |> String.replace(
+      "FROM biz_enrichment WHERE render_engine != 'failed'",
+      "FROM biz_enrichment WHERE #{guard} AND render_engine != 'failed'"
+    )
+    |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
+    |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
+  end
 
   # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
   # anti-erasure rule: a later empty row cannot overwrite an earlier good value.
@@ -562,7 +593,12 @@ defmodule LS.Clickhouse do
       h.business_model, h.industry, h.classification_confidence,
       h.http_schema_type, h.http_og_type,
       h.bgp_ip, h.bgp_asn_number, h.bgp_asn_org, h.bgp_asn_country, h.bgp_asn_prefix,
-      h.inferred_country,
+      /* Recomputed from the surviving signals rather than copied from
+         history: the stored value was fabricated for CDN-fronted English
+         .coms (en->US default, Shopify-ASN->CA), which is how India lost
+         39K stores to the US bucket. Recomputing here is also what lets a
+         rules fix backfill 9.6M rows without recrawling anything. */
+      #{LS.CountryInferrer.sql_expr("h.ctl_tld", "h.http_language", "h.bgp_asn_country", "h.bgp_asn_org")} AS inferred_country,
       h.rdap_domain_created_at, h.rdap_domain_expires_at, h.rdap_domain_updated_at,
       h.rdap_registrar, h.rdap_registrar_iana_id, h.rdap_nameservers, h.rdap_status,
       h.tranco_rank, h.majestic_rank, h.majestic_ref_subnets,
