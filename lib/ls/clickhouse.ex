@@ -513,10 +513,18 @@ defmodule LS.Clickhouse do
   end
 
   defp compact_sql_shard(shard, total) do
-    guard = "cityHash64(domain) % #{total} = #{shard}"
+    # The shard is a set of DOMAINS, not a raw hash predicate on every table.
+    # domains_history is sorted by (domain, enriched_at), so `domain IN (set)`
+    # granule-prunes the read; a bare cityHash64(domain) predicate forced a
+    # FULL scan of the 100M-row table per shard — 256 full scans, which is
+    # why the first backfill attempt sat silent for 20 minutes doing nothing
+    # visible. Membership in `businesses` also bounds the set to real
+    # businesses (9.6M) rather than every domain ever seen.
+    set = "SELECT domain FROM businesses WHERE cityHash64(domain) % #{total} = #{shard}"
+    guard = "domain IN (#{set})"
 
-    # Every table read must carry the shard guard — h-side AND the depth /
-    # child joins. One unsharded side is the whole memory problem back.
+    # Every table read carries the guard — one unsharded side is the whole
+    # memory problem back.
     compact_sql(0)
     |> String.replace(
       "FROM domains_history)",
