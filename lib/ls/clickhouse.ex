@@ -582,7 +582,7 @@ defmodule LS.Clickhouse do
       -- rejects plain HTTP keeps a business marked blocked forever even though
       -- the browser lane reads it fine. (s.* are NULL when no enrichment row
       -- exists — join_use_nulls — so the condition is false and h wins.)
-      if(s.render_engine = 'camoufox' AND s.enriched_at > h._blk_at,
+      if(s.render_engine = 'camoufox' AND s.enriched_at_newest > h._blk_at,
          '', h.last_http_blocked) AS last_http_blocked,
       h.dns_alive,
       h.ctl_tld, h.ctl_issuer, h.ctl_subdomain_count, h.ctl_subdomains,
