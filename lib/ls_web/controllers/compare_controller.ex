@@ -14,7 +14,12 @@ defmodule LSWeb.CompareController do
   def show(conn, %{"slug" => slug}) do
     case parse_vs_slug(slug) do
       {tech_a, tech_b} ->
-        data = LS.Clickhouse.compare_techs(tech_a, tech_b)
+        # Same treatment as /tech/*: heavy scans on a public page, cached 6h
+        # per pair. See tech_controller for the incident.
+        data =
+          LS.UICache.fetch({:compare_page, tech_a, tech_b}, 21_600, fn ->
+            LS.Clickhouse.compare_techs(tech_a, tech_b)
+          end)
 
         conn
         |> assign(:page_title, "#{tech_a} vs #{tech_b} — Shopify App Comparison")

@@ -12,6 +12,40 @@ defmodule LSWeb.TechController do
 
     search_term = slug |> String.replace("-", " ")
 
+    # One cache entry per tech, 6h. The assembly below runs SEVEN full scans
+    # of a 118M-row table (a 9s store query plus six distributions) — fine
+    # once, fatal per crawler hit: post-mutation cold caches took every
+    # /tech/* page past the origin timeout and Google saw dead pages. A
+    # public SEO page whose data drifts daily must never recompute per view.
+    %{
+      stores: stores, store_count: store_count, actual_name: actual_name,
+      stats: stats, countries: countries, languages: languages,
+      hosting: hosting, registrars: registrars, co_techs: co_techs
+    } =
+      LS.UICache.fetch({:tech_page, tech_name}, 21_600, fn ->
+        assemble_tech_page(tech_name, search_term)
+      end)
+
+    conn
+    |> assign(:page_title, tech_page_title(actual_name, stats.total))
+    |> assign(:page_description, tech_page_description(actual_name, stats.total))
+    |> assign(:tech_name, actual_name)
+    |> assign(:slug, slug)
+    |> assign(:stores, stores)
+    |> assign(:store_count, store_count)
+    |> assign(:stats, stats)
+    |> assign(:countries, countries)
+    |> assign(:languages, languages)
+    |> assign(:hosting, hosting)
+    |> assign(:registrars, registrars)
+    |> assign(:co_techs, co_techs)
+    |> assign(:json_ld, tech_json_ld(actual_name, stats))
+    |> put_layout(html: {LSWeb.Layouts, :public})
+    |> render(:show)
+  end
+
+
+  defp assemble_tech_page(tech_name, search_term) do
     {stores, store_count, actual_name} = case LS.Clickhouse.stores_by_tech_full(tech_name, 100) do
       {:ok, rows} when rows != [] ->
         parsed = Enum.map(rows, &parse_full_row/1)
@@ -70,22 +104,11 @@ defmodule LSWeb.TechController do
 
     stats = build_stats(stats_r)
 
-    conn
-    |> assign(:page_title, tech_page_title(actual_name, stats.total))
-    |> assign(:page_description, tech_page_description(actual_name, stats.total))
-    |> assign(:tech_name, actual_name)
-    |> assign(:slug, slug)
-    |> assign(:stores, stores)
-    |> assign(:store_count, store_count)
-    |> assign(:stats, stats)
-    |> assign(:countries, countries)
-    |> assign(:languages, languages)
-    |> assign(:hosting, hosting)
-    |> assign(:registrars, registrars)
-    |> assign(:co_techs, co_techs)
-    |> assign(:json_ld, tech_json_ld(actual_name, stats))
-    |> put_layout(html: {LSWeb.Layouts, :public})
-    |> render(:show)
+    %{
+      stores: stores, store_count: store_count, actual_name: actual_name,
+      stats: stats, countries: countries, languages: languages,
+      hosting: hosting, registrars: registrars, co_techs: co_techs
+    }
   end
 
   @unknown_stats %{total: nil, avg_response_time: nil, responding_count: nil, top_100k_count: nil}
