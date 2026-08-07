@@ -300,10 +300,16 @@ defmodule LS.Clickhouse do
   end
 
   def country_directory do
+    # HAVING >= 10: the sitemap emits /top/shopify-stores-<cc> from this list
+    # and the page needs enough stores to render a list worth indexing. Seven
+    # thin countries (CM, LY, DZ...) were being emitted and 404ing for Google
+    # — same contract as techs: never offer a URL the page cannot serve.
     query("""
     SELECT country, count() AS cnt FROM domains_fast
     WHERE is_shopify = 1 AND country != ''
-    GROUP BY country ORDER BY cnt DESC
+    GROUP BY country
+    HAVING cnt >= 10
+    ORDER BY cnt DESC
     """)
   end
 
