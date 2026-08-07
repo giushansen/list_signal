@@ -555,6 +555,10 @@ defmodule LS.Explorer do
   defp filter_clause({:ats_platform, v}) when is_binary(v) and v != "",
     do: ["ats_platform = '#{esc(v)}'"]
 
+  # Parked domains / default storefronts (see BusinessClassifier.junk_reason/1).
+  # Kept opt-in for now: measure the junk rate with the golden set first, flip
+  # to exclude-by-default once the detector's precision is verified.
+  defp filter_clause({:exclude_junk, "true"}), do: ["is_junk = ''"]
   defp filter_clause({:has_pricing, "true"}), do: ["pricing_points > 0"]
   defp filter_clause({:has_email, "true"}), do: ["http_emails != ''"]
   defp filter_clause({:hiring, "true"}), do: ["job_count > 0"]

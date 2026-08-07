@@ -32,7 +32,7 @@ defmodule LS.Cluster.Inserter do
     :rdap_status, :rdap_error,
     # Reputation
     :tranco_rank, :majestic_rank, :majestic_ref_subnets,
-    :is_malware, :is_phishing, :is_disposable_email,
+    :is_malware, :is_phishing, :is_disposable_email, :is_junk,
     # Revenue estimation
     :estimated_revenue, :estimated_employees, :revenue_confidence, :revenue_evidence
   ]

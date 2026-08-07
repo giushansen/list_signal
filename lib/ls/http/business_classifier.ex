@@ -12,9 +12,32 @@ defmodule LS.HTTP.BusinessClassifier do
   # PUBLIC API
   # ===========================================================================
 
+  @doc """
+  Why the fetched page is not a real business — `""` when it is one.
+
+  Returns `"parked"` (domain for sale / registrar placeholder) or
+  `"placeholder"` (default Shopify/coming-soon page). This is the source of the
+  `is_junk` column: junk detection used to happen silently inside `classify/1`
+  (the row just got an empty classification), which meant parked domains were
+  indistinguishable from real-but-unclassifiable businesses — and could be
+  exported to customers as leads. `""` means "no junk detected", not "verified
+  real": a page we never fetched has nothing to judge.
+  """
+  def junk_reason(signals) when is_map(signals) do
+    cond do
+      parking_page?(signals) -> "parked"
+      default_shopify_page?(signals) -> "placeholder"
+      true -> ""
+    end
+  rescue
+    _ -> ""
+  end
+
+  def junk_reason(_), do: ""
+
   def classify(signals) when is_map(signals) do
     # Skip placeholder/dead/infrastructure pages — no real business to classify.
-    if default_shopify_page?(signals) or parking_page?(signals) do
+    if junk_reason(signals) != "" do
       @empty_result
     else
       model_scores = %{}

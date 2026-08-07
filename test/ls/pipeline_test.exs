@@ -55,8 +55,9 @@ defmodule LS.PipelineTest do
   end
 
   describe "column count" do
-    test "inserter has 55 columns matching schema" do
-      assert length(LS.Cluster.Inserter.columns()) == 55
+    test "inserter has 56 columns matching schema" do
+      # 55 + is_junk (clickhouse/migrations/004_is_junk.sql)
+      assert length(LS.Cluster.Inserter.columns()) == 56
     end
   end
 end

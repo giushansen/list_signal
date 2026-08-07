@@ -633,4 +633,32 @@ defmodule LS.HTTP.ClassificationTest do
       assert r.method =~ "pages"
     end
   end
+
+  # ==========================================================================
+  # Junk detection (is_junk column)
+  # ==========================================================================
+
+  describe "junk_reason/1" do
+    test "parked domain → parked" do
+      assert BusinessClassifier.junk_reason(%{http_title: "This Domain For Sale"}) == "parked"
+      assert BusinessClassifier.junk_reason(%{body_text: "buy this domain today"}) == "parked"
+    end
+
+    test "default Shopify storefront → placeholder" do
+      assert BusinessClassifier.junk_reason(%{http_title: "My Store"}) == "placeholder"
+      assert BusinessClassifier.junk_reason(%{http_title: "Ecommerce Software by Shopify"}) == "placeholder"
+    end
+
+    test "real business and empty signals → empty string" do
+      assert BusinessClassifier.junk_reason(%{http_title: "Acme Robotics — industrial arms"}) == ""
+      assert BusinessClassifier.junk_reason(@empty_signals) == ""
+      assert BusinessClassifier.junk_reason(nil) == ""
+    end
+
+    test "junk page also classifies as empty (single source of truth)" do
+      r = BusinessClassifier.classify(%{http_title: "This Domain For Sale", http_tech: "Shopify"})
+      assert r.business_model == ""
+      assert r.confidence == 0.0
+    end
+  end
 end

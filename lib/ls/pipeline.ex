@@ -293,7 +293,7 @@ defmodule LS.Pipeline do
     body_text = http[:_body_text] || ""
     nav_links = http[:_nav_links] || ""
 
-    classify_result = BusinessClassifier.classify(%{
+    classify_signals = %{
       http_tech: merged_tech,
       http_apps: http[:http_apps] || "",
       http_title: http[:http_title] || "",
@@ -306,7 +306,12 @@ defmodule LS.Pipeline do
       h1: h1,
       body_text: body_text,
       nav_links: nav_links
-    })
+    }
+
+    classify_result = BusinessClassifier.classify(classify_signals)
+    # Recorded explicitly (not just as an empty classification) so parked /
+    # placeholder pages can be filtered out of exports and their rate measured.
+    is_junk = BusinessClassifier.junk_reason(classify_signals)
 
     # Tier 2: ML classifier fallback when heuristic confidence is low.
     # :defer stashes the text on the row so the caller can batch-classify the
@@ -385,7 +390,8 @@ defmodule LS.Pipeline do
       majestic_ref_subnets: if(maj, do: maj.ref_subnets, else: nil),
       is_malware: if(bl == :malware, do: "true", else: ""),
       is_phishing: if(bl == :phishing, do: "true", else: ""),
-      is_disposable_email: if(bl == :disposable, do: "true", else: "")
+      is_disposable_email: if(bl == :disposable, do: "true", else: ""),
+      is_junk: is_junk
     }
     |> add_revenue_estimate()
     |> then(fn row ->
