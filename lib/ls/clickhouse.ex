@@ -356,6 +356,31 @@ defmodule LS.Clickhouse do
     end
   end
 
+  @doc """
+  Tech names that at least `min` SHOPIFY stores actually use — the only techs
+  the sitemap may emit /top/shopify-stores-using-* URLs for.
+
+  The sitemap used to emit that URL for EVERY known tech, but the page 404s
+  when the Shopify intersection is empty (Pendo, enterprise SaaS tools...), so
+  the sitemap advertised 404s to Google. Same data-contract rule as the UI:
+  never offer a link that matches no rows. `min` defaults to 3 so one
+  misdetected store cannot resurrect a URL that will soon 404 again.
+  """
+  def shopify_tech_names(min \\ 3) do
+    query("""
+    SELECT tech, count() AS n FROM (
+      SELECT arrayJoin(splitByChar('|', http_tech)) AS tech
+      FROM domains_fast
+      WHERE is_shopify = 1 AND http_title != '' AND http_tech != ''
+    )
+    WHERE tech != ''
+    GROUP BY tech
+    HAVING n >= #{max(1, min)}
+    ORDER BY n DESC
+    SETTINGS max_threads=2, max_bytes_before_external_group_by=1000000000
+    """)
+  end
+
   # ── Recrawl scheduler ──
 
   @doc """

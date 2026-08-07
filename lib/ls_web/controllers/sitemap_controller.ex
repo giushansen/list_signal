@@ -69,14 +69,26 @@ defmodule LSWeb.SitemapController do
       _ -> []
     end
 
+    # /tech/* covers every tracked technology (those pages span all sites),
+    # but /top/shopify-stores-using-* only exists where Shopify stores
+    # actually use the tech — emitting the rest advertised 404s to Google.
+    shopify_techs =
+      case LS.Clickhouse.shopify_tech_names() do
+        {:ok, rows} -> MapSet.new(rows, fn [name | _] -> name end)
+        _ -> MapSet.new()
+      end
+
     techs = case LS.Clickhouse.all_tech_slugs() do
       {:ok, names} ->
         Enum.flat_map(names, fn name ->
           slug = name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")
-          [
-            entry(base, "/tech/" <> slug, "0.7", "weekly"),
-            entry(base, "/top/shopify-stores-using-" <> slug, "0.6", "weekly"),
-          ]
+          tech_page = [entry(base, "/tech/" <> slug, "0.7", "weekly")]
+
+          if MapSet.member?(shopify_techs, name) do
+            tech_page ++ [entry(base, "/top/shopify-stores-using-" <> slug, "0.6", "weekly")]
+          else
+            tech_page
+          end
         end)
       _ -> []
     end

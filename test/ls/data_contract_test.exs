@@ -194,4 +194,24 @@ defmodule LS.DataContractTest do
       end)
     end
   end
+  describe "sitemap contract (2026-08-08: sitemap advertised 404s)" do
+    test "every top-shopify-stores-using URL the sitemap emits has rows behind it" do
+      # The sitemap listed /top/shopify-stores-using-<tech> for every known
+      # tech; techs with zero Shopify users (Pendo...) rendered 404 for
+      # Google. The rule: the sitemap may only emit what the page can serve.
+      with_clickhouse(fn ->
+        {:ok, rows} = LS.Clickhouse.shopify_tech_names()
+
+        sample = rows |> Enum.take_every(max(div(length(rows), 20), 1)) |> Enum.take(20)
+
+        for [tech | _] <- sample do
+          {:ok, stores} = LS.Clickhouse.top_stores_using_tech(tech, 1)
+
+          assert stores != [],
+                 "sitemap offers /top/shopify-stores-using-#{tech} but the page query finds nothing"
+        end
+      end)
+    end
+  end
+
 end
