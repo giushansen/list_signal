@@ -118,6 +118,15 @@ defmodule LS.Cluster.Compactor do
     until = slice_until(s.since, now)
     behind? = until < now - 120
 
+    # Signals BEFORE compaction: the diff needs the old `businesses` state
+    # and compaction overwrites it. A signal failure is logged, never fatal —
+    # derived data must not block product freshness. Idempotent on retry:
+    # biz_signal dedups identical rows.
+    case Clickhouse.record_signals(s.since - @lookback_slack_s, until) do
+      :ok -> :ok
+      err -> Logger.warning("[SIGNAL] emit failed (compaction continues): #{inspect(err) |> String.slice(0, 200)}")
+    end
+
     s =
       case Clickhouse.compact_businesses(s.since - @lookback_slack_s, until) do
         {:ok, count} ->

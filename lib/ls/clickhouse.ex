@@ -387,6 +387,123 @@ defmodule LS.Clickhouse do
     """)
   end
 
+
+  # ── biz_signal: observed business changes ──
+
+  @doc """
+  Emit change signals for the slice `[since, until)` by comparing the newest
+  SUCCESSFUL crawl state in the slice against the current `businesses` row.
+
+  Must run BEFORE `compact_businesses/2` for the same slice: the diff needs
+  the OLD state, and compaction overwrites it. Failure here never blocks
+  compaction — signals are derived data.
+
+  Signal semantics (the part that keeps them honest):
+    * only crawls with http_status 200-399 AND non-empty tech count — a
+      failed or blind crawl is a fact about the crawl, not the business;
+    * domains must already exist in `businesses` with non-empty tech —
+      a first crawl "adds" everything and means nothing;
+    * biz_signal is a ReplacingMergeTree on the full row, so a retried
+      slice re-emitting identical signals dedups instead of duplicating.
+  """
+  def record_signals(since_unix, until_unix) do
+    window = "enriched_at >= toDateTime(#{since_unix}) AND enriched_at < toDateTime(#{until_unix})"
+
+    new_state = """
+    SELECT domain,
+           max(enriched_at) AS at,
+           argMax(http_tech, enriched_at) AS new_tech,
+           argMax(http_apps, enriched_at) AS new_apps
+    FROM domains_history
+    WHERE #{window} AND http_status BETWEEN 200 AND 399 AND http_tech != ''
+    GROUP BY domain
+    """
+
+    tech_sql = """
+    INSERT INTO biz_signal (kind, value, domain, changed_at)
+    SELECT sig.1 AS kind, sig.2 AS value, n.domain, n.at
+    FROM (#{new_state}) n
+    INNER JOIN (
+      SELECT domain, http_tech, http_apps FROM businesses
+      WHERE http_tech != '' AND domain IN (
+        SELECT domain FROM domains_history WHERE #{window}
+      )
+    ) b ON n.domain = b.domain
+    ARRAY JOIN arrayConcat(
+      arrayMap(x -> ('tech_added', x),
+        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', b.http_tech), x), splitByChar('|', n.new_tech))),
+      arrayMap(x -> ('tech_removed', x),
+        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', n.new_tech), x), splitByChar('|', b.http_tech))),
+      arrayMap(x -> ('app_added', x),
+        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', b.http_apps), x), splitByChar('|', n.new_apps))),
+      arrayMap(x -> ('app_removed', x),
+        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', n.new_apps), x), splitByChar('|', b.http_apps)))
+    ) AS sig
+    SETTINGS join_use_nulls = 0, max_threads = 2
+    """
+
+    hiring_sql = """
+    INSERT INTO biz_signal (kind, value, domain, changed_at)
+    SELECT if(new_jobs > 0, 'started_hiring', 'stopped_hiring') AS kind,
+           toString(new_jobs) AS value, n.domain, n.at
+    FROM (
+      SELECT domain, max(enriched_at) AS at,
+             argMaxIf(job_count, enriched_at, job_count IS NOT NULL) AS new_jobs
+      FROM biz_enrichment_log
+      WHERE #{window} AND render_engine != 'failed'
+      GROUP BY domain
+      HAVING new_jobs IS NOT NULL
+    ) n
+    INNER JOIN (
+      SELECT domain, job_count FROM businesses
+      WHERE domain IN (SELECT domain FROM biz_enrichment_log WHERE #{window})
+    ) b ON n.domain = b.domain
+    WHERE (coalesce(b.job_count, 0) = 0 AND new_jobs > 0)
+       OR (coalesce(b.job_count, 0) > 0 AND new_jobs = 0)
+    SETTINGS join_use_nulls = 1, max_threads = 2
+    """
+
+    with {:ok, _} <- query_raw(tech_sql, 120_000),
+         {:ok, _} <- query_raw(hiring_sql, 120_000) do
+      :ok
+    end
+  end
+
+  @doc """
+  Backfill one hash-shard of biz_signal from crawl history (window function
+  over consecutive successful crawls per domain). Same 256-shard pattern as
+  the country backfill; run only when the box is otherwise quiet.
+  """
+  def backfill_signals_shard(shard, total) do
+    guard = "cityHash64(domain) % #{total} = #{shard}"
+
+    sql = """
+    INSERT INTO biz_signal (kind, value, domain, changed_at)
+    SELECT sig.1, sig.2, domain, at FROM (
+      SELECT domain, enriched_at AS at,
+             splitByChar('|', http_tech) AS cur_t,
+             splitByChar('|', lagInFrame(http_tech, 1, '') OVER w) AS prev_t,
+             splitByChar('|', http_apps) AS cur_a,
+             splitByChar('|', lagInFrame(http_apps, 1, '') OVER w) AS prev_a,
+             lagInFrame(http_tech, 1, '') OVER w AS prev_raw
+      FROM domains_history
+      WHERE #{guard} AND http_status BETWEEN 200 AND 399 AND http_tech != ''
+        AND domain IN (SELECT domain FROM businesses WHERE #{guard})
+      WINDOW w AS (PARTITION BY domain ORDER BY enriched_at ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)
+    )
+    ARRAY JOIN arrayConcat(
+      arrayMap(x -> ('tech_added', x),   arrayFilter(x -> x != '' AND NOT has(prev_t, x), cur_t)),
+      arrayMap(x -> ('tech_removed', x), arrayFilter(x -> x != '' AND NOT has(cur_t, x), prev_t)),
+      arrayMap(x -> ('app_added', x),    arrayFilter(x -> x != '' AND NOT has(prev_a, x), cur_a)),
+      arrayMap(x -> ('app_removed', x),  arrayFilter(x -> x != '' AND NOT has(cur_a, x), prev_a))
+    ) AS sig
+    WHERE prev_raw != ''
+    SETTINGS max_threads = 2, max_bytes_before_external_group_by = 1000000000
+    """
+
+    query_raw(sql, 300_000)
+  end
+
   # ── Recrawl scheduler ──
 
   @doc """
