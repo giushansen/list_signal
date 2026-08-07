@@ -72,11 +72,17 @@ defmodule LSWeb.SitemapController do
     # /tech/* covers every tracked technology (those pages span all sites),
     # but /top/shopify-stores-using-* only exists where Shopify stores
     # actually use the tech — emitting the rest advertised 404s to Google.
+    # Cached 6h: the underlying arrayJoin walks the full domains table, and
+    # paying that on every CDN cache-miss of the sitemap is a 10s response
+    # plus a multi-GB scan on the shared box. The tech->Shopify intersection
+    # drifts far slower than the cache expires.
     shopify_techs =
-      case LS.Clickhouse.shopify_tech_names() do
-        {:ok, rows} -> MapSet.new(rows, fn [name | _] -> name end)
-        _ -> MapSet.new()
-      end
+      LS.UICache.fetch(:sitemap_shopify_techs, 21_600, fn ->
+        case LS.Clickhouse.shopify_tech_names() do
+          {:ok, rows} -> MapSet.new(rows, fn [name | _] -> name end)
+          _ -> MapSet.new()
+        end
+      end)
 
     techs = case LS.Clickhouse.all_tech_slugs() do
       {:ok, names} ->
