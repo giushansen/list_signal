@@ -82,6 +82,10 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 **Newest-row-wins is a sharp edge**: a worker writing *hollow* rows silently
 replaces good data. That's what the Inserter guard protects against.
 
+Accuracy of what these tables *say* (classification, revenue, junk detection)
+is measured against a hand-labeled golden set — see
+[data-quality.md](data-quality.md).
+
 ## Recrawl
 
 `LS.Recrawl.Scheduler` (master) re-enqueues stale domains every 6h:

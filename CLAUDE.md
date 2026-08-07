@@ -73,6 +73,19 @@ instructions — follow them without being asked again.
 - One deploy at a time, one node at a time. **Check for a concurrent deployer
   first**: `ps aux | grep deploy_listsignal`.
 
+## Data quality
+
+- Accuracy claims are measured, not eyeballed: the **golden set**
+  (`analysis/golden_set/`, scored with `mix ls.golden_eval`) is the reference.
+  Full process in `docs/data-quality.md`.
+- **Never tune the classifier/estimator and the golden set in the same
+  change.** Grow v(N+1) from v(N)'s disagreements; version files as
+  `golden_set_v<N>_<YYYY-MM-DD>.csv`; ship classifier changes with
+  before/after `ls.golden_eval` numbers.
+- `is_junk` (`''`/`parked`/`placeholder`) marks pages that are not a real
+  business. `''` means "no junk detected", never "verified real". It follows
+  the newest successful fetch; don't make it sticky.
+
 ## Data
 
 - **Never let a writer blank another writer's data.** `domains_current` and
