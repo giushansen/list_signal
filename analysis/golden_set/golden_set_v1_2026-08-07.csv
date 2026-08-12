@@ -8,7 +8,7 @@ model:Newsletter:low,willowbrooklabs.com,https://willowbrooklabs.com,\N,Newslett
 model:Marketplace:low,ebikefinder.es,https://ebikefinder.es,\N,Marketplace,0.6,Ecommerce & Retail,,\N,n,,,,,,
 model:Media:low,aiseoworkplace.com,https://aiseoworkplace.com,\N,Media,0.62,Marketing,<$1M,0.85,y,y,,y,,,
 model:Ecommerce:high,4saisons.fr,https://4saisons.fr,920411,Ecommerce,0.94,Fashion,$1M-$10M,0.78,y,y,,n,ecommerce,$1M-$10M,
-model:Community:low,julbordsmaklarna.se,https://julbordsmaklarna.se,\N,Community,0.51,,<$1M,0.7,y,y,,,,<$1M,AI-check: JS-only page; appears to be a christmas-buffet booking broker - Marketplace/Directory rather than Community?
+model:Community:low,julbordsmaklarna.se,https://julbordsmaklarna.se,\N,Community,0.51,,<$1M,0.7,y,n,Marketplace,,,<$1M,AI-check: JS-only page; appears to be a christmas-buffet booking broker - Marketplace/Directory rather than Community? | adjudicated 2026-08-12: owner approved AI reading
 model:Tool:high,severcode.ru,https://severcode.ru,3349685,Tool,1,DevTools,<$1M,0.78,y,n,Agency,y,,,
 model:Consulting:low,theva.com.au,https://theva.com.au,\N,Consulting,0.56,Healthcare,<$1M,0.85,y,y,,y,,<$1M,
 model:Ecommerce:low,lieudexperiencenamurois.be,https://lieudexperiencenamurois.be,\N,Ecommerce,0.62,,<$1M,0.73,y,n,Community,,,,
@@ -18,22 +18,22 @@ model:Media:low,citreoro.com,https://citreoro.com,\N,Media,0.43,,<$1M,0.71,n,,,,
 model:Marketplace:low,bigbetpoker.de,https://bigbetpoker.de,\N,Marketplace,0.4,,,\N,n,,,,,,
 model:Media:low,tresestados.com.br,https://tresestados.com.br,\N,Media,0.52,,<$1M,0.7,y,y,,,,,
 model:Consulting:low,blackwomenwho.com,https://blackwomenwho.com,\N,Consulting,0.56,,<$1M,0.83,y,n,Community,,,,
-model:Community:low,ringphone.com,https://ringphone.com,\N,Community,0.53,Healthcare,<$1M,0.65,y,n,Agency,y,,,AI-check: telesecretariat + online-agenda product - SaaS closer than Agency?
+model:Community:low,ringphone.com,https://ringphone.com,\N,Community,0.53,Healthcare,<$1M,0.65,y,n,SaaS,y,,,AI-check: telesecretariat + online-agenda product - SaaS closer than Agency? | adjudicated 2026-08-12: owner approved AI reading
 model:Ecommerce:high,lslga.org,https://lslga.org,2494180,Ecommerce,0.94,Media & Entertainment,$1M-$10M,0.86,y,n,Media,y,,,
 model:Tool:low,thisplayprint.com,https://thisplayprint.com,\N,Tool,0.55,Ecommerce & Retail,<$1M,0.84,y,n,Agency,y,,,Printing business / local business
 model:Ecommerce:high,tasteturkey.com,https://tasteturkey.com,4160447,Ecommerce,0.82,,$1M-$10M,0.55,y,y,,,,$1M-$10M,
 model:Consulting:low,pattisonresourceconsulting.ca,https://pattisonresourceconsulting.ca,\N,Consulting,0.57,Productivity,<$1M,0.72,y,y,,,,,
 model:Consulting:high,alfatihamanpower.com,https://alfatihamanpower.com,\N,Consulting,0.81,HR & Recruiting,<$1M,0.75,y,n,Agency,y,,,
 model:Agency:low,fancythatface.net,https://fancythatface.net,\N,Agency,0.55,,,\N,n,,,,,,
-model:Ecommerce:low,jenhealthcontent.com,https://jenhealthcontent.com,\N,Ecommerce,0.57,Healthcare,$100M-$1B,0.58,y,n,Media,y,,<$1M,AI-check: freelance nurse content writer - Consulting/freelance services rather than Media?
-model:SaaS:low,ohjafoods.nl,https://ohjafoods.nl,\N,SaaS,0.62,,<$1M,0.74,y,y,,,,<$1M,AI-check: fetched page is a Hostnet frameset placeholder (real site inside a frame); model_ok=y for SaaS looks unlikely for a food brand - re-check (Ecommerce?)
-model:Consulting:low,capitalglass.com.au,https://capitalglass.com.au,\N,Consulting,0.56,,<$1M,0.73,y,n,Agency,,,,AI-check: glazier = trade/LocalBusiness; 'Agency' inconsistent with ojgjoinery labeled Consulting=y
+model:Ecommerce:low,jenhealthcontent.com,https://jenhealthcontent.com,\N,Ecommerce,0.57,Healthcare,$100M-$1B,0.58,y,n,Consulting,y,,<$1M,AI-check: freelance nurse content writer - Consulting/freelance services rather than Media? | adjudicated 2026-08-12: owner approved AI reading
+model:SaaS:low,ohjafoods.nl,https://ohjafoods.nl,\N,SaaS,0.62,,<$1M,0.74,y,n,Ecommerce,,,<$1M,AI-check: fetched page is a Hostnet frameset placeholder (real site inside a frame); model_ok=y for SaaS looks unlikely for a food brand - re-check (Ecommerce?) | adjudicated 2026-08-12: owner approved AI reading
+model:Consulting:low,capitalglass.com.au,https://capitalglass.com.au,\N,Consulting,0.56,,<$1M,0.73,y,n,LocalBusiness,,,,AI-check: glazier = trade/LocalBusiness; 'Agency' inconsistent with ojgjoinery labeled Consulting=y | adjudicated 2026-08-12: owner approved AI reading
 model:Education:low,howmucharemycoinsworth.com,https://howmucharemycoinsworth.com,\N,Education,0.62,,<$1M,0.68,y,y,,,,,
-model:Agency:low,detoncho.com,https://detoncho.com,\N,Agency,0.47,Productivity,<$1M,0.8,y,n,Community,n,Group of business,,AI-check: Indigenous group-of-companies (holding) - no class fits; taxonomy gap rather than Community
-model:Ecommerce:high,spxflow.com.co,https://spxflow.com.co,\N,Ecommerce,0.86,,<$1M,0.57,y,y,,,,,actually just a local shop | AI-check: note says 'just a local shop' but model_ok=y for Ecommerce; distributor without a cart - consider LocalBusiness/Distributor
+model:Agency:low,detoncho.com,https://detoncho.com,\N,Agency,0.47,Productivity,<$1M,0.8,y,n,Holding,n,Group of business,,AI-check: Indigenous group-of-companies (holding) - no class fits; taxonomy gap rather than Community | adjudicated 2026-08-12: owner approved AI reading
+model:Ecommerce:high,spxflow.com.co,https://spxflow.com.co,\N,Ecommerce,0.86,,<$1M,0.57,y,n,LocalBusiness,,,,actually just a local shop | AI-check: note says 'just a local shop' but model_ok=y for Ecommerce; distributor without a cart - consider LocalBusiness/Distributor | adjudicated 2026-08-12: owner approved AI reading
 model:Ecommerce:high,asiahilco.com,https://asiahilco.com,\N,Ecommerce,0.99,Construction & Manufacturing,$1M-$10M,0.93,y,y,,y,,$1M-$10M,
-model:Ecommerce:low,trabzonmap.com,https://trabzonmap.com,\N,Ecommerce,0.56,Real Estate,<$1M,0.84,y,n,Media,y,,,AI-check: Arabic property-listings site - Directory rather than Media?
-model:Agency:low,chillieslabs.com,https://chillieslabs.com,\N,Agency,0.51,Food & Beverage,<$1M,0.87,n,,,,,,AI-check: content shows a functioning creative production agency - why n? re-check
+model:Ecommerce:low,trabzonmap.com,https://trabzonmap.com,\N,Ecommerce,0.56,Real Estate,<$1M,0.84,y,n,Directory,y,,,AI-check: Arabic property-listings site - Directory rather than Media? | adjudicated 2026-08-12: owner approved AI reading
+model:Agency:low,chillieslabs.com,https://chillieslabs.com,\N,Agency,0.51,Food & Beverage,<$1M,0.87,y,y,,,,,AI-check: content shows a functioning creative production agency - why n? re-check | adjudicated 2026-08-12: owner approved AI reading
 model:Community:low,instituteforzambiandevelopment.org,https://instituteforzambiandevelopment.org,\N,Community,0.5,,$100M-$1B,0.77,n,,,,,,AI: hosting-suspended Bizland page; Community@0.5 + rev $100M-$1B predicted on a dead site
 model:Consulting:high,yuuki-kobe.com,https://yuuki-kobe.com,\N,Consulting,0.8,Productivity,<$1M,0.71,y,y,,n,Construction,,AI: local landscaping/civil construction firm (Kobe) - LocalBusiness web presence; Consulting is nearest current class
 model:Media:low,sbrightsagency.com,https://sbrightsagency.com,\N,Media,0.42,,<$1M,0.88,y,n,Agency,n,Publishing,<$1M,"AI: children's-book foreign-rights agency, solo founder"
