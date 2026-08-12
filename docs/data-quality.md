@@ -16,6 +16,29 @@ in `analysis/golden_set/README.md`).
   (`last_http_status = 200`, `dns_alive = 1`) so every row is checkable by
   clicking it.
 
+  **Labeled 2026-08-12.** Provenance is mixed and every row records it: rows
+  1–35 were labeled by the owner; the remaining 116 were labeled by Claude
+  (Fable 5) from a fresh fetch of every homepage plus web searches for the
+  large-company revenue brackets — those notes all start with `AI:`. Nine
+  owner rows carry an appended `AI-check:` flag where the independent AI read
+  disagreed (owner labels were NOT changed; adjudicate before treating those
+  rows as settled). Ten AI rows were labeled behind a WAF block or an empty
+  JS shell, i.e. from model knowledge of the company, not page content —
+  their notes say so. Headline numbers: junk rate 23.8%; model accuracy
+  high-band 53.7% vs low-band 42.2% (confidence is barely calibrated);
+  per-class precision from 0% (Marketplace) to 90% (Education); revenue
+  exact-bracket 65.8% overall but only 12–18% for predictions ≥$10M.
+  Because 77% of labels are LLM-authored, treat v1 as *LLM-assisted* ground
+  truth: fine for finding broken classes and calibration, weaker as the
+  final word on any single row. The distillation tier planned below must not
+  be evaluated against AI-labeled rows without owner spot-checks — that
+  would be an LLM grading itself.
+
+Label it with `analysis/golden_set/label.html` — a self-contained page (no
+server, no network) that walks the set one domain at a time, keeps progress in
+`localStorage` and exports a CSV with the same columns. `Load other CSV` makes
+it work for every future version.
+
 Score a (partially) labeled set with:
 
     mix ls.golden_eval                # newest set under analysis/golden_set/

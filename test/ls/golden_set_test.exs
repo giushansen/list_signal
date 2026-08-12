@@ -53,6 +53,20 @@ defmodule LS.GoldenSetTest do
     assert LS.GoldenSet.format(s) =~ "Junk rate"
   end
 
+  # The labeling UI (analysis/golden_set/label.html) writes the CSV this module
+  # reads. Nothing links the two but this assertion: a renamed or reordered
+  # column there would silently export a file that scores 0/151 labeled, and the
+  # only symptom is an hour of labeling that reports nothing.
+  test "the labeling tool exports exactly the columns the scorer reads" do
+    html = File.read!("analysis/golden_set/label.html")
+    [_, cols] = Regex.run(~r/const COLS = \[(.*?)\];/s, html)
+
+    exported =
+      Regex.scan(~r/"([a-z_]+)"/, cols) |> Enum.map(fn [_, c] -> c end)
+
+    assert exported == String.split(@header, ",")
+  end
+
   test "empty labels everywhere produces a zero report, not a crash" do
     rows = parse!(csv(["model:SaaS:high,a.com,https://a.com,,SaaS,0.9,,,,,,,,,,"]))
     s = LS.GoldenSet.score(rows)

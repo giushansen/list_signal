@@ -1,0 +1,432 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ListSignal golden set — labeling</title>
+<style>
+  :root {
+    --bg:#faf9f7; --card:#fff; --ink:#1c1b1a; --muted:#6b6864; --line:#e3e0db;
+    --accent:#2f6f4f; --accent-soft:#e7f1ea; --warn:#a8442a; --warn-soft:#fbeae5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16161a; --card:#1e1e23; --ink:#eceaf0; --muted:#9b98a3; --line:#32323a;
+            --accent:#6bbf90; --accent-soft:#22352c; --warn:#e3856a; --warn-soft:#3a2520; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg);
+           border-bottom:1px solid var(--line); padding:10px 16px; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:8px; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; transition:width .2s; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; }
+  main { max-width:780px; margin:20px auto 120px; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  h1 { font-size:15px; margin:0; font-weight:650; }
+  .domain { font-size:26px; font-weight:650; word-break:break-all; margin:0 0 4px; }
+  .bucket { color:var(--muted); font-size:13px; font-family:ui-monospace,monospace; }
+  a.open { display:inline-block; margin:14px 0 18px; padding:10px 16px; background:var(--accent);
+           color:#fff; text-decoration:none; border-radius:8px; font-weight:600; }
+  @media (prefers-color-scheme: dark) { a.open { color:#12211a; } }
+  .preds { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .chip { font-size:12px; padding:4px 9px; border:1px solid var(--line); border-radius:99px; color:var(--muted); }
+  .chip b { color:var(--ink); font-weight:600; }
+  .q { border-top:1px solid var(--line); padding:14px 0 4px; }
+  .q > label { display:block; font-weight:600; margin-bottom:8px; }
+  .q .hint { font-weight:400; color:var(--muted); font-size:13px; }
+  button.opt { font:inherit; padding:8px 16px; margin-right:8px; border:1px solid var(--line);
+               background:var(--card); color:var(--ink); border-radius:8px; cursor:pointer; }
+  button.opt[aria-pressed="true"] { background:var(--accent-soft); border-color:var(--accent); font-weight:650; }
+  button.opt.no[aria-pressed="true"] { background:var(--warn-soft); border-color:var(--warn); }
+  select, input[type=text] { font:inherit; padding:8px; border:1px solid var(--line); border-radius:8px;
+                             background:var(--card); color:var(--ink); max-width:100%; }
+  .nav { position:fixed; bottom:0; left:0; right:0; background:var(--card);
+         border-top:1px solid var(--line); padding:10px 16px; }
+  .nav .inner { max-width:780px; margin:0 auto; }
+  .kbd { font-family:ui-monospace,monospace; font-size:12px; color:var(--muted); }
+  .done { text-align:center; padding:40px 20px; }
+  .hidden { display:none; }
+  button.plain { font:inherit; padding:7px 13px; border:1px solid var(--line);
+                 background:var(--card); color:var(--ink); border-radius:8px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  @media (prefers-color-scheme: dark) { button.primary { color:#12211a; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1 class="grow">Golden set <span id="file"></span></h1>
+    <span class="kbd" id="count"></span>
+    <button class="plain primary" id="dl">Download labeled CSV</button>
+    <label class="plain" style="cursor:pointer">Load other CSV
+      <input type="file" id="pick" accept=".csv" class="hidden">
+    </label>
+  </div>
+  <div class="bar"><i id="prog"></i></div>
+</header>
+
+<main>
+  <div id="card" class="card"></div>
+  <div id="finished" class="card done hidden">
+    <h2>All 0 rows labeled 🎉</h2>
+    <p>Hit <b>Download labeled CSV</b> above and hand the file back to Claude.</p>
+  </div>
+</main>
+
+<div class="nav"><div class="inner row">
+  <button class="plain" id="prev">← Back</button>
+  <button class="plain" id="skip">Skip</button>
+  <span class="grow kbd">Keys: <b>y</b>/<b>n</b> answer &middot; <b>o</b> open site &middot; <b>←</b>/<b>→</b> move &middot; saves automatically in this browser</span>
+  <button class="plain primary" id="next">Next →</button>
+</div></div>
+
+<script type="text/plain" id="embedded">bucket,domain,url,tranco_rank,predicted_model,model_confidence,predicted_industry,predicted_revenue,revenue_confidence,is_real_business,model_ok,true_model,industry_ok,true_industry,true_revenue,notes
+model:Agency:low,velinexlabs.com,https://velinexlabs.com,\N,Agency,0.56,DevTools,<$1M,0.7,,,,,,,
+model:Consulting:low,ojgjoineryandconstruction.co.uk,https://ojgjoineryandconstruction.co.uk,\N,Consulting,0.49,Productivity,,\N,,,,,,,
+model:Ecommerce:low,wertovia.com,https://wertovia.com,\N,Ecommerce,0.62,Legal,<$1M,0.72,,,,,,,
+model:Directory:high,grupolisto.com,https://grupolisto.com,\N,Directory,0.85,,<$1M,0.85,,,,,,,
+model:Agency:high,lancecallihan.com,https://lancecallihan.com,\N,Agency,0.87,Media & Entertainment,<$1M,0.82,,,,,,,
+model:Newsletter:low,willowbrooklabs.com,https://willowbrooklabs.com,\N,Newsletter,0.59,Security,<$1M,0.61,,,,,,,
+model:Marketplace:low,ebikefinder.es,https://ebikefinder.es,\N,Marketplace,0.6,Ecommerce & Retail,,\N,,,,,,,
+model:Media:low,aiseoworkplace.com,https://aiseoworkplace.com,\N,Media,0.62,Marketing,<$1M,0.85,,,,,,,
+model:Ecommerce:high,4saisons.fr,https://4saisons.fr,920411,Ecommerce,0.94,Fashion,$1M-$10M,0.78,,,,,,,
+model:Community:low,julbordsmaklarna.se,https://julbordsmaklarna.se,\N,Community,0.51,,<$1M,0.7,,,,,,,
+model:Tool:high,severcode.ru,https://severcode.ru,3349685,Tool,1,DevTools,<$1M,0.78,,,,,,,
+model:Consulting:low,theva.com.au,https://theva.com.au,\N,Consulting,0.56,Healthcare,<$1M,0.85,,,,,,,
+model:Ecommerce:low,lieudexperiencenamurois.be,https://lieudexperiencenamurois.be,\N,Ecommerce,0.62,,<$1M,0.73,,,,,,,
+model:Ecommerce:low,notreallyfamous.com,https://notreallyfamous.com,\N,Ecommerce,0.67,,<$1M,0.58,,,,,,,
+model:Agency:low,smws.com.br,https://smws.com.br,\N,Agency,0.59,Marketing,<$1M,0.77,,,,,,,
+model:Media:low,citreoro.com,https://citreoro.com,\N,Media,0.43,,<$1M,0.71,,,,,,,
+model:Marketplace:low,bigbetpoker.de,https://bigbetpoker.de,\N,Marketplace,0.4,,,\N,,,,,,,
+model:Media:low,tresestados.com.br,https://tresestados.com.br,\N,Media,0.52,,<$1M,0.7,,,,,,,
+model:Consulting:low,blackwomenwho.com,https://blackwomenwho.com,\N,Consulting,0.56,,<$1M,0.83,,,,,,,
+model:Community:low,ringphone.com,https://ringphone.com,\N,Community,0.53,Healthcare,<$1M,0.65,,,,,,,
+model:Ecommerce:high,lslga.org,https://lslga.org,2494180,Ecommerce,0.94,Media & Entertainment,$1M-$10M,0.86,,,,,,,
+model:Tool:low,thisplayprint.com,https://thisplayprint.com,\N,Tool,0.55,Ecommerce & Retail,<$1M,0.84,,,,,,,
+model:Ecommerce:high,tasteturkey.com,https://tasteturkey.com,4160447,Ecommerce,0.82,,$1M-$10M,0.55,,,,,,,
+model:Consulting:low,pattisonresourceconsulting.ca,https://pattisonresourceconsulting.ca,\N,Consulting,0.57,Productivity,<$1M,0.72,,,,,,,
+model:Consulting:high,alfatihamanpower.com,https://alfatihamanpower.com,\N,Consulting,0.81,HR & Recruiting,<$1M,0.75,,,,,,,
+model:Agency:low,fancythatface.net,https://fancythatface.net,\N,Agency,0.55,,,\N,,,,,,,
+model:Ecommerce:low,jenhealthcontent.com,https://jenhealthcontent.com,\N,Ecommerce,0.57,Healthcare,$100M-$1B,0.58,,,,,,,
+model:SaaS:low,ohjafoods.nl,https://ohjafoods.nl,\N,SaaS,0.62,,<$1M,0.74,,,,,,,
+model:Consulting:low,capitalglass.com.au,https://capitalglass.com.au,\N,Consulting,0.56,,<$1M,0.73,,,,,,,
+model:Education:low,howmucharemycoinsworth.com,https://howmucharemycoinsworth.com,\N,Education,0.62,,<$1M,0.68,,,,,,,
+model:Agency:low,detoncho.com,https://detoncho.com,\N,Agency,0.47,Productivity,<$1M,0.8,,,,,,,
+model:Ecommerce:high,spxflow.com.co,https://spxflow.com.co,\N,Ecommerce,0.86,,<$1M,0.57,,,,,,,
+model:Ecommerce:high,asiahilco.com,https://asiahilco.com,\N,Ecommerce,0.99,Construction & Manufacturing,$1M-$10M,0.93,,,,,,,
+model:Ecommerce:low,trabzonmap.com,https://trabzonmap.com,\N,Ecommerce,0.56,Real Estate,<$1M,0.84,,,,,,,
+model:Agency:low,chillieslabs.com,https://chillieslabs.com,\N,Agency,0.51,Food & Beverage,<$1M,0.87,,,,,,,
+model:Community:low,instituteforzambiandevelopment.org,https://instituteforzambiandevelopment.org,\N,Community,0.5,,$100M-$1B,0.77,,,,,,,
+model:Consulting:high,yuuki-kobe.com,https://yuuki-kobe.com,\N,Consulting,0.8,Productivity,<$1M,0.71,,,,,,,
+model:Media:low,sbrightsagency.com,https://sbrightsagency.com,\N,Media,0.42,,<$1M,0.88,,,,,,,
+model:Marketplace:low,bringers.nl,https://bringers.nl,\N,Marketplace,0.4,,,\N,,,,,,,
+model:Marketplace:low,loppersum.de,https://loppersum.de,\N,Marketplace,0.4,,,\N,,,,,,,
+model:Tool:low,isapexchange.com,https://isapexchange.com,\N,Tool,0.56,HR & Recruiting,<$1M,0.78,,,,,,,
+model:Directory:low,rhinoprojects.co.il,https://rhinoprojects.co.il,\N,Directory,0.46,DevTools,<$1M,0.67,,,,,,,
+model:Media:low,oninstitutehealthwellnessclub.es,https://oninstitutehealthwellnessclub.es,\N,Media,0.58,,,\N,,,,,,,
+model:Education:low,hoofandpawtrac.org,https://hoofandpawtrac.org,\N,Education,0.62,,$1M-$10M,0.85,,,,,,,
+model:Community:low,reddingrotary.org,https://reddingrotary.org,\N,Community,0.56,,<$1M,0.59,,,,,,,
+model:Community:low,tymsapp.io,https://tymsapp.io,\N,Community,0.62,DevTools,<$1M,0.78,,,,,,,
+model:SaaS:low,elpcloud.com,https://elpcloud.com,\N,SaaS,0.56,Construction & Manufacturing,,\N,,,,,,,
+model:Tool:low,lunyce.fr,https://lunyce.fr,\N,Tool,0.54,Ecommerce & Retail,<$1M,0.88,,,,,,,
+model:Newsletter:low,chappaquaems.org,https://chappaquaems.org,\N,Newsletter,0.55,,<$1M,0.78,,,,,,,
+model:Education:low,shiftclick.uk,https://shiftclick.uk,\N,Education,0.53,DevTools,<$1M,0.75,,,,,,,
+model:Media:high,publicmediacontent.org,https://publicmediacontent.org,\N,Media,0.87,Media & Entertainment,<$1M,0.44,,,,,,,
+model:Marketplace:low,actpractice.org,https://actpractice.org,\N,Marketplace,0.41,Ecommerce & Retail,<$1M,0.69,,,,,,,
+model:SaaS:low,binaryinfura.com,https://binaryinfura.com,\N,SaaS,0.62,AI & ML,<$1M,0.66,,,,,,,
+model:Community:high,spaziofamiglie3v.ch,https://spaziofamiglie3v.ch,\N,Community,0.82,,,\N,,,,,,,
+model:Newsletter:low,stopabo.be,https://stopabo.be,\N,Newsletter,0.4,,$1M-$10M,0.49,,,,,,,
+model:Tool:low,hlweb.se,https://hlweb.se,\N,Tool,0.62,DevTools,<$1M,0.71,,,,,,,
+model:SaaS:low,laurenpegg.nz,https://laurenpegg.nz,\N,SaaS,0.56,,<$1M,0.59,,,,,,,
+model:Tool:low,schweyer-marti.ch,https://schweyer-marti.ch,\N,Tool,0.54,Home & Garden,<$1M,0.65,,,,,,,
+model:Directory:low,mrsqm.com,https://mrsqm.com,\N,Directory,0.64,Real Estate,,\N,,,,,,,
+model:Education:low,jsc-crossfit.ch,https://jsc-crossfit.ch,\N,Education,0.45,,<$1M,0.7,,,,,,,
+model:SaaS:low,reviewgopher.com,https://reviewgopher.com,\N,SaaS,0.43,Ecommerce & Retail,<$1M,0.62,,,,,,,
+model:Consulting:high,almadvogados.com.br,https://almadvogados.com.br,\N,Consulting,0.84,Legal,$1M-$10M,0.69,,,,,,,
+model:Agency:high,rondebu.com,https://rondebu.com,\N,Agency,1,Marketing,<$1M,0.52,,,,,,,
+model:Consulting:high,coinny-gateway.com,https://coinny-gateway.com,\N,Consulting,0.8,Fintech,<$1M,0.72,,,,,,,
+model:Marketplace:high,achetervendremagasinsport.com,https://achetervendremagasinsport.com,\N,Marketplace,1,Ecommerce & Retail,<$1M,0.73,,,,,,,
+model:Directory:low,birdtripper.com,https://birdtripper.com,\N,Directory,0.62,Travel,<$1M,0.74,,,,,,,
+model:Directory:low,meetagentpics.com,https://meetagentpics.com,\N,Directory,0.64,Real Estate,$1M-$10M,0.84,,,,,,,
+model:Education:low,cantstopthegrowth.com,https://cantstopthegrowth.com,\N,Education,0.62,Media & Entertainment,$1M-$10M,0.64,,,,,,,
+model:Agency:high,riary.com,https://riary.com,\N,Agency,0.88,Fashion,<$1M,0.85,,,,,,,
+model:Directory:low,koten-oekaki.com,https://koten-oekaki.com,\N,Directory,0.59,,<$1M,0.71,,,,,,,
+model:Newsletter:low,carlhead.com,https://carlhead.com,\N,Newsletter,0.61,,<$1M,0.72,,,,,,,
+model:Consulting:high,contodi.com,https://contodi.com,\N,Consulting,0.89,Healthcare,<$1M,0.53,,,,,,,
+model:Newsletter:low,thebarnett.net,https://thebarnett.net,\N,Newsletter,0.6,,<$1M,0.82,,,,,,,
+model:SaaS:high,rangehq.ca,https://rangehq.ca,\N,SaaS,0.88,,<$1M,0.79,,,,,,,
+model:Agency:high,devcohn.com,https://devcohn.com,\N,Agency,0.8,DevTools,$1M-$10M,0.53,,,,,,,
+model:Education:high,fipead.com.br,https://fipead.com.br,\N,Education,0.91,Education,<$1M,0.74,,,,,,,
+model:Agency:high,yoki-create.com,https://yoki-create.com,\N,Agency,1,DevTools,<$1M,0.4,,,,,,,
+model:Marketplace:high,traxsales.com,https://traxsales.com,\N,Marketplace,0.85,Ecommerce & Retail,<$1M,0.61,,,,,,,
+model:SaaS:high,softwarerifiuti.com,https://softwarerifiuti.com,\N,SaaS,0.9,DevTools,<$1M,0.71,,,,,,,
+model:SaaS:high,payzum.com,https://payzum.com,\N,SaaS,0.84,Fintech,<$1M,0.78,,,,,,,
+model:Marketplace:high,webaccept.com,https://webaccept.com,\N,Marketplace,0.8,Ecommerce & Retail,,\N,,,,,,,
+model:Media:high,contentwriter.it,https://contentwriter.it,\N,Media,0.81,,$1M-$10M,0.44,,,,,,,
+model:Education:high,next-degree.com,https://next-degree.com,\N,Education,0.87,Education,<$1M,0.75,,,,,,,
+model:Community:high,majiyuru.com,https://majiyuru.com,\N,Community,0.94,Productivity,<$1M,0.66,,,,,,,
+model:Marketplace:high,jushatech.com,https://jushatech.com,\N,Marketplace,1,Ecommerce & Retail,<$1M,0.91,,,,,,,
+model:Education:high,taiwa-academy.com,https://taiwa-academy.com,\N,Education,0.83,Education,<$1M,0.64,,,,,,,
+model:Newsletter:high,mailmaag.com,https://mailmaag.com,\N,Newsletter,0.93,,<$1M,0.74,,,,,,,
+model:Education:high,carmelsafety.co.il,https://carmelsafety.co.il,\N,Education,0.8,Education,$1M-$10M,0.5,,,,,,,
+model:SaaS:high,instagapi.com,https://instagapi.com,\N,SaaS,0.81,DevTools,<$1M,0.72,,,,,,,
+model:Tool:high,lucadigitale.com,https://lucadigitale.com,\N,Tool,0.8,Marketing,<$1M,0.68,,,,,,,
+model:Community:high,sapancasifakoyu.com,https://sapancasifakoyu.com,\N,Community,0.82,DevTools,<$1M,0.44,,,,,,,
+model:Media:high,epsteinyearbook.com,https://epsteinyearbook.com,\N,Media,0.8,,<$1M,0.67,,,,,,,
+model:Marketplace:high,verasec.nl,https://verasec.nl,\N,Marketplace,0.86,Travel,<$1M,0.73,,,,,,,
+model:Newsletter:high,emailsguru.com,https://emailsguru.com,1825501,Newsletter,0.8,Marketing,<$1M,0.94,,,,,,,
+model:Tool:high,siposzoltain.hu,https://siposzoltain.hu,4021920,Tool,0.86,AI & ML,<$1M,0.69,,,,,,,
+model:Community:high,trazosestudio.es,https://trazosestudio.es,\N,Community,0.83,Productivity,<$1M,0.73,,,,,,,
+model:Education:high,edyou.com,https://edyou.com,\N,Education,0.87,AI & ML,<$1M,0.68,,,,,,,
+model:Community:high,mobinertebat.net,https://mobinertebat.net,\N,Community,0.98,Security,<$1M,0.78,,,,,,,
+model:SaaS:high,repboostnow.com,https://repboostnow.com,\N,SaaS,0.8,Marketing,,\N,,,,,,,
+model:Tool:high,onvibe.fr,https://onvibe.fr,\N,Tool,0.84,DevTools,<$1M,0.72,,,,,,,
+model:Newsletter:high,momentumpublicationswritten.com,https://momentumpublicationswritten.com,\N,Newsletter,0.91,Marketing,<$1M,0.62,,,,,,,
+model:Tool:high,flyprimeglobal.com,https://flyprimeglobal.com,\N,Tool,0.84,AI & ML,<$1M,0.79,,,,,,,
+model:Media:high,quarten.ch,https://quarten.ch,\N,Media,0.83,,<$1M,0.55,,,,,,,
+model:Newsletter:high,artedeminasmg.com.br,https://artedeminasmg.com.br,\N,Newsletter,1,Marketing,<$1M,0.74,,,,,,,
+model:Media:high,kurmaydijital.net,https://kurmaydijital.net,3446261,Media,0.82,Media & Entertainment,<$1M,0.7,,,,,,,
+model:Newsletter:high,adblip.com.br,https://adblip.com.br,\N,Newsletter,0.89,Marketing,<$1M,0.78,,,,,,,
+model:Directory:high,corehousing.co.jp,https://corehousing.co.jp,\N,Directory,0.88,Real Estate,<$1M,0.7,,,,,,,
+model:Directory:high,cotswoldspages.com,https://cotswoldspages.com,\N,Directory,0.91,,<$1M,0.79,,,,,,,
+model:Directory:high,comfortathome.org,https://comfortathome.org,\N,Directory,0.87,,$1M-$10M,0.62,,,,,,,
+model:Directory:high,unitem.nl,https://unitem.nl,\N,Directory,0.81,Ecommerce & Retail,,\N,,,,,,,
+unclassified,somos.com,https://somos.com,456091,,,,$10M-$100M,0.88,,,,,,,
+unclassified,newport.com,https://newport.com,200646,,,,$100M-$1B,0.97,,,,,,,
+unclassified,myeyedr.com,https://myeyedr.com,135940,,,,$10M-$100M,0.99,,,,,,,
+unclassified,bluecrossmn.com,https://bluecrossmn.com,153647,,,,$100M-$1B,0.99,,,,,,,
+unclassified,anabolikatabletten.com,https://anabolikatabletten.com,1034933,,,,<$1M,0.62,,,,,,,
+unclassified,ubagroup.com,https://ubagroup.com,52328,,,,$100M-$1B,0.81,,,,,,,
+unclassified,destinationcolorado.com,https://destinationcolorado.com,3692561,,,,$1M-$10M,0.87,,,,,,,
+unclassified,newauction.org,https://newauction.org,40178,,,,$10M-$100M,0.74,,,,,,,
+unclassified,maidstone-jobs.co.uk,https://maidstone-jobs.co.uk,4102439,,,,<$1M,0.7,,,,,,,
+unclassified,serviceinnovation.org,https://serviceinnovation.org,1507163,,,,$100M-$1B,0.96,,,,,,,
+unclassified,petsensedirect.co.uk,https://petsensedirect.co.uk,2784426,,,,<$1M,0.59,,,,,,,
+unclassified,casino.at,https://casino.at,365449,,,,$10M-$100M,0.78,,,,,,,
+unclassified,star.com.au,https://star.com.au,123735,,,,$10M-$100M,0.97,,,,,,,
+unclassified,apartostudent.com,https://apartostudent.com,1050692,,,,<$1M,0.85,,,,,,,
+unclassified,macu.com,https://macu.com,116328,,,,$10M-$100M,0.99,,,,,,,
+unclassified,abnsave.com,https://abnsave.com,2158194,,,,$100M-$1B,0.93,,,,,,,
+unclassified,im-data.jp,https://im-data.jp,4073131,,,,<$1M,0.76,,,,,,,
+unclassified,policebank.com.au,https://policebank.com.au,260424,,,,$100M-$1B,0.88,,,,,,,
+unclassified,portlandrescuemission.org,https://portlandrescuemission.org,1861500,,,,$1M-$10M,0.76,,,,,,,
+unclassified,ab-inbev.com,https://ab-inbev.com,43901,,,,$100M-$1B,0.81,,,,,,,
+revenue:<$1M,teresapsicologainfantilyadulto.es,https://teresapsicologainfantilyadulto.es,\N,Ecommerce,0.74,,<$1M,0.71,,,,,,,
+revenue:<$1M,mayorofscottsdale.com,https://mayorofscottsdale.com,\N,Marketplace,0.74,Ecommerce & Retail,<$1M,0.82,,,,,,,
+revenue:<$1M,dirhamz.com,https://dirhamz.com,\N,Ecommerce,0.74,,<$1M,0.82,,,,,,,
+revenue:$1M-$10M,gitsols.com,https://gitsols.com,\N,Consulting,0.72,Productivity,$1M-$10M,0.58,,,,,,,
+revenue:$1M-$10M,heritagegatesandrailings.co.uk,https://heritagegatesandrailings.co.uk,\N,Consulting,0.56,,$1M-$10M,0.6,,,,,,,
+revenue:$100M-$1B,mrbadvogados.com.br,https://mrbadvogados.com.br,\N,Consulting,0.59,Legal,$100M-$1B,0.51,,,,,,,
+revenue:$100M-$1B,aubreycompany.com,https://aubreycompany.com,\N,Ecommerce,0.74,Healthcare,$100M-$1B,0.88,,,,,,,
+revenue:$10M-$100M,kinvault.com,https://kinvault.com,\N,Community,0.44,,$10M-$100M,0.95,,,,,,,
+revenue:$10M-$100M,webdesignclip.com,https://webdesignclip.com,625072,Agency,0.76,Media & Entertainment,$10M-$100M,0.84,,,,,,,
+revenue:$100M-$1B,3stateconsulting.com,https://3stateconsulting.com,\N,Marketplace,0.41,Ecommerce & Retail,$100M-$1B,0.83,,,,,,,
+revenue:$100M-$1B,londonintelligence.co.uk,https://londonintelligence.co.uk,\N,Media,0.62,,$100M-$1B,0.59,,,,,,,
+revenue:$10M-$100M,prodigylabdental.com,https://prodigylabdental.com,\N,Consulting,0.66,Healthcare,$10M-$100M,0.58,,,,,,,
+revenue:$10M-$100M,blackhostbd.com,https://blackhostbd.com,507170,Ecommerce,0.57,,$10M-$100M,0.56,,,,,,,
+revenue:$10M-$100M,miladys.com,https://miladys.com,77813,Ecommerce,0.98,Fashion,$10M-$100M,0.82,,,,,,,
+revenue:$10M-$100M,lemonlghtdigital.com,https://lemonlghtdigital.com,\N,Ecommerce,0.74,,$10M-$100M,0.63,,,,,,,
+revenue:$1B+,fairfaxmedicallab.com,https://fairfaxmedicallab.com,\N,Directory,0.64,Healthcare,$1B+,0.5,,,,,,,
+revenue:$1B+,spor.no,https://spor.no,\N,Consulting,0.56,,$1B+,0.61,,,,,,,
+revenue:$1B+,themeforest.net,https://themeforest.net,966,Tool,0.83,Fashion,$1B+,0.82,,,,,,,
+revenue:$1B+,outbrain.com,https://outbrain.com,660,Agency,0.66,,$1B+,0.71,,,,,,,
+revenue:$1B+,essaierajusto.ca,https://essaierajusto.ca,\N,Consulting,0.7,Fintech,$1B+,0.54,,,,,,,
+revenue:$1B+,thisjustin.com,https://thisjustin.com,\N,Marketplace,0.41,Ecommerce & Retail,$1B+,0.54,,,,,,,
+</script>
+<script>
+"use strict";
+
+const COLS = ["bucket","domain","url","tranco_rank","predicted_model","model_confidence",
+  "predicted_industry","predicted_revenue","revenue_confidence","is_real_business","model_ok",
+  "true_model","industry_ok","true_industry","true_revenue","notes"];
+
+const MODELS = ["SaaS","Ecommerce","Agency","Consulting","Media","Education","Tool",
+  "Community","Marketplace","Newsletter","Directory"];
+const REVENUE = ["<$1M","$1M-$10M","$10M-$100M","$100M-$1B","$1B+"];
+
+// ── CSV (RFC-4180 subset, same shape LS.GoldenSet.parse/1 accepts) ─────────
+function parseCSV(text) {
+  const rows = []; let row = [], field = "", q = false;
+  text = text.replace(/\r\n/g, "\n");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') q = false;
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0] !== "");
+}
+function toCSV(rows) {
+  const esc = v => /[",\n]/.test(v ?? "") ? '"' + String(v).replace(/"/g, '""') + '"' : (v ?? "");
+  return [COLS.join(",")].concat(rows.map(r => COLS.map(c => esc(r[c])).join(","))).join("\n") + "\n";
+}
+
+// ── state ─────────────────────────────────────────────────────────────────
+let rows = [], idx = 0, fileName = "golden_set.csv";
+
+function storeKey() { return "golden:" + fileName; }
+function save() {
+  try {
+    const labels = rows.map(r => COLS.slice(9).map(c => r[c] ?? ""));
+    localStorage.setItem(storeKey(), JSON.stringify({ idx, labels }));
+  } catch (e) { /* private mode: labels still live in memory until download */ }
+}
+function restore() {
+  try {
+    const s = JSON.parse(localStorage.getItem(storeKey()) || "null");
+    if (!s || s.labels.length !== rows.length) return;
+    rows.forEach((r, i) => COLS.slice(9).forEach((c, j) => r[c] = s.labels[i][j] ?? ""));
+    idx = Math.min(s.idx ?? 0, rows.length - 1);
+  } catch (e) {}
+}
+
+function load(text, name) {
+  const recs = parseCSV(text);
+  const head = recs[0].map(h => h.trim());
+  rows = recs.slice(1).map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? "").trim()])));
+  rows.forEach(r => COLS.forEach(c => { if (r[c] === undefined) r[c] = ""; }));
+  fileName = name; idx = 0;
+  restore();
+  document.getElementById("file").textContent = "— " + name;
+  render();
+}
+
+// ── render ────────────────────────────────────────────────────────────────
+const el = id => document.getElementById(id);
+
+function labeled() { return rows.filter(r => r.is_real_business !== "").length; }
+
+function set(field, value) {
+  const r = rows[idx];
+  r[field] = (r[field] === value) ? "" : value;   // click again to clear
+  if (field === "is_real_business" && r[field] === "n") {
+    // not a business: the model/industry/revenue questions are moot
+    ["model_ok","true_model","industry_ok","true_industry","true_revenue"].forEach(c => r[c] = "");
+  }
+  save(); render();
+}
+
+function yesNo(field, label, hint) {
+  const v = rows[idx][field];
+  return `<div class="q"><label>${label} ${hint ? `<span class="hint">${hint}</span>` : ""}</label>
+    <button class="opt" data-set="${field}" data-val="y" aria-pressed="${v === "y"}">Yes</button>
+    <button class="opt no" data-set="${field}" data-val="n" aria-pressed="${v === "n"}">No</button></div>`;
+}
+
+function render() {
+  const total = rows.length, done = labeled();
+  el("count").textContent = `${done}/${total} labeled`;
+  el("prog").style.width = (total ? done / total * 100 : 0) + "%";
+
+  if (!rows.length) { el("card").innerHTML = "<p>Load a CSV to start.</p>"; return; }
+  el("finished").classList.toggle("hidden", done < total);
+  el("card").classList.toggle("hidden", done >= total && rows[idx].is_real_business !== "");
+  if (done >= total && rows[idx].is_real_business !== "") {
+    el("finished").querySelector("h2").textContent = `All ${total} rows labeled 🎉`;
+    return;
+  }
+
+  const r = rows[idx];
+  const chip = (k, v) => v ? `<span class="chip">${k} <b>${v}</b></span>` : "";
+  const notBiz = r.is_real_business === "n";
+
+  el("card").innerHTML = `
+    <div class="bucket">${idx + 1} / ${total} &middot; ${r.bucket}</div>
+    <p class="domain">${r.domain}</p>
+    <div class="preds">
+      ${chip("model", r.predicted_model ? `${r.predicted_model} @ ${r.model_confidence}` : "")}
+      ${chip("industry", r.predicted_industry)}
+      ${chip("revenue", r.predicted_revenue)}
+      ${r.predicted_model ? "" : '<span class="chip">unclassified by the pipeline</span>'}
+    </div>
+    <a class="open" href="${r.url}" target="_blank" rel="noopener noreferrer">Open ${r.domain} ↗</a>
+
+    ${yesNo("is_real_business", "Is this a real business?", "No = parked, dead, default Shopify page, spam/PBN, personal blog")}
+
+    <div class="${notBiz ? "hidden" : ""}">
+      ${r.predicted_model
+        ? yesNo("model_ok", `Is the business model right — <b>${r.predicted_model}</b>?`)
+        : ""}
+      ${(!r.predicted_model || r.model_ok === "n") ? `<div class="q">
+          <label>${r.predicted_model ? "Then what is it?" : "What is it really?"} <span class="hint">(this is the recall signal)</span></label>
+          <select data-field="true_model">
+            <option value="">— pick —</option>
+            ${MODELS.map(m => `<option ${r.true_model === m ? "selected" : ""}>${m}</option>`).join("")}
+          </select></div>` : ""}
+
+      ${r.predicted_industry ? yesNo("industry_ok", `Is the industry right — <b>${r.predicted_industry}</b>?`, "skip if unclear") : ""}
+      ${r.industry_ok === "n" ? `<div class="q"><label>True industry</label>
+          <input type="text" data-field="true_industry" value="${(r.true_industry || "").replace(/"/g, "&quot;")}" placeholder="e.g. Legal"></div>` : ""}
+
+      <div class="q"><label>Revenue bracket <span class="hint">gut call — blank beats a guess</span></label>
+        <select data-field="true_revenue">
+          <option value="">— can't tell —</option>
+          ${REVENUE.map(b => `<option ${r.true_revenue === b ? "selected" : ""}>${b}</option>`).join("")}
+        </select></div>
+    </div>
+
+    <div class="q"><label>Notes <span class="hint">anything odd — taxonomy gaps are findings, not errors</span></label>
+      <input type="text" data-field="notes" style="width:100%"
+             value="${(r.notes || "").replace(/"/g, "&quot;")}" placeholder="in French / redirects to X / subsidiary of Y"></div>`;
+}
+
+// ── events ────────────────────────────────────────────────────────────────
+el("card").addEventListener("click", e => {
+  const b = e.target.closest("button[data-set]");
+  if (b) set(b.dataset.set, b.dataset.val);
+});
+el("card").addEventListener("change", e => {
+  const f = e.target.dataset.field;
+  if (f) { rows[idx][f] = e.target.value; save(); if (f !== "notes" && f !== "true_industry") render(); }
+});
+el("card").addEventListener("input", e => {
+  const f = e.target.dataset.field;
+  if (f === "notes" || f === "true_industry") { rows[idx][f] = e.target.value; save(); }
+});
+
+function move(d) { idx = Math.max(0, Math.min(rows.length - 1, idx + d)); save(); render(); }
+el("next").onclick = () => move(1);
+el("prev").onclick = () => move(-1);
+el("skip").onclick = () => move(1);
+
+document.addEventListener("keydown", e => {
+  if (e.target.matches("input,select,textarea")) return;
+  if (e.key === "ArrowRight") move(1);
+  else if (e.key === "ArrowLeft") move(-1);
+  else if (e.key === "o") window.open(rows[idx].url, "_blank", "noopener");
+  else if (e.key === "y" || e.key === "n") {
+    // answer the first unanswered visible question
+    const r = rows[idx];
+    if (r.is_real_business === "") set("is_real_business", e.key);
+    else if (r.predicted_model && r.model_ok === "" && r.is_real_business === "y") set("model_ok", e.key);
+    else if (r.predicted_industry && r.industry_ok === "" && r.is_real_business === "y") set("industry_ok", e.key);
+  }
+});
+
+el("dl").onclick = () => {
+  const blob = new Blob([toCSV(rows)], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName.replace(/\.csv$/, "") + "_labeled.csv";
+  a.click(); URL.revokeObjectURL(a.href);
+};
+el("pick").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => load(rd.result, f.name);
+  rd.readAsText(f);
+};
+
+load(el("embedded").textContent, "golden_set_v1_2026-08-07.csv");
+</script>
+</body>
+</html>

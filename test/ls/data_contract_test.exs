@@ -138,12 +138,37 @@ defmodule LS.DataContractTest do
       end)
     end
 
-    test "every freshness window" do
+    # Asserted against the data's own newest `as_of`, not against wall-clock:
+    # a filter that matches nothing because the *copy* is a month-old dev
+    # snapshot is not a product bug, and a test that fails on every laptop
+    # stops being read. What must always hold is that the filter agrees with
+    # the table it queries — 2026-08-11, this test failed on a local snapshot
+    # (newest as_of 12 days old) while production was compacting every 2 min.
+    test "every freshness window agrees with the newest data present" do
       with_clickhouse(fn ->
-        for window <- ["24h", "7d", "30d"] do
-          assert {:ok, n} = Explorer.count(freshness: window)
-          assert n > 0, "the #{window} freshness filter matches nothing"
-        end
+        {:ok, [[age_s]]} = Clickhouse.query_raw("SELECT now() - max(as_of) FROM businesses")
+        age_h = String.to_integer(to_string(age_s)) / 3600
+
+        counts =
+          for {window, hours} <- [{"24h", 24}, {"7d", 168}, {"30d", 720}] do
+            assert {:ok, n} = Explorer.count(freshness: window)
+
+            # Data exists inside the window ⇒ the filter must find it. This is
+            # what catches a renamed column or an inverted comparison.
+            if age_h < hours do
+              assert n > 0,
+                     "the #{window} freshness filter matches nothing, " <>
+                       "but businesses holds rows #{Float.round(age_h, 1)}h old"
+            end
+
+            n
+          end
+
+        # Widening the window can never return fewer rows.
+        assert counts == Enum.sort(counts),
+               "freshness windows are not monotonic (24h/7d/30d): #{inspect(counts)}"
+
+        if age_h > 24, do: IO.puts("\n[data contract] businesses is #{Float.round(age_h / 24, 1)}d stale — dev snapshot?")
       end)
     end
   end
