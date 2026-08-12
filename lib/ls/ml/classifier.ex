@@ -33,10 +33,20 @@ defmodule LS.ML.Classifier do
       "agency our work clients case studies design development consulting",
       "marketing agency SEO social media content creation brand strategy"
     ],
+    # Consulting = advisory/professional services ONLY. Its old labels
+    # contained "contractor plumber electrician dentist ... clinic", which
+    # made it swallow every physical business — golden v1 (2026-08-12)
+    # measured Consulting at 64% precision largely because of that overlap.
+    # Physical businesses now have their own class below.
     "Consulting" => [
-      "professional services consulting firm local business service provider",
-      "contractor plumber electrician dentist lawyer accountant clinic",
-      "local service company appointments contact us about our services"
+      "professional services consulting firm advisory expertise",
+      "management consulting strategy audit tax accounting legal advisory",
+      "business services firm our clients engagements team of experts"
+    ],
+    "LocalBusiness" => [
+      "local business physical store visit us opening hours address phone",
+      "plumber electrician builder contractor local trade free quote fully insured",
+      "clinic dentist salon gym restaurant hotel book an appointment book a table"
     ],
     "Media" => [
       "news media publication editorial journalism reporting articles blog",
@@ -48,31 +58,15 @@ defmodule LS.ML.Classifier do
       "educational institution curriculum enrollment student programs degrees",
       "e-learning bootcamp classes tutorials certification training academy"
     ],
-    "Tool" => [
-      "free online tool calculator converter checker generator utility",
-      "website builder theme marketplace templates plugins extensions",
-      "developer tool code editor IDE productivity utilities open source"
-    ],
-    "Community" => [
-      "community forum discussion board members groups social network",
-      "online community join us membership connect with others conversations",
-      "forum discussion topics threads user community social platform"
-    ],
-    "Marketplace" => [
-      "marketplace buy and sell connect buyers sellers platform listings",
-      "peer to peer marketplace vendors merchants third party sellers",
-      "multi-vendor marketplace listing fees commission transactions"
-    ],
-    "Newsletter" => [
-      "newsletter weekly digest daily briefing email subscription updates",
-      "subscribe to our newsletter email list content updates weekly",
-      "substack newsletter writing publishing email audience subscribers"
-    ],
-    "Directory" => [
-      "business directory listing search find local businesses categories",
-      "directory submit your listing browse categories search listings",
-      "yellow pages directory find businesses reviews ratings categories"
-    ]
+    # Tool / Community / Marketplace / Newsletter / Directory were REMOVED
+    # from the ML label set on 2026-08-12. Golden v1 measured them at 0–33%
+    # precision, and the reclassify harness showed most of those errors were
+    # ML-sourced: zero-shot cosine on short page text cannot tell "has a
+    # newsletter signup" from "is a newsletter" (the same trap the heuristic's
+    # keyword layer had). Those classes are now assigned only by the heuristic
+    # tier, which sees structure (title/H1/meta, pages, tech) and holds them
+    # to a higher confidence bar. Re-adding any of them requires before/after
+    # `mix ls.golden_reclassify` numbers proving the label set got separable.
   }
 
   # Industry label descriptions
@@ -342,10 +336,18 @@ defmodule LS.ML.Classifier do
     bm_conf = normalize_score(bm_score)
     ind_conf = normalize_score(ind_score)
 
+    # bm floor 0.4→0.5 and stored confidence capped at 0.85: golden v1's
+    # worst calibration failures (Community@0.94–0.98 on a JP software shop
+    # and an Iranian network integrator) were ML-sourced — short non-English
+    # text produces inflated cosines, so the ML tier may never claim the
+    # top confidence band on its own. 0.5 won the measured sweep (0.45 diluted
+    # Agency to 44% by force-matching non-English pages; 0.58 cut coverage to
+    # 39% without buying precision). Uncertain rows stay unclassified for the
+    # future LLM tier rather than being sold wrong.
     %{
-      business_model: if(bm_conf >= 0.4, do: bm, else: ""),
+      business_model: if(bm_conf >= 0.5, do: bm, else: ""),
       industry: if(ind_conf >= 0.35, do: industry, else: ""),
-      ml_confidence: Float.round(max(bm_conf, ind_conf), 2),
+      ml_confidence: Float.round(min(max(bm_conf, ind_conf), 0.85), 2),
       ml_bm_confidence: Float.round(bm_conf, 2),
       ml_industry_confidence: Float.round(ind_conf, 2)
     }

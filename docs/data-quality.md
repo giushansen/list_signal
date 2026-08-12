@@ -59,6 +59,34 @@ the unclassified bucket hides (a recall proxy).
 3. A classifier change ships with before/after `ls.golden_eval` numbers in
    the commit message or PR.
 
+## Classifier v2 (2026-08-12) — measured against frozen v1
+
+Shipped from golden v1's findings, every change measured with
+`mix ls.golden_reclassify [--ml] GOLDEN.csv PAGES_DIR` (re-runs the current
+classifier over the set's cached homepage HTML; `--ml` reproduces the full
+heuristic+ML shipping path):
+
+- **LocalBusiness** is the 12th business model — physical businesses (trades,
+  clinics, salons, restaurants, venues, brokerages) whose site is a presence,
+  not the product. Previously they were smeared across Consulting/Tool/
+  Ecommerce; v1 found 10 of them. Consulting now means advisory only.
+- **Keyword traps closed**: Newsletter/Marketplace/Tool/Community/Directory
+  (0–33% precision in v1) can no longer be claimed from body text or by the
+  ML tier — they need title/H1/meta or platform-tech evidence and a higher
+  per-class confidence bar (`@class_min_confidence`).
+- **Confidence repaired**: a single weak signal used to yield ratio 1.0 and
+  ship at 0.6+ (v1's `Newsletter@1.0` on a signup widget); an evidence prior
+  now dampens lone signals. Industry is gated on its own evidence
+  (≥ 0.45) instead of riding the model's confidence. **Meaning change:** on
+  industry-only rows, `classification_confidence` now describes the industry
+  label. ML tier: floor 0.5, stored confidence capped at 0.85 (measured sweep;
+  0.45 diluted Agency to 44%, 0.58 cut coverage to 39% for no precision).
+- **Result on v1 (144 rows with cached HTML)**: precision of shipped labels
+  46.1% → 56.7%; coverage 86% → 46% — deliberate: a wrong label is a refund,
+  an unclassified row is future work for the LLM tier. Junk recall 19/28
+  (partly in-sample — several detector strings came from v1's own junk rows;
+  v2 is the out-of-sample check).
+
 ## is_junk
 
 `is_junk` (LowCardinality(String), since `clickhouse/migrations/004_is_junk.sql`)
@@ -66,8 +94,18 @@ lives on `domains_history`, `domains_current` and `businesses`:
 
 - `""` — no junk detected (**not** "verified real"; an unfetched page has
   nothing to judge)
-- `"parked"` — domain-for-sale / registrar parking page
-- `"placeholder"` — default Shopify storefront, "coming soon" shell
+- `"parked"` — domain-for-sale / registrar parking page (now multi-language,
+  incl. the Dovendi/1st-Domains/short-domain templates from golden v1)
+- `"placeholder"` — default Shopify/WordPress storefront, hosting shell,
+  homepage-404, "coming soon"
+- `"empty"` — successful 2xx/3xx whose page has no title/H1/text/links (v1
+  found HTTP 200 with a 0-byte body). Never set on failed fetches or
+  JS-rendered shells (`is_js_site`) — but note a bot-wall serving an empty
+  200 to the HTTP tier can still land here (v1: two bank sites); route
+  `"empty"` to the browser lane rather than excluding it from exports.
+- `"scam"` — narrow fraud templates (crypto "withdrawal resolution" recovery
+  scams). Deliberately conservative: a false "scam" on a real business is
+  worse than a missed one.
 
 Detection is `LS.HTTP.BusinessClassifier.junk_reason/1` — the same checks that
 already gated `classify/1`, now recorded instead of silently swallowing the

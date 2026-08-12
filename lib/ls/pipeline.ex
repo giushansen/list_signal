@@ -168,7 +168,8 @@ defmodule LS.Pipeline do
             # Ephemeral — used by classifier, text stored separately via merge_row
             _h1: h1,
             _body_text: body_text,
-            _nav_links: nav_links
+            _nav_links: nav_links,
+            _is_js_site: tech_result.is_js_site
           }
           # Best-effort, fully fault-isolated secondary-page enrichment. MUST be the
           # last thing that can touch the homepage result; on any failure it returns
@@ -305,7 +306,11 @@ defmodule LS.Pipeline do
       dns_txt: d[:txt] |> List.wrap() |> Enum.join(" "),
       h1: h1,
       body_text: body_text,
-      nav_links: nav_links
+      nav_links: nav_links,
+      # Junk detection only: the "empty" rule must not fire on a failed fetch
+      # or a JS-rendered shell (see docs/data-quality.md).
+      http_status: http[:http_status],
+      is_js_site: http[:_is_js_site] == true
     }
 
     classify_result = BusinessClassifier.classify(classify_signals)
@@ -427,7 +432,12 @@ defmodule LS.Pipeline do
   # PRIVATE — ML/heuristic merge
   # ===========================================================================
 
-  defp merge_classification(heuristic, ml) do
+  @doc """
+  Merge the heuristic and ML-tier classifications — THE production merge rule.
+  Public so `mix ls.golden_reclassify` reproduces the exact shipping path
+  instead of a drifting copy.
+  """
+  def merge_classification(heuristic, ml) do
     # ML overrides heuristic BM if ML confidence is decent and heuristic was empty or weak
     bm = cond do
       ml.business_model != "" and heuristic.business_model == "" -> ml.business_model
@@ -493,7 +503,41 @@ defmodule LS.Pipeline do
   end
   defp fmt_dt(_), do: nil
 
-  defp extract_title(b) when is_binary(b) do
+  @doc """
+  Build the classifier's signal map from a raw homepage HTML body — the same
+  shape `enrich/2` feeds to `BusinessClassifier.classify/1`.
+
+  Exists for `mix ls.golden_reclassify`: classifier changes are measured by
+  re-running them over the golden set's cached HTML, so signal building must
+  be THE production extractors, not a parallel copy that drifts. Offline
+  caveat: without response headers, `http_tech` misses header/cookie-detected
+  technologies, so tech-layer scores can be slightly weaker than live.
+  """
+  def classify_signals_from_html(body, opts \\ []) when is_binary(body) do
+    tech_result = LS.HTTP.TechDetector.detect(%{body: body, headers: []})
+    app_result = LS.HTTP.AppDetector.detect(body, tech_result.tech)
+    {pages, _emails} = LS.HTTP.PageExtractor.extract_all(body, opts[:domain])
+
+    %{
+      http_tech: tech_result.tech |> Enum.join("|"),
+      http_apps: app_result.apps |> Enum.join("|"),
+      http_title: extract_title(body),
+      http_meta_description: extract_meta_desc(body),
+      http_pages: pages || "",
+      http_schema_type: LS.HTTP.SchemaExtractor.extract_schema_type(body),
+      http_og_type: LS.HTTP.SchemaExtractor.extract_og_type(body),
+      ctl_tld: opts[:tld] || "",
+      dns_txt: "",
+      h1: LS.HTTP.TextExtractor.extract_h1(body),
+      body_text: LS.HTTP.TextExtractor.extract_visible_text(body, 500),
+      nav_links: LS.HTTP.TextExtractor.extract_nav_links(body),
+      http_status: opts[:http_status] || 200,
+      is_js_site: tech_result.is_js_site
+    }
+  end
+
+  @doc "Homepage <title>, entity-decoded and capped — public for the reclassify harness."
+  def extract_title(b) when is_binary(b) do
     case Regex.run(~r/<title[^>]*>([^<]{1,500})<\/title>/is, b) do
       [_, t] -> t |> LS.HTTP.Entities.decode() |> String.trim() |> String.slice(0, 200)
       _ -> ""
@@ -501,9 +545,10 @@ defmodule LS.Pipeline do
   rescue
     _ -> ""
   end
-  defp extract_title(_), do: ""
+  def extract_title(_), do: ""
 
-  defp extract_meta_desc(b) when is_binary(b) do
+  @doc "Homepage meta description — public for the reclassify harness."
+  def extract_meta_desc(b) when is_binary(b) do
     case Regex.run(~r/<meta[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']{1,1000})["']/is, b) do
       [_, d] -> d |> LS.HTTP.Entities.decode() |> String.trim() |> String.slice(0, 500)
       _ ->
@@ -515,7 +560,7 @@ defmodule LS.Pipeline do
   rescue
     _ -> ""
   end
-  defp extract_meta_desc(_), do: ""
+  def extract_meta_desc(_), do: ""
 
   defp get_header(%{headers: h}, n) when is_map(h), do: Map.get(h, n, "")
   defp get_header(%{headers: h}, n) when is_list(h) do

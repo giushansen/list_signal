@@ -243,13 +243,20 @@ defmodule LS.HTTP.ClassificationTest do
       assert r.industry == "Education"
     end
 
-    test "og:type product → Ecommerce boost" do
-      r = classify(%{http_og_type: "product"})
+    # og:type alone is a BOOST, no longer a verdict: golden v1 (2026-08-12)
+    # measured Ecommerce at 33% and Media at 56% precision, with brochure
+    # pages carrying og:type=product and every company blog og:type=article.
+    test "og:type product boosts Ecommerce but cannot ship it alone" do
+      assert classify(%{http_og_type: "product"}).business_model == ""
+
+      r = classify(%{http_og_type: "product", http_tech: "Shopify", nav_links: "Shop Collections"})
       assert r.business_model == "Ecommerce"
     end
 
-    test "og:type article → Media boost" do
-      r = classify(%{http_og_type: "article"})
+    test "og:type article boosts Media but cannot ship it alone" do
+      assert classify(%{http_og_type: "article"}).business_model == ""
+
+      r = classify(%{http_og_type: "article", http_tech: "Ghost", http_title: "Breaking news and editorial"})
       assert r.business_model == "Media"
     end
   end
@@ -300,8 +307,12 @@ defmodule LS.HTTP.ClassificationTest do
   # ==========================================================================
 
   describe "Layer 4 — Nav links" do
-    test "Shop Products → Ecommerce" do
-      r = classify(%{nav_links: "Shop Products Collections Sale"})
+    # A bare shop-nav shipped Ecommerce onto B2B distributor brochures with no
+    # cart (golden v1: spxflow.com.co, asiahilco.com at 0.86-0.99 confidence).
+    test "a shop nav alone no longer ships Ecommerce — it needs cart/tech corroboration" do
+      assert classify(%{nav_links: "Shop Products Collections Sale"}).business_model == ""
+
+      r = classify(%{nav_links: "Shop Products Collections Sale", http_pages: "/cart|/checkout"})
       assert r.business_model == "Ecommerce"
     end
 
@@ -310,8 +321,16 @@ defmodule LS.HTTP.ClassificationTest do
       assert r.business_model == "SaaS"
     end
 
-    test "Portfolio Case Studies → Agency" do
-      r = classify(%{nav_links: "Portfolio Our Work Case Studies About"})
+    # A bare portfolio nav is one weak signal — printers, architects and
+    # personal CVs all have one (golden v1: thisplayprint.com Tool→Agency mess).
+    test "a portfolio nav alone no longer ships Agency" do
+      assert classify(%{nav_links: "Portfolio Our Work Case Studies About"}).business_model == ""
+
+      r = classify(%{
+        nav_links: "Portfolio Our Work Case Studies About",
+        http_title: "Full-service digital agency",
+        http_pages: "/portfolio|/case-studies"
+      })
       assert r.business_model == "Agency"
     end
 
@@ -387,14 +406,17 @@ defmodule LS.HTTP.ClassificationTest do
       assert r.business_model == "Agency"
     end
 
-    test "Newsletter keywords" do
-      r = classify(%{http_title: "Tech Newsletter - Weekly Digest"})
+    # Newsletter/Marketplace measured 12.5%/0% precision in golden v1 — one
+    # keyword may not ship them anymore; they need platform tech or structure.
+    test "a newsletter-sounding title alone no longer ships Newsletter (12.5% precision in golden v1)" do
+      assert classify(%{http_title: "Tech Newsletter - Weekly Digest"}).business_model == ""
+
+      r = classify(%{http_title: "Tech Newsletter - Weekly Digest", http_tech: "Substack"})
       assert r.business_model == "Newsletter"
     end
 
-    test "Marketplace keywords" do
-      r = classify(%{http_title: "The #1 Marketplace to Buy and Sell"})
-      assert r.business_model == "Marketplace"
+    test "a marketplace-sounding title alone no longer ships Marketplace (0% precision in golden v1)" do
+      assert classify(%{http_title: "The #1 Marketplace to Buy and Sell"}).business_model == ""
     end
 
     test "body text gets half points" do
@@ -447,8 +469,13 @@ defmodule LS.HTTP.ClassificationTest do
       assert r.industry == "Beauty"
     end
 
-    test "body text catches industry that title misses" do
+    # Body-only keyword hits are what mislabeled golden v1 (a signup widget, a
+    # converter widget); half-points from the body may inform, not decide.
+    test "a body-only industry hit no longer decides the industry" do
       r = classify(%{http_title: "Our Products", body_text: "skincare serum moisturizer beauty"})
+      assert r.industry == ""
+
+      r = classify(%{http_title: "Glow skincare and beauty serums", body_text: "skincare serum moisturizer"})
       assert r.industry == "Beauty"
     end
   end
@@ -659,6 +686,112 @@ defmodule LS.HTTP.ClassificationTest do
       r = BusinessClassifier.classify(%{http_title: "This Domain For Sale", http_tech: "Shopify"})
       assert r.business_model == ""
       assert r.confidence == 0.0
+    end
+  end
+
+  # ==========================================================================
+  # Golden set v1 regressions (2026-08-12) — each test names the domain that
+  # cost us the wrong label in a sellable CSV. Full numbers in
+  # docs/data-quality.md; measure changes with `mix ls.golden_reclassify`.
+  # ==========================================================================
+
+  describe "keyword traps found by golden v1" do
+    test "a newsletter signup widget on a store must not classify the store as Newsletter (artedeminasmg.com.br shipped Newsletter@1.0)" do
+      r = classify(%{
+        http_title: "",
+        body_text: "Entre ou cadastre-se Newsletter Cadastre seu e-mail e receba novidades e promoções COMPRA 100% SEGURA Formas de pagamento"
+      })
+      refute r.business_model == "Newsletter"
+    end
+
+    test "a consultancy that BUILDS marketplaces is not a Marketplace (achetervendremagasinsport.com shipped Marketplace@1.0)" do
+      r = classify(%{
+        http_title: "Netysoft",
+        body_text: "Création de solutions E-commerce Conseil MarketPlace Social Shopping solutions marketplace pour votre commerce"
+      })
+      refute r.business_model == "Marketplace"
+    end
+
+    test "an on-page currency-converter widget does not make a remittance company a Tool (isapexchange.com)" do
+      r = classify(%{
+        http_title: "Empower Your Money, Transform Your World with iSAP Exchange.",
+        body_text: "Remittances Foreign Currency Payroll Solutions Foreign Currency Converter currency converter transfer rate forex"
+      })
+      refute r.business_model == "Tool"
+    end
+
+    test "a lone weak keyword can no longer ship at high confidence (the ratio=1.0 inflation)" do
+      # Single 4-pt body match used to yield ratio 1.0 → confidence ≥ 0.55.
+      r = classify(%{body_text: "read our latest case studies and client success stories"})
+      assert r.business_model == "" or r.confidence < 0.7
+    end
+
+    test "a true Substack publication still classifies as Newsletter via the tech signal (carlhead.com broke at threshold 0.75)" do
+      r = classify(%{http_tech: "Substack", http_title: "in Carl's Head | Substack"})
+      assert r.business_model == "Newsletter"
+    end
+  end
+
+  describe "LocalBusiness (12th class, added from golden v1's 10 unclassifiable physical businesses)" do
+    test "a contractor schema type is LocalBusiness, not Consulting (capitalglass.com.au)" do
+      r = classify(%{http_schema_type: "GeneralContractor", http_title: "Capital Glass & Aluminium"})
+      assert r.business_model == "LocalBusiness"
+      assert r.industry == "Construction & Manufacturing"
+    end
+
+    test "generic schema.org LocalBusiness maps to the LocalBusiness class" do
+      r = classify(%{
+        http_schema_type: "LocalBusiness",
+        http_title: "OJG Joinery & Construction Ltd",
+        body_text: "joinery and construction specialists in Leeds get a quote fully insured"
+      })
+      assert r.business_model == "LocalBusiness"
+    end
+
+    test "trade vocabulary plus get-a-quote pattern classifies LocalBusiness without schema" do
+      r = classify(%{
+        http_title: "Expert Glazier Cairns - Capital Glass",
+        body_text: "glazing services get a quick quote call us today licensed and insured"
+      })
+      assert r.business_model == "LocalBusiness"
+    end
+  end
+
+  describe "junk gate extensions from golden v1" do
+    test "an HTTP 200 with an empty page is junk 'empty' (serviceinnovation.org: 200 with 0 bytes)" do
+      assert BusinessClassifier.junk_reason(Map.put(@empty_signals, :http_status, 200)) == "empty"
+    end
+
+    test "a failed fetch is never 'empty' — an unfetched page has nothing to judge" do
+      assert BusinessClassifier.junk_reason(Map.put(@empty_signals, :http_status, 500)) == ""
+      assert BusinessClassifier.junk_reason(Map.put(@empty_signals, :http_status, nil)) == ""
+    end
+
+    test "a JS-rendered shell is never 'empty' (golden v1 junked UBA bank and Mountain America CU)" do
+      signals = @empty_signals |> Map.put(:http_status, 200) |> Map.put(:is_js_site, true)
+      assert BusinessClassifier.junk_reason(signals) == ""
+    end
+
+    test "shared parking templates are parked (Dovendi alone runs 250k domains on one template)" do
+      assert BusinessClassifier.junk_reason(%{body_text: "This domain name is managed by Dovendi"}) == "parked"
+      assert BusinessClassifier.junk_reason(%{http_title: "ebikefinder.es wird zum Kauf angeboten!"}) == "parked"
+      assert BusinessClassifier.junk_reason(%{http_title: "webaccept.com - Ce site web est à vendre !"}) == "parked"
+    end
+
+    test "hosting shells and homepage-404s are placeholders (tymsapp.io, unitem.nl, grupolisto.com)" do
+      assert BusinessClassifier.junk_reason(%{http_title: "Hostinger Horizons"}) == "placeholder"
+      assert BusinessClassifier.junk_reason(%{http_title: "Pagina niet gevonden – unitem"}) == "placeholder"
+      assert BusinessClassifier.junk_reason(%{body_text: "Saltar al contenido Página de ejemplo No se ha encontrado nada"}) == "placeholder"
+    end
+
+    test "a crypto recovery-scam template is junk 'scam' (coinny-gateway.com sold as Consulting@0.8/Fintech)" do
+      assert BusinessClassifier.junk_reason(%{
+        body_text: "Official withdrawal resolution center for Global Business Pay. Secure your stuck funds"
+      }) == "scam"
+    end
+
+    test "hostile junk input never crashes junk_reason" do
+      assert BusinessClassifier.junk_reason(%{http_title: <<0xFF, 0xFE>>, body_text: String.duplicate("a", 1_000_000), http_status: -1}) in ["", "parked", "placeholder", "empty", "scam"]
     end
   end
 end

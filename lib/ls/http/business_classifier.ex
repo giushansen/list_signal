@@ -15,18 +15,29 @@ defmodule LS.HTTP.BusinessClassifier do
   @doc """
   Why the fetched page is not a real business — `""` when it is one.
 
-  Returns `"parked"` (domain for sale / registrar placeholder) or
-  `"placeholder"` (default Shopify/coming-soon page). This is the source of the
-  `is_junk` column: junk detection used to happen silently inside `classify/1`
-  (the row just got an empty classification), which meant parked domains were
-  indistinguishable from real-but-unclassifiable businesses — and could be
-  exported to customers as leads. `""` means "no junk detected", not "verified
-  real": a page we never fetched has nothing to judge.
+  Returns `"parked"` (domain for sale / registrar placeholder), `"placeholder"`
+  (default Shopify/WordPress/coming-soon shell), `"empty"` (a 2xx/3xx response
+  whose page has no title, headline or text — golden v1 found HTTP 200 with a
+  0-byte body that no content rule could see), or `"scam"` (fraud template).
+  This is the source of the `is_junk` column: junk detection used to happen
+  silently inside `classify/1` (the row just got an empty classification),
+  which meant parked domains were indistinguishable from
+  real-but-unclassifiable businesses — and could be exported to customers as
+  leads. `""` means "no junk detected", not "verified real": a page we never
+  fetched has nothing to judge — which is why `"empty"` requires a successful
+  `http_status`; a failed fetch must not brand the business as junk.
+
+  Golden set v1 (2026-08-12) measured 23% junk in alive-filtered `businesses`
+  rows; most of the additions below are the exact platform templates it
+  surfaced (Dovendi runs 250k parked domains on one template).
   """
   def junk_reason(signals) when is_map(signals) do
     cond do
       parking_page?(signals) -> "parked"
       default_shopify_page?(signals) -> "placeholder"
+      generic_placeholder?(signals) -> "placeholder"
+      scam_page?(signals) -> "scam"
+      empty_page?(signals) -> "empty"
       true -> ""
     end
   rescue
@@ -80,7 +91,7 @@ defmodule LS.HTTP.BusinessClassifier do
         t in @tech_ecommerce -> add(acc, "Ecommerce", 12)
         t == "Substack" -> add(acc, "Newsletter", 12)
         t == "Ghost" -> add(acc, "Media", 10)
-        t == "Discourse" -> add(acc, "Community", 10)
+        t == "Discourse" -> add(acc, "Community", 12)
         t == "Bubble" -> add(acc, "Tool", 5)
         true -> acc
       end
@@ -93,7 +104,7 @@ defmodule LS.HTTP.BusinessClassifier do
     ms = if has_lms, do: add(ms, "Education", 10), else: ms
 
     has_community = Enum.any?(app_list, &(&1 in @apps_community))
-    ms = if has_community, do: add(ms, "Community", 8), else: ms
+    ms = if has_community, do: add(ms, "Community", 12), else: ms
 
     has_wp_ecom = Enum.any?(app_list, &(&1 in @apps_wp_ecom))
     ms = if has_wp_ecom, do: add(ms, "Ecommerce", 10), else: ms
@@ -106,6 +117,11 @@ defmodule LS.HTTP.BusinessClassifier do
   # LAYER 2 — Schema.org types
   # ===========================================================================
 
+  # LocalBusiness (added 2026-08-12): a business whose operation is physical —
+  # trades, clinics, salons, restaurants, venues, brokerages — and whose site
+  # is a *presence*, not the product. Golden v1 found 10 of these hiding in
+  # Consulting/Tool/Ecommerce predictions; Consulting keeps only
+  # professional/advisory services (law, accounting, strategy).
   @schema_to_class %{
     # Software
     "SoftwareApplication" => {"SaaS", 10, nil, 0},
@@ -114,27 +130,27 @@ defmodule LS.HTTP.BusinessClassifier do
     # Products
     "Product" => {"Ecommerce", 8, nil, 0},
     "IndividualProduct" => {"Ecommerce", 9, nil, 0},
-    # Healthcare
-    "Dentist" => {"Consulting", 8, "Healthcare", 10},
-    "Physician" => {"Consulting", 8, "Healthcare", 10},
-    "Hospital" => {"Consulting", 6, "Healthcare", 10},
-    "Pharmacy" => {"Ecommerce", 6, "Healthcare", 9},
-    "MedicalClinic" => {"Consulting", 7, "Healthcare", 10},
-    "MedicalOrganization" => {"Consulting", 6, "Healthcare", 8},
-    # Legal
+    # Healthcare — physical practices are LocalBusiness, not Consulting
+    "Dentist" => {"LocalBusiness", 9, "Healthcare", 10},
+    "Physician" => {"LocalBusiness", 9, "Healthcare", 10},
+    "Hospital" => {"LocalBusiness", 7, "Healthcare", 10},
+    "Pharmacy" => {"LocalBusiness", 7, "Healthcare", 9},
+    "MedicalClinic" => {"LocalBusiness", 8, "Healthcare", 10},
+    "MedicalOrganization" => {"LocalBusiness", 6, "Healthcare", 8},
+    # Legal — advisory, stays Consulting
     "LegalService" => {"Consulting", 8, "Legal", 10},
     "Attorney" => {"Consulting", 9, "Legal", 10},
     "Notary" => {"Consulting", 7, "Legal", 8},
-    # Food
-    "Restaurant" => {"Consulting", 6, "Food & Beverage", 10},
-    "CafeOrCoffeeShop" => {"Consulting", 6, "Food & Beverage", 10},
-    "Bakery" => {"Ecommerce", 5, "Food & Beverage", 10},
-    "BarOrPub" => {"Consulting", 5, "Food & Beverage", 10},
-    "FastFoodRestaurant" => {"Consulting", 6, "Food & Beverage", 10},
-    "Brewery" => {"Consulting", 5, "Food & Beverage", 9},
-    # Real Estate
-    "RealEstateAgent" => {"Consulting", 7, "Real Estate", 10},
-    # Finance
+    # Food — venues
+    "Restaurant" => {"LocalBusiness", 8, "Food & Beverage", 10},
+    "CafeOrCoffeeShop" => {"LocalBusiness", 8, "Food & Beverage", 10},
+    "Bakery" => {"LocalBusiness", 6, "Food & Beverage", 10},
+    "BarOrPub" => {"LocalBusiness", 7, "Food & Beverage", 10},
+    "FastFoodRestaurant" => {"LocalBusiness", 8, "Food & Beverage", 10},
+    "Brewery" => {"LocalBusiness", 6, "Food & Beverage", 9},
+    # Real Estate — brokerages are local businesses (golden v1: corehousing.co.jp)
+    "RealEstateAgent" => {"LocalBusiness", 8, "Real Estate", 10},
+    # Finance — advisory/institutional, stays Consulting
     "BankOrCreditUnion" => {"Consulting", 6, "Fintech", 10},
     "InsuranceAgency" => {"Consulting", 7, "Fintech", 9},
     "AccountingService" => {"Consulting", 8, "Fintech", 8},
@@ -151,21 +167,21 @@ defmodule LS.HTTP.BusinessClassifier do
     "HardwareStore" => {"Ecommerce", 8, "Construction & Manufacturing", 6},
     "HomeGoodsStore" => {"Ecommerce", 9, "Home & Garden", 9},
     "Store" => {"Ecommerce", 6, nil, 0},
-    # Beauty
-    "BeautySalon" => {"Consulting", 6, "Beauty", 10},
-    "HairSalon" => {"Consulting", 6, "Beauty", 10},
-    "NailSalon" => {"Consulting", 6, "Beauty", 10},
-    "DaySpa" => {"Consulting", 6, "Beauty", 10},
-    # Construction
-    "Electrician" => {"Consulting", 7, "Construction & Manufacturing", 10},
-    "Plumber" => {"Consulting", 7, "Construction & Manufacturing", 10},
-    "RoofingContractor" => {"Consulting", 7, "Construction & Manufacturing", 10},
-    "GeneralContractor" => {"Consulting", 7, "Construction & Manufacturing", 10},
-    "HVACBusiness" => {"Consulting", 7, "Construction & Manufacturing", 10},
-    # Travel
-    "TravelAgency" => {"Consulting", 7, "Travel", 10},
-    "Hotel" => {"Consulting", 6, "Travel", 10},
-    "LodgingBusiness" => {"Consulting", 6, "Travel", 9},
+    # Beauty — venues
+    "BeautySalon" => {"LocalBusiness", 8, "Beauty", 10},
+    "HairSalon" => {"LocalBusiness", 8, "Beauty", 10},
+    "NailSalon" => {"LocalBusiness", 8, "Beauty", 10},
+    "DaySpa" => {"LocalBusiness", 8, "Beauty", 10},
+    # Construction — trades
+    "Electrician" => {"LocalBusiness", 9, "Construction & Manufacturing", 10},
+    "Plumber" => {"LocalBusiness", 9, "Construction & Manufacturing", 10},
+    "RoofingContractor" => {"LocalBusiness", 9, "Construction & Manufacturing", 10},
+    "GeneralContractor" => {"LocalBusiness", 9, "Construction & Manufacturing", 10},
+    "HVACBusiness" => {"LocalBusiness", 9, "Construction & Manufacturing", 10},
+    # Travel — venues/agencies
+    "TravelAgency" => {"LocalBusiness", 7, "Travel", 10},
+    "Hotel" => {"LocalBusiness", 8, "Travel", 10},
+    "LodgingBusiness" => {"LocalBusiness", 7, "Travel", 9},
     # Education
     "EducationalOrganization" => {"Education", 9, "Education", 9},
     "School" => {"Education", 9, "Education", 10},
@@ -174,7 +190,7 @@ defmodule LS.HTTP.BusinessClassifier do
     # Media
     "NewsMediaOrganization" => {"Media", 9, "Media & Entertainment", 9},
     # Generic
-    "LocalBusiness" => {"Consulting", 3, nil, 0},
+    "LocalBusiness" => {"LocalBusiness", 6, nil, 0},
     "ProfessionalService" => {"Consulting", 6, nil, 0},
     "Organization" => {nil, 0, nil, 0},
     "WebSite" => {nil, 0, nil, 0},
@@ -281,7 +297,7 @@ defmodule LS.HTTP.BusinessClassifier do
     end
 
     {ms, matched} = if has_directory and has_submit do
-      {add(ms, "Directory", 9), true}
+      {add(ms, "Directory", 11), true}
     else
       {ms, matched}
     end
@@ -415,14 +431,28 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/our clients|client (?:results|success|stories)|case stud(?:y|ies)/i, "Agency", 4},
     {~r/consulting firm|management consulting|strategy consulting/i, "Consulting", 7},
     {~r/law firm|attorneys?\b|lawyers?\b|legal (?:services|practice|team)/i, "Consulting", 7},
-    {~r/newsletter|weekly digest|daily brief|subscribe to (?:our|the)/i, "Newsletter", 5},
+    # Newsletter must BE a publication, not merely have a signup box — golden
+    # v1: a Brazilian web store's signup widget shipped Newsletter@1.0
+    # (artedeminasmg.com.br), and "email tools" vendors matched on "email".
+    {~r/(?:weekly|daily|monthly) (?:newsletter|digest|brief)|newsletter archive|read (?:past|previous) issues|join [\d,.]+ (?:readers|subscribers)/i, "Newsletter", 5},
     {~r/\bmarketplace\b|buy and sell|connect buyers/i, "Marketplace", 6},
     {~r/online course|bootcamp|online (?:learning|classes|school)/i, "Education", 5},
     {~r/calculator|generator|converter|checker|(?:free )?tool\b/i, "Tool", 6},
     {~r/\bcommunity forum\b|\bdiscussion board\b|\bforum topic|online community|members area/i, "Community", 4},
     {~r/latest news|breaking news|editorial|journalism|reporting/i, "Media", 5},
     {~r/directory|listing|submit your|find (?:a |local )/i, "Directory", 4},
+    # LocalBusiness: trade/venue vocabulary and the get-a-quote/visit-us
+    # pattern that brochure sites of physical businesses share.
+    {~r/(?:free|request a|get a(?:n instant)?) quote|call us today|licensed and insured|fully insured|opening hours|visit our (?:store|showroom)/i, "LocalBusiness", 6},
+    {~r/joinery|glazier|glazing|plumbing|electricians?\b|roofing|landscaping|carpentry|locksmith|removals|scaffolding/i, "LocalBusiness", 5},
+    {~r/book (?:a table|an appointment)|our (?:clinic|practice|salon|studio|showroom)|personal train(?:er|ing)|crossfit/i, "LocalBusiness", 5},
   ]
+
+  # Classes golden v1 measured at ≤33% precision, all poisoned by body-text
+  # keyword hits ("MarketPlace" in a consultancy's service list, "converter"
+  # in a widget). They may only score from title/H1/meta — a real newsletter
+  # or marketplace says so above the fold.
+  @primary_only_models MapSet.new(~w(Newsletter Marketplace Tool Community Directory))
 
   # Industry patterns: {regex, industry, points}
   @industry_keywords [
@@ -464,7 +494,7 @@ defmodule LS.HTTP.BusinessClassifier do
 
     {ms, matched} = Enum.reduce(@model_keywords, {ms, matched}, fn {regex, model, pts}, {acc, m} ->
       primary_match = Regex.match?(regex, primary)
-      body_match = Regex.match?(regex, body)
+      body_match = Regex.match?(regex, body) and not MapSet.member?(@primary_only_models, model)
       cond do
         primary_match -> {add(acc, model, pts), true}
         body_match -> {add(acc, model, div(pts, 2)), true}
@@ -530,35 +560,70 @@ defmodule LS.HTTP.BusinessClassifier do
   # SCORING
   # ===========================================================================
 
+  # Classes whose golden-v1 precision was ≤33% must clear a higher bar before
+  # we sell the label; SaaS/Education (≥85%) keep the default. Re-derive these
+  # from `mix ls.golden_reclassify` whenever the scoring changes.
+  # Newsletter sits at 0.70, not 0.75: a Substack-platform tech signal (12pts,
+  # pathognomonic) lands at 0.72 under the evidence prior, and 0.75 was
+  # measured killing a true Substack publication (carlhead.com, golden v1).
+  @class_min_confidence %{
+    "Marketplace" => 0.75,
+    "Newsletter" => 0.70,
+    "Tool" => 0.70,
+    "Community" => 0.70,
+    "Directory" => 0.65
+  }
+
+  # Industry is scored on its OWN evidence since 2026-08-12: it used to ride
+  # the model's confidence gate, so "Cybersecurity Inc" with an unclear
+  # business model lost its industry too. The bar is lower than the model's
+  # because a single title keyword is decent evidence for an industry, while
+  # it is exactly what mislabeled business models in golden v1.
+  @industry_min_confidence 0.45
+
   defp pick_winner(model_scores, industry_scores, methods) do
     model = winner(model_scores)
     industry = winner(industry_scores)
     model_pts = if model, do: Map.get(model_scores, model, 0), else: 0
     industry_pts = if industry, do: Map.get(industry_scores, industry, 0), else: 0
-    best_pts = max(model_pts, industry_pts)
 
-    # Winner ratio: use whichever dimension has the stronger signal
-    {ratio_pts, ratio_total} = if model_pts >= industry_pts do
-      {model_pts, Map.values(model_scores) |> Enum.sum() |> max(1)}
-    else
-      {industry_pts, Map.values(industry_scores) |> Enum.sum() |> max(1)}
+    model_conf = side_confidence(model_pts, model_scores)
+    industry_conf = side_confidence(industry_pts, industry_scores)
+
+    model_ok? = model != nil and model_conf >= Map.get(@class_min_confidence, model, @min_confidence)
+    industry_ok? = industry != nil and industry_conf >= @industry_min_confidence
+    method = methods |> Enum.reverse() |> Enum.uniq() |> Enum.join("+")
+
+    cond do
+      model_ok? ->
+        %{business_model: model, industry: (if industry_ok?, do: industry, else: ""),
+          confidence: model_conf, method: method}
+
+      # Industry-only result: business_model stays empty, and `confidence`
+      # then describes the industry label (meaning change 2026-08-12 —
+      # previously one blended confidence gated both fields together).
+      industry_ok? ->
+        %{business_model: "", industry: industry, confidence: industry_conf, method: method}
+
+      true ->
+        @empty_result
     end
-    ratio = ratio_pts / ratio_total
+  end
 
-    # Confidence = blend of winner ratio + absolute score boost
-    abs_boost = min(best_pts / 25.0, 1.0)
-    confidence = Float.round((ratio * 0.5 + abs_boost * 0.5) |> min(0.99), 2)
+  # Confidence of ONE dimension (model or industry) from its score map.
+  # The evidence prior in the denominator is the fix for golden v1's
+  # Newsletter@1.0: with a single weak signal the old ratio was
+  # points/points = 1.0, so one 5-pt keyword shipped at 0.6 and stacked weak
+  # matches shipped at 1.0. The prior fades as absolute evidence grows —
+  # a flat +4 was measured collapsing coverage 86%→12% (the harness caught it).
+  defp side_confidence(0, _scores), do: 0.0
 
-    if confidence >= @min_confidence do
-      %{
-        business_model: model || "",
-        industry: industry || "",
-        confidence: confidence,
-        method: methods |> Enum.reverse() |> Enum.uniq() |> Enum.join("+")
-      }
-    else
-      @empty_result
-    end
+  defp side_confidence(pts, scores) do
+    total = Map.values(scores) |> Enum.sum() |> max(1)
+    prior = max(3 - pts / 5, 0)
+    ratio = pts / (total + prior)
+    abs_boost = min(pts / 25.0, 1.0)
+    Float.round((ratio * 0.5 + abs_boost * 0.5) |> min(0.99), 2)
   end
 
   defp winner(scores) when map_size(scores) == 0, do: nil
@@ -583,6 +648,9 @@ defmodule LS.HTTP.BusinessClassifier do
   # Detects Shopify password/setup pages that show generic platform copy
   # instead of the actual store content. These pages contain "payment solution"
   # in their meta description which falsely triggers Fintech industry matching.
+  # Every non-obvious string below carries the golden-v1 domain that produced
+  # it — these are shared platform templates, so each string covers thousands
+  # of domains, not one.
   defp parking_page?(signals) do
     title = s(signals, :http_title) |> String.downcase()
     body = s(signals, :body_text) |> String.downcase()
@@ -592,7 +660,73 @@ defmodule LS.HTTP.BusinessClassifier do
       String.contains?(title, "website coming soon") or
       String.contains?(body, "this domain is for sale") or
       String.contains?(body, "buy this domain") or
-      title == "storefront"
+      title == "storefront" or
+      # golden v1: webaccept.com (Sedo FR), ebikefinder.es (DE broker),
+      # fancythatface.net (short.io), laurenpegg.nz (1st Domains)
+      String.contains?(title, "est à vendre") or
+      String.contains?(title, "wird zum kauf angeboten") or
+      String.contains?(title, "steht zum verkauf") or
+      String.contains?(title, "is a custom short domain") or
+      String.contains?(title, "your future website") or
+      String.contains?(body, "domain is currently parked") or
+      String.contains?(body, "domain name is managed by dovendi") or
+      String.contains?(body, "domain is available for sale")
+  end
+
+  # Hosting/builder shells with no business content behind them.
+  defp generic_placeholder?(signals) do
+    title = s(signals, :http_title) |> String.downcase()
+    body = s(signals, :body_text) |> String.downcase()
+
+    # golden v1: tymsapp.io, flyprimeglobal.com, citreoro.com (default WP),
+    # instituteforzambiandevelopment.org (Bizland), comfortathome.org
+    # (untouched Google Sites), thebarnett.net, mailmaag.com
+    title == "hostinger horizons" or
+      title == "my google ai studio app" or
+      String.contains?(title, "just another wordpress site") or
+      String.contains?(title, "otro sitio realizado con wordpress") or
+      String.starts_with?(title, "listmonk - ") or
+      String.contains?(body, "this site is temporarily unavailable") or
+      String.contains?(body, "this is a mail-in-a-box") or
+      (String.contains?(body, "your page title") and String.contains?(body, "google sites")) or
+      # golden v1: grupolisto.com (untouched Spanish WP), unitem.nl (404 as
+      # homepage), thisjustin.com (broken sale-redirect), actpractice.org
+      # (cloaked redirect wall)
+      String.contains?(body, "página de ejemplo") or
+      String.contains?(title, "page not found") or
+      String.contains?(title, "pagina niet gevonden") or
+      String.contains?(body, "page cannot be displayed") or
+      String.contains?(body, "checking if you're a real user")
+  end
+
+  # Narrow, template-level fraud patterns only — a wrong "scam" on a real
+  # business is worse than a missed one, same asymmetry as parked.
+  defp scam_page?(signals) do
+    body = s(signals, :body_text) |> String.downcase()
+    # golden v1: coinny-gateway.com ("withdrawal resolution center" for
+    # money stuck on fake trading platforms — a recovery-scam template)
+    String.contains?(body, "stuck funds") or
+      String.contains?(body, "withdrawal resolution center") or
+      (String.contains?(body, "recover") and String.contains?(body, "withdrawal") and
+         String.contains?(body, "btc wallet"))
+  end
+
+  # A successful response with nothing on it. Requires 200..399 so a failed
+  # or blocked fetch never brands the business (WAF pages have titles, so
+  # they don't land here either), and skips JS-rendered shells — golden v1
+  # junked UBA bank and Mountain America CU, both real businesses behind
+  # empty JS bootstraps that the browser tier renders fine. golden v1 catch:
+  # serviceinnovation.org, HTTP 200 with a 0-byte body.
+  defp empty_page?(signals) do
+    status = Map.get(signals, :http_status)
+
+    is_integer(status) and status in 200..399 and
+      Map.get(signals, :is_js_site) != true and
+      s(signals, :http_title) == "" and
+      s(signals, :h1) == "" and
+      s(signals, :http_meta_description) == "" and
+      String.length(s(signals, :body_text)) < 40 and
+      s(signals, :http_pages) == ""
   end
 
   defp default_shopify_page?(signals) do
