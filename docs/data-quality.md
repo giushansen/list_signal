@@ -119,6 +119,36 @@ exclude-by-default only after the golden set confirms the detector's
 precision — a false "parked" on a real business silently hides a sellable row,
 which is worse than showing a parked one.
 
+## Golden set v2 (2026-08-12) — the out-of-sample check
+
+180 fresh domains, seed `gset8`, same strata as v1 (v1 domains excluded),
+sampled from prod BEFORE classifier v2 deployed so `predicted_*` reflects the
+old pipeline. 162 labeled by Claude (notes `AI:`), 18 genuinely ambiguous
+rows left blank for the owner — label them with
+`analysis/golden_set/label_v2_owner.html`, then merge the download back.
+
+What v2 established (numbers from `mix ls.golden_reclassify --ml`):
+
+- **The classifier-v2 gain replicates out-of-sample**: precision of shipped
+  labels 38.2% → 57.1% on data none of the changes ever saw (in-sample v1
+  said 46.1% → 56.7%). Coverage lands at ~46% in both sets.
+- **Junk is worse than v1 measured**: 35% of alive-filtered rows (v1: 23%).
+- **String-based junk rules do not generalize**: 7/52 out-of-sample recall.
+  v2 surfaced ~12 NEW parking/hosting templates (Namecheap, Porkbun,
+  Aftermarket.eu, EffectiveNames, Miss Hosting, HostGator, Hoststar,
+  ISPConfig, GoDaddy coming-soon, Webador, SprySite, demo-store banners).
+  Next junk iteration must be structural — near-duplicate body detection
+  across domains (one template = thousands of domains) — not more strings.
+- **The revenue estimator matches brand names**: drmartensrepairs.com (a
+  repair shop) predicted $1B+; caissedequebec.com and two Desjardins vanity
+  domains likewise. High-bracket predictions are contaminated by
+  brand-string association, and 6 of 10 rows predicted ≥$100M were junk
+  pages or vanity redirects.
+- **Known false-junk residual**: `"empty"` fires on bot-walled giants that
+  serve a blank 200 to the HTTP tier (Transamerica, Zurich.de, parking.com).
+  Those rows are hollow anyway; the browser lane re-fetch clears the flag.
+  Keep routing `"empty"` to the browser lane, never exclude it by default.
+
 ## Where this is going (agreed 2026-08-07)
 
 Priority order, cheapest-first: junk gate everywhere → per-class threshold

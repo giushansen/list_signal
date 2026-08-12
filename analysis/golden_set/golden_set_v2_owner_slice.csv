@@ -1,0 +1,19 @@
+bucket,domain,url,tranco_rank,predicted_model,model_confidence,predicted_industry,predicted_revenue,revenue_confidence,is_real_business,model_ok,true_model,industry_ok,true_industry,true_revenue,notes
+model:SaaS:high,yourgiftisasong.com,https://yourgiftisasong.com,\N,SaaS,0.7,,<$1M,0.61,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,tahtoo.fi,https://tahtoo.fi,\N,SaaS,0.7,,$1M-$10M,0.91,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,hotmeetup.org,https://hotmeetup.org,\N,SaaS,0.7,,<$1M,0.81,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:low,inkubaturx.com,https://inkubaturx.com,\N,SaaS,0.56,,,\N,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:low,donsart.org,https://donsart.org,\N,SaaS,0.56,,<$1M,0.81,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Ecommerce:low,waschaecht.ch,https://waschaecht.ch,\N,Ecommerce,0.62,,<$1M,0.62,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Consulting:low,denverprolandscape.com,https://denverprolandscape.com,\N,Consulting,0.6,Home & Garden,<$1M,0.63,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:high,editorafocodigital.com.br,https://editorafocodigital.com.br,\N,Media,0.77,DevTools,<$1M,0.87,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:low,starkwr.com.br,https://starkwr.com.br,\N,Media,0.44,,<$1M,0.79,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:low,hinditravel.com,https://hinditravel.com,\N,Media,0.6,Media & Entertainment,<$1M,0.93,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Education:low,vebark.com,https://vebark.com,\N,Education,0.48,,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Education:low,greendrivingschool.com.au,https://greendrivingschool.com.au,\N,Education,0.49,,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Marketplace:low,all-autobuyer.com,https://all-autobuyer.com,\N,Marketplace,0.41,,<$1M,0.84,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Newsletter:low,securitydatabase.com,https://securitydatabase.com,1026770,Newsletter,0.56,DevTools,<$1M,0.78,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Newsletter:low,sisterlymagazine.com,https://sisterlymagazine.com,\N,Newsletter,0.55,,$1M-$10M,0.65,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Directory:low,masterchoeng.com,https://masterchoeng.com,\N,Directory,0.65,Ecommerce & Retail,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+unclassified,cobratate.com,https://cobratate.com,1111865,,\N,,$1M-$10M,0.41,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+revenue:$1B+,farm.com,https://farm.com,\N,Ecommerce,0.99,,$1B+,0.51,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html

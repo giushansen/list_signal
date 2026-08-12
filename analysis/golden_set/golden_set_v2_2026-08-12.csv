@@ -1,0 +1,181 @@
+bucket,domain,url,tranco_rank,predicted_model,model_confidence,predicted_industry,predicted_revenue,revenue_confidence,is_real_business,model_ok,true_model,industry_ok,true_industry,true_revenue,notes
+model:SaaS:high,booktimewithtony.com,https://booktimewithtony.com,\N,SaaS,0.7,,<$1M,0.54,n,,,,,,AI: vanity redirect to a personal Calendly booking page - not a business site
+model:SaaS:high,yourgiftisasong.com,https://yourgiftisasong.com,\N,SaaS,0.7,,<$1M,0.61,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,tahtoo.fi,https://tahtoo.fi,\N,SaaS,0.7,,$1M-$10M,0.91,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,hotmeetup.org,https://hotmeetup.org,\N,SaaS,0.7,,<$1M,0.81,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,scriptahealth.com,https://scriptahealth.com,\N,SaaS,0.7,Healthcare,<$1M,0.79,y,y,,y,,<$1M,AI: pharmacy-automation AI SaaS - SaaS@0.7 correct
+model:SaaS:high,ultimatewellnessinc.com,https://ultimatewellnessinc.com,\N,SaaS,0.7,,$1M-$10M,0.86,n,,,,,,AI: SprySite website-builder default page
+model:SaaS:low,tacl-group.com,https://tacl-group.com,\N,SaaS,0.56,,<$1M,0.7,y,n,Consulting,n,Finance,<$1M,AI: startup studio + investment + consulting mix; SaaS misfire on 'solutions SaaS' vocabulary
+model:SaaS:low,sip.io,https://sip.io,2161887,SaaS,0.62,DevTools,$1M-$10M,0.69,y,y,,y,,,AI: programmable voice / cloud contact center platform
+model:SaaS:low,inkubaturx.com,https://inkubaturx.com,\N,SaaS,0.56,,,\N,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:low,qoqolo.com,https://qoqolo.com,204736,SaaS,0.6,Education,$1M-$10M,0.61,y,y,,y,,,AI: preschool management SaaS (SG)
+model:SaaS:low,donsart.org,https://donsart.org,\N,SaaS,0.56,,<$1M,0.81,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:low,two-shoes.org,https://two-shoes.org,\N,SaaS,0.59,,<$1M,0.84,n,,,,,,AI: 'Welcome to Cloudflare' registrar shell
+model:Ecommerce:high,sheldongalleries.uk,https://sheldongalleries.uk,\N,Ecommerce,0.86,,<$1M,0.73,y,y,,n,Art & Framing,<$1M,AI: gallery + custom framing with online shop
+model:Ecommerce:high,nooudutravel.com,https://nooudutravel.com,\N,Ecommerce,0.74,Travel,<$1M,0.77,n,,,,,,AI: 404 with empty body - dead
+model:Ecommerce:high,invitzy.com,https://invitzy.com,\N,Ecommerce,0.86,,$1M-$10M,0.6,y,y,,n,Events,<$1M,"AI: digital wedding invitations, one-time purchase product; pred $1M-$10M one bracket high"
+model:Ecommerce:high,rallyways.com,https://rallyways.com,\N,Ecommerce,0.74,Marketing,$1M-$10M,0.64,y,n,Agency,n,Marketing,<$1M,AI: web-design/SEO agency for the auto industry; Ecommerce misfire
+model:Ecommerce:high,actnestor.com,https://actnestor.com,\N,Ecommerce,0.74,,,\N,n,,,,,,AI: page renders only 'Redirecting...' - broken shell
+model:Ecommerce:high,yuenyuentoy.com,https://yuenyuentoy.com,\N,Ecommerce,0.74,,$1M-$10M,0.7,y,y,,n,Retail,<$1M,AI: HK anime-toy web store; pred $1M-$10M high for a fan shop
+model:Ecommerce:low,timleeuw.nl,https://timleeuw.nl,\N,Ecommerce,0.61,,<$1M,0.76,n,,,,,,"AI: personal experiment site, self-described under construction"
+model:Ecommerce:low,gteoc.com,https://gteoc.com,\N,Ecommerce,0.67,Real Estate,$1M-$10M,0.57,y,n,LocalBusiness,y,,<$1M,AI: office-condominium association - property org
+model:Ecommerce:low,berkeleybridgeadvisors.com,https://berkeleybridgeadvisors.com,\N,Ecommerce,0.6,,$1M-$10M,0.4,y,n,Consulting,n,Government,<$1M,"AI: government-contract sales advisory, very thin site"
+model:Ecommerce:low,exaloninstruments.com,https://exaloninstruments.com,\N,Ecommerce,0.64,,<$1M,0.68,n,,,,,,AI: redirects to exalondelft.nl/products which 404s - dead vanity
+model:Ecommerce:low,waschaecht.ch,https://waschaecht.ch,\N,Ecommerce,0.62,,<$1M,0.62,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Ecommerce:low,trybobsredmill.com,https://trybobsredmill.com,\N,Ecommerce,0.64,Food & Beverage,$1M-$10M,0.49,y,y,,y,,$100M-$1B,AI: vanity redirect to bobsredmill.com - CPG brand with online store; pred $1M-$10M far low; vanity-domain dedup needed
+model:Agency:high,nkel.se,https://nkel.se,\N,Agency,1,Marketing,<$1M,0.63,y,y,,y,,,AI: Swedish ad agency since 1994 - Agency@1.0 right for once
+model:Agency:high,sarthishop.com,https://sarthishop.com,\N,Agency,0.8,Ecommerce & Retail,<$1M,0.81,n,,,,,,AI: banner says 'demo store for testing purposes - no orders shall be fulfilled'; junk gate should learn demo-store banners
+model:Agency:high,hytghana.com,https://hytghana.com,\N,Agency,0.72,HR & Recruiting,<$1M,0.66,y,y,,y,,,AI: redirects to hytng.com - Nigerian HR/recruitment firm (owner precedent: recruitment = Agency)
+model:Agency:high,adtp.de,https://adtp.de,\N,Agency,0.72,Marketing,<$1M,0.74,y,y,,y,,<$1M,AI: German print/web design agency
+model:Agency:high,sylenos.ch,https://sylenos.ch,\N,Agency,0.9,Productivity,<$1M,0.73,y,n,Consulting,n,Management Consulting,<$1M,AI: redirects to congruent GmbH - project-management consultancy
+model:Agency:low,wohnmanier-raumkonzepte.de,https://wohnmanier-raumkonzepte.de,\N,Agency,0.62,,<$1M,0.71,y,n,LocalBusiness,n,Construction & Manufacturing,<$1M,AI: seamless-floor contractor (Schleswig-Holstein)
+model:Agency:low,aztlansoftware.com,https://aztlansoftware.com,\N,Agency,0.5,DevTools,<$1M,0.85,y,y,,n,IT Services,<$1M,AI: Mexican gov-sector software dev shop
+model:Agency:low,buildwithinforma.com,https://buildwithinforma.com,\N,Agency,0.58,DevTools,$10M-$100M,0.68,y,n,Media,n,Events,$1B+,AI: vanity redirect to informaconnect.com (Informa plc conference) - events giant behind a campaign domain
+model:Agency:low,armandovirtuale.it,https://armandovirtuale.it,\N,Agency,0.56,Travel,,\N,y,y,,n,IT Services,<$1M,AI: freelance dev portfolio w/ services (v1 precedent: freelancer = real)
+model:Agency:low,corekindred.com,https://corekindred.com,\N,Agency,0.56,Real Estate,$1M-$10M,0.52,y,n,LocalBusiness,y,,,AI: redirects to corepointre.com - real-estate brokerage
+model:Agency:low,u-bdesign.com,https://u-bdesign.com,\N,Agency,0.64,DevTools,<$1M,0.65,y,y,,n,Design,<$1M,AI: JP freelance web-design studio
+model:Consulting:high,hotornotchicken.com,https://hotornotchicken.com,\N,Consulting,0.82,Food & Beverage,<$1M,0.64,y,n,LocalBusiness,y,,<$1M,"AI: hot-chicken restaurant (Athens, GA)"
+model:Consulting:high,eichelsdoerfer.it,https://eichelsdoerfer.it,\N,Consulting,0.75,Productivity,<$1M,0.77,y,y,,n,IT Services,<$1M,"AI: solo IT services, 767-byte one-pager"
+model:Consulting:high,holahomesmx.com,https://holahomesmx.com,\N,Consulting,0.84,Real Estate,<$1M,0.58,y,n,LocalBusiness,y,,<$1M,AI: CDMX real-estate brokerage
+model:Consulting:high,praxis-schauss.de,https://praxis-schauss.de,\N,Consulting,0.81,Healthcare,<$1M,0.72,y,n,LocalBusiness,y,,<$1M,AI: gynecology practice (Berlin)
+model:Consulting:high,ht-tilintarkastus.fi,https://ht-tilintarkastus.fi,\N,Consulting,0.71,Productivity,<$1M,0.51,y,y,,n,Accounting,<$1M,AI: solo Finnish audit firm
+model:Consulting:high,bridgeviewfinancial.com,https://bridgeviewfinancial.com,\N,Consulting,0.68,Fintech,<$1M,0.87,y,y,,y,,<$1M,AI: local financial advisory (Indiana)
+model:Consulting:low,denverprolandscape.com,https://denverprolandscape.com,\N,Consulting,0.6,Home & Garden,<$1M,0.63,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Consulting:low,cmmcondo.com,https://cmmcondo.com,\N,Consulting,0.56,,<$1M,0.53,y,y,,n,Accounting,<$1M,AI: HOA accounting firm since 1976; page still carries lorem-ipsum fragments
+model:Consulting:low,targacenter.fi,https://targacenter.fi,\N,Consulting,0.56,,<$1M,0.79,y,n,LocalBusiness,n,Automotive & Marine,$1M-$10M,AI: official Targa boat dealer Helsinki - boats are high-ticket
+model:Consulting:low,majorleagueautodetail.com,https://majorleagueautodetail.com,\N,Consulting,0.56,,<$1M,0.83,y,n,LocalBusiness,n,Automotive,<$1M,AI: auto detailing
+model:Consulting:low,pkandco.ca,https://pkandco.ca,\N,Consulting,0.6,Home & Garden,<$1M,0.83,y,y,,y,,<$1M,AI: interior-design studio - Consulting acceptable under current taxonomy
+model:Consulting:low,quillandsealbookkeeping.com,https://quillandsealbookkeeping.com,\N,Consulting,0.44,,<$1M,0.8,y,y,,n,Accounting,<$1M,AI: solo bookkeeping for pool businesses
+model:Media:high,editorafocodigital.com.br,https://editorafocodigital.com.br,\N,Media,0.77,DevTools,<$1M,0.87,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:high,disalignedmedia.com,https://disalignedmedia.com,\N,Media,0.77,Media & Entertainment,<$1M,0.76,n,,,,,,AI: 374-byte page with only the site name
+model:Media:high,bureaucondrau.ch,https://bureaucondrau.ch,\N,Media,0.76,Media & Entertainment,<$1M,0.74,y,n,Agency,n,Design,<$1M,AI: solo design bureau (branding/web/print)
+model:Media:high,transilvania-tv.ro,https://transilvania-tv.ro,2632200,Media,0.68,Media & Entertainment,<$1M,0.71,y,y,,y,,<$1M,AI: Romanian regional TV/news
+model:Media:high,impulse-wege.de,https://impulse-wege.de,\N,Media,0.7,Education,,\N,n,,,,,,AI: 'Hier entsteht eine neue Webpraesenz' under-construction page
+model:Media:high,efirix.com,https://efirix.com,\N,Media,0.77,Media & Entertainment,<$1M,0.91,y,n,SaaS,y,,<$1M,AI: text-to-TV cloud product for newsrooms; Media misfire
+model:Media:low,goingplacesmedia.com,https://goingplacesmedia.com,\N,Media,0.63,Media & Entertainment,$1M-$10M,0.83,y,y,,y,,<$1M,AI: independent journalism w/ memberships; pred $1M-$10M high
+model:Media:low,starkwr.com.br,https://starkwr.com.br,\N,Media,0.44,,<$1M,0.79,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:low,locandacolibri.it,https://locandacolibri.it,\N,Media,0.58,,<$1M,0.74,n,,,,,,AI: dead - no response
+model:Media:low,hinditravel.com,https://hinditravel.com,\N,Media,0.6,Media & Entertainment,<$1M,0.93,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:low,lars-friedrich.de,https://lars-friedrich.de,\N,Media,0.57,,<$1M,0.74,n,,,,,,AI: 'Hier entsteht eine neue Website' placeholder
+model:Media:low,world-npc.jp,https://world-npc.jp,\N,Media,0.58,,<$1M,0.65,y,n,LocalBusiness,n,Printing,,AI: Japanese printing company est. 1972; Media misfire on print vocabulary
+model:Education:high,glabis.com,https://glabis.com,\N,Education,0.84,Productivity,<$1M,0.64,y,y,,n,Education,<$1M,AI: corporate-training company (redirects to glabis.by)
+model:Education:high,esmacolak.com,https://esmacolak.com,\N,Education,0.68,DevTools,<$1M,0.71,n,,,,,,"AI: student CV/portfolio - personal page, no services sold"
+model:Education:high,expertcare-learning.com,https://expertcare-learning.com,\N,Education,0.74,Productivity,,\N,n,,,,,,"AI: internal training portal (LMS instance) of a Thai caregiver school - infrastructure, not a business site"
+model:Education:high,easierway.com.br,https://easierway.com.br,\N,Education,0.68,Education,$1M-$10M,0.57,y,y,,y,,<$1M,AI: online English course; pred $1M-$10M high
+model:Education:high,examlyapp.com,https://examlyapp.com,\N,Education,0.69,Education,<$1M,0.74,y,y,,y,,<$1M,AI: exam-prep app (MX)
+model:Education:high,okulyapidestek.com,https://okulyapidestek.com,\N,Education,0.73,Education,<$1M,0.8,y,n,LocalBusiness,n,Construction & Manufacturing,<$1M,AI: school fire-door/renovation contractor - Education fired on 'okul' (=school) keyword: flagship v2 trap
+model:Education:low,casfaedu.org,https://casfaedu.org,\N,Education,0.59,Education,<$1M,0.99,n,,,,,,AI: Wix ConnectYourDomain error page
+model:Education:low,vebark.com,https://vebark.com,\N,Education,0.48,,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Education:low,harmonysophy.com,https://harmonysophy.com,\N,Education,0.5,,$1M-$10M,0.64,n,,,,,,AI: dead - no response
+model:Education:low,greendrivingschool.com.au,https://greendrivingschool.com.au,\N,Education,0.49,,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Education:low,unisegler.com,https://unisegler.com,\N,Education,0.57,,<$1M,0.77,y,n,Community,n,Sports & Recreation,,AI: university sailing club (KIT) - nonprofit org_type
+model:Education:low,thefitnessoffice.com,https://thefitnessoffice.com,\N,Education,0.61,,<$1M,0.72,y,n,LocalBusiness,n,Health & Fitness,<$1M,AI: NYC personal-training studio; Education misfire
+model:Tool:high,ag-services.net,https://ag-services.net,\N,Tool,0.74,Productivity,<$1M,0.6,n,,,,,,AI: dead - no response
+model:Tool:high,campaignsignal.us,https://campaignsignal.us,\N,Tool,0.8,Marketing,<$1M,0.77,n,,,,,,AI: 1.3KB title-only shell
+model:Tool:high,coderzlab.com,https://coderzlab.com,\N,Tool,0.68,DevTools,<$1M,0.8,y,n,Agency,n,IT Services,<$1M,AI: dev agency; Tool misfire
+model:Tool:high,creatorvidpro.com,https://creatorvidpro.com,\N,Tool,0.97,Media & Entertainment,<$1M,0.87,n,,,,,,"AI: 4KB title+meta landing, no product behind it - vapor shell"
+model:Tool:high,buildcertification.co.uk,https://buildcertification.co.uk,\N,Tool,0.7,Construction & Manufacturing,<$1M,0.78,y,n,Consulting,y,,<$1M,AI: independent building-control inspectors (Webador one-pager)
+model:Tool:high,flowmusic.io,https://flowmusic.io,\N,Tool,0.71,AI & ML,<$1M,0.72,y,y,,y,,<$1M,AI: AI music-video generator - Tool@0.71 defensible
+model:Tool:low,deespl.org,https://deespl.org,\N,Tool,0.56,Education,$1M-$10M,0.66,n,,,,,,AI: QR-code pointer page - placeholder; pred rev $1M-$10M
+model:Tool:low,ingre-search.com,https://ingre-search.com,\N,Tool,0.64,Ecommerce & Retail,$100M-$1B,0.55,y,n,Agency,n,HR & Recruiting,<$1M,AI: executive search for the ingredients industry; Tool fired on 'search' in the name; pred rev $100M-$1B absurd
+model:Tool:low,projectupsc.com,https://projectupsc.com,\N,Tool,0.41,,<$1M,0.8,y,y,,n,Education,<$1M,AI: UPSC exam simulator
+model:Tool:low,kingbird.co.nz,https://kingbird.co.nz,\N,Tool,0.62,Fintech,$100M-$1B,0.48,y,n,Consulting,n,Finance,<$1M,AI: mortgage/finance brokerage; Tool misfire; pred rev $100M-$1B absurd
+model:Tool:low,inboxtom.com,https://inboxtom.com,\N,Tool,0.62,,<$1M,0.79,y,n,Consulting,n,Marketing,<$1M,AI: solo email-deliverability consultant
+model:Tool:low,createandkids.com,https://createandkids.com,\N,Tool,0.51,,,\N,n,,,,,,AI: 'Cerrado temporalmente' - closed storefront
+model:Community:high,bradtog.org.uk,https://bradtog.org.uk,\N,Community,0.75,Productivity,<$1M,0.9,y,y,,n,Community Services,<$1M,AI: community interest company - nonprofit org_type
+model:Community:high,allsystemsgoconsulting.com,https://allsystemsgoconsulting.com,\N,Community,0.68,Productivity,<$1M,0.66,y,n,Consulting,n,Nonprofit Services,<$1M,AI: solo consultant for nonprofits; Community misfire
+model:Community:high,aizawasogokenkyujo.com,https://aizawasogokenkyujo.com,\N,Community,0.73,Education,<$1M,0.88,n,,,,,,"AI: default Wix 'My Site' title, body is font CSS - half-built"
+model:Community:high,zusammen-inklusiv.de,https://zusammen-inklusiv.de,\N,Community,1,Marketing,<$1M,0.76,n,,,,,,AI: university seminar project site - not a business
+model:Community:high,spiritualteacup.com,https://spiritualteacup.com,3115083,Community,0.83,,<$1M,0.79,y,y,,n,Spirituality,<$1M,AI: tarot readers' forum - genuine Community
+model:Community:high,masterclassingdelegates.com,https://masterclassingdelegates.com,\N,Community,0.76,,$1M-$10M,0.7,y,n,Media,n,Events,,AI: redirects to masterclassing.com - B2B events company
+model:Community:low,gradorestaurante.com.br,https://gradorestaurante.com.br,\N,Community,0.47,,<$1M,0.77,n,,,,,,AI: HostGator welcome placeholder
+model:Community:low,boosterdigital.fr,https://boosterdigital.fr,\N,Community,0.57,Productivity,$1M-$10M,0.53,y,n,Agency,n,Marketing,,AI: agency for accounting firms; Community misfire
+model:Community:low,globalsystemspa.it,https://globalsystemspa.it,\N,Community,0.63,,<$1M,0.54,y,n,Consulting,n,IT Services,,AI: IT systems integrator (SpA); Community@0.63 misfire on 'Community System' product name
+model:Community:low,fabe.org,https://fabe.org,\N,Community,0.47,,<$1M,0.79,n,,,,,,AI: 1KB 'Click here to enter' shell
+model:Community:low,faltenbehandlung-bern.ch,https://faltenbehandlung-bern.ch,\N,Community,0.5,,,\N,n,,,,,,AI: Hoststar hosting placeholder
+model:Community:low,prowlc.com,https://prowlc.com,\N,Community,0.62,DevTools,<$1M,0.84,n,,,,,,AI: redirects to a Hostinger Horizons placeholder
+model:Marketplace:high,elevationdistro.com,https://elevationdistro.com,\N,Marketplace,0.7,Ecommerce & Retail,$1M-$10M,0.59,y,n,LocalBusiness,n,Cannabis,,"AI: licensed cannabis distributor (CA) - B2B distribution, not a marketplace"
+model:Marketplace:high,camelads.com.br,https://camelads.com.br,\N,Marketplace,0.72,Marketing,<$1M,0.84,y,n,Agency,y,,<$1M,AI: local-business ad agency; Marketplace misfire
+model:Marketplace:high,sureaf.com,https://sureaf.com,\N,Marketplace,0.81,Ecommerce & Retail,<$1M,0.71,n,,,,,,AI: for-sale page
+model:Marketplace:high,uatopus2tx.com,https://uatopus2tx.com,\N,Marketplace,0.74,Ecommerce & Retail,$1M-$10M,0.81,n,,,,,,AI: Namecheap 'recently registered' page - parked
+model:Marketplace:high,aceleradorasell.com.br,https://aceleradorasell.com.br,\N,Marketplace,0.85,Ecommerce & Retail,<$1M,0.83,y,n,Consulting,n,Sales,<$1M,"AI: sales-acceleration consultancy, thin page"
+model:Marketplace:high,dualsided.com,https://dualsided.com,\N,Marketplace,0.83,Ecommerce & Retail,$1M-$10M,0.58,y,n,Agency,n,Ecommerce & Retail,<$1M,AI: solo Shopify partner/developer; Marketplace fired on Shopify vocabulary; pred $1M-$10M high
+model:Marketplace:low,tylerinsagency.com,https://tylerinsagency.com,\N,Marketplace,0.41,Ecommerce & Retail,<$1M,0.55,n,,,,,,AI: CCPA-footer-only shell (same template family as v1 3stateconsulting.com)
+model:Marketplace:low,asascan.com,https://asascan.com,\N,Marketplace,0.41,Ecommerce & Retail,<$1M,0.7,n,,,,,,AI: CCPA-footer-only shell
+model:Marketplace:low,all-autobuyer.com,https://all-autobuyer.com,\N,Marketplace,0.41,,<$1M,0.84,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Marketplace:low,chemoil.co.uk,https://chemoil.co.uk,\N,Marketplace,0.4,,,\N,n,,,,,,AI: Dovendi parked template
+model:Marketplace:low,osuszanie.net,https://osuszanie.net,\N,Marketplace,0.55,,<$1M,0.68,n,,,,,,AI: Aftermarket.eu parked template
+model:Marketplace:low,myvet.nl,https://myvet.nl,\N,Marketplace,0.4,,,\N,n,,,,,,AI: Dovendi parked template
+model:Newsletter:high,pablooliva.de,https://pablooliva.de,\N,Newsletter,0.74,,,\N,n,,,,,,"AI: personal CV, self-described outdated"
+model:Newsletter:high,chilako.com,https://chilako.com,\N,Newsletter,0.73,,,\N,y,n,LocalBusiness,n,Construction & Manufacturing,,AI: Alberta drilling services since 1979; Newsletter misfire is total
+model:Newsletter:high,ipsumfoodgroup.com,https://ipsumfoodgroup.com,\N,Newsletter,0.68,,,\N,n,,,,,,AI: WP 'Coming Soon' shell - Newsletter@0.68 fired on its subscribe box (trap confirmed out-of-sample)
+model:Newsletter:high,ratiosim.com,https://ratiosim.com,\N,Newsletter,0.78,Marketing,<$1M,0.61,y,n,SaaS,n,Energy,<$1M,AI: energy-storage simulation SaaS (TR); Newsletter misfire
+model:Newsletter:high,restaurantedelatorre.es,https://restaurantedelatorre.es,\N,Newsletter,0.68,Ecommerce & Retail,<$1M,0.73,n,,,,,,AI: template restaurant site still full of 'Esto es un parrafo' filler - unfinished
+model:Newsletter:high,icorseguros.com,https://icorseguros.com,\N,Newsletter,0.73,Security,<$1M,0.72,y,n,Consulting,n,Insurance,<$1M,AI: insurance brokerage (BR); Newsletter fired on its subscribe box - trap confirmed out-of-sample
+model:Newsletter:low,abtdijital.com,https://abtdijital.com,\N,Newsletter,0.45,,<$1M,0.6,n,,,,,,AI: 'We're renewing our website' placeholder
+model:Newsletter:low,securitydatabase.com,https://securitydatabase.com,1026770,Newsletter,0.56,DevTools,<$1M,0.78,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Newsletter:low,misww.com,https://misww.com,\N,Newsletter,0.41,,,\N,n,,,,,,AI: ISPConfig default index
+model:Newsletter:low,sisterlymagazine.com,https://sisterlymagazine.com,\N,Newsletter,0.55,,$1M-$10M,0.65,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Newsletter:low,taruman-ikeda.com,https://taruman-ikeda.com,\N,Newsletter,0.57,Ecommerce & Retail,<$1M,0.76,y,n,LocalBusiness,y,,<$1M,AI: yakiniku restaurant est. 1972 (Gifu); Newsletter misfire
+model:Newsletter:low,odyseaibiza.com,https://odyseaibiza.com,\N,Newsletter,0.42,Marketing,,\N,n,,,,,,AI: GoDaddy 'Proximo lanzamiento' template
+model:Directory:high,artcanal.com.br,https://artcanal.com.br,3852638,Directory,0.72,Ecommerce & Retail,<$1M,0.78,n,,,,,,AI: parked (peut-etre a vendre)
+model:Directory:high,rankstrseonow.com,https://rankstrseonow.com,\N,Directory,0.73,Ecommerce & Retail,<$1M,0.62,n,,,,,,AI: Porkbun expired-domain page
+model:Directory:high,integritylps.com,https://integritylps.com,\N,Directory,0.76,Real Estate,$1M-$10M,0.82,y,n,LocalBusiness,y,,,AI: property investor/rentals operator; Directory fired on 'listings' vocabulary
+model:Directory:high,astoreroom.biz,https://astoreroom.biz,859855,Directory,0.7,Ecommerce & Retail,<$1M,0.6,n,,,,,,AI: Sedo FR for-sale template
+model:Directory:high,watts-jp.com,https://watts-jp.com,460499,Directory,0.8,Ecommerce & Retail,$1M-$10M,0.68,y,n,LocalBusiness,n,Retail,$100M-$1B,"AI: Watts Co. - listed JP 100-yen-shop chain, ~JPY 50B revenue; Directory misfire, pred rev $1M-$10M far low"
+model:Directory:high,pattayahomes.com,https://pattayahomes.com,\N,Directory,0.71,Real Estate,$10M-$100M,0.64,n,,,,,,AI: EffectiveNames domain-sale page
+model:Directory:low,multicomp.ch,https://multicomp.ch,\N,Directory,0.6,Ecommerce & Retail,,\N,n,,,,,,AI: Sedo FR for-sale template
+model:Directory:low,pokeb.com,https://pokeb.com,\N,Directory,0.47,,,\N,n,,,,,,AI: Sedo FR for-sale template
+model:Directory:low,masterchoeng.com,https://masterchoeng.com,\N,Directory,0.65,Ecommerce & Retail,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Directory:low,allfieldsjournal.com,https://allfieldsjournal.com,\N,Directory,0.6,Education,<$1M,0.97,y,n,Media,n,Publishing,<$1M,AI: redirects to anfopublicationhouse.com - academic publisher
+model:Directory:low,carolinaplantationrice.com,https://carolinaplantationrice.com,\N,Directory,0.56,Fashion,<$1M,0.86,y,n,Ecommerce,y,,<$1M,AI: heritage rice plantation web store; industry Fashion wrong
+model:Directory:low,probizstrive.com,https://probizstrive.com,\N,Directory,0.43,,<$1M,0.84,n,,,,,,AI: 'My WordPress Blog' guest-post farm (Write For Us) - PBN/spam
+unclassified,generac.com,https://generac.com,43763,,\N,,$10M-$100M,0.99,y,,Manufacturer,,,$1B+,"AI: Generac Power Systems, NYSE:GNRC ~$4B - another unclassified giant"
+unclassified,tvalmansa.es,https://tvalmansa.es,269366,,\N,,$100M-$1B,0.66,y,,Media,,,<$1M,AI: local TV channel of a small Spanish ISP (AlmaTelecom); pred rev $100M-$1B absurd
+unclassified,efultimatebreak.com,https://efultimatebreak.com,281328,,\N,,$1M-$10M,0.52,y,,Ecommerce,,,$100M-$1B,AI: EF Ultimate Break - EF Education First's youth-travel division; sells trips online
+unclassified,doterra.com,https://doterra.com,23786,,\N,,$10M-$100M,0.84,y,,Ecommerce,,,$1B+,"AI: doTERRA - MLM essential oils, ~$1.5-2B; pred $10M-$100M low"
+unclassified,profoundlorerecords.com,https://profoundlorerecords.com,1506862,,\N,,<$1M,0.67,y,,Media,,,<$1M,"AI: 212-byte fetch; labeled from knowledge - Profound Lore, indie metal label"
+unclassified,issbc.org,https://issbc.org,521706,,\N,,$10M-$100M,0.94,y,,Nonprofit,,,$10M-$100M,AI: Immigrant Services Society of BC - pred revenue bracket RIGHT
+unclassified,hyundaicanada.com,https://hyundaicanada.com,67657,,\N,,$10M-$100M,0.94,y,,Manufacturer,,,$1B+,AI: Hyundai Canada - national auto distributor; pred $10M-$100M far low
+unclassified,scoreatyourlocal.com.au,https://scoreatyourlocal.com.au,436332,,\N,,$1M-$10M,0.76,n,,,,,,"AI: Smith's Snackfood promo microsite - campaign page, not a business"
+unclassified,transamerica.com,https://transamerica.com,44445,,\N,,$100M-$1B,0.99,y,,Insurance,,,$1B+,AI: empty JS shell fetched; Transamerica (Aegon) - labeled from knowledge
+unclassified,zurich.de,https://zurich.de,137394,,\N,,$100M-$1B,0.97,y,,Insurance,,,$1B+,AI: empty JS shell fetched; Zurich Germany - labeled from knowledge
+unclassified,comedy-festival.co.uk,https://comedy-festival.co.uk,2009626,,\N,,<$1M,0.53,y,,Media,,,<$1M,AI: Leicester Comedy Festival (charity-run event)
+unclassified,pakabone.com,https://pakabone.com,883665,,\N,,<$1M,0.54,y,,Ecommerce,,,<$1M,AI: Ukrainian men's jewelry store - pred rev right
+unclassified,healio.com,https://healio.com,16052,,\N,,$100M-$1B,0.99,y,,Media,,,$10M-$100M,AI: medical news/CME platform (Wyanoke Group); pred $100M-$1B one high
+unclassified,mirati.com,https://mirati.com,3286176,,\N,,$10M-$100M,0.65,y,,Manufacturer,,,$1B+,AI: redirects to bms.com - Mirati acquired by Bristol Myers Squibb; post-acquisition vanity
+unclassified,cobratate.com,https://cobratate.com,1111865,,\N,,$1M-$10M,0.41,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+unclassified,adipec.com,https://adipec.com,201126,,\N,,$10M-$100M,0.98,y,,Media,,,$10M-$100M,AI: ADIPEC energy conference (dmg events) - pred bracket right
+unclassified,veli.ee,https://veli.ee,455044,,\N,,$1M-$10M,0.6,n,,,,,,AI: personal designer portfolio
+unclassified,selfcatering.co.uk,https://selfcatering.co.uk,1177914,,\N,,$1M-$10M,0.59,y,,Directory,,,,AI: UK holiday-cottage listings aggregator (65k properties)
+unclassified,securiancanada.ca,https://securiancanada.ca,1213895,,\N,,$100M-$1B,0.9,y,,Insurance,,,$100M-$1B,AI: Securian Canada insurer - pred bracket RIGHT
+unclassified,angelflight.com,https://angelflight.com,1986481,,\N,,<$1M,0.56,y,,Nonprofit,,,<$1M,AI: volunteer pilot charity - pred rev right
+unclassified,metroinfo.co.nz,https://metroinfo.co.nz,424846,,\N,,$1M-$10M,0.6,y,,Government,,,,AI: Christchurch public-transit info - Government class gap again
+unclassified,boonthavorn.com,https://boonthavorn.com,394735,,\N,,$1M-$10M,0.46,y,,LocalBusiness,,,$100M-$1B,"AI: 13KB JS shell; Boonthavorn - Thai home-improvement retail chain, labeled from knowledge"
+unclassified,parking.com,https://parking.com,150161,,\N,,$100M-$1B,0.99,y,,LocalBusiness,,,$1B+,AI: empty JS shell; Parking.com = SP Plus (~$1.9B) - labeled from knowledge
+unclassified,marbleskidsmuseum.org,https://marbleskidsmuseum.org,633236,,\N,,$10M-$100M,0.87,y,,Nonprofit,,,$10M-$100M,AI: kids museum (Raleigh) - venue nonprofit; pred bracket plausible
+unclassified,hogwartsprofessor.com,https://hogwartsprofessor.com,1269567,,\N,,<$1M,0.79,n,,,,,,AI: personal fan-scholarship blog
+unclassified,alzimpact.org,https://alzimpact.org,1886970,,\N,,<$1M,0.61,y,,Nonprofit,,,,AI: 212-byte fetch; Alzheimer's Impact Movement - labeled from knowledge
+unclassified,sickkidsfoundation.com,https://sickkidsfoundation.com,333223,,\N,,$10M-$100M,0.99,y,,Nonprofit,,,$100M-$1B,AI: SickKids Foundation raises ~C$200M/yr; pred $10M-$100M one low
+unclassified,amegybank.com,https://amegybank.com,255835,,\N,,$100M-$1B,0.98,y,,Bank,,,$100M-$1B,AI: Amegy Bank (Zions) - pred bracket RIGHT
+unclassified,sppl.org,https://sppl.org,1318175,,\N,,<$1M,0.69,y,,Government,,,,AI: St. Paul Public Library; HTTP 202 with empty body
+revenue:$10M-$100M,chromeindustries.com,https://chromeindustries.com,294976,Ecommerce,0.99,,$10M-$100M,0.87,y,y,,n,Fashion,$10M-$100M,AI: Chrome Industries bags - model AND revenue bracket both right
+revenue:$10M-$100M,fosterfamilymatters.org,https://fosterfamilymatters.org,\N,Community,0.41,,$10M-$100M,0.67,y,n,Nonprofit,n,Social Services,$10M-$100M,AI: redirects to ckfamilyservices.org - foster-care nonprofit; bracket right
+revenue:$10M-$100M,alunapartners.co.uk,https://alunapartners.co.uk,\N,Ecommerce,0.74,Construction & Manufacturing,$10M-$100M,0.74,y,n,Consulting,n,Finance,,AI: redirects to apgcapitalmarkets.com - capital-markets boutique; bracket unverifiable
+revenue:$10M-$100M,niradynamics.se,https://niradynamics.se,\N,Ecommerce,0.62,Marketing,$10M-$100M,0.69,y,n,SaaS,n,Automotive,$10M-$100M,"AI: automotive software supplier (TPI in most EU cars); bracket right, model wrong"
+revenue:$10M-$100M,infectionshield.ca,https://infectionshield.ca,\N,Ecommerce,0.72,Healthcare,$10M-$100M,0.61,y,n,Consulting,y,,<$1M,AI: IPAC consulting; pred $10M-$100M far high
+revenue:$10M-$100M,cdhangels.org,https://cdhangels.org,\N,Ecommerce,0.74,Healthcare,$10M-$100M,0.61,y,n,Nonprofit,y,,<$1M,AI: redirects to cdhi.org - CDH charity; pred $10M-$100M far high
+revenue:$100M-$1B,successwithstarr.com,https://successwithstarr.com,\N,Ecommerce,0.74,Marketing,$100M-$1B,0.84,n,,,,,,AI: make-money-online affiliate squeeze page; pred rev $100M-$1B
+revenue:$100M-$1B,infraworksys.com.br,https://infraworksys.com.br,\N,Community,0.64,DevTools,$100M-$1B,0.64,y,n,Consulting,n,IT Services,,AI: BR IT integrator; pred $100M-$1B absurd
+revenue:$100M-$1B,pillowdecor.com,https://pillowdecor.com,3604868,Ecommerce,0.66,,$100M-$1B,0.73,y,y,,n,Home & Garden,$1M-$10M,AI: niche pillow e-shop; pred $100M-$1B off by 2+ brackets
+revenue:$100M-$1B,paramountconductors.com,https://paramountconductors.com,\N,Ecommerce,0.79,,$100M-$1B,0.57,y,n,Manufacturer,n,Industrial,,AI: Indian wire/coil manufacturer; pred $100M-$1B likely far high
+revenue:$100M-$1B,hearttec.no,https://hearttec.no,\N,SaaS,0.62,,$100M-$1B,0.65,n,,,,,,AI: Miss Hosting parked page; pred rev $100M-$1B on a parked page
+revenue:$100M-$1B,jsc.no,https://jsc.no,2044934,Ecommerce,0.74,,$100M-$1B,0.54,n,,,,,,AI: 301 with 0-byte body - empty
+revenue:$1B+,essaiajusto.ca,https://essaiajusto.ca,\N,Consulting,0.7,Fintech,$1B+,0.54,y,n,Insurance,n,Insurance,$1B+,AI: SECOND Desjardins Ajusto vanity domain in the sample (v1 had essaierajusto.ca) - vanity-domain family dedup is a data-quality issue of its own
+revenue:$1B+,mtvme.net,https://mtvme.net,\N,Community,0.52,Media & Entertainment,$1B+,0.45,n,,,,,,AI: redirects to a YouTube channel - no site of its own; pred rev $1B+
+revenue:$1B+,jotform.com,https://jotform.com,614,Tool,1,DevTools,$1B+,0.89,y,n,SaaS,n,Productivity,$100M-$1B,"AI: Jotform - bootstrapped form SaaS ~$150-200M; Tool@1.0 wrong class, pred $1B+ one high"
+revenue:$1B+,movieratings.com,https://movieratings.com,\N,Marketplace,0.41,Ecommerce & Retail,$1B+,0.54,n,,,,,,AI: domain-sale redirect via exploreinquiry.com (same template as v1 thisjustin.com); pred rev $1B+
+revenue:$1B+,drmartensrepairs.com,https://drmartensrepairs.com,\N,Ecommerce,0.78,Fashion,$1B+,0.46,y,y,,y,,<$1M,AI: authorized DM repair shop (Boot Repair Co) - pred $1B+ = estimator matched the BRAND NAME in the domain: flagship v2 finding
+revenue:$1B+,directpubs.net,https://directpubs.net,\N,Marketplace,0.41,Ecommerce & Retail,$1B+,0.6,n,,,,,,AI: CCPA-footer-only shell; pred rev $1B+
+revenue:$1B+,farm.com,https://farm.com,\N,Ecommerce,0.99,,$1B+,0.51,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+revenue:$1B+,caissedequebec.com,https://caissedequebec.com,\N,Community,0.64,,$1B+,0.52,y,n,Bank,n,Banking,$10M-$100M,AI: local Desjardins caisse; pred $1B+ = brand contamination again

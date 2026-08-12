@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ListSignal golden set — labeling</title>
+<style>
+  :root {
+    --bg:#faf9f7; --card:#fff; --ink:#1c1b1a; --muted:#6b6864; --line:#e3e0db;
+    --accent:#2f6f4f; --accent-soft:#e7f1ea; --warn:#a8442a; --warn-soft:#fbeae5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16161a; --card:#1e1e23; --ink:#eceaf0; --muted:#9b98a3; --line:#32323a;
+            --accent:#6bbf90; --accent-soft:#22352c; --warn:#e3856a; --warn-soft:#3a2520; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:15px/1.5 ui-sans-serif,-apple-system,"Segoe UI",sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:var(--bg);
+           border-bottom:1px solid var(--line); padding:10px 16px; }
+  .bar { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:8px; }
+  .bar > i { display:block; height:100%; background:var(--accent); width:0; transition:width .2s; }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; }
+  main { max-width:780px; margin:20px auto 120px; padding:0 16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  h1 { font-size:15px; margin:0; font-weight:650; }
+  .domain { font-size:26px; font-weight:650; word-break:break-all; margin:0 0 4px; }
+  .bucket { color:var(--muted); font-size:13px; font-family:ui-monospace,monospace; }
+  a.open { display:inline-block; margin:14px 0 18px; padding:10px 16px; background:var(--accent);
+           color:#fff; text-decoration:none; border-radius:8px; font-weight:600; }
+  @media (prefers-color-scheme: dark) { a.open { color:#12211a; } }
+  .preds { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .chip { font-size:12px; padding:4px 9px; border:1px solid var(--line); border-radius:99px; color:var(--muted); }
+  .chip b { color:var(--ink); font-weight:600; }
+  .q { border-top:1px solid var(--line); padding:14px 0 4px; }
+  .q > label { display:block; font-weight:600; margin-bottom:8px; }
+  .q .hint { font-weight:400; color:var(--muted); font-size:13px; }
+  button.opt { font:inherit; padding:8px 16px; margin-right:8px; border:1px solid var(--line);
+               background:var(--card); color:var(--ink); border-radius:8px; cursor:pointer; }
+  button.opt[aria-pressed="true"] { background:var(--accent-soft); border-color:var(--accent); font-weight:650; }
+  button.opt.no[aria-pressed="true"] { background:var(--warn-soft); border-color:var(--warn); }
+  select, input[type=text] { font:inherit; padding:8px; border:1px solid var(--line); border-radius:8px;
+                             background:var(--card); color:var(--ink); max-width:100%; }
+  .nav { position:fixed; bottom:0; left:0; right:0; background:var(--card);
+         border-top:1px solid var(--line); padding:10px 16px; }
+  .nav .inner { max-width:780px; margin:0 auto; }
+  .kbd { font-family:ui-monospace,monospace; font-size:12px; color:var(--muted); }
+  .done { text-align:center; padding:40px 20px; }
+  .hidden { display:none; }
+  button.plain { font:inherit; padding:7px 13px; border:1px solid var(--line);
+                 background:var(--card); color:var(--ink); border-radius:8px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); font-weight:600; }
+  @media (prefers-color-scheme: dark) { button.primary { color:#12211a; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <h1 class="grow">Golden set <span id="file"></span></h1>
+    <span class="kbd" id="count"></span>
+    <button class="plain primary" id="dl">Download labeled CSV</button>
+    <label class="plain" style="cursor:pointer">Load other CSV
+      <input type="file" id="pick" accept=".csv" class="hidden">
+    </label>
+  </div>
+  <div class="bar"><i id="prog"></i></div>
+</header>
+
+<main>
+  <div id="card" class="card"></div>
+  <div id="finished" class="card done hidden">
+    <h2>All 0 rows labeled 🎉</h2>
+    <p>Hit <b>Download labeled CSV</b> above and hand the file back to Claude.</p>
+  </div>
+</main>
+
+<div class="nav"><div class="inner row">
+  <button class="plain" id="prev">← Back</button>
+  <button class="plain" id="skip">Skip</button>
+  <span class="grow kbd">Keys: <b>y</b>/<b>n</b> answer &middot; <b>o</b> open site &middot; <b>←</b>/<b>→</b> move &middot; saves automatically in this browser</span>
+  <button class="plain primary" id="next">Next →</button>
+</div></div>
+
+<script type="text/plain" id="embedded">bucket,domain,url,tranco_rank,predicted_model,model_confidence,predicted_industry,predicted_revenue,revenue_confidence,is_real_business,model_ok,true_model,industry_ok,true_industry,true_revenue,notes
+model:SaaS:high,yourgiftisasong.com,https://yourgiftisasong.com,\N,SaaS,0.7,,<$1M,0.61,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,tahtoo.fi,https://tahtoo.fi,\N,SaaS,0.7,,$1M-$10M,0.91,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:high,hotmeetup.org,https://hotmeetup.org,\N,SaaS,0.7,,<$1M,0.81,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:low,inkubaturx.com,https://inkubaturx.com,\N,SaaS,0.56,,,\N,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:SaaS:low,donsart.org,https://donsart.org,\N,SaaS,0.56,,<$1M,0.81,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Ecommerce:low,waschaecht.ch,https://waschaecht.ch,\N,Ecommerce,0.62,,<$1M,0.62,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Consulting:low,denverprolandscape.com,https://denverprolandscape.com,\N,Consulting,0.6,Home & Garden,<$1M,0.63,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:high,editorafocodigital.com.br,https://editorafocodigital.com.br,\N,Media,0.77,DevTools,<$1M,0.87,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:low,starkwr.com.br,https://starkwr.com.br,\N,Media,0.44,,<$1M,0.79,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Media:low,hinditravel.com,https://hinditravel.com,\N,Media,0.6,Media & Entertainment,<$1M,0.93,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Education:low,vebark.com,https://vebark.com,\N,Education,0.48,,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Education:low,greendrivingschool.com.au,https://greendrivingschool.com.au,\N,Education,0.49,,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Marketplace:low,all-autobuyer.com,https://all-autobuyer.com,\N,Marketplace,0.41,,<$1M,0.84,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Newsletter:low,securitydatabase.com,https://securitydatabase.com,1026770,Newsletter,0.56,DevTools,<$1M,0.78,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Newsletter:low,sisterlymagazine.com,https://sisterlymagazine.com,\N,Newsletter,0.55,,$1M-$10M,0.65,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+model:Directory:low,masterchoeng.com,https://masterchoeng.com,\N,Directory,0.65,Ecommerce & Retail,<$1M,0.71,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+unclassified,cobratate.com,https://cobratate.com,1111865,,\N,,$1M-$10M,0.41,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+revenue:$1B+,farm.com,https://farm.com,\N,Ecommerce,0.99,,$1B+,0.51,,,,,,,OWNER SLICE: ambiguous - see label_v2_owner.html
+</script>
+<script>
+"use strict";
+
+const COLS = ["bucket","domain","url","tranco_rank","predicted_model","model_confidence",
+  "predicted_industry","predicted_revenue","revenue_confidence","is_real_business","model_ok",
+  "true_model","industry_ok","true_industry","true_revenue","notes"];
+
+const MODELS = ["SaaS","Ecommerce","Agency","Consulting","LocalBusiness","Media","Education",
+  "Tool","Community","Marketplace","Newsletter","Directory","Government","Nonprofit","Holding"];
+const REVENUE = ["<$1M","$1M-$10M","$10M-$100M","$100M-$1B","$1B+"];
+
+// ── CSV (RFC-4180 subset, same shape LS.GoldenSet.parse/1 accepts) ─────────
+function parseCSV(text) {
+  const rows = []; let row = [], field = "", q = false;
+  text = text.replace(/\r\n/g, "\n");
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i+1] === '"') { field += '"'; i++; }
+      else if (c === '"') q = false;
+      else field += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+    else field += c;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => r.length > 1 || r[0] !== "");
+}
+function toCSV(rows) {
+  const esc = v => /[",\n]/.test(v ?? "") ? '"' + String(v).replace(/"/g, '""') + '"' : (v ?? "");
+  return [COLS.join(",")].concat(rows.map(r => COLS.map(c => esc(r[c])).join(","))).join("\n") + "\n";
+}
+
+// ── state ─────────────────────────────────────────────────────────────────
+let rows = [], idx = 0, fileName = "golden_set.csv";
+
+function storeKey() { return "golden:" + fileName; }
+function save() {
+  try {
+    const labels = rows.map(r => COLS.slice(9).map(c => r[c] ?? ""));
+    localStorage.setItem(storeKey(), JSON.stringify({ idx, labels }));
+  } catch (e) { /* private mode: labels still live in memory until download */ }
+}
+function restore() {
+  try {
+    const s = JSON.parse(localStorage.getItem(storeKey()) || "null");
+    if (!s || s.labels.length !== rows.length) return;
+    rows.forEach((r, i) => COLS.slice(9).forEach((c, j) => r[c] = s.labels[i][j] ?? ""));
+    idx = Math.min(s.idx ?? 0, rows.length - 1);
+  } catch (e) {}
+}
+
+function load(text, name) {
+  const recs = parseCSV(text);
+  const head = recs[0].map(h => h.trim());
+  rows = recs.slice(1).map(r => Object.fromEntries(head.map((h, i) => [h, (r[i] ?? "").trim()])));
+  rows.forEach(r => COLS.forEach(c => { if (r[c] === undefined) r[c] = ""; }));
+  fileName = name; idx = 0;
+  restore();
+  document.getElementById("file").textContent = "— " + name;
+  render();
+}
+
+// ── render ────────────────────────────────────────────────────────────────
+const el = id => document.getElementById(id);
+
+function labeled() { return rows.filter(r => r.is_real_business !== "").length; }
+
+function set(field, value) {
+  const r = rows[idx];
+  r[field] = (r[field] === value) ? "" : value;   // click again to clear
+  if (field === "is_real_business" && r[field] === "n") {
+    // not a business: the model/industry/revenue questions are moot
+    ["model_ok","true_model","industry_ok","true_industry","true_revenue"].forEach(c => r[c] = "");
+  }
+  save(); render();
+}
+
+function yesNo(field, label, hint) {
+  const v = rows[idx][field];
+  return `<div class="q"><label>${label} ${hint ? `<span class="hint">${hint}</span>` : ""}</label>
+    <button class="opt" data-set="${field}" data-val="y" aria-pressed="${v === "y"}">Yes</button>
+    <button class="opt no" data-set="${field}" data-val="n" aria-pressed="${v === "n"}">No</button></div>`;
+}
+
+function render() {
+  const total = rows.length, done = labeled();
+  el("count").textContent = `${done}/${total} labeled`;
+  el("prog").style.width = (total ? done / total * 100 : 0) + "%";
+
+  if (!rows.length) { el("card").innerHTML = "<p>Load a CSV to start.</p>"; return; }
+  el("finished").classList.toggle("hidden", done < total);
+  el("card").classList.toggle("hidden", done >= total && rows[idx].is_real_business !== "");
+  if (done >= total && rows[idx].is_real_business !== "") {
+    el("finished").querySelector("h2").textContent = `All ${total} rows labeled 🎉`;
+    return;
+  }
+
+  const r = rows[idx];
+  const chip = (k, v) => v ? `<span class="chip">${k} <b>${v}</b></span>` : "";
+  const notBiz = r.is_real_business === "n";
+
+  el("card").innerHTML = `
+    <div class="bucket">${idx + 1} / ${total} &middot; ${r.bucket}</div>
+    <p class="domain">${r.domain}</p>
+    <div class="preds">
+      ${chip("model", r.predicted_model ? `${r.predicted_model} @ ${r.model_confidence}` : "")}
+      ${chip("industry", r.predicted_industry)}
+      ${chip("revenue", r.predicted_revenue)}
+      ${r.predicted_model ? "" : '<span class="chip">unclassified by the pipeline</span>'}
+    </div>
+    <a class="open" href="${r.url}" target="_blank" rel="noopener noreferrer">Open ${r.domain} ↗</a>
+
+    ${yesNo("is_real_business", "Is this a real business?", "No = parked, dead, default Shopify page, spam/PBN, personal blog")}
+
+    <div class="${notBiz ? "hidden" : ""}">
+      ${r.predicted_model
+        ? yesNo("model_ok", `Is the business model right — <b>${r.predicted_model}</b>?`)
+        : ""}
+      ${(!r.predicted_model || r.model_ok === "n") ? `<div class="q">
+          <label>${r.predicted_model ? "Then what is it?" : "What is it really?"} <span class="hint">(this is the recall signal)</span></label>
+          <select data-field="true_model">
+            <option value="">— pick —</option>
+            ${MODELS.map(m => `<option ${r.true_model === m ? "selected" : ""}>${m}</option>`).join("")}
+          </select></div>` : ""}
+
+      ${r.predicted_industry ? yesNo("industry_ok", `Is the industry right — <b>${r.predicted_industry}</b>?`, "skip if unclear") : ""}
+      ${r.industry_ok === "n" ? `<div class="q"><label>True industry</label>
+          <input type="text" data-field="true_industry" value="${(r.true_industry || "").replace(/"/g, "&quot;")}" placeholder="e.g. Legal"></div>` : ""}
+
+      <div class="q"><label>Revenue bracket <span class="hint">gut call — blank beats a guess</span></label>
+        <select data-field="true_revenue">
+          <option value="">— can't tell —</option>
+          ${REVENUE.map(b => `<option ${r.true_revenue === b ? "selected" : ""}>${b}</option>`).join("")}
+        </select></div>
+    </div>
+
+    <div class="q"><label>Notes <span class="hint">anything odd — taxonomy gaps are findings, not errors</span></label>
+      <input type="text" data-field="notes" style="width:100%"
+             value="${(r.notes || "").replace(/"/g, "&quot;")}" placeholder="in French / redirects to X / subsidiary of Y"></div>`;
+}
+
+// ── events ────────────────────────────────────────────────────────────────
+el("card").addEventListener("click", e => {
+  const b = e.target.closest("button[data-set]");
+  if (b) set(b.dataset.set, b.dataset.val);
+});
+el("card").addEventListener("change", e => {
+  const f = e.target.dataset.field;
+  if (f) { rows[idx][f] = e.target.value; save(); if (f !== "notes" && f !== "true_industry") render(); }
+});
+el("card").addEventListener("input", e => {
+  const f = e.target.dataset.field;
+  if (f === "notes" || f === "true_industry") { rows[idx][f] = e.target.value; save(); }
+});
+
+function move(d) { idx = Math.max(0, Math.min(rows.length - 1, idx + d)); save(); render(); }
+el("next").onclick = () => move(1);
+el("prev").onclick = () => move(-1);
+el("skip").onclick = () => move(1);
+
+document.addEventListener("keydown", e => {
+  if (e.target.matches("input,select,textarea")) return;
+  if (e.key === "ArrowRight") move(1);
+  else if (e.key === "ArrowLeft") move(-1);
+  else if (e.key === "o") window.open(rows[idx].url, "_blank", "noopener");
+  else if (e.key === "y" || e.key === "n") {
+    // answer the first unanswered visible question
+    const r = rows[idx];
+    if (r.is_real_business === "") set("is_real_business", e.key);
+    else if (r.predicted_model && r.model_ok === "" && r.is_real_business === "y") set("model_ok", e.key);
+    else if (r.predicted_industry && r.industry_ok === "" && r.is_real_business === "y") set("industry_ok", e.key);
+  }
+});
+
+el("dl").onclick = () => {
+  const blob = new Blob([toCSV(rows)], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = fileName.replace(/\.csv$/, "") + "_labeled.csv";
+  a.click(); URL.revokeObjectURL(a.href);
+};
+el("pick").onchange = e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const rd = new FileReader();
+  rd.onload = () => load(rd.result, f.name);
+  rd.readAsText(f);
+};
+
+load(el("embedded").textContent, "golden_set_v2_owner_slice.csv");
+</script>
+</body>
+</html>
