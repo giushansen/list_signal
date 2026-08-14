@@ -211,7 +211,7 @@ defmodule LS.ML.Classifier do
   def init(_opts) do
     # Load model asynchronously to not block app startup
     send(self(), :load_model)
-    {:ok, %{serving: nil, bm_embeddings: nil, industry_embeddings: nil, ready: false}}
+    {:ok, %{serving: nil, bm_embeddings: nil, industry_embeddings: nil, head: nil, ready: false}}
   end
 
   @impl true
@@ -237,8 +237,11 @@ defmodule LS.ML.Classifier do
 
       Logger.info("🧠 ML Classifier: ready (#{map_size(bm_embeddings)} BM labels, #{map_size(industry_embeddings)} industry labels)")
 
+      head = LS.ML.Head.load()
+      if head, do: Logger.info("🧠 ML Head loaded: #{head.version}")
+
       {:noreply, %{serving: serving, bm_embeddings: bm_embeddings,
-                    industry_embeddings: industry_embeddings, ready: true}}
+                    industry_embeddings: industry_embeddings, head: head, ready: true}}
     rescue
       e ->
         Logger.error("🧠 ML Classifier: failed to load — #{Exception.message(e)}")
@@ -366,16 +369,15 @@ defmodule LS.ML.Classifier do
   # Shared post-embedding scoring — the ONLY scoring code, used by both the
   # single and the batched path, so their results are identical by construction.
   defp score_embedding(text_embedding, state) do
-
-    # Find best business model
-    {bm, bm_score} = find_best_match(text_embedding, state.bm_embeddings)
+    # Business model: trained head when available (calibrated confidence),
+    # zero-shot cosine as fallback. Industry keeps the cosine path — the head
+    # was trained on business_model only.
+    {bm, bm_conf_raw} = score_business_model(text_embedding, state)
 
     # Find best industry
     {industry, ind_score} = find_best_match(text_embedding, state.industry_embeddings)
 
-    # Confidence = average of the two best scores, scaled
-    # Cosine similarity ranges from -1 to 1, typical good matches are 0.3-0.7
-    bm_conf = normalize_score(bm_score)
+    bm_conf = bm_conf_raw
     ind_conf = normalize_score(ind_score)
 
     # bm floor 0.4→0.5 and stored confidence capped at 0.85: golden v1's
@@ -393,6 +395,21 @@ defmodule LS.ML.Classifier do
       ml_bm_confidence: Float.round(bm_conf, 2),
       ml_industry_confidence: Float.round(ind_conf, 2)
     }
+  end
+
+  # Head path: calibrated 13-class softmax (see LS.ML.Head). A "Junk" vote is
+  # a decline-to-classify, not a label — is_junk stays owned by junk_reason/1.
+  # Cosine fallback keeps the tier alive if the weights file is broken.
+  defp score_business_model(text_embedding, %{head: head}) when not is_nil(head) do
+    case LS.ML.Head.predict(head, text_embedding) do
+      {"Junk", _prob} -> {"", 0.0}
+      {class, prob} -> {class, Float.round(prob, 2)}
+    end
+  end
+
+  defp score_business_model(text_embedding, state) do
+    {bm, bm_score} = find_best_match(text_embedding, state.bm_embeddings)
+    {bm, normalize_score(bm_score)}
   end
 
   defp find_best_match(text_embedding, label_embeddings) do
