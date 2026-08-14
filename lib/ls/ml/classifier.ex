@@ -188,6 +188,21 @@ defmodule LS.ML.Classifier do
     :exit, _ -> false
   end
 
+  @doc """
+  Raw L2-normalized MiniLM embeddings (384 floats) for a batch of texts.
+
+  This is the feature extractor for the trained classification head (the
+  distillation program, docs/data-quality.md): training computes embeddings
+  for teacher-labeled pages, and runtime inference applies the head to the
+  same embeddings. Returns a list of float lists in input order; `nil` per
+  entry on empty input.
+  """
+  def embed_batch(texts) when is_list(texts) do
+    GenServer.call(__MODULE__, {:embed_batch, texts}, 300_000)
+  catch
+    :exit, _ -> Enum.map(texts, fn _ -> nil end)
+  end
+
   # =========================================================================
   # GENSERVER
   # =========================================================================
@@ -267,6 +282,33 @@ defmodule LS.ML.Classifier do
       texts
       |> Enum.chunk_every(32)
       |> Enum.flat_map(fn chunk -> do_classify_chunk(chunk, state) end)
+
+    {:reply, results, state}
+  end
+
+  @impl true
+  def handle_call({:embed_batch, texts}, _from, %{ready: false} = state) do
+    {:reply, Enum.map(texts, fn _ -> nil end), state}
+  end
+
+  @impl true
+  def handle_call({:embed_batch, texts}, _from, state) do
+    results =
+      texts
+      |> Enum.chunk_every(32)
+      |> Enum.flat_map(fn chunk ->
+        sanitized = Enum.map(chunk, &sanitize_text/1)
+
+        try do
+          state.serving
+          |> Nx.Serving.run(sanitized)
+          |> Enum.map(fn %{embedding: emb} -> Nx.to_flat_list(emb) end)
+        rescue
+          e ->
+            Logger.warning("ML Classifier: embed chunk failed — #{Exception.message(e)}")
+            Enum.map(chunk, fn _ -> nil end)
+        end
+      end)
 
     {:reply, results, state}
   end
