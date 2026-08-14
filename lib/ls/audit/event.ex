@@ -29,6 +29,10 @@ defmodule LS.Audit.Event do
     event
     |> cast(attrs, [:user_id, :email, :event, :metadata, :ip, :user_agent])
     |> validate_required([:event])
+    # A user_id that isn't a real account (e.g. deleted mid-request) must surface
+    # as a changeset error, not a raised Ecto.ConstraintError — the email is kept
+    # denormalised precisely so the row is still worth writing without it.
+    |> foreign_key_constraint(:user_id)
     # A pathological user agent should never be the reason an audit row is lost.
     |> update_change(:user_agent, &truncate(&1, 500))
     |> update_change(:ip, &truncate(&1, 100))

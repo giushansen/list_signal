@@ -99,13 +99,21 @@ defmodule LS.Accounts do
        do: user
 
   defp attach_stripe_customer(%User{} = user) do
-    case stripe_client().create_customer(%{email: user.email, metadata: %{user_id: user.id}}) do
-      {:ok, customer} ->
-        user |> Ecto.Changeset.change(stripe_customer_id: customer.id) |> Repo.update!()
-
-      {:error, reason} ->
-        Logger.warning("[Accounts] Stripe customer creation failed for #{user.id}: #{inspect(reason)}")
+    case stripe_client() do
+      nil ->
+        # No Stripe client configured (test env, or billing disabled). There is
+        # nothing to attach, and it is not a failure worth logging on every signup.
         user
+
+      client ->
+        case client.create_customer(%{email: user.email, metadata: %{user_id: user.id}}) do
+          {:ok, customer} ->
+            user |> Ecto.Changeset.change(stripe_customer_id: customer.id) |> Repo.update!()
+
+          {:error, reason} ->
+            Logger.warning("[Accounts] Stripe customer creation failed for #{user.id}: #{inspect(reason)}")
+            user
+        end
     end
   rescue
     e ->

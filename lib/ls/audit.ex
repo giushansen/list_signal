@@ -34,12 +34,25 @@ defmodule LS.Audit do
   """
   @spec record(String.t(), map()) :: :ok
   def record(event, attrs \\ %{}) when is_binary(event) do
-    %Event{}
-    |> Event.changeset(Map.put(attrs, :event, event))
-    |> Repo.insert()
+    case %Event{} |> Event.changeset(Map.put(attrs, :event, event)) |> Repo.insert() do
+      {:ok, _} ->
+        :ok
 
-    :ok
+      {:error, changeset} ->
+        require Logger
+        Logger.warning("[Audit] discarded #{event}: #{inspect(changeset.errors)}")
+        :ok
+    end
   rescue
+    # SQLite does not name its foreign-key constraints, so a user_id that is not a
+    # real account can't be turned into a changeset error and raises here instead.
+    # An audit row is never worth failing a request over — drop it with one line,
+    # not the full multi-line Ecto hint.
+    Ecto.ConstraintError ->
+      require Logger
+      Logger.warning("[Audit] discarded #{event}: references a user that does not exist")
+      :ok
+
     e ->
       require Logger
       Logger.warning("[Audit] failed to record #{event}: #{Exception.message(e)}")
