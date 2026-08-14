@@ -149,6 +149,18 @@ What v2 established (numbers from `mix ls.golden_reclassify --ml`):
   Those rows are hollow anyway; the browser lane re-fetch clears the flag.
   Keep routing `"empty"` to the browser lane, never exclude it by default.
 
+## Distillation v1 (2026-08-14) — teacher labels + trained head
+
+2,200 prod domains teacher-labeled (Haiku full pass + Sonnet consensus on
+uncertain rows + web-verified revenue for 47 high-bracket domains) and
+distilled into a 13-class logistic head over the existing MiniLM embeddings
+(`LS.ML.Classifier.embed_batch/1`). On the owner-labeled golden holdout the
+head's confidence is CALIBRATED: conf≥0.5 → 68% precision, conf≥0.7 → 91%.
+Dataset: `analysis/distill/` (git) + `ls.ml_teacher_labels` on prod CH
+(daily backup). Head: `priv/ml/head_v1.json`. Full method + rules in
+`analysis/distill/README.md`. Runtime integration ships separately with
+before/after golden numbers.
+
 ## Where this is going (agreed 2026-08-07)
 
 Priority order, cheapest-first: junk gate everywhere → per-class threshold
