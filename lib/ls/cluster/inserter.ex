@@ -180,7 +180,14 @@ defmodule LS.Cluster.Inserter do
     cols = @columns |> Enum.map(&Atom.to_string/1) |> Enum.join(", ")
     query = "INSERT INTO #{@ch_db}.#{@ch_table} (#{cols}) FORMAT TabSeparated"
     url = "#{@ch_url}?query=#{URI.encode(query)}"
-    case Req.post(url, body: tsv <> "\n", receive_timeout: 30_000) do
+    # LS.Finch.CH, not the default pool. 2026-08-13: this insert path runs at
+    # ~3,600/min and was still sharing Req's default pool with the periodic
+    # Tranco/Majestic/blocklist downloads (300s receive timeouts). When one of
+    # those ran, inserts starved, the pipeline stalled to 0/min, and the web
+    # acceptors died with it — the Aug 3 outage repeated because that fix
+    # routed clickhouse.ex but missed the biggest writer of all.
+    case Req.post(url, body: tsv <> "\n", receive_timeout: 30_000,
+                  finch: LS.Finch.CH, pool_timeout: 15_000) do
       {:ok, %{status: 200}} -> :ok
       {:ok, %{status: s, body: b}} -> {:error, "HTTP #{s}: #{String.slice(to_string(b), 0, 200)}"}
       {:error, e} -> {:error, inspect(e)}

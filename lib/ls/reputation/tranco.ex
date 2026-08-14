@@ -75,11 +75,11 @@ defmodule LS.Reputation.Tranco do
 
   # Download — full list first, fall back to 1M zip
   defp download_and_load(true = _full) do
-    case Req.get(@url_id, receive_timeout: 10_000) do
+    case Req.get(@url_id, receive_timeout: 10_000, finch: LS.Finch.Bulk) do
       {:ok, %{status: 200, body: list_id}} when is_binary(list_id) ->
         list_id = String.trim(list_id)
         url = "https://tranco-list.eu/download/#{list_id}/full"
-        case Req.get(url, receive_timeout: 300_000, max_retries: 2) do
+        case Req.get(url, receive_timeout: 300_000, max_retries: 2, finch: LS.Finch.Bulk) do
           {:ok, %{status: 200, body: csv}} when is_binary(csv) ->
             load_csv(csv)
           _ -> download_and_load(false)
@@ -97,7 +97,7 @@ defmodule LS.Reputation.Tranco do
   end
 
   defp download_csv_zip(url) do
-    case Req.get(url, receive_timeout: 120_000, max_retries: 2) do
+    case Req.get(url, receive_timeout: 120_000, max_retries: 2, finch: LS.Finch.Bulk) do
       {:ok, %{status: 200, body: body}} when is_binary(body) ->
         case :zip.unzip(body, [:memory]) do
           {:ok, [{_, csv}]} -> {:ok, csv}

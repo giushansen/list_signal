@@ -76,7 +76,7 @@ defmodule LS.Reputation.Majestic do
   # Majestic CSV format:
   # GlobalRank,TldRank,Domain,TLD,RefSubNets,RefIPs,IDN_Domain,IDN_TLD,PrevGlobalRank,PrevTldRank,PrevRefSubNets,PrevRefIPs
   defp download_and_load do
-    case Req.get(@url, receive_timeout: 120_000, max_retries: 2) do
+    case Req.get(@url, receive_timeout: 120_000, max_retries: 2, finch: LS.Finch.Bulk) do
       {:ok, %{status: 200, body: csv}} when is_binary(csv) -> load_csv(csv)
       {:ok, %{status: s}} -> {:error, {:http, s}}
       {:error, r} -> {:error, r}

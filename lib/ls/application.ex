@@ -90,7 +90,11 @@ defmodule LS.Application do
       # crawler and the compactor can saturate THEIR pool without taking the
       # customer-facing one down with them.
       {Finch, name: LS.Finch.CH, pools: %{default: [size: 150, count: 1]}},
-      {Finch, name: LS.Finch.CTL, pools: %{default: [size: 30, count: 1]}}
+      {Finch, name: LS.Finch.CTL, pools: %{default: [size: 30, count: 1]}},
+      # Periodic bulk downloads (Tranco, Majestic, blocklists) hold a
+      # connection for minutes at a time. Isolated so they cannot queue
+      # behind — or in front of — anything request-shaped.
+      {Finch, name: LS.Finch.Bulk, pools: %{default: [size: 8, count: 1]}}
     ]
   end
 

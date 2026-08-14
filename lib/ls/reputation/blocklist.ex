@@ -94,7 +94,7 @@ defmodule LS.Reputation.Blocklist do
   end
 
   defp download_list(url) do
-    case Req.get(url, receive_timeout: 60_000, max_retries: 2) do
+    case Req.get(url, receive_timeout: 60_000, max_retries: 2, finch: LS.Finch.Bulk) do
       {:ok, %{status: 200, body: body}} when is_binary(body) ->
         domains = body
         |> String.split("\n", trim: true)
