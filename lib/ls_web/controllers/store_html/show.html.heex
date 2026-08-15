@@ -215,17 +215,79 @@
               </span>
               <span class={["rounded-full px-3 py-1 text-xs font-semibold border",
                 if(@store.has_dmarc, do: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", else: "bg-red-500/10 text-red-400 border-red-500/20")]}>
-                <%= if @store.has_dmarc, do: "✅ DMARC Configured", else: "❌ No DMARC" %>
+                <%= if @store.has_dmarc, do: "✅ DMARC (p=#{@store.dmarc_policy})", else: "❌ No DMARC" %>
               </span>
             </div>
             <%= if @store.email_count > 0 do %>
-              <div class="flex items-center gap-2 text-white/50 mt-2">
-                <span>🔒</span>
-                <span><%= @store.email_count %> contact email<%= if @store.email_count > 1, do: "s" %> found</span>
-                <a href="/signup" class="text-accent text-xs font-semibold hover:underline">Sign up to view</a>
+              <div class="mt-2">
+                <div class="flex items-center gap-2 text-white/50">
+                  <span>✉️</span>
+                  <span><%= @store.email_count %> contact email<%= if @store.email_count > 1, do: "s" %> found</span>
+                  <a href="/signup" class="text-accent text-xs font-semibold hover:underline">Sign up to view</a>
+                </div>
+                <div class="mt-1 space-y-0.5 select-none pointer-events-none" aria-hidden="true">
+                  <%= for fake <- @store.emails_blurred do %>
+                    <div class="text-white/60 text-sm blur-[5px]"><%= fake %></div>
+                  <% end %>
+                </div>
               </div>
             <% end %>
           </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ SUBDOMAINS (2 real + blurred teasers) ═══ --%>
+      <%= if @store.subdomains_preview != [] do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Subdomains">
+          <h2 class="font-display text-lg font-semibold mb-4">🌐 Subdomains <span class="text-white/35 text-sm font-normal">(<%= @store.subdomain_count %> tracked via certificate transparency)</span></h2>
+          <div class="space-y-1 text-sm">
+            <%= for sub <- @store.subdomains_preview do %>
+              <div class="text-white/80 font-mono"><%= sub %></div>
+            <% end %>
+            <div class="select-none pointer-events-none space-y-1" aria-hidden="true">
+              <%= for fake <- @store.subdomains_blurred do %>
+                <div class="text-white/60 font-mono blur-[5px]"><%= fake %></div>
+              <% end %>
+            </div>
+            <%= if @store.subdomains_blurred != [] do %>
+              <a href="/signup" class="inline-block mt-2 text-accent text-xs font-semibold hover:underline">Sign up to see all <%= @store.subdomain_count %> subdomains</a>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ OBSERVED CHANGES (change-tracking teaser) ═══ --%>
+      <%= if @store.recent_changes != [] do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Recent changes">
+          <h2 class="font-display text-lg font-semibold mb-4">📡 Recently Observed Changes</h2>
+          <div class="space-y-2 text-sm">
+            <%= for [kind, value, changed_at] <- Enum.take(@store.recent_changes, 2) do %>
+              <div class="flex items-center gap-2">
+                <span class={["rounded-full px-2 py-0.5 text-xs font-semibold border",
+                  if(String.ends_with?(to_string(kind), "added") or kind == "started_hiring",
+                    do: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                    else: "bg-amber-500/10 text-amber-400 border-amber-500/20")]}>
+                  <%= String.replace(to_string(kind), "_", " ") %>
+                </span>
+                <span class="text-white/80"><%= value %></span>
+                <span class="text-white/35 text-xs"><%= changed_at %></span>
+              </div>
+            <% end %>
+            <%= if length(@store.recent_changes) > 2 do %>
+              <a href="/signup" class="inline-block mt-1 text-accent text-xs font-semibold hover:underline">+<%= length(@store.recent_changes) - 2 %> more changes — sign up to follow this domain</a>
+            <% end %>
+          </div>
+        </section>
+      <% end %>
+
+      <%!-- ═══ SIMILAR BUSINESSES (list-value hook) ═══ --%>
+      <%= if @store.similar_count do %>
+        <section class="rounded-xl border border-accent/20 bg-accent/5 p-4 mb-6" aria-label="Similar businesses">
+          <p class="text-sm text-white/80">
+            📊 ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span>
+            other <%= @store.business_model %> businesses<%= if @store.country_flag != "", do: " in #{@store.country_flag}" %> —
+            <a href="/signup" class="text-accent font-semibold hover:underline">get the list</a>
+          </p>
         </section>
       <% end %>
 

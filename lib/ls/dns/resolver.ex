@@ -58,6 +58,20 @@ defmodule LS.DNS.Resolver do
     GenServer.call(__MODULE__, :stats)
   end
 
+  @doc """
+  TXT records for an arbitrary name (e.g. `_dmarc.example.com`).
+
+  Exists because DMARC/DKIM/BIMI live on service subdomains the apex lookup
+  never sees — the free domain checker showed "❌ No DMARC" for every
+  correctly-configured domain (including listsignal.com) because it grepped
+  apex TXT for `v=DMARC` (2026-08-15).
+  """
+  def txt(name) when is_binary(name) do
+    lookup_record(String.to_charlist(name), :txt)
+  rescue
+    _ -> []
+  end
+
   @impl true
   def init(_opts) do
     state = %{

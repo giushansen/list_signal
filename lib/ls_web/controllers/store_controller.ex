@@ -195,7 +195,27 @@ defmodule LSWeb.StoreController do
     nameservers = parse_pipe(at.(:rdap_nameservers))
     created_at = at.(:rdap_domain_created_at)
     emails = parse_pipe(at.(:http_emails))
+    subdomains = parse_pipe(at.(:ctl_subdomains))
     tld = domain |> String.split(".") |> List.last() |> String.upcase()
+
+    # DMARC lives at _dmarc.<domain>, which the crawler's apex TXT lookup
+    # never sees — grepping apex TXT told every correctly-configured domain
+    # (including listsignal.com) it had "No DMARC" (fixed 2026-08-15). Live
+    # query against local Unbound, ~1ms; nil on any failure so a DNS hiccup
+    # can never take the page down, and we then show "unknown", never a false ❌.
+    dmarc_policy = fetch_dmarc_policy(domain, dns_txt_joined)
+
+    recent_changes =
+      case LS.Clickhouse.recent_signals(domain, 5) do
+        {:ok, rows} -> rows
+        _ -> []
+      end
+
+    similar_count =
+      case LS.Clickhouse.count_similar(s.(:business_model), LS.CountryInferrer.infer(s.(:ctl_tld), language, nil, bgp_country)) do
+        {:ok, [[n]]} when is_integer(n) and n > 1 -> n
+        _ -> nil
+      end
     %{
       domain: domain,
       title: decode_html(at.(:http_title)) || domain,
@@ -250,9 +270,15 @@ defmodule LSWeb.StoreController do
       mail_provider: extract_mail_provider(mx_records),
       dns_provider: extract_dns_provider(nameservers),
       has_spf: String.contains?(dns_txt_joined, "v=spf1"),
-      has_dmarc: String.contains?(dns_txt_joined, "v=DMARC"),
+      has_dmarc: dmarc_policy != nil,
+      dmarc_policy: dmarc_policy,
       email_count: length(emails),
       subdomain_count: at.(:ctl_subdomain_count) || 0,
+      subdomains_preview: Enum.take(subdomains, 2),
+      subdomains_blurred: LSWeb.Teaser.fake_subdomains(domain, max((at.(:ctl_subdomain_count) || length(subdomains)) - 2, 0)),
+      emails_blurred: LSWeb.Teaser.fake_emails(domain, length(emails)),
+      recent_changes: recent_changes,
+      similar_count: similar_count,
       language_flag: language_to_flag(s.(:http_language)),
       enriched_at: s.(:enriched_at),
       worker: s.(:worker)
@@ -260,6 +286,25 @@ defmodule LSWeb.StoreController do
   end
 
   # ── Helpers ──
+
+  @doc false
+  # Returns the DMARC policy ("reject"/"quarantine"/"none") or nil.
+  # Live _dmarc TXT first; stored apex TXT as a fallback for domains that
+  # (unusually but validly-for-us) inline it there.
+  def fetch_dmarc_policy(domain, apex_txt_joined) do
+    records = LS.DNS.Resolver.txt("_dmarc.#{domain}")
+    joined = Enum.join(List.wrap(records), " ")
+    source = if String.contains?(joined, "v=DMARC"), do: joined, else: apex_txt_joined
+
+    if String.contains?(source, "v=DMARC") do
+      case Regex.run(~r/\bp\s*=\s*(reject|quarantine|none)/i, source) do
+        [_, p] -> String.downcase(p)
+        _ -> "none"
+      end
+    end
+  rescue
+    _ -> nil
+  end
 
   defp parse_pipe(""), do: []
   defp parse_pipe(nil), do: []

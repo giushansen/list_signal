@@ -388,6 +388,29 @@ defmodule LS.Clickhouse do
   end
 
 
+  @doc """
+  Latest observed changes for one domain (public store-page teaser).
+  biz_signal is small and keyed (dataset-wide scans are cheap); LIMIT keeps it O(1)-ish.
+  """
+  def recent_signals(domain, limit \\ 5) do
+    query("""
+    SELECT kind, value, changed_at FROM biz_signal
+    WHERE domain = '#{escape(domain)}'
+    ORDER BY changed_at DESC LIMIT #{limit}
+    """)
+  end
+
+  @doc "How many other businesses share this model+country — the store-page teaser hook."
+  def count_similar(business_model, country) when business_model != "" do
+    query("""
+    SELECT count() FROM businesses
+    WHERE business_model = '#{escape(business_model)}'
+      AND inferred_country = '#{escape(country)}' AND is_junk = ''
+    """)
+  end
+
+  def count_similar(_, _), do: {:ok, [[0]]}
+
   # ── biz_signal: observed business changes ──
 
   @doc """
