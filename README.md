@@ -76,6 +76,18 @@ identically. Browser work is capped at 3 concurrent per node.
 - **CSV Export**: `GET /app/export` — available on paid plans, respects monthly limits.
 - **Rate limiting**: ETS-based per-user (10/30/120 req/min by plan).
 
+### Web Analytics (Umami)
+
+- Self-hosted **Umami** at `stats.listsignal.com` tracks visitor behaviour on the
+  public/SEO pages (bounce, time-on-page, funnels, session replay). Cookieless →
+  no consent banner; bots don't run the beacon, so the crawler firehose is excluded.
+- Wiring: `config :ls, :umami` (`config/config.exs`) holds the **public** `website_id`
+  + script `src`; `LSWeb.Layouts.umami/1` renders the tag in the public and dashboard
+  `<head>` and no-ops when unset (dev/test/CI stay clean).
+- Override without a rebuild: `UMAMI_WEBSITE_ID` / `UMAMI_SRC` (`config/runtime.exs`).
+- Server/infra runbook (Postgres, service, nginx, TLS, admin creds, rebuild steps):
+  `devops/listsignal/readme.md` → "Web analytics — Umami".
+
 ### Environment Variables (Billing)
 
 ```bash

@@ -37,6 +37,14 @@ config :ls, LSWeb.Endpoint,
 config :ls, LS.Mailer, adapter: Swoosh.Adapters.Local
 config :ls, :stripe_client, LS.StripeClient
 
+# Umami web analytics — self-hosted at stats.listsignal.com (opsbloc box).
+# website_id is NOT a secret: it ships in the public tracker script, so it lives
+# here rather than in the env. Override either value with UMAMI_WEBSITE_ID /
+# UMAMI_SRC (see config/runtime.exs). Set website_id to nil to disable the tag.
+config :ls, :umami,
+  website_id: "eca3e61a-5159-41bd-a637-d59412f0b417",
+  src: "https://stats.listsignal.com/script.js"
+
 config :logger, :console,
   format: "$time [$level] $message\n",
   metadata: [:request_id]

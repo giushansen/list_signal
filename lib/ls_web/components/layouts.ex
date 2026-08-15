@@ -38,6 +38,7 @@ defmodule LSWeb.Layouts do
         <%= if assigns[:json_ld] do %>
           <script type="application/ld+json"><%= raw(@json_ld) %></script>
         <% end %>
+        <.umami />
       </head>
       <body class="bg-ls-dark text-white antialiased">
         <.public_nav current_path={assigns[:conn] && @conn.request_path} />
@@ -234,6 +235,27 @@ defmodule LSWeb.Layouts do
     """
   end
 
+  @doc """
+  Umami analytics tag, rendered in every page `<head>`.
+
+  No-ops until `config :ls, :umami` has a `website_id` (so dev/test/CI stay
+  clean and CSV buyers' one-off pages never phone home). The id is public — it
+  ships in the script itself — so it lives in config, not in the secrets env.
+  Self-hosted + cookieless, so no consent banner is required.
+  """
+  def umami(assigns) do
+    cfg = Application.get_env(:ls, :umami, [])
+
+    assigns =
+      assigns
+      |> assign(:umami_id, cfg[:website_id])
+      |> assign(:umami_src, cfg[:src] || "https://stats.listsignal.com/script.js")
+
+    ~H"""
+    <script :if={@umami_id} defer src={@umami_src} data-website-id={@umami_id}></script>
+    """
+  end
+
   def root(assigns) do
     ~H"""
     <!DOCTYPE html>
@@ -249,6 +271,7 @@ defmodule LSWeb.Layouts do
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         <link rel="stylesheet" href="/assets/app.css" />
         <script defer phx-track-static src="/assets/app.js"></script>
+        <.umami />
       </head>
       <body class="bg-[#0a0e17] text-gray-200 antialiased">
         {@inner_content}

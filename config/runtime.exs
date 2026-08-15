@@ -14,6 +14,14 @@ config :ls, :stripe_pro_yearly_price_id, System.get_env("STRIPE_PRO_YEARLY_PRICE
 config :ls, :stripe_starter_monthly_price_id, System.get_env("STRIPE_STARTER_MONTHLY_PRICE_ID")
 config :ls, :stripe_starter_yearly_price_id, System.get_env("STRIPE_STARTER_YEARLY_PRICE_ID")
 
+# Umami analytics override — the default (public) website_id lives in config.exs;
+# these let ops point at a different site or script host without a rebuild.
+if id = System.get_env("UMAMI_WEBSITE_ID") do
+  config :ls, :umami,
+    website_id: id,
+    src: System.get_env("UMAMI_SRC") || "https://stats.listsignal.com/script.js"
+end
+
 # Admin/monitoring panel allowlist (comma-separated emails). Empty = nobody.
 config :ls, :admin_emails,
   (System.get_env("LS_ADMIN_EMAILS") || "")
