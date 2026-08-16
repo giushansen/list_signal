@@ -40,7 +40,10 @@ defmodule LSWeb.ExplorerLive do
         open_dropdown: nil,
         dropdown_query: "",
         dropdown_options: [],
-        rate_stats: %{used: 0, limit: 10, remaining: 10, reset_in: 60}
+        rate_stats: %{used: 0, limit: 10, remaining: 10, reset_in: 60},
+        # Last filter set written to the audit log. Seeded with the default view so
+        # the initial paint isn't logged as a search; only genuine filter changes are.
+        audited_filters: filters
       )
 
     if connected?(socket) do
@@ -380,6 +383,29 @@ defmodule LSWeb.ExplorerLive do
   # the count (a full scan, the slow part) fills in the total afterwards.
   # A newer search cancels the older one, so stale results can never
   # overwrite fresh ones.
+  # Record a search into the audit log, but only when the filter set actually
+  # changed — load_data/1 also runs on pagination and sort, which aren't new
+  # searches — and only when at least one filter is set. Fired in a detached
+  # task: LS.Audit.record/2 rescues internally and returns :ok, so a slow or
+  # failed SQLite write can never block or crash the LiveView render path.
+  defp maybe_audit_search(socket, user, filters) do
+    active = for {k, v} <- filters, v not in [nil, ""], into: %{}, do: {k, to_string(v)}
+
+    if filters != socket.assigns[:audited_filters] and active != %{} do
+      Task.start(fn ->
+        LS.Audit.record("search", %{
+          user_id: user.id,
+          email: user.email,
+          metadata: %{filters: active}
+        })
+      end)
+
+      assign(socket, audited_filters: filters)
+    else
+      socket
+    end
+  end
+
   defp load_data(socket) do
     user = socket.assigns.current_scope.user
     plan = User.effective_plan(user)
@@ -388,6 +414,7 @@ defmodule LSWeb.ExplorerLive do
 
     case RateLimiter.check(user.id, plan) do
       :ok ->
+        socket = maybe_audit_search(socket, user, filters)
         t0 = System.monotonic_time(:millisecond)
 
         list_opts = [
