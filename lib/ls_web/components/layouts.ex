@@ -17,7 +17,7 @@ defmodule LSWeb.Layouts do
         <%= if assigns[:page_title] do %>
           <title><%= @page_title %> — ListSignal</title>
         <% else %>
-          <title>ListSignal — Domain Intelligence, Updated Daily</title>
+          <title>ListSignal — Domain Intelligence, Checked in Real Time</title>
         <% end %>
         <%= if assigns[:page_description] do %>
           <meta name="description" content={@page_description} />
@@ -81,6 +81,11 @@ defmodule LSWeb.Layouts do
               {label}
             </a>
           </li>
+          <li :for={{href, label} <- right_nav_links()} class="hidden md:block">
+            <a href={href} class={"text-sm font-medium transition-colors hover:text-white #{if @current_path == href, do: "text-white", else: "text-white/60"}"}>
+              {label}
+            </a>
+          </li>
           <li>
             <a href="/users/log-in" class="text-sm font-medium text-white/60 hover:text-white transition-colors">Sign in</a>
           </li>
@@ -93,14 +98,21 @@ defmodule LSWeb.Layouts do
     """
   end
 
-  @doc "Links shown in the public navbar, in order. Single source of truth (also used by tests)."
+  @doc "Left (product) links in the public navbar. Single source of truth (also used by tests)."
   def nav_links do
     [
       {"/new-stores", "Shopify"},
+      {"/saas", "SaaS businesses"},
+      {"/latest-shopify-stores", "Shopify stores"},
+      {"/apps", "Apps&Tech"}
+    ]
+  end
+
+  @doc "Right-side navbar links, rendered just left of Sign in."
+  def right_nav_links do
+    [
       {"/features", "Features"},
-      {"/pricing", "Pricing"},
-      {"/apps", "Apps"},
-      {"/tools/shopify-checker", "Free Domain Analyzer"}
+      {"/pricing", "Pricing"}
     ]
   end
 

@@ -33,4 +33,16 @@ defmodule LSWeb.Teaser do
   end
 
   def fake_subdomains(_domain, _n), do: []
+
+  @tech_words ~w(Analytics-X CDN-X Widget-X Pixel-X Chat-X Forms-X Search-X Vault-X)
+
+  @doc "N fake blurred-placeholder tech names. The -X suffix marks them fake."
+  def fake_techs(domain, n) when n > 0 do
+    for i <- 1..min(n, 8) do
+      Enum.at(@tech_words, :erlang.phash2({domain, :tk, i}, length(@tech_words))) <>
+        Integer.to_string(:erlang.phash2({domain, :tv, i}, 9))
+    end
+  end
+
+  def fake_techs(_domain, _n), do: []
 end

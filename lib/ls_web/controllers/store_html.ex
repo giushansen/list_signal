@@ -20,4 +20,23 @@ defmodule LSWeb.StoreHTML do
 
   def format_number(n), do: to_string(n)
 
+  @doc "Bronze/Silver/Gold revenue tier for the free page - exact bracket is gated."
+  def revenue_tier("<$1M"), do: "🥉 Bronze"
+  def revenue_tier("$1M-$10M"), do: "🥈 Silver"
+  def revenue_tier(b) when b in ["$10M-$100M", "$100M-$1B", "$1B+"], do: "🥇 Gold"
+  def revenue_tier(_), do: nil
+
+  def revenue_tier_hint("<$1M"), do: "Bronze = est. under $1M/yr - sign up for the exact bracket"
+  def revenue_tier_hint("$1M-$10M"), do: "Silver = est. $1M-$10M/yr - sign up for the exact bracket"
+  def revenue_tier_hint(_), do: "Gold = est. over $10M/yr - sign up for the exact bracket"
+
+  @doc "SEO score with a traffic-light dot: green >=70, amber 40-69, red <40."
+  def seo_badge(score) when score >= 70, do: "🟢 #{score}/100"
+  def seo_badge(score) when score >= 40, do: "🟡 #{score}/100"
+  def seo_badge(score), do: "🔴 #{score}/100"
+
+  def seo_hint(score) when score >= 70, do: "Green: strong titles, meta, links & sitemap signals"
+  def seo_hint(score) when score >= 40, do: "Amber: some on-page SEO signals missing"
+  def seo_hint(_), do: "Red: most on-page SEO signals missing"
+
 end

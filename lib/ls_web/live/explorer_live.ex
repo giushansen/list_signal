@@ -69,6 +69,28 @@ defmodule LSWeb.ExplorerLive do
         _ -> socket
       end
 
+    # The expanded domain lives in the URL (?d=) so a LiveView reconnect —
+    # Cloudflare drops idle websockets — restores the exact view instead of
+    # re-mounting to a blank table with the sidebar snapped shut, which read
+    # as "the screen keeps refreshing" (reported 2026-08-16). Restoring does
+    # not charge the rate limiter: the user already paid on the click, and a
+    # reconnect is not a lookup.
+    socket =
+      case params["d"] do
+        d when is_binary(d) and d != "" ->
+          if socket.assigns.expanded == d do
+            socket
+          else
+            case Explorer.get_detail(d) do
+              {:ok, detail} -> assign(socket, expanded: d, detail: detail)
+              _ -> socket
+            end
+          end
+
+        _ ->
+          assign(socket, expanded: nil, detail: nil)
+      end
+
     {:noreply, socket}
   end
 
@@ -217,7 +239,7 @@ defmodule LSWeb.ExplorerLive do
   def handle_event("expand", %{"domain" => domain}, socket) do
     socket = assign(socket, feedback_open: false)
     if socket.assigns.expanded == domain do
-      {:noreply, assign(socket, expanded: nil, detail: nil)}
+      {:noreply, socket |> assign(expanded: nil, detail: nil) |> push_patch(to: "/dashboard")}
     else
       user = socket.assigns.current_scope.user
       plan = User.effective_plan(user)
@@ -225,8 +247,16 @@ defmodule LSWeb.ExplorerLive do
       case RateLimiter.check(user.id, plan) do
         :ok ->
           case Explorer.get_detail(domain) do
-            {:ok, detail} -> {:noreply, assign(socket, expanded: domain, detail: detail)}
-            _ -> {:noreply, socket}
+            {:ok, detail} ->
+              # push_patch mirrors the selection into ?d= — see handle_params
+              # for why (reconnect survival).
+              {:noreply,
+               socket
+               |> assign(expanded: domain, detail: detail)
+               |> push_patch(to: "/dashboard?d=#{URI.encode_www_form(domain)}")}
+
+            _ ->
+              {:noreply, socket}
           end
 
         {:error, :rate_limited} ->

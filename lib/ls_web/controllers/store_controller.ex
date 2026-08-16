@@ -204,6 +204,7 @@ defmodule LSWeb.StoreController do
     # query against local Unbound, ~1ms; nil on any failure so a DNS hiccup
     # can never take the page down, and we then show "unknown", never a false ❌.
     dmarc_policy = fetch_dmarc_policy(domain, dns_txt_joined)
+    seo_score = LS.Clickhouse.get_seo_score(domain)
 
     recent_changes =
       case LS.Clickhouse.recent_signals(domain, 5) do
@@ -279,6 +280,9 @@ defmodule LSWeb.StoreController do
       emails_blurred: LSWeb.Teaser.fake_emails(domain, length(emails)),
       recent_changes: recent_changes,
       similar_count: similar_count,
+      seo_score: seo_score,
+      tech_preview: Enum.take(tech, 6),
+      tech_blurred: LSWeb.Teaser.fake_techs(domain, length(tech) - 6),
       language_flag: language_to_flag(s.(:http_language)),
       enriched_at: s.(:enriched_at),
       worker: s.(:worker)

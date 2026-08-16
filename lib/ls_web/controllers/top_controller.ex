@@ -48,9 +48,9 @@ defmodule LSWeb.TopController do
         stores = parse_rows(rows)
         conn
         |> assign(:page_title, "Top #{length(stores)} Shopify Stores in #{country_name}")
-        |> assign(:page_description, "The highest-ranked Shopify stores in #{country_name}, sorted by traffic. Updated daily by ListSignal.")
+        |> assign(:page_description, "The highest-ranked Shopify stores in #{country_name}, sorted by traffic. Checked continuously by ListSignal.")
         |> assign(:heading, "Top Shopify Stores in #{country_name}")
-        |> assign(:subtext, "#{length(stores)} stores ranked by traffic estimate. Updated daily.")
+        |> assign(:subtext, "#{length(stores)} stores ranked by traffic estimate. Domains checked in real time; tech re-scanned weekly.")
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top Shopify Stores in #{country_name}", length(stores)))
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
@@ -68,9 +68,9 @@ defmodule LSWeb.TopController do
         stores = parse_rows(rows)
         conn
         |> assign(:page_title, "Top Shopify Stores Using #{tech_name}")
-        |> assign(:page_description, "#{length(stores)} Shopify stores using #{tech_name}, ranked by traffic. Updated daily.")
+        |> assign(:page_description, "#{length(stores)} Shopify stores using #{tech_name}, ranked by traffic. Checked continuously.")
         |> assign(:heading, "Top Shopify Stores Using #{tech_name}")
-        |> assign(:subtext, "#{length(stores)} stores ranked by traffic estimate. Updated daily.")
+        |> assign(:subtext, "#{length(stores)} stores ranked by traffic estimate. Domains checked in real time; tech re-scanned weekly.")
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top Shopify Stores Using #{tech_name}", length(stores)))
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
@@ -91,7 +91,7 @@ defmodule LSWeb.TopController do
         |> assign(:page_title, "Top Shopify Stores Using #{tech_name} in #{country_name}")
         |> assign(:page_description, "#{length(stores)} Shopify stores using #{tech_name} in #{country_name}.")
         |> assign(:heading, "Top Shopify Stores Using #{tech_name} in #{country_name}")
-        |> assign(:subtext, "#{length(stores)} stores. Updated daily.")
+        |> assign(:subtext, "#{length(stores)} stores. Checked continuously.")
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top Shopify Stores Using #{tech_name} in #{country_name}", length(stores)))
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
@@ -172,7 +172,7 @@ defmodule LSWeb.TopController do
     Jason.encode!(%{
       "@context" => "https://schema.org", "@type" => "ItemList",
       "name" => name, "numberOfItems" => count,
-      "description" => "#{name}. Updated daily by ListSignal."
+      "description" => "#{name}. Checked continuously by ListSignal."
     })
   end
 end

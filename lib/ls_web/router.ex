@@ -71,7 +71,10 @@ defmodule LSWeb.Router do
     get "/api/tools/lookup", ToolsController, :api_lookup
     get "/api/tech/suggest", ToolsController, :api_tech_suggest
 
-    get "/new-stores", FeedController, :new_stores
+    get "/latest-shopify-stores", FeedController, :new_stores
+    # legacy path kept as a 301 so old links and indexed pages keep working
+    get "/new-stores", FeedController, :new_stores_legacy
+    get "/saas", FeedController, :saas
     get "/hiring", HiringController, :index
 
     # Purchased CSV download. Public by design: the buyer paid from a cold

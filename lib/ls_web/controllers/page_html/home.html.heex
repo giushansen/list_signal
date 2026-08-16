@@ -7,7 +7,7 @@
   <div class="relative mx-auto max-w-[1200px] px-6">
     <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-7 animate-fade-in-down uppercase tracking-wider">
       <span class="h-2 w-2 rounded-full bg-accent animate-pulse"></span>
-      Domain Intelligence — Updated Daily
+      Domain Intelligence — Checked in Real Time
     </div>
 
     <h1 class="font-display text-[clamp(38px,5.2vw,62px)] font-extrabold leading-[1.08] tracking-[-2px] mb-5 animate-fade-in-up">
@@ -28,12 +28,13 @@
              content width without it, so on a narrow phone the placeholder
              pushed the button past the right edge of the card. text-base also
              stays >= 16px so iOS does not zoom the viewport on focus. --%>
-        <input type="text" name="q" id="heroSearch" placeholder="Enter a store URL or a technology..." class="flex-1 min-w-0 border-none outline-none bg-transparent font-body text-base text-slate-900 px-2 sm:px-3 py-3 sm:py-3.5 placeholder:text-slate-400 truncate" autocomplete="off" />
+        <input type="text" name="q" id="heroSearch" placeholder="Enter a Business URL or a Technology" class="flex-1 min-w-0 border-none outline-none bg-transparent font-body text-base text-slate-900 px-2 sm:px-3 py-3 sm:py-3.5 placeholder:text-slate-400 truncate" autocomplete="off" />
         <button type="submit" id="heroBtn" class="flex-shrink-0 rounded-[10px] bg-accent px-4 sm:px-7 py-3 sm:py-3.5 font-display text-[14px] sm:text-[15px] font-semibold text-white hover:bg-accent-hover transition-all sm:hover:-translate-y-px whitespace-nowrap">Look up</button>
         <%!-- Autocomplete dropdown --%>
         <div id="acDropdown" class="hidden absolute left-0 right-0 top-full mt-1 rounded-xl bg-white border border-slate-200 shadow-xl z-50 overflow-hidden max-h-[320px] overflow-y-auto">
         </div>
       </form>
+      <p class="mt-2 text-[13px] italic text-white/45">No credits, no expiring tokens.</p>
     </div>
 
     <%!-- Progress bar — hidden by default, shown during domain lookup --%>
@@ -217,7 +218,7 @@
 <section class="py-20 text-center relative">
   <div class="absolute bottom-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-[radial-gradient(ellipse,rgba(16,185,129,0.05),transparent_60%)] pointer-events-none"></div>
   <div class="mx-auto max-w-[1200px] px-6 relative">
-    <h2 class="font-display text-[clamp(26px,3.2vw,38px)] font-bold tracking-tight mb-3.5 anim">Updated daily, not monthly.</h2>
+    <h2 class="font-display text-[clamp(26px,3.2vw,38px)] font-bold tracking-tight mb-3.5 anim">Checked in real time, not monthly.</h2>
     <p class="text-base text-white/60 mb-7 max-w-[560px] mx-auto anim">New domains detected within hours. Backend tech, hosting, DNS, and network data that frontend-only scanners miss entirely. Infrastructure intelligence you won't find anywhere else.</p>
     <a href="/signup" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all anim">
       Try it now — it's free
@@ -263,7 +264,7 @@
 
 <footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
   <div class="mx-auto max-w-[1200px] px-6">
-    <p class="text-white/40 mb-4">ListSignal — Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Updated daily.</p>
+    <p class="text-white/40 mb-4">ListSignal — Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Domains checked in real time; tech re-scanned weekly.</p>
     <div class="mb-3">
       <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
       <a href="/scoring/seo-score" class="text-white/50 hover:text-white transition-colors mx-3">How scoring works</a>

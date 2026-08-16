@@ -61,12 +61,52 @@ defmodule LS.Clickhouse do
     end
   end
 
+  # Bot-wall pages the crawler sometimes captures as titles; a public feed
+  # printing "Verifying your connection..." as a store name looks broken
+  # (reported on /new-stores, 2026-08-16).
+  @challenge_titles [
+    "Verifying your connection", "Just a moment", "Attention Required",
+    "Access denied", "Security check", "Checking your browser",
+    "One moment, please", "Antibot", "Please wait"
+  ]
+
+  @doc "Title prefixes/fragments of bot-challenge pages — exposed for tests."
+  def challenge_titles, do: @challenge_titles
+
+  defp not_challenge_sql(col) do
+    @challenge_titles
+    |> Enum.map(&"positionCaseInsensitive(#{col}, '#{escape(&1)}') = 0")
+    |> Enum.join(" AND ")
+  end
+
   def recent_stores(limit \\ 20) do
     query("""
     SELECT domain, country, http_title, http_tech, enriched_at
     FROM domains_fast
-    WHERE is_shopify = 1 AND http_title != ''
+    WHERE is_shopify = 1 AND http_title != '' AND #{not_challenge_sql("http_title")}
     ORDER BY enriched_at DESC
+    LIMIT #{limit}
+    """)
+  end
+
+  @doc "SEO score (0-100) for the free checker badge; nil when not yet computed."
+  def get_seo_score(domain) do
+    case query("SELECT seo_score FROM businesses WHERE domain = '#{escape(domain)}' LIMIT 1") do
+      {:ok, [[n]]} when is_number(n) and n > 0 -> round(n)
+      _ -> nil
+    end
+  end
+
+  @doc "Latest classified businesses for the public /saas feed."
+  def recent_by_model(models, limit \\ 50) when is_list(models) do
+    list = models |> Enum.map(&"'#{escape(&1)}'") |> Enum.join(",")
+
+    query("""
+    SELECT domain, inferred_country, http_title, http_tech, as_of
+    FROM businesses
+    WHERE business_model IN (#{list}) AND is_junk = '' AND http_title != ''
+      AND classification_confidence >= 0.5 AND #{not_challenge_sql("http_title")}
+    ORDER BY as_of DESC
     LIMIT #{limit}
     """)
   end
