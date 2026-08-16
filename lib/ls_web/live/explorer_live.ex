@@ -824,6 +824,7 @@ defmodule LSWeb.ExplorerLive do
               <%= cond do %>
                 <% @plan not in ["starter", "pro"] -> %>
                   <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
+                    data-umami-event="export_upgrade_prompt"
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition text-[12px] font-semibold"
                     aria-label="Export CSV — upgrade required">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
@@ -843,6 +844,7 @@ defmodule LSWeb.ExplorerLive do
                   </button>
                 <% true -> %>
                   <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
+                    data-umami-event="csv_export"
                     title={"Export this list as CSV — #{format_number(LS.Accounts.exports_remaining(@current_scope.user))} rows left this month"}
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition text-[12px] font-semibold"
                     aria-label="Export CSV">

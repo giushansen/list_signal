@@ -90,7 +90,8 @@ defmodule LSWeb.Layouts do
             <a href="/users/log-in" class="text-sm font-medium text-white/60 hover:text-white transition-colors">Sign in</a>
           </li>
           <li>
-            <a href="/signup" class="rounded-lg bg-accent px-4 md:px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px">Start Free</a>
+            <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="nav"
+               class="rounded-lg bg-accent px-4 md:px-5 py-2 text-sm font-semibold text-white hover:bg-accent-hover transition-all hover:-translate-y-px">Start Free</a>
           </li>
         </ul>
       </div>

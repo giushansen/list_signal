@@ -31,7 +31,11 @@ defmodule LSWeb.UserLive.Registration do
                   <p class="text-red-400 text-xs mt-1"><%= translate_error(error) %></p>
                 <% end %>
               </div>
-              <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded px-4 py-2 text-sm font-medium transition">
+              <%!-- data-umami-event: the "signup" conversion goal. Fired on submit
+                   click (client-side proxy); the users table stays the source of
+                   truth — this exists so Umami can show the funnel ending here. --%>
+              <button type="submit" data-umami-event="signup"
+                class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded px-4 py-2 text-sm font-medium transition">
                 Create account
               </button>
             </div>

@@ -451,6 +451,48 @@ defmodule LS.Clickhouse do
 
   def count_similar(_, _), do: {:ok, [[0]]}
 
+  @doc """
+  Named "businesses like this one" for the store-page similar block: same
+  business model + country, best-ranked first. Returns
+  `[[domain, title, tranco_rank, is_shopify], ...]`.
+
+  The count-only teaser sent every visitor straight to a signup wall; showing
+  the top few BY NAME (SimilarWeb's "similar sites" pattern) gives an
+  accidental visitor somewhere to go next, and the gate moves to the tail of
+  the list instead of its head. Cached 6h per (model, country) — the page is
+  CDN-cached and the answer barely moves within a day.
+  """
+  @similar_stores_ttl :timer.hours(6)
+
+  def similar_stores(business_model, country, exclude_domain, limit \\ 6)
+
+  def similar_stores(business_model, country, exclude_domain, limit)
+      when business_model != "" and country != "" do
+    LS.LandingCache.cached({:similar_stores, business_model, country}, @similar_stores_ttl, fn ->
+      query("""
+      SELECT domain, http_title, tranco_rank, http_tech LIKE '%Shopify%' AS is_shopify
+      FROM businesses
+      WHERE business_model = '#{escape(business_model)}'
+        AND inferred_country = '#{escape(country)}'
+        AND is_junk = '' AND http_title != ''
+      ORDER BY coalesce(tranco_rank, 99999999) ASC
+      LIMIT #{limit + 4}
+      """)
+    end)
+    |> case do
+      {:ok, rows} ->
+        rows
+        |> Enum.reject(fn [d | _] -> d == exclude_domain end)
+        |> Enum.uniq_by(fn [d | _] -> d end)
+        |> Enum.take(limit)
+
+      _ ->
+        []
+    end
+  end
+
+  def similar_stores(_, _, _, _), do: []
+
   # ── biz_signal: observed business changes ──
 
   @doc """

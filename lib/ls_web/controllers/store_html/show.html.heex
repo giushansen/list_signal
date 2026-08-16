@@ -120,7 +120,7 @@
             </span>
           </div>
           <%= if tech_hidden > 0 do %>
-            <a href="/signup" class="inline-block mt-3 text-accent text-xs font-semibold hover:underline">Sign up to see all <%= length(display_tech) %> technologies</a>
+            <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="tech_gate" class="inline-block mt-3 text-accent text-xs font-semibold hover:underline">Sign up to see all <%= length(display_tech) %> technologies</a>
           <% end %>
         <% else %>
           <p class="text-white/40 text-sm">No technologies detected.</p>
@@ -234,7 +234,7 @@
                 <div class="flex items-center gap-2 text-white/50">
                   <span>✉️</span>
                   <span><%= @store.email_count %> contact email<%= if @store.email_count > 1, do: "s" %> found</span>
-                  <a href="/signup" class="text-accent text-xs font-semibold hover:underline">Sign up to view</a>
+                  <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="emails_gate" class="text-accent text-xs font-semibold hover:underline">Sign up to view</a>
                 </div>
                 <div class="mt-1 space-y-0.5 select-none pointer-events-none" aria-hidden="true">
                   <%= for fake <- @store.emails_blurred do %>
@@ -261,7 +261,7 @@
               <% end %>
             </div>
             <%= if @store.subdomains_blurred != [] do %>
-              <a href="/signup" class="inline-block mt-2 text-accent text-xs font-semibold hover:underline">Sign up to see all <%= @store.subdomain_count %> subdomains</a>
+              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="subdomains_gate" class="inline-block mt-2 text-accent text-xs font-semibold hover:underline">Sign up to see all <%= @store.subdomain_count %> subdomains</a>
             <% end %>
           </div>
         </section>
@@ -285,20 +285,54 @@
               </div>
             <% end %>
             <%= if length(@store.recent_changes) > 2 do %>
-              <a href="/signup" class="inline-block mt-1 text-accent text-xs font-semibold hover:underline">+<%= length(@store.recent_changes) - 2 %> more changes — sign up to follow this domain</a>
+              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="changes_gate" class="inline-block mt-1 text-accent text-xs font-semibold hover:underline">+<%= length(@store.recent_changes) - 2 %> more changes — sign up to follow this domain</a>
             <% end %>
           </div>
         </section>
       <% end %>
 
-      <%!-- ═══ SIMILAR BUSINESSES (list-value hook) ═══ --%>
+      <%!-- ═══ SIMILAR BUSINESSES (list-value hook) ═══
+           Named rows, not just a count: an accidental visitor gets somewhere to
+           go next (SimilarWeb's "similar sites" circulation pattern), and the
+           signup gate moves to the TAIL of the list instead of its head. --%>
       <%= if @store.similar_count do %>
-        <section class="rounded-xl border border-accent/20 bg-accent/5 p-4 mb-6" aria-label="Similar businesses">
-          <p class="text-sm text-white/80">
-            📊 ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span>
-            other <%= @store.business_model %> businesses<%= if @store.country_flag != "", do: " in #{@store.country_flag}" %> —
-            <a href="/signup" class="text-accent font-semibold hover:underline">get the list</a>
+        <section class="rounded-xl border border-accent/20 bg-accent/5 p-5 mb-6" aria-label="Similar businesses">
+          <h2 class="font-display text-base font-semibold mb-1">
+            📊 <%= @store.business_model %> businesses like this<%= if @store.country_flag != "", do: " in #{@store.country_flag}" %>
+          </h2>
+          <p class="text-[13px] text-white/40 mb-3">
+            ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span> of them — top-ranked:
           </p>
+          <%= if @store.similar_stores != [] do %>
+            <ul class="divide-y divide-white/[0.05] mb-3">
+              <%= for [d, t, rank, shopify] <- @store.similar_stores do %>
+                <li>
+                  <a href={"#{if shopify == 1, do: "/shopify/", else: "/website/"}#{String.replace(d, ".", "-")}"}
+                     class="flex items-center justify-between gap-3 py-2 group">
+                    <span class="min-w-0">
+                      <span class="block text-sm text-white/85 group-hover:text-accent transition-colors truncate"><%= t %></span>
+                      <span class="block text-xs text-white/35"><%= d %></span>
+                    </span>
+                    <%= if rank do %>
+                      <span class="shrink-0 text-[11px] text-white/30 tabular-nums">rank #<%= LSWeb.StoreHTML.format_number(rank) %></span>
+                    <% end %>
+                  </a>
+                </li>
+              <% end %>
+            </ul>
+          <% end %>
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-1">
+            <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="similar_gate"
+               class="text-accent text-[13px] font-semibold hover:underline">
+              Get all <%= LSWeb.StoreHTML.format_number(@store.similar_count) %> as a list (emails included) →
+            </a>
+            <%= if is_shopify and @store.inferred_country != "" and @store.similar_count >= 10 do %>
+              <a href={"/top/shopify-stores-#{String.downcase(@store.inferred_country)}"}
+                 class="text-white/50 text-[13px] font-medium hover:text-white transition-colors">
+                Top Shopify stores in <%= @store.country_flag %> — free
+              </a>
+            <% end %>
+          </div>
         </section>
       <% end %>
 
@@ -311,7 +345,7 @@
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Revenue Tier</dt>
               <dd class="text-white font-semibold text-lg"><%= LSWeb.StoreHTML.revenue_tier(@store.estimated_revenue) %></dd>
               <dd class="text-white/50 text-sm blur-[5px] select-none pointer-events-none" aria-hidden="true">$<%= :erlang.phash2(@store.domain, 89) + 10 %>M-$<%= :erlang.phash2({@store.domain, 1}, 400) + 100 %>M</dd>
-              <a href="/signup" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
+              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="revenue_gate" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Estimated Employees</dt>
@@ -395,7 +429,7 @@
               <div class="flex items-center gap-2">
                 <span>🔒</span>
                 <span><%= @store.email_count %> email address<%= if @store.email_count > 1, do: "es" %> detected</span>
-                <a href="/signup" class="text-accent font-semibold hover:underline text-xs">Sign up free to view</a>
+                <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="emails_gate2" class="text-accent font-semibold hover:underline text-xs">Sign up free to view</a>
               </div>
             <% end %>
             <%= if @store.subdomain_count > 0 do %>

@@ -212,11 +212,22 @@ defmodule LSWeb.StoreController do
         _ -> []
       end
 
+    inferred_country = LS.CountryInferrer.infer(s.(:ctl_tld), language, nil, bgp_country)
+
     similar_count =
-      case LS.Clickhouse.count_similar(s.(:business_model), LS.CountryInferrer.infer(s.(:ctl_tld), language, nil, bgp_country)) do
+      case LS.Clickhouse.count_similar(s.(:business_model), inferred_country) do
         {:ok, [[n]]} when is_integer(n) and n > 1 -> n
         _ -> nil
       end
+
+    # Named rows for the similar block (6h-cached per model+country). Only
+    # fetched when the count teaser would render anyway, so no extra query
+    # for domains with nothing to show.
+    similar_stores =
+      if similar_count,
+        do: LS.Clickhouse.similar_stores(s.(:business_model), inferred_country, domain),
+        else: []
+
     %{
       domain: domain,
       title: decode_html(at.(:http_title)) || domain,
@@ -243,6 +254,7 @@ defmodule LSWeb.StoreController do
       bgp_asn_prefix: s.(:bgp_asn_prefix),
       country: country,
       country_flag: country_to_flag(country),
+      inferred_country: inferred_country,
       ctl_tld: s.(:ctl_tld),
       ctl_issuer: s.(:ctl_issuer),
       ctl_subdomain_count: at.(:ctl_subdomain_count),
@@ -280,6 +292,7 @@ defmodule LSWeb.StoreController do
       emails_blurred: LSWeb.Teaser.fake_emails(domain, length(emails)),
       recent_changes: recent_changes,
       similar_count: similar_count,
+      similar_stores: similar_stores,
       seo_score: seo_score,
       tech_preview: Enum.take(tech, 6),
       tech_blurred: LSWeb.Teaser.fake_techs(domain, length(tech) - 6),
