@@ -311,7 +311,7 @@
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Revenue Tier</dt>
               <dd class="text-white font-semibold text-lg"><%= LSWeb.StoreHTML.revenue_tier(@store.estimated_revenue) %></dd>
               <dd class="text-white/50 text-sm blur-[5px] select-none pointer-events-none" aria-hidden="true">$<%= :erlang.phash2(@store.domain, 89) + 10 %>M-$<%= :erlang.phash2({@store.domain, 1}, 400) + 100 %>M</dd>
-              <a href="/signup" class="text-accent text-xs font-semibold hover:underline">Exact bracket — sign up</a>
+              <a href="/signup" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Estimated Employees</dt>

@@ -103,7 +103,6 @@ defmodule LSWeb.Layouts do
     [
       {"/new-stores", "Shopify"},
       {"/saas", "SaaS businesses"},
-      {"/latest-shopify-stores", "Shopify stores"},
       {"/apps", "Apps&Tech"}
     ]
   end
