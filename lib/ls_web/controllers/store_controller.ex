@@ -225,7 +225,7 @@ defmodule LSWeb.StoreController do
     # for domains with nothing to show.
     similar_stores =
       if similar_count,
-        do: LS.Clickhouse.similar_stores(s.(:business_model), inferred_country, domain),
+        do: LS.Clickhouse.similar_stores(s.(:business_model), inferred_country, domain, s.(:estimated_revenue), at.(:tranco_rank)),
         else: []
 
     %{

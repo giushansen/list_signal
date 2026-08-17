@@ -103,7 +103,7 @@
          tech_shown = Enum.take(display_tech, 6)
          tech_hidden = max(length(display_tech) - 6, 0) %>
       <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Technology stack">
-        <h2 class="font-display text-lg font-semibold mb-1">🔧 Tech Stack (<%= length(display_tech) %> technologies)</h2>
+        <h2 class="font-display text-lg font-semibold mb-1">🔧 Some technologies <%= @store.domain %> uses</h2>
         <p class="text-[13px] text-white/40 mb-4">Technologies detected on <%= @store.domain %></p>
         <%= if tech_shown != [] do %>
           <div class="flex flex-wrap gap-2">
@@ -298,10 +298,10 @@
       <%= if @store.similar_count do %>
         <section class="rounded-xl border border-accent/20 bg-accent/5 p-5 mb-6" aria-label="Similar businesses">
           <h2 class="font-display text-base font-semibold mb-1">
-            📊 <%= @store.business_model %> businesses like this<%= if @store.country_flag != "", do: " in #{@store.country_flag}" %>
+            📊 Find more <%= @store.business_model %> businesses like this<%= if @store.country_flag != "", do: " in #{@store.country_flag}" %>
           </h2>
           <p class="text-[13px] text-white/40 mb-3">
-            ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span> of them — top-ranked:
+            ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span> of them — closest peers by revenue tier and rank:
           </p>
           <%= if @store.similar_stores != [] do %>
             <ul class="divide-y divide-white/[0.05] mb-3">
@@ -363,12 +363,36 @@
               </dd>
             </div>
           </dl>
-          <%= if @store.revenue_evidence != "" do %>
-            <details class="mt-4">
-              <summary class="text-[11px] text-white/30 cursor-pointer hover:text-white/50">View scoring evidence</summary>
-              <div class="mt-2 text-[11px] text-white/25 font-mono break-all leading-relaxed"><%= @store.revenue_evidence %></div>
-            </details>
-          <% end %>
+        </section>
+      <% end %>
+
+      <%!-- ═══ SEO AUDIT ═══ --%>
+      <%= if @store.seo_score do %>
+        <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="SEO audit">
+          <h2 class="font-display text-lg font-semibold mb-4">🔍 SEO Audit</h2>
+          <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
+            <div title={LSWeb.StoreHTML.seo_hint(@store.seo_score)}>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">On-page Score</dt>
+              <dd class="text-white font-semibold text-lg"><%= @store.seo_score %>/100</dd>
+              <dd class="mt-1.5 h-1.5 w-full max-w-[160px] rounded-full bg-white/[0.08]">
+                <div class={["h-1.5 rounded-full", cond do
+                  @store.seo_score >= 70 -> "bg-emerald-400"
+                  @store.seo_score >= 40 -> "bg-amber-400"
+                  true -> "bg-red-400"
+                end]} style={"width: #{@store.seo_score}%"}></div>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Tier</dt>
+              <dd class="text-white font-semibold text-lg"><%= LSWeb.StoreHTML.seo_badge(@store.seo_score) %></dd>
+              <dd class="text-[11px] text-white/35 mt-0.5"><%= LSWeb.StoreHTML.seo_hint(@store.seo_score) %></dd>
+            </div>
+            <div>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Failed Checks</dt>
+              <dd class="text-white/50 text-sm blur-[5px] select-none pointer-events-none" aria-hidden="true">meta-x1 | canonical-x2 | og-x3</dd>
+              <a href="/signup" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
+            </div>
+          </dl>
         </section>
       <% end %>
 

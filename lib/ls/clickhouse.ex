@@ -89,12 +89,40 @@ defmodule LS.Clickhouse do
     """)
   end
 
-  @doc "SEO score (0-100) for the free checker badge; nil when not yet computed."
+  @doc """
+  SEO score (0-100) for the free checker badge.
+
+  Stored score first (browser lane); when absent — only ~64% of businesses
+  have one — a live content-only audit of the homepage via the polite HTTP
+  client, cached 6h so a CDN-cold page costs at most one fetch per domain
+  per window. nil only when the page cannot be fetched at all.
+  """
   def get_seo_score(domain) do
     case query("SELECT seo_score FROM businesses WHERE domain = '#{escape(domain)}' LIMIT 1") do
-      {:ok, [[n]]} when is_number(n) and n > 0 -> round(n)
+      {:ok, [[n]]} when is_number(n) and n > 0 ->
+        round(n)
+
+      _ ->
+        LS.LandingCache.cached({:seo_live, domain}, :timer.hours(6), fn ->
+          {:ok, live_seo_score(domain)}
+        end)
+        |> case do
+          {:ok, score} -> score
+          _ -> nil
+        end
+    end
+  end
+
+  defp live_seo_score(domain) do
+    with {:ok, %{a: [ip | _]}} <- LS.DNS.Resolver.lookup(domain),
+         {:ok, %{body: html}} when is_binary(html) and html != "" <- LS.HTTP.Client.fetch(domain, ip),
+         %{seo_score: score} when is_integer(score) <- LS.Enrichment.SEO.audit(html) do
+      score
+    else
       _ -> nil
     end
+  rescue
+    _ -> nil
   end
 
   @doc "Latest classified businesses for the public /saas feed."
@@ -464,18 +492,47 @@ defmodule LS.Clickhouse do
   """
   @similar_stores_ttl :timer.hours(6)
 
-  def similar_stores(business_model, country, exclude_domain, limit \\ 6)
+  # Same revenue tier as the target — similarity that converts, per the
+  # 2026-08-17 report: rank-ordered-globally showed icloud/nih.gov/cisco as
+  # "SaaS like this" next to a seed-stage startup.
+  @tier_brackets %{
+    "<$1M" => ["<$1M"],
+    "$1M-$10M" => ["$1M-$10M"],
+    "$10M-$100M" => ["$10M-$100M", "$100M-$1B", "$1B+"],
+    "$100M-$1B" => ["$10M-$100M", "$100M-$1B", "$1B+"],
+    "$1B+" => ["$10M-$100M", "$100M-$1B", "$1B+"]
+  }
 
-  def similar_stores(business_model, country, exclude_domain, limit)
+  def similar_stores(business_model, country, exclude_domain, revenue, rank, limit \\ 6)
+
+  def similar_stores(business_model, country, exclude_domain, revenue, rank, limit)
       when business_model != "" and country != "" do
-    LS.LandingCache.cached({:similar_stores, business_model, country}, @similar_stores_ttl, fn ->
+    tier = Map.get(@tier_brackets, revenue, ["<$1M"])
+    tier_sql = tier |> Enum.map(&"'#{escape(&1)}'") |> Enum.join(",")
+
+    # Rank proximity: peers ranked BETTER than the target but nearest to it
+    # (aspirational yet comparable). Unranked targets get recent same-tier
+    # peers instead. Bucketed cache key keeps the 6h cache effective.
+    {rank_where, order, bucket} =
+      case rank do
+        r when is_integer(r) and r > 0 ->
+          {"AND tranco_rank > 0 AND tranco_rank <= #{r}", "ORDER BY tranco_rank DESC", div(r, 20_000)}
+
+        _ ->
+          {"", "ORDER BY as_of DESC", :unranked}
+      end
+
+    LS.LandingCache.cached({:similar_stores, business_model, country, tier, bucket}, @similar_stores_ttl, fn ->
       query("""
       SELECT domain, http_title, tranco_rank, http_tech LIKE '%Shopify%' AS is_shopify
       FROM businesses
       WHERE business_model = '#{escape(business_model)}'
         AND inferred_country = '#{escape(country)}'
+        AND estimated_revenue IN (#{tier_sql})
+        AND classification_confidence >= 0.5
         AND is_junk = '' AND http_title != ''
-      ORDER BY coalesce(tranco_rank, 99999999) ASC
+      #{rank_where}
+      #{order}
       LIMIT #{limit + 4}
       """)
     end)
@@ -491,7 +548,7 @@ defmodule LS.Clickhouse do
     end
   end
 
-  def similar_stores(_, _, _, _), do: []
+  def similar_stores(_, _, _, _, _, _), do: []
 
   # ── biz_signal: observed business changes ──
 
