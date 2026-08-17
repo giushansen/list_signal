@@ -1,4 +1,36 @@
-# Distillation dataset v1 (2026-08-14) — teacher labels + trained head
+# Distillation datasets — teacher labels + trained heads
+
+## v2 (2026-08-17) — 17 classes, +1,962 domains
+
+Head v2 (`priv/ml/head_v2.json`, sha256 a21de941…) adds four classes the
+owner asked for after nih.gov/cisco.com surfaced as "SaaS" in similar-business
+widgets: **Government, Nonprofit, Manufacturer, FinancialInstitution**.
+Real-world organizations now get a truthful label ("classified, just not as
+a business"), so similar-site lookups stay inside their own kind.
+
+- `teacher_labels_v2_2026-08-17.jsonl` — 1,962 NEW domains (sampled to
+  over-represent gov/edu/org/industrial/finance strata; zero overlap with v1
+  or any golden set). Provenance per row: `teacher` (sonnet | haiku) — all
+  752 low-confidence/trap-class rows got a Sonnet second opinion (Sonnet
+  overrode Haiku on 17%); `haiku_business_model` preserved on overridden rows.
+- `teacher_instructions_v2.md` — the 17-class taxonomy + boundary rules
+  (`.gov/.mil ⇒ Government`, fintech SaaS vs mortgage broker, etc.).
+- `golden_truth_v2_2026-08-17.json` — 79-row eval holdout: 51 owner labels +
+  28 AI-labeled rows for the new classes (8 of those are bot-walled with no
+  fetchable text, so embedding evals run on 71).
+- `train_head_v2.py` — trains on v1+v2 merged (4,158 rows), evals on the
+  holdout. Shipped config C=2.0, class_weight=balanced (won the sweep).
+- **Numbers** (71-row holdout, never trained on): 50.7% raw 17-class
+  accuracy; conf≥0.6 → 86% precision @ 30% coverage; conf≥0.7 → 89% @ 25%.
+  Raw accuracy is not comparable to v1's 13-class 47% — the v2 holdout has
+  more classes and harder rows; calibration is what the runtime relies on.
+- Runtime change shipped with it: `.gov/.mil` are now deterministically
+  `Government@0.95` in `BusinessClassifier` (was: never-classify), and the
+  pipeline's gov/mil ML carve-out is gone (the 0.95 clears the ML gate).
+- Prod ClickHouse: rows appended to `ls.ml_teacher_labels` with
+  dataset='distill_v2_2026-08-17'.
+
+## v1 (2026-08-14) — original 13-class dataset + head
 
 The first trained classification head for ListSignal: 2,200 prod domains
 labeled by Claude teachers, distilled into a 13-class logistic head over the

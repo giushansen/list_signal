@@ -48,33 +48,40 @@ defmodule LS.HTTP.BusinessClassifier do
 
   # Governments are real organizations but never sellable businesses; nih.gov
   # sat in prod as "SaaS@0.62" and surfaced in similar-business widgets
-  # (2026-08-17). Until the head learns a Government class, these TLDs are
-  # never classified. NOT junk — junk_reason stays untouched.
-  @never_classify_tlds ~w(gov mil)
+  # (2026-08-17). These TLDs are legally restricted to government bodies, so
+  # the classification is deterministic — no scoring layers, no ML. They get a
+  # real `Government` label (head v2 also knows the class) so "similar sites"
+  # shows other government sites, never SaaS. NOT junk — junk_reason untouched.
+  @government_tlds ~w(gov mil)
+  @government_result %{business_model: "Government", industry: "Government", confidence: 0.95, method: "tld"}
 
   def classify(signals) when is_map(signals) do
     # Skip placeholder/dead/infrastructure pages — no real business to classify.
-    if junk_reason(signals) != "" or s(signals, :ctl_tld) in @never_classify_tlds do
-      @empty_result
-    else
-      model_scores = %{}
-      industry_scores = %{}
-      methods = []
-
-      {model_scores, industry_scores, methods} = layer_1_tech(signals, model_scores, industry_scores, methods)
-      {model_scores, industry_scores, methods} = layer_2_schema(signals, model_scores, industry_scores, methods)
-      {model_scores, industry_scores, methods} = layer_3_pages(signals, model_scores, industry_scores, methods)
-      {model_scores, industry_scores, methods} = layer_4_nav(signals, model_scores, industry_scores, methods)
-      {model_scores, industry_scores, methods} = layer_5_tld(signals, model_scores, industry_scores, methods)
-      {model_scores, industry_scores, methods} = layer_6_keywords(signals, model_scores, industry_scores, methods)
-      {model_scores, industry_scores, methods} = layer_7_dns(signals, model_scores, industry_scores, methods)
-
-      pick_winner(model_scores, industry_scores, methods)
+    cond do
+      junk_reason(signals) != "" -> @empty_result
+      s(signals, :ctl_tld) in @government_tlds -> @government_result
+      true -> classify_by_layers(signals)
     end
   rescue
     _ -> @empty_result
   end
   def classify(_), do: @empty_result
+
+  defp classify_by_layers(signals) do
+    model_scores = %{}
+    industry_scores = %{}
+    methods = []
+
+    {model_scores, industry_scores, methods} = layer_1_tech(signals, model_scores, industry_scores, methods)
+    {model_scores, industry_scores, methods} = layer_2_schema(signals, model_scores, industry_scores, methods)
+    {model_scores, industry_scores, methods} = layer_3_pages(signals, model_scores, industry_scores, methods)
+    {model_scores, industry_scores, methods} = layer_4_nav(signals, model_scores, industry_scores, methods)
+    {model_scores, industry_scores, methods} = layer_5_tld(signals, model_scores, industry_scores, methods)
+    {model_scores, industry_scores, methods} = layer_6_keywords(signals, model_scores, industry_scores, methods)
+    {model_scores, industry_scores, methods} = layer_7_dns(signals, model_scores, industry_scores, methods)
+
+    pick_winner(model_scores, industry_scores, methods)
+  end
 
   # ===========================================================================
   # LAYER 1 — Tech stack

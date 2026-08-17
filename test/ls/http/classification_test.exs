@@ -796,16 +796,26 @@ defmodule LS.HTTP.ClassificationTest do
   end
 
   describe "government TLDs (2026-08-17: nih.gov was sold as SaaS@0.62)" do
-    test "a .gov domain never gets a business model, however SaaS-like its page" do
+    # First fix suppressed classification entirely; same day the owner asked
+    # for a real Government label instead, so gov sites still power
+    # "similar sites" — just never as a sellable business model.
+    test "a .gov domain is Government, however SaaS-like its page" do
       r = classify(%{ctl_tld: "gov", http_schema_type: "SoftwareApplication",
                      http_pages: "/pricing|/login|/docs", http_title: "Cloud platform free trial"})
-      assert r.business_model == ""
-      assert r.confidence == 0.0
+      assert r.business_model == "Government"
+      assert r.industry == "Government"
+      assert r.confidence >= 0.9
     end
 
-    test ".mil likewise; and the guard does not mark them junk" do
-      assert classify(%{ctl_tld: "mil", http_tech: "Shopify"}).business_model == ""
+    test ".mil likewise; and the rule does not mark them junk" do
+      assert classify(%{ctl_tld: "mil", http_tech: "Shopify"}).business_model == "Government"
       assert LS.HTTP.BusinessClassifier.junk_reason(%{ctl_tld: "gov", http_title: "NIH"}) == ""
+    end
+
+    test "a parked .gov page is still junk, not Government" do
+      r = classify(%{ctl_tld: "gov", http_title: "Parked Domain",
+                     body_text: "buy this domain today"})
+      assert r.business_model == ""
     end
   end
 end

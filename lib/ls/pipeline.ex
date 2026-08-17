@@ -322,7 +322,9 @@ defmodule LS.Pipeline do
     # :defer stashes the text on the row so the caller can batch-classify the
     # whole batch in one serving run (WorkerAgent.finalize_ml + apply_ml/2).
     {classify_result, ml_defer} =
-      if classify_result.confidence < 0.55 and tld not in ["gov", "mil"] and
+      # gov/mil no longer need a TLD carve-out here: BusinessClassifier now
+      # returns Government@0.95 for them, which clears the 0.55 gate on its own.
+      if classify_result.confidence < 0.55 and
            (ml_mode == :defer or MLClassifier.ready?()) do
         ml_text = Enum.join([http[:http_title] || "", h1, http[:http_meta_description] || "", body_text], " ")
         ml_text = String.trim(ml_text)

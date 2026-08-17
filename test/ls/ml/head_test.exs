@@ -26,13 +26,20 @@ defmodule LS.ML.HeadTest do
     assert_in_delta p, 0.5, 0.01
   end
 
-  test "the shipped weights file loads with the expected 13x384 shape" do
+  test "the shipped weights file loads with the expected 17x384 shape" do
     head = Head.load()
-    assert head, "priv/ml/head_v1.json must load — the ML tier silently falls back to zero-shot cosine without it"
-    assert length(head.classes) == 13
+    assert head, "priv/ml/head_v2.json must load — the ML tier silently falls back to zero-shot cosine without it"
+    assert length(head.classes) == 17
     assert "Junk" in head.classes and "LocalBusiness" in head.classes
-    assert Nx.shape(head.coef) == {13, 384}
-    assert Nx.shape(head.intercept) == {13}
+
+    # v2 additions (2026-08-17): without these, real-world organizations got
+    # the least-wrong business label (cisco.com as SaaS, banks as Consulting).
+    for c <- ~w(Government Nonprofit Manufacturer FinancialInstitution) do
+      assert c in head.classes, "head v2 must know #{c}"
+    end
+
+    assert Nx.shape(head.coef) == {17, 384}
+    assert Nx.shape(head.intercept) == {17}
   end
 
   test "shipped weights produce a valid prediction for a unit embedding" do

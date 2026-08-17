@@ -397,7 +397,7 @@ defmodule LS.ML.Classifier do
     }
   end
 
-  # Head path: calibrated 13-class softmax (see LS.ML.Head). A "Junk" vote is
+  # Head path: calibrated 17-class softmax (see LS.ML.Head). A "Junk" vote is
   # a decline-to-classify, not a label — is_junk stays owned by junk_reason/1.
   # Cosine fallback keeps the tier alive if the weights file is broken.
   defp score_business_model(text_embedding, %{head: head}) when not is_nil(head) do

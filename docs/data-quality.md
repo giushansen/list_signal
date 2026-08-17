@@ -161,6 +161,21 @@ Dataset: `analysis/distill/` (git) + `ls.ml_teacher_labels` on prod CH
 `analysis/distill/README.md`. Runtime integration ships separately with
 before/after golden numbers.
 
+## Distillation v2 (2026-08-17) — 17 classes for real-world organizations
+
+1,962 new domains (gov/edu/org/industrial/finance over-sampled, zero overlap
+with v1 or golden) labeled Haiku-first with a Sonnet second opinion on all
+752 uncertain/trap rows. Head v2 adds **Government, Nonprofit, Manufacturer,
+FinancialInstitution** — the classes whose absence made nih.gov "SaaS@0.62"
+and left cisco.com as least-wrong SaaS. On the expanded 71-row holdout
+(51 owner + 20 AI new-class rows): conf≥0.6 → 86% precision, conf≥0.7 → 89%.
+`.gov/.mil` are now deterministic `Government@0.95` in the heuristic tier
+(they are legally restricted TLDs; no scoring or ML needed) — a *label*,
+not a business: sellable-lead surfaces must not treat Government rows as
+prospects, but similar-site widgets should keep them. Head:
+`priv/ml/head_v2.json` (v1 stays as rollback). Labels:
+`teacher_labels_v2_2026-08-17.jsonl` + dataset='distill_v2_2026-08-17' in CH.
+
 ## Where this is going (agreed 2026-08-07)
 
 Priority order, cheapest-first: junk gate everywhere → per-class threshold
