@@ -63,3 +63,35 @@ Once filled, Claude scores precision/recall per class and per confidence band,
 recalibrates the confidence thresholds, fixes the worst classifier layers, and
 this file becomes the regression fixture (`test/`) so future classifier changes
 are measured, not vibes. v2 of the set grows from the disagreements.
+
+## v3 (2026-08-18) — 711 rows, all 17 classes, dual-labeler protocol
+
+`golden_set_v3_2026-08-18.csv` = v1 (151) + v2 (180) carried verbatim +
+28 AI new-class rows (2026-08-17) + **380 new rows** sampled seed `gv3`
+(8 per hi/lo band of every one of the 17 predicted classes + junk/blocked/
+high-revenue/unclassified strata; disjoint from all 4,162 training domains).
+
+Labeling protocol (stronger than v1/v2): two INDEPENDENT Sonnet labelers —
+A from stored content only, B a skeptic allowed to fetch the live site —
+agreed on 84% (320/380); the 59 disagreements were adjudicated one-by-one
+by Fable with written rationale in `notes`. House rules set during
+adjudication (apply them to future rows): real-estate brokerages with local
+presence → LocalBusiness; content-is-product → Media even when legally a
+nonprofit (greenz.jp, projectcensored.org); doorway/redirect mirrors → junk;
+personal portfolios → `Unclear`. 24 rows are `Unclear` (blank
+`is_real_business`, excluded from scoring) — honest gaps, several marking
+taxonomy holes: 3PL/logistics, venture builders/holding cos, gambling
+operators, credit bureaus.
+
+Revenue truth: 273 rows carry a `true_revenue` bracket, each with the
+evidence quoted in `notes` (site-stated figures or unambiguous scale
+markers). Never copied from the system's own prediction.
+
+Baseline at freeze (prod predictions at sampling time, `mix ls.golden_eval`):
+overall high-band accuracy 68.6%; yesterday's new classes all 100% on their
+slices (Government 5/5, FinancialInstitution 5/5, Manufacturer 11/11,
+Nonprofit 11/11, LocalBusiness 12/12); legacy trap classes still weak
+(Marketplace 10%, Newsletter 19%, Tool 24%); revenue 70.5% exact-bracket
+(n=258). Frozen BEFORE any model tuning, per the working agreement.
+Eval page snapshots: `pages_v2_2026-08-17.tar.gz` (in git, because the
+scratchpad copies were wiped twice).
