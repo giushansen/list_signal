@@ -794,4 +794,18 @@ defmodule LS.HTTP.ClassificationTest do
       assert BusinessClassifier.junk_reason(%{http_title: <<0xFF, 0xFE>>, body_text: String.duplicate("a", 1_000_000), http_status: -1}) in ["", "parked", "placeholder", "empty", "scam"]
     end
   end
+
+  describe "government TLDs (2026-08-17: nih.gov was sold as SaaS@0.62)" do
+    test "a .gov domain never gets a business model, however SaaS-like its page" do
+      r = classify(%{ctl_tld: "gov", http_schema_type: "SoftwareApplication",
+                     http_pages: "/pricing|/login|/docs", http_title: "Cloud platform free trial"})
+      assert r.business_model == ""
+      assert r.confidence == 0.0
+    end
+
+    test ".mil likewise; and the guard does not mark them junk" do
+      assert classify(%{ctl_tld: "mil", http_tech: "Shopify"}).business_model == ""
+      assert LS.HTTP.BusinessClassifier.junk_reason(%{ctl_tld: "gov", http_title: "NIH"}) == ""
+    end
+  end
 end

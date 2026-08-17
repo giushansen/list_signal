@@ -206,6 +206,38 @@ defmodule LSWeb.StoreController do
     dmarc_policy = fetch_dmarc_policy(domain, dns_txt_joined)
     seo_score = LS.Clickhouse.get_seo_score(domain)
 
+    # "All criteria for all domains" (owner, 2026-08-17): rows reached via the
+    # live-lookup path (or too new for the enrichment lanes) arrive with
+    # empty estimator/classifier fields. Both are pure functions over exactly
+    # the columns this row already holds, so compute them at render instead
+    # of showing holes. A no-website/parked domain honestly defaults to the
+    # lowest bracket at 0% confidence rather than a fabricated number.
+    row_map = LS.Cluster.Inserter.columns() |> Enum.zip(row) |> Map.new()
+
+    {est_revenue, est_employees, rev_conf} =
+      if s.(:estimated_revenue) != "" do
+        {s.(:estimated_revenue), s.(:estimated_employees), at.(:revenue_confidence)}
+      else
+        live = LS.Revenue.Estimator.estimate(row_map)
+
+        if live.estimated_revenue != "",
+          do: {live.estimated_revenue, live.estimated_employees, live.revenue_confidence},
+          else: {"<$1M", "1-10", 0.0}
+      end
+
+    live_class =
+      if s.(:business_model) == "" do
+        LS.HTTP.BusinessClassifier.classify(%{
+          http_tech: s.(:http_tech), http_apps: s.(:http_apps),
+          http_title: s.(:http_title), http_meta_description: s.(:http_meta_description),
+          http_pages: s.(:http_pages), http_schema_type: s.(:http_schema_type),
+          http_og_type: s.(:http_og_type), ctl_tld: s.(:ctl_tld),
+          dns_txt: dns_txt_joined, h1: s.(:http_h1),
+          body_text: s.(:http_body_snippet), nav_links: "",
+          http_status: at.(:http_status)
+        })
+      end
+
     recent_changes =
       case LS.Clickhouse.recent_signals(domain, 5) do
         {:ok, rows} -> rows
@@ -272,11 +304,11 @@ defmodule LSWeb.StoreController do
       is_malware: s.(:is_malware),
       is_phishing: s.(:is_phishing),
       is_disposable_email: s.(:is_disposable_email),
-      business_model: s.(:business_model),
-      industry: s.(:industry),
-      estimated_revenue: s.(:estimated_revenue),
-      estimated_employees: s.(:estimated_employees),
-      revenue_confidence: at.(:revenue_confidence),
+      business_model: (if live_class, do: live_class.business_model, else: s.(:business_model)),
+      industry: (if live_class && live_class.industry != "", do: live_class.industry, else: s.(:industry)),
+      estimated_revenue: est_revenue,
+      estimated_employees: est_employees,
+      revenue_confidence: rev_conf,
       revenue_evidence: s.(:revenue_evidence),
       tld: tld,
       domain_age: compute_domain_age(created_at),

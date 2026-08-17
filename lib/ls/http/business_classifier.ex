@@ -46,9 +46,15 @@ defmodule LS.HTTP.BusinessClassifier do
 
   def junk_reason(_), do: ""
 
+  # Governments are real organizations but never sellable businesses; nih.gov
+  # sat in prod as "SaaS@0.62" and surfaced in similar-business widgets
+  # (2026-08-17). Until the head learns a Government class, these TLDs are
+  # never classified. NOT junk — junk_reason stays untouched.
+  @never_classify_tlds ~w(gov mil)
+
   def classify(signals) when is_map(signals) do
     # Skip placeholder/dead/infrastructure pages — no real business to classify.
-    if junk_reason(signals) != "" do
+    if junk_reason(signals) != "" or s(signals, :ctl_tld) in @never_classify_tlds do
       @empty_result
     else
       model_scores = %{}
