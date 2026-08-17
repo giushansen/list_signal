@@ -402,8 +402,15 @@ defmodule LS.ML.Classifier do
   # Cosine fallback keeps the tier alive if the weights file is broken.
   defp score_business_model(text_embedding, %{head: head}) when not is_nil(head) do
     case LS.ML.Head.predict(head, text_embedding) do
-      {"Junk", _prob} -> {"", 0.0}
-      {class, prob} -> {class, Float.round(prob, 2)}
+      {"Junk", _prob} ->
+        {"", 0.0}
+
+      {class, prob} ->
+        # Per-class emission policy calibrated on golden v3 — some classes
+        # the head must never ship (see LS.ML.Head.shippable?/2).
+        if LS.ML.Head.shippable?(class, prob),
+          do: {class, Float.round(prob, 2)},
+          else: {"", 0.0}
     end
   end
 

@@ -176,6 +176,33 @@ prospects, but similar-site widgets should keep them. Head:
 `priv/ml/head_v2.json` (v1 stays as rollback). Labels:
 `teacher_labels_v2_2026-08-17.jsonl` + dataset='distill_v2_2026-08-17' in CH.
 
+## Golden v3 + head emission policy (2026-08-18)
+
+Golden v3: 711 rows (see `analysis/golden_set/README.md`) — dual-labeler
+protocol, 84% inter-labeler agreement, 59 Fable-adjudicated disputes,
+273 evidence-backed revenue truths. Frozen in its own commit BEFORE tuning.
+
+What it taught us, and what shipped from it:
+
+- **Head emission policy** (`LS.ML.Head.shippable?/2`): head-emitted
+  Government (31-50% precision) and FinancialInstitution (29-38%) are
+  blocked — real government sites come from the deterministic TLD rule;
+  Media needs prob ≥ 0.8; Marketplace/Newsletter/Community stay blocked.
+  Shipped-ML precision on v3: 60% → 83% at 29% coverage.
+- **Revenue: the estimator WON.** Retrained revenue heads (4k teacher
+  brackets, with and without class features) scored 42-45% exact-bracket on
+  v3's 126 embeddable truth rows; the heuristic estimator scored **83.9%**
+  (92.9% within-one). The 2026-08-14 "head beats estimator" result held only
+  on the brand-contaminated $100M+ slice (already fixed by the demotion
+  backfill). Teacher labels contain ZERO verified $100M+ rows, so a learned
+  revenue model has nothing to learn the top brackets from. Revenue head v2
+  was NOT shipped. Next real lever: web-verified high-bracket truth
+  (needs a fresh session's search budget), and estimator coverage on the
+  rows where it currently predicts nothing.
+- Junk from the head is 32/32 at conf≥0.6 on v3 — a future increment could
+  let high-confidence head-Junk feed `is_junk`, but only after the
+  browser-lane path stops feeding bot-walled giants into the text tier.
+
 ## Where this is going (agreed 2026-08-07)
 
 Priority order, cheapest-first: junk gate everywhere → per-class threshold

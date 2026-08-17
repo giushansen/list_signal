@@ -42,6 +42,27 @@ defmodule LS.ML.HeadTest do
     assert Nx.shape(head.intercept) == {17}
   end
 
+  describe "shippable?/2 (golden v3 calibration, 2026-08-18)" do
+    test "Government and FinancialInstitution never ship from the head — 31-50% and 29-38% precision on golden v3" do
+      refute Head.shippable?("Government", 0.99)
+      refute Head.shippable?("FinancialInstitution", 0.99)
+    end
+
+    test "trap classes from golden v1 stay blocked at any confidence" do
+      for c <- ~w(Marketplace Newsletter Community) do
+        refute Head.shippable?(c, 0.95), "#{c} must not ship from the head"
+      end
+    end
+
+    test "Media needs 0.8 (50-62% below it on golden v3), others 0.5" do
+      refute Head.shippable?("Media", 0.79)
+      assert Head.shippable?("Media", 0.81)
+      assert Head.shippable?("SaaS", 0.5)
+      refute Head.shippable?("SaaS", 0.49)
+      assert Head.shippable?("LocalBusiness", 0.6)
+    end
+  end
+
   test "shipped weights produce a valid prediction for a unit embedding" do
     head = Head.load()
     emb = List.duplicate(0.0, 383) |> List.insert_at(0, 1.0)

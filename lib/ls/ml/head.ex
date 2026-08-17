@@ -62,4 +62,26 @@ defmodule LS.ML.Head do
     e = Nx.exp(Nx.subtract(t, Nx.reduce_max(t)))
     Nx.divide(e, Nx.sum(e))
   end
+
+  # Golden v3 (2026-08-18, 356 fresh rows) measured per-class precision of
+  # head-emitted labels. Two classes are structurally untrustworthy from
+  # embeddings alone: Government (31-50% — the real ones are caught by the
+  # deterministic .gov/.mil TLD rule, so head-Government on other TLDs is
+  # mostly municipal-adjacent commercial sites) and FinancialInstitution
+  # (29-38% — fires on anything finance-flavored: RE investment firms,
+  # credit-fund advisors). Marketplace/Newsletter/Community stay blocked, as
+  # in v1 (0-50% at every threshold, tiny support). Media needs 0.8.
+  # Effect on golden v3: shipped-ML precision 60% -> 83% at 29% coverage.
+  @never_emit ~w(Government FinancialInstitution Marketplace Newsletter Community)
+  @min_prob %{"Media" => 0.8}
+  @default_min_prob 0.5
+
+  @doc """
+  Should a head prediction be shipped as a business_model? Pure decision
+  rule, calibrated on golden v3 — see the comment above for the measurements.
+  `Junk` is handled by the caller (decline-to-classify), not here.
+  """
+  def shippable?(class, prob) do
+    class not in @never_emit and prob >= Map.get(@min_prob, class, @default_min_prob)
+  end
 end
