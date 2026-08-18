@@ -1,0 +1,10 @@
+chsvb.org | teacher_guess: Education, $10M-$100M, 51-200
+ciaaisantaadelaide.com.br | teacher_guess: Manufacturer, $10M-$100M, 51-200
+cide.edu | teacher_guess: Education, $10M-$100M, 201-1000
+cloudredawning.com | teacher_guess: Marketplace, $10M-$100M, 51-200
+cmplatam.com | teacher_guess: LocalBusiness, $10M-$100M, 51-200
+cmuportugal.org | teacher_guess: Education, $10M-$100M, 51-200
+commentmag.org | teacher_guess: Nonprofit, $10M-$100M, 51-200
+consumers.bank | teacher_guess: FinancialInstitution, $10M-$100M, 201-1000
+convexityos.com | teacher_guess: SaaS, $10M-$100M, 11-50
+coralwealthpath.com | teacher_guess: SaaS, $10M-$100M, 11-50

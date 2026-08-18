@@ -1,0 +1,10 @@
+btc.edu | teacher_guess: Education, $10M-$100M, 201-1000
+cable-star.com | teacher_guess: Manufacturer, $10M-$100M, 51-200
+capcompaspart.com | teacher_guess: Consulting, $10M-$100M, 51-200
+cathtip.com | teacher_guess: Manufacturer, $10M-$100M, 51-200
+ccpartners.com | teacher_guess: LocalBusiness, $10M-$100M, 51-200
+chabrillan.com | teacher_guess: Education, $10M-$100M, 201-1000
+changzemetal.com | teacher_guess: Manufacturer, $10M-$100M, 51-200
+chatoyer.com.au | teacher_guess: Manufacturer, $10M-$100M, 51-200
+chattanoogacollege.edu | teacher_guess: Education, $10M-$100M, 51-200
+chelseapalacecasino.co.uk | teacher_guess: SaaS, $10M-$100M, 51-200

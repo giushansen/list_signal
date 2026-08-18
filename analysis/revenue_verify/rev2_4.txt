@@ -1,0 +1,10 @@
+covercircle.com | teacher_guess: SaaS, $10M-$100M, 51-200
+dgaact.org | teacher_guess: Nonprofit, $10M-$100M, 11-50
+eaglemetal.com | teacher_guess: Manufacturer, $10M-$100M, 51-200
+eiki-corp.com | teacher_guess: LocalBusiness, $10M-$100M, 201-1000
+emstech.com | teacher_guess: Manufacturer, $10M-$100M, 51-200
+epconline.net | teacher_guess: Agency, $10M-$100M, 51-200
+erinindustries.com | teacher_guess: Manufacturer, $10M-$100M, 51-200
+estore.cy | teacher_guess: SaaS, $10M-$100M, 11-50
+famoustoyseast.com | teacher_guess: Ecommerce, $10M-$100M, 51-200
+fisk.edu | teacher_guess: Education, $10M-$100M, 51-200

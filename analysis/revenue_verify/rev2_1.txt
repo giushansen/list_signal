@@ -1,0 +1,10 @@
+ategracapital.com | teacher_guess: FinancialInstitution, $10M-$100M, 1-10
+avedafi.edu | teacher_guess: Education, $10M-$100M, 51-200
+badenbaden-spielbank.de | teacher_guess: Media, $10M-$100M, 51-200
+bavaria-fiction.de | teacher_guess: Media, $10M-$100M, 51-200
+bluemarbletrade.com | teacher_guess: LocalBusiness, $10M-$100M, 11-50
+bluffton.edu | teacher_guess: Education, $10M-$100M, 201-1000
+bmc.edu | teacher_guess: Education, $10M-$100M, 51-200
+boltbackup.com | teacher_guess: SaaS, $10M-$100M, 51-200
+brightwaygatewayagency.com | teacher_guess: Agency, $10M-$100M, 51-200
+brokencurve.com | teacher_guess: Marketplace, $10M-$100M, 51-200

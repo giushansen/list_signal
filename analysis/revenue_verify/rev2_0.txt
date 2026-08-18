@@ -1,0 +1,10 @@
+abodehotels.co.uk | teacher_guess: LocalBusiness, $10M-$100M, 201-1000
+advance-trs.com | teacher_guess: Agency, $10M-$100M, 51-200
+agneskconseil.com | teacher_guess: LocalBusiness, $10M-$100M, 51-200
+aiprotection.org | teacher_guess: SaaS, $10M-$100M, 51-200
+alumind.com.au | teacher_guess: Manufacturer, $10M-$100M, 51-200
+amatravel.ca | teacher_guess: Marketplace, $10M-$100M, 201-1000
+ammareal.fr | teacher_guess: Ecommerce, $10M-$100M, 51-200
+amtexinsurance.com | teacher_guess: FinancialInstitution, $10M-$100M, 51-200
+aquadorboats.fi | teacher_guess: Manufacturer, $10M-$100M, 51-200
+arkimentum.dk | teacher_guess: Consulting, $10M-$100M, 51-200
