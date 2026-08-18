@@ -36,3 +36,29 @@ contain ZERO verified $100M+ rows. Verified truth is the only unlock.
 2. Only THEN consider retraining revenue estimation, with golden v3 as the
    untouched eval. Ship nothing that does not beat the estimator's 83.9%
    exact / 92.9% within-one on the same rows.
+
+## Outcome (executed 2026-08-18, Fable 5 + 11 Sonnet agents)
+
+Budget: 153 WebSearch calls (47 held in reserve) + 282 WebFetch. Every call
+is logged, dated, in `results/*_searches.jsonl`; every domain's verdict with
+evidence in `results/*.jsonl` (one line per domain, `verified_at`). Reuse the
+logs before searching any of these 170 domains again.
+
+- **Training (50 rows, all teacher-guessed $10M-$100M):** 27 verified
+  (18 with a revenue bracket): $100M-$1B ×3, $10M-$100M ×7, $1M-$10M ×6,
+  <$1M ×2; employees 1-10 ×5, 11-50 ×6, 51-200 ×8, 201-1000 ×4, 1000+ ×1.
+  Only 7/18 of the teacher's "$10M-$100M" guesses held — the teacher
+  over-guesses the mid bracket. Persisted to `ls.ml_teacher_labels` as
+  teacher='web_verify', verified=1, dataset='distill_v2_2026-08-17'
+  (a distinct `teacher` so the ReplacingMergeTree key never replaces the
+  haiku/sonnet rows). Unknown brackets are stored as '' — never 'unknown'.
+- **Golden gaps (120 rows):** 49 verified; 30 got `true_revenue`
+  (<$1M ×20, $1M-$10M ×3, $10M-$100M ×7), 19 employees-only (recorded in
+  `notes`, `true_revenue` left blank), 71 unverified. Second-pass review
+  removed 5 revenue claims the agents had accepted: parent-company
+  revenue on a brand domain (instyle.com), a ZoomInfo estimate for a
+  government agency (lslga.org), estimates straddling a bracket boundary
+  (360realtors.com, paramountconductors.com) and a 14-year-old 990
+  (portlandrescuemission.org). Golden v3 now has 306 revenue truths.
+- Not filled on purpose: the estimator's numbers were NOT re-run in this
+  change (label-only commit; see docs/data-quality.md rule 1).
