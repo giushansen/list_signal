@@ -155,7 +155,8 @@ defmodule LS.UICache do
   # a slow page is always better than a hung one.
   defp await(full_key, fun, waited \\ 0)
 
-  defp await(full_key, fun, waited) when waited >= 10_000 do
+  # Absolute ceiling so a wedged key cannot hang a request forever.
+  defp await(full_key, fun, waited) when waited >= 60_000 do
     Logger.warning("[UICache] waited #{waited}ms for #{inspect(full_key)}, computing directly")
     fun.()
   end
@@ -168,11 +169,24 @@ defmodule LS.UICache do
         value
 
       :miss ->
-        if :ets.member(@inflight, full_key) do
-          await(full_key, fun, waited + 25)
-        else
-          # The computer finished without storing (an error result) or died.
-          fun.()
+        # Wait as long as the COMPUTER IS ALIVE, not a fixed deadline. A fixed
+        # 10s gave up on assemblies that legitimately take 14s cold, so every
+        # waiter stampeded exactly when the herd was largest — the 2026-08-19
+        # load test showed 150 timeouts on one cold /tech page for this
+        # reason. Liveness is the correct condition: if the computer died the
+        # claim is stale and we must compute; if it is working we must wait.
+        case :ets.lookup(@inflight, full_key) do
+          [{^full_key, pid}] ->
+            if Process.alive?(pid) do
+              await(full_key, fun, waited + 25)
+            else
+              :ets.delete(@inflight, full_key)
+              fun.()
+            end
+
+          [] ->
+            # Finished without storing (an error result) — compute our own.
+            fun.()
         end
     end
   end

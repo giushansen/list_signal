@@ -1,79 +1,102 @@
 defmodule LSWeb.Plugs.OverloadGuard do
   @moduledoc """
-  Sheds load instead of letting the VM die.
+  Sheds load when the VM is actually running out of memory.
 
-  Bounds **requests in flight**, which is what actually consumes heap. Socket
-  limits do not: a connection costs almost nothing until it becomes a request
-  that assembles a page.
+  ## Why memory and not a request counter
 
-  On 2026-08-19 a 300-concurrent burst drove the BEAM from 0.8G to 6.3G, past
-  its cgroup limit; with swap forbidden the kernel stalled the whole VM and
-  the watchdog restarted it. Every request in flight was lost. Rejecting the
-  excess with a 503 and `retry-after` costs a few visitors a retry; accepting
-  it costs everyone the site.
+  The first version counted requests in flight and decremented in
+  `register_before_send`. That decrement does not run when a request times out
+  or its process dies — so on 2026-08-19 a burst of timeouts leaked the
+  counter above its ceiling and the site returned 503 to **every** visitor
+  until it was restarted. A guard that can fail closed permanently is worse
+  than no guard: it converts a transient spike into an indefinite outage.
 
-  Static assets and health probes bypass the guard — they are cheap, and a
-  probe that gets shed would make the watchdog restart a merely-busy app.
+  Memory has no such failure mode. It is observed, not accounted: if usage
+  falls, shedding stops by itself. There is no state to leak, nothing to
+  reconcile, and a stuck sampler fails OPEN (see `over_threshold?/0`).
+
+  ## What it protects against
+
+  The BEAM growing past its cgroup limit. With swap forbidden, crossing that
+  limit leaves the kernel only one lever — stall the whole VM — and the
+  watchdog then restarts it, dropping every request in flight. Shedding the
+  marginal request keeps the rest of the site serving.
   """
   import Plug.Conn
   require Logger
 
-  @counter :ls_inflight_requests
+  @key {__MODULE__, :memory_state}
 
-  # Comfortably above real demand: cached pages serve ~120/s and finish in
-  # milliseconds, so 150 simultaneously in flight already implies something
-  # pathological. Each in-flight page assembly can hold ~10-20MB, so this
-  # bounds request memory near 2-3G — inside the 8G soft limit with room for
-  # ETS and the reference tables.
-  @max_inflight 150
+  # Shed above this fraction of the cgroup soft limit. 0.80 of 6G is ~4.9G,
+  # comfortably above the ~2.2G steady state and below the 6.3G excursion that
+  # caused the outage, so normal traffic never sees a 503.
+  @shed_ratio 0.80
 
-  def init(opts), do: Keyword.get(opts, :max_inflight, @max_inflight)
+  def init(opts), do: opts
 
-  def call(conn, max) do
-    if bypass?(conn) do
+  def call(conn, _opts) do
+    if bypass?(conn) or not over_threshold?() do
       conn
     else
-      guard(conn, max)
-    end
-  end
-
-  defp guard(conn, max) do
-    current = :counters.get(counter(), 1)
-
-    if current >= max do
-      Logger.warning("[OVERLOAD] shed #{conn.request_path} — #{current} in flight (max #{max})")
+      Logger.warning("[OVERLOAD] shed #{conn.request_path} — #{div(current_bytes(), 1_048_576)}MB in use")
 
       conn
       |> put_resp_header("retry-after", "2")
       |> put_resp_content_type("text/plain")
       |> send_resp(503, "Busy — please retry in a moment.")
       |> halt()
-    else
-      :counters.add(counter(), 1, 1)
-      register_before_send(conn, fn c -> :counters.sub(counter(), 1, 1); c end)
     end
   end
 
-  # Cheap paths that must never be shed.
+  @doc """
+  True when the VM is above the shed threshold.
+
+  Fails OPEN: if the sampler has not published a reading, or the reading is
+  stale, requests are served. A monitoring failure must never take the site
+  down — that is the mistake this module exists to correct.
+  """
+  def over_threshold? do
+    case :persistent_term.get(@key, nil) do
+      {bytes, limit, sampled_at} ->
+        fresh? = System.monotonic_time(:second) - sampled_at < 10
+        fresh? and limit > 0 and bytes > limit * @shed_ratio
+
+      _ ->
+        false
+    end
+  end
+
+  @doc "Latest sampled usage in bytes (0 if never sampled)."
+  def current_bytes do
+    case :persistent_term.get(@key, nil) do
+      {bytes, _limit, _at} -> bytes
+      _ -> 0
+    end
+  end
+
+  @doc "The limit shedding is measured against, in bytes."
+  def limit_bytes do
+    case :persistent_term.get(@key, nil) do
+      {_bytes, limit, _at} -> limit
+      _ -> 0
+    end
+  end
+
+  @doc false
+  def publish(bytes, limit) do
+    :persistent_term.put(@key, {bytes, limit, System.monotonic_time(:second)})
+  end
+
+  @doc "Fraction of the limit currently used, for the admin dashboard."
+  def utilisation do
+    l = limit_bytes()
+    if l > 0, do: current_bytes() / l, else: 0.0
+  end
+
+  def shed_ratio, do: @shed_ratio
+
+  # Cheap paths that must never be shed: assets are nearly free, and shedding
+  # the health probe would make the watchdog restart a merely-busy app.
   defp bypass?(%{request_path: "/health"}), do: true
-  defp bypass?(%{request_path: "/pricing"}), do: false
   defp bypass?(%{request_path: path}), do: String.starts_with?(path, "/assets/")
-
-  @doc "Requests currently in flight — for the admin dashboard."
-  def in_flight, do: :counters.get(counter(), 1)
-
-  @doc "Configured ceiling."
-  def max_in_flight, do: @max_inflight
-
-  defp counter do
-    case :persistent_term.get(@counter, nil) do
-      nil ->
-        ref = :counters.new(1, [:write_concurrency])
-        :persistent_term.put(@counter, ref)
-        ref
-
-      ref ->
-        ref
-    end
-  end
 end

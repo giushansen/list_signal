@@ -82,6 +82,9 @@ defmodule LS.Application do
       {Phoenix.PubSub, name: LS.PubSub},
       LS.Cache,
       LS.UICache,
+      # Feeds LSWeb.Plugs.OverloadGuard. Must start before the endpoint so the
+      # guard has a reading; until it does, the guard fails open and serves.
+      LS.MemorySampler,
       # Dedicated HTTP pools. Both 2026-08-03 outages trace to one cause:
       # every ClickHouse call AND the CT poller shared Req's default Finch
       # pool, so a heavy compaction holding connections while inserts churned

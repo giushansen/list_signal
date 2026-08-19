@@ -1,51 +1,101 @@
 defmodule LSWeb.Plugs.OverloadGuardTest do
   @moduledoc """
-  The guard is the last line between a traffic spike and an outage.
+  The guard's own failure modes matter more than its success case.
 
-  2026-08-19: a 300-concurrent burst grew the BEAM from 0.8G to 6.3G, crossed
-  its cgroup limit, and the kernel stalled the VM — every in-flight request
-  lost. Shedding the excess costs a few visitors a retry instead.
+  v1 counted requests in flight and decremented in register_before_send. That
+  decrement does not run when a request times out, so on 2026-08-19 a burst of
+  timeouts leaked the counter past its ceiling and the site returned 503 to
+  EVERY visitor until restarted — a transient spike turned into an indefinite
+  outage by the very thing meant to prevent one.
+
+  So the properties under test are: it must fail OPEN, it must be
+  self-correcting, and it must not shed under normal memory.
   """
   use LSWeb.ConnCase, async: false
 
   alias LSWeb.Plugs.OverloadGuard
 
-  test "requests pass through under the ceiling and the counter unwinds" do
-    before = OverloadGuard.in_flight()
+  @key {OverloadGuard, :memory_state}
 
-    conn = get(build_conn(), "/pricing")
-    assert conn.status == 200
-
-    assert OverloadGuard.in_flight() == before,
-           "in-flight count must return to baseline or the guard leaks toward permanent 503s"
+  setup do
+    saved = :persistent_term.get(@key, nil)
+    on_exit(fn -> if saved, do: :persistent_term.put(@key, saved), else: :persistent_term.erase(@key) end)
+    :ok
   end
 
-  test "over the ceiling it sheds with 503 and retry-after" do
-    conn =
-      build_conn()
-      |> Map.put(:request_path, "/tech/klaviyo")
-      |> OverloadGuard.call(0)
-
-    assert conn.status == 503
-    assert conn.halted, "a shed request must not reach the router"
-    assert get_resp_header(conn, "retry-after") == ["2"]
+  defp publish(bytes, limit, age_s \\ 0) do
+    :persistent_term.put(@key, {bytes, limit, System.monotonic_time(:second) - age_s})
   end
 
-  test "assets are never shed" do
-    # Static files are cheap; shedding them breaks the page for users who did
-    # get through, for no memory saving.
-    conn =
-      build_conn()
-      |> Map.put(:request_path, "/assets/app.css")
-      |> OverloadGuard.call(0)
+  describe "failing open (the v1 catastrophe)" do
+    test "no reading at all means serve, never shed" do
+      :persistent_term.erase(@key)
+      refute OverloadGuard.over_threshold?()
+    end
 
-    refute conn.halted
+    test "a stale reading means serve — a dead sampler must not take the site down" do
+      # v1's equivalent state (a leaked counter) shed everything forever.
+      publish(100 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024, 120)
+
+      refute OverloadGuard.over_threshold?(),
+             "a stale reading must fail open; monitoring failure must not become an outage"
+    end
+
+    test "a zero limit means serve" do
+      publish(5_000_000_000, 0)
+      refute OverloadGuard.over_threshold?()
+    end
   end
 
-  test "the ceiling bounds request memory inside the BEAM's limit" do
-    # 150 in flight x ~10-20MB per page assembly is ~2-3G, inside the 8G soft
-    # limit with room for ETS and the Tranco/Majestic tables.
-    assert OverloadGuard.max_in_flight() <= 200,
-           "a ceiling above ~200 stops bounding memory usefully"
+  describe "self-correction (why memory, not a counter)" do
+    test "shedding stops on its own once memory falls" do
+      limit = 8 * 1024 * 1024 * 1024
+
+      publish(round(limit * 0.95), limit)
+      assert OverloadGuard.over_threshold?()
+
+      # No reconciliation, no decrement, no bookkeeping: the next sample alone
+      # ends the shedding. This is the property the counter version lacked.
+      publish(round(limit * 0.30), limit)
+      refute OverloadGuard.over_threshold?()
+    end
+  end
+
+  describe "behaviour" do
+    test "normal memory serves requests" do
+      limit = 8 * 1024 * 1024 * 1024
+      publish(round(limit * 0.28), limit)
+
+      conn = get(build_conn(), "/pricing")
+      assert conn.status == 200
+    end
+
+    test "over threshold sheds with 503 and retry-after" do
+      limit = 8 * 1024 * 1024 * 1024
+      publish(round(limit * 0.95), limit)
+
+      conn = OverloadGuard.call(Map.put(build_conn(), :request_path, "/tech/klaviyo"), [])
+
+      assert conn.status == 503
+      assert conn.halted
+      assert get_resp_header(conn, "retry-after") == ["2"]
+    end
+
+    test "assets and health are never shed" do
+      limit = 8 * 1024 * 1024 * 1024
+      publish(round(limit * 0.99), limit)
+
+      for path <- ["/assets/app.css", "/health"] do
+        conn = OverloadGuard.call(Map.put(build_conn(), :request_path, path), [])
+        refute conn.halted, "#{path} must never be shed"
+      end
+    end
+
+    test "the threshold leaves headroom above steady state" do
+      # Steady state is ~2.2G of a 6G limit (~37%). Shedding at 80% means
+      # normal traffic never sees a 503, but the 6.3G excursion that caused
+      # the outage would be caught.
+      assert OverloadGuard.shed_ratio() >= 0.7 and OverloadGuard.shed_ratio() <= 0.9
+    end
   end
 end
