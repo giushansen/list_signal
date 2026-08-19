@@ -121,6 +121,11 @@ defmodule LS.Application do
       # discovery + enrichment into the `businesses` product table every 5 min.
       LS.Cluster.EnrichmentQueue,
       LS.Cluster.Compactor,
+      # Pipeline 3 (verification): authoritative sources → verified_facts.
+      # Runs on the master only — bulk downloads against official endpoints
+      # from one polite client, never spread across the fleet.
+      {Task.Supervisor, name: LS.Verification.TaskSupervisor},
+      LS.Verification.Scheduler,
       LSWeb.Endpoint
     ]
     if mode == "ctl_live", do: master ++ [LS.CTL.PlatformRegistry, LS.CTL.Poller],

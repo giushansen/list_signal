@@ -239,4 +239,93 @@ defmodule LS.DataContractTest do
     end
   end
 
+  describe "verification (pipeline 3) contract" do
+    # Skipped when the verification tables are not there yet (a ClickHouse
+    # older than migration 011), so the rest of the suite still runs.
+    defp with_verification(body) do
+      with_clickhouse(fn ->
+        case Clickhouse.query_raw("EXISTS TABLE verified_facts") do
+          {:ok, [[1]]} -> body.()
+          _ -> IO.puts("\n[data contract] verification tables absent — skipped")
+        end
+      end)
+    end
+
+    defp count(sql) do
+      {:ok, [[n]]} = Clickhouse.query_raw(sql, 120_000)
+      if is_binary(n), do: String.to_integer(n), else: n
+    end
+
+    test "neither match tier ever links a domain that is not in domains_current" do
+      # The whole point of "website → exact join" and "name + country → unique
+      # match": a verified fact must land on a domain we hold. A fact on a
+      # domain we do not have would be an invented row in the product.
+      # Sampled and index-friendly on purpose: `NOT IN (SELECT domain FROM
+      # domains_current)` materialises a 143M-row set and would blow the
+      # shared master's ClickHouse cap; a `domain IN (list)` is a key read.
+      with_verification(fn ->
+        for {table, col} <- [{"verified_facts", "domain"}, {"verified_source_records", "matched_domain"}] do
+          {:ok, rows} = Clickhouse.query_raw("SELECT DISTINCT #{col} FROM #{table} WHERE #{col} != '' ORDER BY cityHash64(#{col}) LIMIT 5000", 120_000)
+          linked = Enum.map(rows, &hd/1)
+
+          if linked != [] do
+            list = Enum.map_join(linked, ",", &"'#{Clickhouse.escape_public(&1)}'")
+            found = count("SELECT uniqExact(domain) FROM domains_current WHERE domain IN (#{list})")
+            assert found == length(linked), "#{table}.#{col}: #{length(linked) - found} of #{length(linked)} sampled links point outside domains_current"
+          end
+        end
+      end)
+    end
+
+    test "every match carries a method, and only the two allowed ones" do
+      with_verification(fn ->
+        assert count("SELECT count() FROM verified_facts WHERE match_method NOT IN ('website', 'name_country')") == 0
+        assert count("SELECT count() FROM verified_source_records WHERE (matched_domain = '') != (match_method = '')") == 0
+      end)
+    end
+
+    test "the name tier is unique on both sides — one source record ↔ one domain" do
+      with_verification(fn ->
+        assert count("""
+               SELECT count() FROM (
+                 SELECT source, name_key, country, uniqExact(matched_domain) AS d
+                 FROM verified_source_records FINAL WHERE match_method = 'name_country'
+                 GROUP BY source, name_key, country HAVING d > 1)
+               """) == 0
+      end)
+    end
+
+    test "verified_* in businesses use exactly the estimator's bracket labels (or '')" do
+      # Filters and the explorer offer Estimator.revenue_labels(); a verified
+      # value outside that vocabulary would render but never be filterable —
+      # the same class of bug as the "$10M-$50M" option that matched 0 rows.
+      with_verification(fn ->
+        rev = value_counts("SELECT verified_revenue AS v, count() FROM businesses WHERE verified_revenue != '' GROUP BY v")
+        for {v, _} <- rev, do: assert(v in Estimator.revenue_labels(), "verified_revenue #{inspect(v)} is not a filterable bracket")
+        emp = value_counts("SELECT verified_employees AS v, count() FROM businesses WHERE verified_employees != '' GROUP BY v")
+        for {v, _} <- emp, do: assert(v in Estimator.employee_labels(), "verified_employees #{inspect(v)} is not a filterable bracket")
+      end)
+    end
+
+    test "verified_* never blanks estimated_* (new columns only)" do
+      with_verification(fn ->
+        # No row may hold a verified value while the estimate that history
+        # carried for it has vanished — that would mean pipeline 3 wrote over
+        # (or the compactor dropped) a column it does not own.
+        assert count("""
+               SELECT count() FROM businesses b
+               WHERE b.verified_revenue != '' AND b.estimated_revenue = ''
+                 AND b.domain IN (SELECT domain FROM domains_history WHERE estimated_revenue != '')
+               """) == 0
+      end)
+    end
+
+    test "sources in verified_facts are the ones precedence knows about" do
+      with_verification(fn ->
+        known = LS.Verification.revenue_precedence() ++ LS.Verification.employees_precedence()
+        srcs = value_counts("SELECT source AS v, count() FROM verified_facts GROUP BY v")
+        for {src, _} <- srcs, do: assert(src in known, "unknown verified_facts source #{inspect(src)} — precedence would rank it last")
+      end)
+    end
+  end
 end

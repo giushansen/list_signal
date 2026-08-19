@@ -167,5 +167,21 @@ defmodule LS.Tools.Lookup do
       revenue_confidence: at.(:revenue_confidence),
       revenue_evidence: at.(:revenue_evidence) || ""
     }
+    |> with_verified(domain)
+  end
+
+  # Pipeline 3 overlay: `revenue`/`employees` are what a reader should show
+  # (verified when we have it, else the estimate); estimated_* stay as-is.
+  defp with_verified(resp, domain) do
+    v = LS.Clickhouse.verified_for(domain)
+    rev = if v[:revenue] not in [nil, ""], do: v[:revenue], else: resp.estimated_revenue
+    emp = if v[:employees] not in [nil, ""], do: v[:employees], else: resp.estimated_employees
+
+    Map.merge(resp, %{
+      revenue: rev,
+      employees: emp,
+      revenue_verified_source: v[:revenue_source] || "",
+      employees_verified_source: v[:employees_source] || ""
+    })
   end
 end

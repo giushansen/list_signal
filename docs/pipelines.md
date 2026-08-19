@@ -123,3 +123,40 @@ pages per domain.
 
 Both `/products.json` and the ATS boards are **public JSON APIs** — no browser
 needed, so the expensive part of pipeline 2 is small.
+
+## Pipeline 3 — Verification (2026-08-18)
+
+The first two pipelines *observe* a business; the third *proves* parts of
+it from sources that carry legal weight or curated data:
+
+| source | facts | how it links to our domain |
+|---|---|---|
+| Wikidata (SPARQL) | revenue, employees, industry, inception, HQ | official website (P856) → exact domain |
+| SEC EDGAR bulk (`companyfacts.zip` + `submissions.zip`) | latest fiscal-year revenue, filer name/SIC | `website` in submissions; name + US fallback |
+| Companies House bulk (register snapshot + monthly iXBRL accounts) | turnover, average employees, SIC, incorporation | name + GB (no website in the register) |
+| Sirene stock + INPI ratios (data.gouv.fr) | employee band, chiffre d'affaires | name + FR |
+| YC directory (public Algolia index) | team size, batch, one-liner | website → exact domain |
+
+Same discipline as pipelines 1 and 2, plus three rules of its own:
+
+1. **It runs on one node**, the master, as one polite client with our
+   User-Agent (`ListSignal/1.0 <contact>`), ≥ 1 s between requests per host.
+   These are official endpoints: spreading them over the fleet would look
+   like ban evasion and buys nothing (bulk files are single downloads).
+2. **It never guesses a link.** Website URL → registrable domain → exact row
+   in `domains_current`; or normalised legal name + country → exactly one
+   label in `businesses` AND exactly one record with that key in the source.
+   Ambiguity = skip. `match_method` is stored on every fact.
+3. **It writes only its own tables and NEW columns.** `verified_facts`,
+   `verified_source_records`, `verification_runs`, and the compactor fills
+   `businesses.verified_revenue/_source`, `verified_employees/_source`,
+   `mission_summary`. `estimated_*` is untouched; the data-contract suite
+   asserts a verified value never coincides with a blanked estimate, that
+   every linked domain exists in `domains_current`, and that verified
+   brackets are the estimator's vocabulary (so filters keep working).
+
+Everything pulled is **persisted and dated**: the run log records URL,
+snapshot, bytes, records and matches per tier; every parsed record — matched
+or not — sits in `verified_source_records`, so nobody re-downloads a 2 GB
+archive to answer "what does Companies House say about X", and a future
+LLM-assisted linker can work over the unmatched rows offline.

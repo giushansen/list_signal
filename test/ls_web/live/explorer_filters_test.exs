@@ -61,24 +61,31 @@ defmodule LSWeb.ExplorerFiltersTest do
 
   end
 
+  # Since pipeline 3 (2026-08-18) the revenue/employees filters match the
+  # value the reader SEES: `verified_*` when an authoritative source filled it,
+  # else `estimated_*`. Filtering on the estimate alone would hide a company
+  # whose 10-K moved it out of the estimated bracket.
+  @rev Explorer.shown_revenue_sql()
+  @emp Explorer.shown_employees_sql()
+
   describe "the SQL those options produce" do
-    test "a revenue option becomes an equality on estimated_revenue" do
+    test "a revenue option becomes an equality on the shown revenue (verified else estimated)" do
       for label <- Estimator.revenue_labels() do
         sql = Explorer.where_sql(revenue: label)
-        assert sql == "WHERE estimated_revenue = '#{label}'"
+        assert sql == "WHERE #{@rev} = '#{label}'"
       end
     end
 
-    test "an employees option becomes an equality on estimated_employees" do
+    test "an employees option becomes an equality on the shown employees" do
       for label <- Estimator.employee_labels() do
         sql = Explorer.where_sql(employees: label)
-        assert sql == "WHERE estimated_employees = '#{label}'"
+        assert sql == "WHERE #{@emp} = '#{label}'"
       end
     end
 
     test "multi-select becomes an IN list" do
       sql = Explorer.where_sql(revenue: "<$1M,$1B+")
-      assert sql == "WHERE estimated_revenue IN ('<$1M','$1B+')"
+      assert sql == "WHERE #{@rev} IN ('<$1M','$1B+')"
     end
 
     test "empty filters produce no WHERE clause" do
@@ -93,14 +100,14 @@ defmodule LSWeb.ExplorerFiltersTest do
     test "multiple filters are ANDed" do
       sql = Explorer.where_sql(revenue: "$1M-$10M", employees: "11-50")
 
-      assert sql =~ "estimated_revenue = '$1M-$10M'"
-      assert sql =~ "estimated_employees = '11-50'"
+      assert sql =~ "#{@rev} = '$1M-$10M'"
+      assert sql =~ "#{@emp} = '11-50'"
       assert sql =~ " AND "
     end
 
     test "single quotes in a filter value cannot break out of the literal" do
       assert Explorer.where_sql(revenue: "' OR 1=1 --") ==
-               ~S|WHERE estimated_revenue = '\' OR 1=1 --'|
+               "WHERE #{@rev} = " <> ~S|'\' OR 1=1 --'|
     end
   end
 

@@ -4,7 +4,7 @@ Domain intelligence platform. Ingests SSL certificates in real-time, enriches do
 
 No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's it.
 
-## Two pipelines
+## Three pipelines
 
 ```
 CT logs ─► DISCOVERY (10 VPS, fast peek) ─► domains_history ─► domains_current
@@ -25,6 +25,13 @@ CT logs ─► DISCOVERY (10 VPS, fast peek) ─► domains_history ─► domai
 **Discovery** is breadth: millions of domains, 5s timeout, homepage only.
 **Enrichment** is depth: the pages that make a record sellable — emails, plans,
 open roles, catalog size, SEO score.
+**Verification** (pipeline 3, master only) is proof: Wikidata, SEC EDGAR,
+Companies House, Sirene/INPI and the YC directory are ingested keylessly over
+plain HTTP, linked to domains we hold by exact website or unique name+country,
+and folded into `businesses.verified_*` (revenue, employees, mission) with
+per-fact source precedence. Readers show verified values over estimates.
+`LS.Verification.run(:wikidata)` runs one source by hand;
+`LS.Verification.match_report()` reports match rates per source and tier.
 
 They write to *different tables*, which is what makes it impossible for one to
 blank the other's data. Full explanation and drawings:

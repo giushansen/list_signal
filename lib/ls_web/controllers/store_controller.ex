@@ -225,6 +225,15 @@ defmodule LSWeb.StoreController do
           else: {"<$1M", "1-10", 0.0}
       end
 
+    # Pipeline 3: a verified figure (10-K, registry filing, Wikidata) beats
+    # the estimate for what we SHOW; estimated_* stays as computed for the
+    # similar-stores lookup and the confidence line.
+    verified = LS.Clickhouse.verified_for(domain)
+    {shown_revenue, revenue_verified_source} =
+      if verified[:revenue] not in [nil, ""], do: {verified[:revenue], verified[:revenue_source]}, else: {est_revenue, nil}
+    {shown_employees, employees_verified_source} =
+      if verified[:employees] not in [nil, ""], do: {verified[:employees], verified[:employees_source]}, else: {est_employees, nil}
+
     live_class =
       if s.(:business_model) == "" do
         LS.HTTP.BusinessClassifier.classify(%{
@@ -308,6 +317,10 @@ defmodule LSWeb.StoreController do
       industry: (if live_class && live_class.industry != "", do: live_class.industry, else: s.(:industry)),
       estimated_revenue: est_revenue,
       estimated_employees: est_employees,
+      revenue: shown_revenue,
+      employees: shown_employees,
+      revenue_verified_source: revenue_verified_source,
+      employees_verified_source: employees_verified_source,
       revenue_confidence: rev_conf,
       revenue_evidence: s.(:revenue_evidence),
       tld: tld,

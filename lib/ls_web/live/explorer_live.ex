@@ -1056,8 +1056,8 @@ defmodule LSWeb.ExplorerLive do
                         <td class="px-3 py-2.5 truncate text-gray-300"><%= country_flag(row["inferred_country"]) %> <%= row["inferred_country"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["business_model"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["industry"] %></td>
-                        <td class="px-3 py-2.5 truncate text-gray-300"><%= row["estimated_revenue"] %></td>
-                        <td class="px-3 py-2.5 truncate text-gray-400"><%= row["estimated_employees"] %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-300" title={verified_title(row, "revenue")}><%= LS.Verification.display(row, :revenue) %><%= if LS.Verification.verified?(row, :revenue), do: " ✓" %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-400" title={verified_title(row, "employees")}><%= LS.Verification.display(row, :employees) %><%= if LS.Verification.verified?(row, :employees), do: " ✓" %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["http_language"] %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_num(row["product_count"]) %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_money(row["price_avg"]) %></td>
@@ -1136,8 +1136,8 @@ defmodule LSWeb.ExplorerLive do
 
                   <%!-- Revenue: Revenue + Employees + Confidence on one line --%>
                   <div class="grid grid-cols-3 gap-2.5">
-                    <.detail_card icon="💰" label="Revenue" value={@detail["estimated_revenue"]} />
-                    <.detail_card icon="👥" label="Employees" value={@detail["estimated_employees"]} />
+                    <.detail_card icon="💰" label={if LS.Verification.verified?(@detail, :revenue), do: "Revenue ✓ #{@detail["verified_revenue_source"]}", else: "Revenue"} value={LS.Verification.display(@detail, :revenue)} />
+                    <.detail_card icon="👥" label={if LS.Verification.verified?(@detail, :employees), do: "Employees ✓ #{@detail["verified_employees_source"]}", else: "Employees"} value={LS.Verification.display(@detail, :employees)} />
                     <.detail_card icon="📊" label="Confidence" value={format_pct(@detail["revenue_confidence"])} />
                   </div>
 
@@ -1841,6 +1841,14 @@ defmodule LSWeb.ExplorerLive do
   # Depth cells: an un-enriched business shows an em dash, never a zero.
   # "0 products" reads as "sells nothing"; "—" reads as "not looked at yet",
   # which is the truth and the difference a buyer cares about.
+  # "✓" cells: hover shows which authoritative source verified the value.
+  defp verified_title(row, field) do
+    case row["verified_#{field}_source"] do
+      s when s in [nil, ""] -> "estimated"
+      s -> "verified via #{s}"
+    end
+  end
+
   defp depth_num(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
   defp depth_num(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
 

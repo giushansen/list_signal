@@ -199,6 +199,17 @@ What it taught us, and what shipped from it:
   was NOT shipped. Next real lever: web-verified high-bracket truth
   (needs a fresh session's search budget), and estimator coverage on the
   rows where it currently predicts nothing.
+- **Verified truth, two ways (2026-08-18).** (a) The web-verification
+  handoff (`analysis/revenue_verify/`) added 30 evidence-backed revenue
+  truths to golden v3 (306 total) and 27 verified training rows to
+  `ls.ml_teacher_labels` (teacher=`web_verify`, incl. the first three
+  $100M-$1B training rows) — every search logged and dated under
+  `results/`. (b) Pipeline 3 (`LS.Verification`, docs/pipelines.md) now
+  ingests Wikidata, SEC EDGAR, Companies House, Sirene/INPI and YC into
+  `verified_facts` and `businesses.verified_*`. Golden v3 stays the
+  untouched judge: whether verified facts let a revenue model or a revised
+  estimator beat the heuristic's 83.9% / 92.9% is a separate, measured
+  change — nothing here tunes the estimator.
 - Junk from the head is 32/32 at conf≥0.6 on v3 — a future increment could
   let high-confidence head-Junk feed `is_junk`, but only after the
   browser-lane path stops feeding bot-walled giants into the text tier.

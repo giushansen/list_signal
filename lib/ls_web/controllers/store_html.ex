@@ -20,6 +20,15 @@ defmodule LSWeb.StoreHTML do
 
   def format_number(n), do: to_string(n)
 
+  @doc "Human name of a pipeline-3 source, for the 'verified via …' hint."
+  def source_name("sec_edgar"), do: "SEC EDGAR"
+  def source_name("companies_house"), do: "Companies House"
+  def source_name("sirene"), do: "Sirene (INSEE)"
+  def source_name("inpi"), do: "INPI"
+  def source_name("wikidata"), do: "Wikidata"
+  def source_name("yc"), do: "Y Combinator"
+  def source_name(other), do: to_string(other)
+
   @doc "Bronze/Silver/Gold revenue tier for the free page - exact bracket is gated."
   def revenue_tier("<$1M"), do: "🥉 Bronze"
   def revenue_tier("$1M-$10M"), do: "🥈 Silver"

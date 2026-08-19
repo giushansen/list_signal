@@ -40,6 +40,7 @@ defmodule LS.Explorer do
   @columns_raw [
     "domain", "http_title", "http_tech", "http_apps", "business_model", "industry",
     "estimated_revenue", "estimated_employees", "http_language", "as_of AS enriched_at",
+    "verified_revenue", "verified_revenue_source", "verified_employees", "verified_employees_source",
     "tranco_rank", "majestic_rank", "http_response_time",
     "product_count", "price_avg", "job_count", "seo_score", "pricing_points",
     "depth_enriched_at"
@@ -49,6 +50,7 @@ defmodule LS.Explorer do
   @column_names ~w(
     domain http_title http_tech http_apps business_model industry
     estimated_revenue estimated_employees http_language enriched_at
+    verified_revenue verified_revenue_source verified_employees verified_employees_source
     tranco_rank majestic_rank http_response_time
     product_count price_avg job_count seo_score pricing_points
     depth_enriched_at
@@ -59,6 +61,19 @@ defmodule LS.Explorer do
   end
 
   defp column_names, do: @column_names ++ ["inferred_country"]
+
+  # Revenue/employees filters match what the reader SEES: the verified value
+  # when pipeline 3 has one, else the estimate (same bracket vocabulary — the
+  # data-contract suite checks that). Filtering on estimated_* alone would hide
+  # a company whose verified 10-K revenue moved it out of the estimated bracket.
+  @shown_revenue "if(verified_revenue != '', verified_revenue, estimated_revenue)"
+  @shown_employees "if(verified_employees != '', verified_employees, estimated_employees)"
+
+  @doc false
+  def shown_revenue_sql, do: @shown_revenue
+  @doc false
+  def shown_employees_sql, do: @shown_employees
+
 
   # NOTE: no is_malware/is_phishing here. `businesses` excludes flagged domains
   # by construction (the compactor's HAVING drops them), so the columns were
@@ -77,6 +92,7 @@ defmodule LS.Explorer do
     tranco_rank majestic_rank majestic_ref_subnets
     business_model industry classification_confidence
     estimated_revenue estimated_employees revenue_confidence revenue_evidence
+    verified_revenue verified_revenue_source verified_employees verified_employees_source mission_summary
     is_disposable_email
     as_of last_verified_at crawlable dns_alive last_http_status last_http_blocked
   )
@@ -566,14 +582,14 @@ defmodule LS.Explorer do
 
   defp filter_clause({:revenue, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["estimated_revenue = '#{esc(hd(values))}'"],
-    else: ["estimated_revenue IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    if length(values) == 1, do: ["#{@shown_revenue} = '#{esc(hd(values))}'"],
+    else: ["#{@shown_revenue} IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
   defp filter_clause({:employees, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["estimated_employees = '#{esc(hd(values))}'"],
-    else: ["estimated_employees IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    if length(values) == 1, do: ["#{@shown_employees} = '#{esc(hd(values))}'"],
+    else: ["#{@shown_employees} IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
   defp filter_clause({:language, v}) when is_binary(v) and v != "" do

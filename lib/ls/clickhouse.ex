@@ -90,6 +90,24 @@ defmodule LS.Clickhouse do
   end
 
   @doc """
+  Pipeline 3's verified values for one domain from `businesses` (a point read
+  on the primary key). Empty map when nothing is verified — callers fall back
+  to the estimate.
+  """
+  @spec verified_for(String.t()) :: map()
+  def verified_for(domain) do
+    case query("""
+         SELECT verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary
+         FROM businesses WHERE domain = '#{escape(domain)}' ORDER BY as_of DESC LIMIT 1
+         """) do
+      {:ok, [[rev, rev_src, emp, emp_src, mission]]} ->
+        %{revenue: rev, revenue_source: rev_src, employees: emp, employees_source: emp_src, mission_summary: mission}
+
+      _ -> %{}
+    end
+  end
+
+  @doc """
   SEO score (0-100) for the free checker badge.
 
   Stored score first (browser lane); when absent — only ~64% of businesses
@@ -877,6 +895,46 @@ defmodule LS.Clickhouse do
     )
     |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
     |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
+    |> String.replace("FROM verified_facts FINAL\n", "FROM verified_facts FINAL WHERE #{guard}\n")
+  end
+
+  # Pipeline 3's contribution to a `businesses` row: one verified revenue and
+  # one verified employees value per domain, chosen by source PRECEDENCE
+  # (audited filings beat registries beat crowd data), never by recency —
+  # a fresher Wikidata edit must not displace a 10-K. Values arrive as the
+  # normalised strings `verified_facts` stores (USD integer / head-count /
+  # bracket label) and leave as the estimator's bracket labels, so
+  # `verified_revenue` filters and renders exactly like `estimated_revenue`.
+  # `SELECT ... FINAL` on a slice-sized domain set is cheap; unscoped it is
+  # what the sharded rebuild guards (see compact_sql_shard/2).
+  @doc false
+  def verified_sql(join_scope) do
+    rev = Enum.with_index(LS.Verification.revenue_precedence(), 1)
+    emp = Enum.with_index(LS.Verification.employees_precedence(), 1)
+    prio = fn pairs -> Enum.map_join(pairs, ", ", fn {src, i} -> "source = '#{src}', #{i}" end) end
+
+    """
+    SELECT domain,
+      argMinIf(rev_bracket, rev_prio, fact = 'revenue_usd' AND rev_bracket != '') AS verified_revenue,
+      argMinIf(source, rev_prio, fact = 'revenue_usd' AND rev_bracket != '') AS verified_revenue_source,
+      argMinIf(emp_bracket, emp_prio, fact IN ('employees', 'employees_band') AND emp_bracket != '') AS verified_employees,
+      argMinIf(source, emp_prio, fact IN ('employees', 'employees_band') AND emp_bracket != '') AS verified_employees_source,
+      argMaxIf(value, fetched_at, fact = 'mission') AS mission_summary
+    FROM (
+      SELECT domain, fact, source, value, fetched_at,
+        multiIf(#{prio.(rev)}, 99) AS rev_prio,
+        multiIf(#{prio.(emp)}, 99) AS emp_prio,
+        multiIf(fact != 'revenue_usd', '',
+                toFloat64OrZero(value) < 1e6, '<$1M', toFloat64OrZero(value) < 1e7, '$1M-$10M',
+                toFloat64OrZero(value) < 1e8, '$10M-$100M', toFloat64OrZero(value) < 1e9, '$100M-$1B', '$1B+') AS rev_bracket,
+        multiIf(fact = 'employees_band', value,
+                fact != 'employees' OR toUInt32OrZero(value) = 0, '',
+                toUInt32OrZero(value) <= 10, '1-10', toUInt32OrZero(value) <= 50, '11-50',
+                toUInt32OrZero(value) <= 500, '51-500', toUInt32OrZero(value) <= 5000, '501-5000', '5001+') AS emp_bracket
+      FROM verified_facts FINAL#{join_scope}
+    )
+    GROUP BY domain
+    """
   end
 
   # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
@@ -899,6 +957,8 @@ defmodule LS.Clickhouse do
       SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
       UNION DISTINCT
       SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
+      UNION DISTINCT
+      SELECT domain FROM verified_facts WHERE fetched_at >= toDateTime(#{since_unix})#{String.replace(upper, "enriched_at", "fetched_at")}
       """
 
     scope = if since_unix > 0, do: "WHERE s_domain IN (#{domain_set})", else: ""
@@ -920,7 +980,7 @@ defmodule LS.Clickhouse do
       end
 
     """
-    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd)
+    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
     SELECT
       h.domain AS domain,
       h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
@@ -961,7 +1021,8 @@ defmodule LS.Clickhouse do
       s.perf_lcp_ms, s.perf_cls, s.perf_ttfb_ms,
       s.render_engine, s.enriched_at_newest AS depth_enriched_at,
       s.about_text, s.mission, s.hq_location, s.job_locations_top, s.positions_overview,
-      p.pricing_points, n.news_count, n.last_funding_usd
+      p.pricing_points, n.news_count, n.last_funding_usd,
+      v.verified_revenue, v.verified_revenue_source, v.verified_employees, v.verified_employees_source, v.mission_summary
     FROM (
       SELECT s_domain AS domain,
         min(s_enriched_at) AS first_seen,
@@ -1088,6 +1149,7 @@ defmodule LS.Clickhouse do
     LEFT JOIN (SELECT domain, count() AS news_count,
                       max(amount_usd) AS last_funding_usd
                FROM biz_news#{join_scope} GROUP BY domain) n ON h.domain = n.domain
+    LEFT JOIN (#{verified_sql(join_scope)}) v ON h.domain = v.domain
     SETTINGS max_bytes_before_external_group_by = 1500000000, max_threads = 2,
              join_use_nulls = 1
     """

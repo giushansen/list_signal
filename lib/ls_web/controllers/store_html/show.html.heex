@@ -78,7 +78,7 @@
         (@store.rdap_registrar != "" && {"📋 Registrar", @store.rdap_registrar, "Domain registrar"}),
         (@store.domain_age && {"📆 Domain Age", @store.domain_age, "Since #{date_slice(@store.rdap_domain_created_at) || "registration"}"}),
         (@store.mail_provider && {"📧 Email Provider", @store.mail_provider, "Business email service"}),
-        (@store.estimated_revenue != "" && {"💰 Revenue Tier", LSWeb.StoreHTML.revenue_tier(@store.estimated_revenue), LSWeb.StoreHTML.revenue_tier_hint(@store.estimated_revenue)}),
+        (@store.revenue != "" && {"💰 Revenue Tier", LSWeb.StoreHTML.revenue_tier(@store.revenue), LSWeb.StoreHTML.revenue_tier_hint(@store.revenue)}),
         (@store.seo_score && {"🔍 SEO Score", LSWeb.StoreHTML.seo_badge(@store.seo_score), LSWeb.StoreHTML.seo_hint(@store.seo_score)}),
         (@store.business_model != "" && {"🏢 Business Model", @store.business_model, @store.industry})
       ] |> Enum.reject(&(!&1)) %>
@@ -337,19 +337,19 @@
       <% end %>
 
       <%!-- ═══ REVENUE ESTIMATION ═══ --%>
-      <%= if @store.estimated_revenue != "" do %>
+      <%= if @store.revenue != "" do %>
         <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-6" aria-label="Revenue estimation">
-          <h2 class="font-display text-lg font-semibold mb-4">💰 Revenue Estimation</h2>
+          <h2 class="font-display text-lg font-semibold mb-4">💰 Revenue <%= if @store.revenue_verified_source, do: "(verified)", else: "Estimation" %></h2>
           <dl class="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-            <div title={LSWeb.StoreHTML.revenue_tier_hint(@store.estimated_revenue)}>
-              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Revenue Tier</dt>
-              <dd class="text-white font-semibold text-lg"><%= LSWeb.StoreHTML.revenue_tier(@store.estimated_revenue) %></dd>
+            <div title={LSWeb.StoreHTML.revenue_tier_hint(@store.revenue)}>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Revenue Tier<%= if @store.revenue_verified_source, do: " · verified via #{LSWeb.StoreHTML.source_name(@store.revenue_verified_source)}" %></dt>
+              <dd class="text-white font-semibold text-lg"><%= LSWeb.StoreHTML.revenue_tier(@store.revenue) %></dd>
               <dd class="text-white/50 text-sm blur-[5px] select-none pointer-events-none" aria-hidden="true">$<%= :erlang.phash2(@store.domain, 89) + 10 %>M-$<%= :erlang.phash2({@store.domain, 1}, 400) + 100 %>M</dd>
               <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="revenue_gate" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
             </div>
             <div>
-              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Estimated Employees</dt>
-              <dd class="text-white font-semibold text-lg"><%= @store.estimated_employees %></dd>
+              <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1"><%= if @store.employees_verified_source, do: "Employees · verified via #{LSWeb.StoreHTML.source_name(@store.employees_verified_source)}", else: "Estimated Employees" %></dt>
+              <dd class="text-white font-semibold text-lg"><%= @store.employees %></dd>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Confidence</dt>
