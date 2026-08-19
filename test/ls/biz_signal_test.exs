@@ -109,10 +109,15 @@ defmodule LS.BizSignalTest do
       q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now() - INTERVAL 40 DAY, 200, 'Shopify|Klaviyo')")
       q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now() - INTERVAL 10 DAY, 200, 'Shopify|Gorgias')")
 
-      # Run every shard the probe domain could hash into — cheap on test data.
-      for shard <- 0..7 do
-        assert {:ok, _} = Clickhouse.backfill_signals_shard(shard, 8)
-      end
+      # Run ONLY the shard this domain hashes into, out of a large shard count.
+      # Running 8 shards over a full local domains_history means a
+      # production-scale window-function walk per shard — the test timed out
+      # at 60s. Ask ClickHouse which shard owns the domain and do that one.
+      total = 4096
+      {:ok, [[shard]]} = q("SELECT cityHash64('#{@d}') % #{total}")
+      shard = if is_binary(shard), do: String.to_integer(shard), else: shard
+
+      assert {:ok, _} = Clickhouse.backfill_signals_shard(shard, total)
 
       kinds = signals() |> Enum.map(&hd/1) |> Enum.sort()
       assert "tech_added" in kinds

@@ -23,7 +23,7 @@ defmodule LSWeb.PublicNavTest do
     "/apps",
     "/countries",
     "/latest-shopify-stores",
-    "/saas",
+    "/latest-saas-businesses",
     "/tools/shopify-checker",
     "/tools/tech-lookup",
     "/tech/klaviyo",

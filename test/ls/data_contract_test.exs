@@ -53,8 +53,13 @@ defmodule LS.DataContractTest do
   end
 
   defp column_counts(column) do
+    # `businesses`, not domains_current: the explorer moved to the compacted
+    # table and this helper did not follow, so the "truth set" came from a
+    # table the dropdowns and filters no longer query. It flagged CF — a real
+    # business present in `businesses` — as a dead option. A contract test
+    # reading the wrong table produces false alarms AND hides real ones.
     value_counts("""
-    SELECT #{column} AS v, count() FROM domains_current WHERE #{column} != '' GROUP BY v
+    SELECT #{column} AS v, count() FROM businesses WHERE #{column} != '' GROUP BY v
     """)
   end
 
@@ -131,7 +136,7 @@ defmodule LS.DataContractTest do
         counts =
           value_counts("""
           SELECT splitByChar('-', lower(http_language))[1] AS v, count()
-          FROM domains_current WHERE http_language != '' GROUP BY v
+          FROM businesses WHERE http_language != '' GROUP BY v
           """)
 
         assert_all_offered_values_match(:language, offered, counts)
