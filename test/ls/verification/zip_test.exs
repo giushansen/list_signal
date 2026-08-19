@@ -64,18 +64,31 @@ defmodule LS.Verification.ZipTest do
       zip = Path.join(dir, "big.zip")
       {_, 0} = System.cmd("zip", ["-q", zip | Enum.map(1..400, &"e#{&1}.txt")], cd: dir)
 
-      before = :erlang.memory(:total)
+      # Run the reader in its own process and watch THAT process's memory, so
+      # other async tests sharing the VM cannot skew the measurement. The
+      # fifo reader holds at most a couple of chunks + one entry (~1 MB); the
+      # old active-Port reader would let unread mailbox messages carry the
+      # whole 200 MB. A 40 MB ceiling is far above the former, far below the
+      # latter.
+      test_pid = self()
 
-      {:ok, {count, peak}} =
-        Zip.fold_entries(zip, {0, before}, fn _name, get, {n, peak} ->
-          _ = byte_size(get.())
-          if rem(n, 40) == 0, do: Process.sleep(20)   # a deliberately slow consumer
-          {n + 1, max(peak, :erlang.memory(:total))}
+      reader =
+        spawn(fn ->
+          {:ok, {count, peak}} =
+            Zip.fold_entries(zip, {0, 0}, fn _name, get, {n, peak} ->
+              _ = byte_size(get.())
+              if rem(n, 40) == 0, do: Process.sleep(20)   # a deliberately slow consumer
+              {n + 1, max(peak, self() |> Process.info(:memory) |> elem(1))}
+            end)
+
+          send(test_pid, {:done, count, peak})
         end)
 
+      assert_receive {:done, count, peak}, 60_000
+      _ = reader
       assert count == 400
-      growth_mb = (peak - before) / 1_000_000
-      assert growth_mb < 80, "heap grew #{Float.round(growth_mb, 1)}MB reading a 200MB archive — backpressure is not holding"
+      peak_mb = peak / 1_000_000
+      assert peak_mb < 40, "reader process held #{Float.round(peak_mb, 1)}MB on a 200MB archive — backpressure is not holding"
     end
   end
 end
