@@ -103,7 +103,7 @@ defmodule LSWeb.Layouts do
   def nav_links do
     [
       {"/new-stores", "Shopify"},
-      {"/saas", "SaaS businesses"},
+      {"/latest-saas-businesses", "SaaS"},
       {"/apps", "Apps&Tech"}
     ]
   end

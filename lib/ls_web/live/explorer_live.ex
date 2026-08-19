@@ -97,7 +97,7 @@ defmodule LSWeb.ExplorerLive do
   @impl true
   def handle_info(:load_segment_counts, socket) do
     counts =
-      LS.UICache.fetch(:segment_counts, 600, fn ->
+      LS.UICache.fetch(:segment_counts, :all, fn ->
         segments()
         |> Enum.map(&{&1.id, &1.filters})
         |> Explorer.count_many()
@@ -373,13 +373,12 @@ defmodule LSWeb.ExplorerLive do
   defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 
-  # Cached fleet-wide: these DISTINCTs scan 7.7M rows and their answer is the
-  # same for every user. First click pays ClickHouse; the next half hour of
-  # clicks pay an ETS lookup. This is what made opening a filter feel slow.
-  @options_ttl 1_800
+  # Cached fleet-wide: these DISTINCTs scan millions of rows and their answer
+  # is the same for every user. First click pays ClickHouse; the rest of the
+  # TTL pays an ETS lookup. TTLs live in LS.UICache's profile table.
 
   defp fetch_techs do
-    LS.UICache.fetch({:dropdown, :tech}, @options_ttl, fn ->
+    LS.UICache.fetch(:dropdown, :tech, fn ->
       case Explorer.distinct_techs("", 800) do
         {:ok, techs} -> techs
         _ -> []
@@ -388,7 +387,7 @@ defmodule LSWeb.ExplorerLive do
   end
 
   defp fetch_apps(opts) do
-    LS.UICache.fetch({:dropdown, :apps, opts}, @options_ttl, fn ->
+    LS.UICache.fetch(:dropdown, {:apps, opts}, fn ->
       case Explorer.distinct_apps("", 800, opts) do
         {:ok, apps} -> apps
         _ -> []
@@ -397,7 +396,7 @@ defmodule LSWeb.ExplorerLive do
   end
 
   defp fetch_distinct_by_count(column) do
-    LS.UICache.fetch({:dropdown, column}, @options_ttl, fn ->
+    LS.UICache.fetch(:dropdown, column, fn ->
       case Explorer.distinct_by_count(column, 300) do
         {:ok, values} -> values
         _ -> []
@@ -463,7 +462,7 @@ defmodule LSWeb.ExplorerLive do
           {Explorer.list(filter_kw, list_opts), t0}
         end)
         |> Phoenix.LiveView.start_async(:count, fn ->
-          LS.UICache.fetch({:count, filter_kw}, 300, fn -> Explorer.count(filter_kw) end)
+          LS.UICache.fetch(:filter_count, filter_kw, fn -> Explorer.count(filter_kw) end)
         end)
 
       {:error, :rate_limited} ->

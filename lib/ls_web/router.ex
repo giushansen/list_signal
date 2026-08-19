@@ -74,7 +74,9 @@ defmodule LSWeb.Router do
     get "/latest-shopify-stores", FeedController, :new_stores
     # legacy path kept as a 301 so old links and indexed pages keep working
     get "/new-stores", FeedController, :new_stores_legacy
-    get "/saas", FeedController, :saas
+    get "/latest-saas-businesses", FeedController, :saas
+    # legacy path kept as a 301 so old links and indexed pages keep working
+    get "/saas", FeedController, :saas_legacy
     get "/hiring", HiringController, :index
 
     # Purchased CSV download. Public by design: the buyer paid from a cold

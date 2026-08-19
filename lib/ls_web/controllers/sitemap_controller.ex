@@ -77,7 +77,7 @@ defmodule LSWeb.SitemapController do
     # plus a multi-GB scan on the shared box. The tech->Shopify intersection
     # drifts far slower than the cache expires.
     shopify_techs =
-      LS.UICache.fetch(:sitemap_shopify_techs, 21_600, fn ->
+      LS.UICache.fetch(:sitemap_techs, :all, fn ->
         case LS.Clickhouse.shopify_tech_names() do
           {:ok, rows} -> MapSet.new(rows, fn [name | _] -> name end)
           _ -> MapSet.new()
@@ -132,7 +132,8 @@ defmodule LSWeb.SitemapController do
       entry(base, "/hiring", "0.8", "daily"),
       entry(base, "/tools/shopify-checker", "0.8", "weekly"),
       entry(base, "/tools/tech-lookup", "0.8", "weekly"),
-      entry(base, "/new-stores", "0.7", "daily"),
+      entry(base, "/latest-shopify-stores", "0.7", "daily"),
+      entry(base, "/latest-saas-businesses", "0.7", "daily"),
       # Scoring methodology — high priority: these are the pages that explain
       # what the product actually measures, and the ones LLMs quote.
       entry(base, "/scoring/seo-score", "0.8", "monthly"),

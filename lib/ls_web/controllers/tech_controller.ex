@@ -22,7 +22,7 @@ defmodule LSWeb.TechController do
       stats: stats, countries: countries, languages: languages,
       hosting: hosting, registrars: registrars, co_techs: co_techs
     } =
-      LS.UICache.fetch({:tech_page, tech_name}, 21_600, fn ->
+      LS.UICache.fetch(:tech_page, tech_name, fn ->
         assemble_tech_page(tech_name, search_term)
       end)
 

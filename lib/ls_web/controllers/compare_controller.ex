@@ -17,7 +17,7 @@ defmodule LSWeb.CompareController do
         # Same treatment as /tech/*: heavy scans on a public page, cached 6h
         # per pair. See tech_controller for the incident.
         data =
-          LS.UICache.fetch({:compare_page, tech_a, tech_b}, 21_600, fn ->
+          LS.UICache.fetch(:compare_page, {tech_a, tech_b}, fn ->
             LS.Clickhouse.compare_techs(tech_a, tech_b)
           end)
 

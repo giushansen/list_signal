@@ -85,8 +85,17 @@ owner's plan (no API key).
   dataset='distill_v1_2026-08-14'): queryable next to the product data and
   included in the daily CH backup (`/home/ls/backup.sh`).
 - The MiniLM encoder itself is NOT here — it is ~458MB in
-  `/home/ls/.cache/bumblebee` on each worker, re-downloadable from
-  HuggingFace (pin + rsync + backup still a TODO in devops).
+  `/home/ls/.cache/bumblebee` on each of the 9 nodes, re-downloadable from
+  HuggingFace. Since 2026-08-18 it is ALSO tarred on the master at
+  `/home/ls/backups/bumblebee_minilm_20260818.tar` (one-off, outside the
+  rotation — the artifact never changes), so a HuggingFace takedown cannot
+  orphan the embeddings. Restore: `tar -xf bumblebee_minilm_20260818.tar -C
+  /home/ls/.cache/`. Explicit `revision:` pin in `Bumblebee.load_model` is
+  still open (cache filenames are hashed; pin when next touching the loader).
+- Golden eval pages are snapshotted in git since 2026-08-18
+  (`analysis/golden_set/pages_v2_2026-08-17.tar.gz`) — the scratchpad copy
+  was wiped twice by tmp housekeeping, and a re-fetched snapshot is NOT
+  comparable to the one the BEFORE numbers were measured on.
 
 ## Rules (same discipline as the golden sets)
 

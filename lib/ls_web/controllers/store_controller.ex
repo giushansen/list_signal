@@ -255,11 +255,18 @@ defmodule LSWeb.StoreController do
 
     inferred_country = LS.CountryInferrer.infer(s.(:ctl_tld), language, nil, bgp_country)
 
+    # Cached per model+country, NOT per page. There are 731k store pages but
+    # only a few hundred model/country pairs, so thousands of pages share one
+    # cached answer — the whole point of caching the query rather than the
+    # render. Caching 731k rendered pages would blow the cache's memory bound;
+    # caching ~300 aggregates costs kilobytes.
     similar_count =
-      case LS.Clickhouse.count_similar(s.(:business_model), inferred_country) do
-        {:ok, [[n]]} when is_integer(n) and n > 1 -> n
-        _ -> nil
-      end
+      LS.UICache.fetch(:store_aggregate, {:count, s.(:business_model), inferred_country}, fn ->
+        case LS.Clickhouse.count_similar(s.(:business_model), inferred_country) do
+          {:ok, [[n]]} when is_integer(n) and n > 1 -> n
+          _ -> nil
+        end
+      end)
 
     # Named rows for the similar block (6h-cached per model+country). Only
     # fetched when the count teaser would render anyway, so no extra query
