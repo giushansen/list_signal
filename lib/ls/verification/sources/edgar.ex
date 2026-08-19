@@ -11,9 +11,11 @@ defmodule LS.Verification.Sources.EDGAR do
     us-gaap revenue tags in `@revenue_tags`, restricted to annual reports
     (10-K / 20-F / 40-F) and full-year durations, so a quarterly figure or a
     restated stub period cannot pose as a year.
-  * `submissions.zip` — filer metadata; gives us `name`, `website`, SIC and the
-    business address for the ~18 k CIKs that had facts. Websites link by the
-    `website` tier; filers without one fall back to name + US.
+  * `submissions.zip` — filer metadata; gives us `name`, SIC and the business
+    address for the ~12 k CIKs that had facts. Its `website` field exists but
+    is empty for essentially every filer (checked 2026-08-19: Apple, Abbott…),
+    so in practice EDGAR links by name + US; the website tier is kept in case
+    the SEC ever fills it.
 
   Both archives are read entry by entry (`LS.Verification.Zip.fold_entries/3`),
   never as a whole.
@@ -36,6 +38,7 @@ defmodule LS.Verification.Sources.EDGAR do
     RevenuesNetOfInterestExpense
   )
   @annual_forms ~w(10-K 10-K/A 20-F 20-F/A 40-F 40-F/A)
+  @max_age_years 3
 
   @us_states ~w(AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC PR VI GU)
 
@@ -79,10 +82,17 @@ defmodule LS.Verification.Sources.EDGAR do
   Latest full-fiscal-year revenue from a companyfacts JSON (pure).
 
   Returns `%{val, fy, end, form, tag}` or nil. Candidates: `@revenue_tags` in
-  USD, annual forms only, duration 350–380 days, `fp == "FY"`. The newest
-  period end wins; ties go to tag priority, then latest filing.
+  USD, annual forms only, duration 350–380 days, `fp == "FY"`, period end
+  within the last `@max_age_years`. The newest period end wins; ties go to
+  tag priority, then latest filing.
   """
-  def extract_revenue(%{"facts" => %{"us-gaap" => gaap}}) when is_map(gaap) do
+  def extract_revenue(json, today \\ Date.utc_today())
+
+  def extract_revenue(%{"facts" => %{"us-gaap" => gaap}}, today) when is_map(gaap) do
+    # A shell that last filed in 2012 still has "latest" revenue in its facts;
+    # it is not this year's business. Older than @max_age_years → no fact.
+    cutoff = Date.to_iso8601(%{today | year: today.year - @max_age_years})
+
     @revenue_tags
     |> Enum.with_index()
     |> Enum.flat_map(fn {tag, prio} ->
@@ -90,14 +100,14 @@ defmodule LS.Verification.Sources.EDGAR do
       |> Enum.filter(&annual?/1)
       |> Enum.map(&%{val: &1["val"], fy: &1["fy"], end: &1["end"], form: &1["form"], tag: tag, prio: prio, filed: &1["filed"] || ""})
     end)
-    |> Enum.filter(&(is_number(&1.val) and &1.val >= 0 and &1.val < 1.0e13))
+    |> Enum.filter(&(is_number(&1.val) and &1.val >= 0 and &1.val < 1.0e13 and to_string(&1.end) >= cutoff))
     |> case do
       [] -> nil
       cands -> cands |> Enum.max_by(&{&1.end, -&1.prio, &1.filed}) |> Map.drop([:prio, :filed])
     end
   end
 
-  def extract_revenue(_), do: nil
+  def extract_revenue(_, _today), do: nil
 
   @doc "Latest `dei:EntityNumberOfEmployees` (pure); rarely filed but exact when it is."
   def extract_employees(%{"facts" => %{"dei" => %{"EntityNumberOfEmployees" => %{"units" => units}}}}) when is_map(units) do

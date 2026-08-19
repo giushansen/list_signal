@@ -244,15 +244,24 @@ defmodule LS.Verification.Sources.Wikidata do
     |> Map.new(fn {qid, rs} -> {qid, Enum.max_by(rs, &(&1["date"] || ""), fn -> hd(rs) end)} end)
   end
 
-  @doc "USD amount and a raw string for a revenue row (pure)."
-  def revenue_usd(nil), do: {nil, ""}
+  @max_age_years 5
 
-  def revenue_usd(%{"rev" => amount} = r) do
+  @doc """
+  USD amount and a raw string for a revenue row (pure). A statement older
+  than `@max_age_years` (or undated) keeps its raw value but yields no USD
+  figure — a 2009 revenue is not a fact about the business today.
+  """
+  def revenue_usd(row, today \\ Date.utc_today())
+  def revenue_usd(nil, _today), do: {nil, ""}
+
+  def revenue_usd(%{"rev" => amount} = r, today) do
     unit = r["unit"] || ""
-    raw = String.trim("#{amount} #{unit} #{year(r["date"])}")
+    y = year(r["date"])
+    raw = String.trim("#{amount} #{unit} #{y}")
+    recent? = is_binary(y) and String.to_integer(y) >= today.year - @max_age_years
 
     case {Float.parse(to_string(amount)), Map.get(@usd_rates, unit)} do
-      {{v, _}, rate} when is_number(rate) and v >= 0 and v < 1.0e13 -> {v * rate, raw}
+      {{v, _}, rate} when is_number(rate) and v >= 0 and v < 1.0e13 and recent? -> {v * rate, raw}
       _ -> {nil, raw}
     end
   end

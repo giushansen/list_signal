@@ -41,6 +41,12 @@ defmodule LS.Verification.SourcesTest do
       assert q2.revenue_raw == "500 Q999999"
     end
 
+    test "revenue statements older than 5 years (or undated) yield raw only, no USD" do
+      assert Wikidata.revenue_usd(%{"rev" => "100", "unit" => "Q4917", "date" => "2015-01-01T00:00:00Z"}, ~D[2026-08-19]) == {nil, "100 Q4917 2015"}
+      assert Wikidata.revenue_usd(%{"rev" => "100", "unit" => "Q4917"}, ~D[2026-08-19]) == {nil, "100 Q4917"}
+      assert {100.0, _} = Wikidata.revenue_usd(%{"rev" => "100", "unit" => "Q4917", "date" => "2024-01-01T00:00:00Z"}, ~D[2026-08-19])
+    end
+
     test "hostile: no website, garbage amounts, negative, absurd magnitude → dropped or no USD" do
       assert Wikidata.build_records([%{"item" => "Q1", "website" => "not a url", "rev" => "1"}], [], []) == []
       assert Wikidata.revenue_usd(%{"rev" => "abc", "unit" => "Q4917"}) == {nil, "abc Q4917"}
@@ -102,6 +108,12 @@ defmodule LS.Verification.SourcesTest do
         fact("RevenueFromContractWithCustomerExcludingAssessedTax", 130, 2024, "2024-01-01", "2024-12-31")
       ])
       assert %{val: 130, fy: 2024, tag: "RevenueFromContractWithCustomerExcludingAssessedTax", form: "10-K"} = EDGAR.extract_revenue(json)
+    end
+
+    test "revenue older than 3 years is not a fact about today's business (2012 shell filers)" do
+      json = facts_json([fact("Revenues", 199, 2012, "2012-01-01", "2012-12-31")])
+      assert EDGAR.extract_revenue(json, ~D[2026-08-19]) == nil
+      assert EDGAR.extract_revenue(json, ~D[2014-01-01]).val == 199
     end
 
     test "tag priority breaks ties on the same period end" do

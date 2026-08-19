@@ -75,13 +75,17 @@ defmodule LS.Verification.Sources.CompaniesHouse do
 
     month_labels(Keyword.get(opts, :months, 12))
     |> Enum.reject(&MapSet.member?(done, &1))
-    |> Enum.reduce_while(:ok, fn month, :ok ->
+    |> Enum.each(fn month ->
+      # One bad month (404, corrupt download) must not block the other eleven
+      # or the register pass; the month's run row carries the error and the
+      # next monthly run retries it.
       case stage_month(dir, month, opts) do
-        :ok -> {:cont, :ok}
-        {:error, {:http, 404}} -> Logger.warning("[VERIFY] companies_house: no accounts file for #{month}"); {:cont, :ok}
-        err -> {:halt, err}
+        :ok -> :ok
+        {:error, e} -> Logger.warning("[VERIFY] companies_house: #{month} skipped: #{inspect(e) |> String.slice(0, 120)}")
       end
     end)
+
+    :ok
   end
 
   defp stage_month(dir, month, opts) do
