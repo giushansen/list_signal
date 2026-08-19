@@ -2,87 +2,75 @@ defmodule LS.Verification.Zip do
   @moduledoc """
   Memory-bounded readers for the bulk archives pipeline 3 ingests.
 
-  * `stream_lines/2` — lines of ONE entry of a zip, streamed through `unzip -p`
-    on a port. Sirene's stock file is ~9 GB unpacked and Companies House's
-    company snapshot ~2.5 GB; neither may ever be a single binary on the
-    master (BEAM is capped at 4 G).
+  * `stream_lines/2` — lines of ONE entry of a zip.
   * `fold_entries/3` — visit every entry of a many-small-files zip (SEC
     `submissions.zip` ≈ 1 M JSON files, Companies House monthly accounts ≈
-    100 k iXBRL files) one at a time, cutting `unzip -p`'s byte stream by the
-    sizes `unzip -l` reports. ZIP64-safe, unlike `:zip.foldl/3`.
+    250 k iXBRL files), cutting the decompressed byte stream by the sizes
+    `unzip -l` reports. ZIP64-safe, unlike `:zip.foldl/3`.
+
+  ## Backpressure is the whole point (2026-08-19 OOM)
+
+  Both readers pull `unzip`'s output through a **named pipe** read with
+  `:file.read/2`, NOT through a `Port` on `unzip`'s stdout. A spawned Port is
+  always active: the emulator reads the pipe as fast as `unzip` fills it and
+  turns every chunk into a mailbox message, with no flow control. `unzip`
+  decompresses a 2 GB Companies-House month in ~30 s but IXBRL parsing of its
+  250 k filings takes minutes, so ~2 GB of decompressed bytes piled up as
+  unread `{port, {:data, _}}` messages and the cgroup OOM-killed the whole
+  BEAM every ~20 min — a crash loop, because the scheduler re-picked the
+  never-finishing source on each restart. Reading a fifo with `:file.read/2`
+  gives real backpressure: when we are slow the kernel pipe fills and `unzip`
+  blocks on `write()`, so memory stays flat regardless of archive size.
   """
 
+  @read_chunk 262_144
+
   @doc """
-  Stream the lines of `entry` inside `zip_path` (or of the only entry when
+  Stream the lines of `entry` inside `zip_path` (or the only entry when
   `entry` is nil). Each element is one line without its newline.
   """
   @spec stream_lines(Path.t(), String.t() | nil) :: Enumerable.t()
   def stream_lines(zip_path, entry \\ nil) do
     args = ["-p", zip_path] ++ if(entry, do: [entry], else: [])
 
-    Stream.resource(
-      fn ->
-        port =
-          Port.open({:spawn_executable, unzip_bin()}, [
-            :binary, :exit_status, :stream, :use_stdio, {:args, args}
-          ])
-
-        {port, ""}
-      end,
-      fn
-        {nil, _} = acc ->
-          {:halt, acc}
-
-        {port, buf} ->
-          receive do
-            {^port, {:data, data}} ->
-              {lines, rest} = split_lines(buf <> data)
-              {lines, {port, rest}}
-
-            {^port, {:exit_status, 0}} ->
-              {if(buf == "", do: [], else: [buf]), {nil, ""}}
-
-            {^port, {:exit_status, code}} ->
-              raise "unzip #{zip_path} exited #{code}"
-          end
-      end,
-      fn
-        {nil, _} -> :ok
-        {port, _} -> Port.close(port)
-      end
+    byte_stream(args)
+    |> Stream.transform("", fn chunk, buf ->
+      {lines, rest} = split_lines(buf <> chunk)
+      {lines, rest}
+    end)
+    |> Stream.concat(
+      Stream.resource(fn -> nil end, fn
+        :done -> {:halt, nil}
+        _ -> {[], :done}
+      end, fn _ -> :ok end)
     )
   end
 
   # Split a buffer into complete lines and the trailing partial line.
   defp split_lines(bin) do
     case String.split(bin, "\n") do
-      [only] -> {[], only}
-      parts -> {rest, [last]} = Enum.split(parts, -1)
-               {Enum.map(rest, &String.trim_trailing(&1, "\r")), last}
+      [only] ->
+        {[], only}
+
+      parts ->
+        {rest, [last]} = Enum.split(parts, -1)
+        {Enum.map(rest, &String.trim_trailing(&1, "\r")), last}
     end
   end
 
   @doc """
   Fold over every entry of a zip: `fun.(name, get_binary, acc)` where
   `get_binary.()` returns that entry's bytes. Streaming and ZIP64-safe:
-  `unzip -l` gives names and sizes in archive order, `unzip -p` streams every
-  entry's bytes in that same order, and we cut the byte stream by size — one
-  entry in memory at a time.
-
-  Why not `:zip.foldl/3`: Erlang's zip reader has no ZIP64 support and
-  silently reads only `N mod 65536` entries of a big archive. On 2026-08-19
-  that made SEC `submissions.zip` (987 k entries) yield 3 057 of 11 621
-  filers and Companies House's monthly accounts (~100 k files) stage about
-  half a month, then `:bad_central_directory`. Regression test in
-  `LS.Verification.ZipTest`.
+  `unzip -l` gives names and sizes in archive order, the decompressed stream
+  delivers every entry's bytes in that same order, and we cut the stream by
+  size — one entry in memory at a time.
   """
   @spec fold_entries(Path.t(), acc, (String.t(), (-> binary()), acc -> acc)) :: {:ok, acc} | {:error, term()}
         when acc: term()
   def fold_entries(zip_path, acc0, fun) do
     with {:ok, entries} <- list_entries(zip_path) do
       acc =
-        zip_path
-        |> byte_stream()
+        byte_stream(["-p", zip_path])
         |> cut_by_sizes(entries)
         |> Enum.reduce(acc0, fn {name, bin}, acc ->
           if String.ends_with?(name, "/"), do: acc, else: fun.(name, fn -> bin end, acc)
@@ -115,26 +103,6 @@ defmodule LS.Verification.Zip do
     end)
   end
 
-  # Raw bytes of every entry, concatenated in archive order.
-  defp byte_stream(zip_path) do
-    Stream.resource(
-      fn -> Port.open({:spawn_executable, unzip_bin()}, [:binary, :exit_status, :stream, :use_stdio, {:args, ["-p", zip_path]}]) end,
-      fn
-        nil -> {:halt, nil}
-        port ->
-          receive do
-            {^port, {:data, data}} -> {[data], port}
-            {^port, {:exit_status, 0}} -> {[], nil}
-            {^port, {:exit_status, code}} -> raise "unzip -p #{zip_path} exited #{code}"
-          end
-      end,
-      fn
-        nil -> :ok
-        port -> Port.close(port)
-      end
-    )
-  end
-
   @doc false
   # Cut a stream of binary chunks into `{name, bytes}` per entry size (pure over the stream).
   def cut_by_sizes(chunks, entries) do
@@ -154,6 +122,54 @@ defmodule LS.Verification.Zip do
       {Enum.reverse(out), {todo, buf}}
     end
   end
+
+  # ── Backpressured byte stream ──
+
+  # Run `unzip <args>` writing to a private fifo, and stream the fifo's bytes
+  # with `:file.read/2`. The kernel pipe (~64 KB) blocks `unzip` whenever the
+  # consumer lags, so decompressed bytes never accumulate in the BEAM.
+  defp byte_stream(args) do
+    Stream.resource(
+      fn -> open_fifo(args) end,
+      fn %{io: io} = st ->
+        case :file.read(io, @read_chunk) do
+          {:ok, data} -> {[data], st}
+          :eof -> {:halt, st}
+          {:error, reason} -> raise "fifo read failed: #{inspect(reason)}"
+        end
+      end,
+      &close_fifo/1
+    )
+  end
+
+  defp open_fifo(args) do
+    dir = Path.join(System.tmp_dir!(), "ls_verify_#{:erlang.unique_integer([:positive])}")
+    File.mkdir_p!(dir)
+    fifo = Path.join(dir, "pipe")
+    {_, 0} = System.cmd("mkfifo", [fifo])
+
+    # Producer writes the decompressed stream INTO the fifo, so this port
+    # carries no stdout of its own — nothing to flood the mailbox. It blocks
+    # on the fifo write when we are slow.
+    sh = System.find_executable("sh") || "/bin/sh"
+    cmd = "exec #{unzip_bin()} #{Enum.map_join(args, " ", &shell_quote/1)} > #{shell_quote(fifo)}"
+    port = Port.open({:spawn_executable, sh}, [:binary, :exit_status, :use_stdio, {:args, ["-c", cmd]}])
+
+    # Opening the read end rendezvous with unzip opening the write end.
+    {:ok, io} = :file.open(fifo, [:read, :binary, :raw])
+    %{io: io, port: port, dir: dir}
+  end
+
+  defp close_fifo(%{io: io, port: port, dir: dir}) do
+    :file.close(io)
+    if Port.info(port), do: Port.close(port)
+    File.rm_rf(dir)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp shell_quote(s), do: "'" <> String.replace(to_string(s), "'", "'\\''") <> "'"
 
   defp unzip_bin do
     System.find_executable("unzip") || raise "unzip not installed — apt install unzip"

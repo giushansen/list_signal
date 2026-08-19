@@ -51,4 +51,31 @@ defmodule LS.Verification.ZipTest do
       assert seen == %{"one.json" => 11, "sub/two.html" => 300_000, "empty.txt" => 0}
     end
   end
+
+  @tag :tmp_dir
+  @tag timeout: 120_000
+  test "backpressure: BEAM memory stays flat while a slow consumer reads a large archive", %{tmp_dir: dir} do
+    if System.find_executable("zip") && System.find_executable("unzip") && System.find_executable("mkfifo") do
+      # ~200 MB across 400 entries. With the old active-Port reader a slow
+      # consumer let unzip pile the whole thing into the mailbox; with the
+      # fifo reader unzip blocks and heap stays bounded.
+      big = String.duplicate("x", 512_000)
+      for i <- 1..400, do: File.write!(Path.join(dir, "e#{i}.txt"), big)
+      zip = Path.join(dir, "big.zip")
+      {_, 0} = System.cmd("zip", ["-q", zip | Enum.map(1..400, &"e#{&1}.txt")], cd: dir)
+
+      before = :erlang.memory(:total)
+
+      {:ok, {count, peak}} =
+        Zip.fold_entries(zip, {0, before}, fn _name, get, {n, peak} ->
+          _ = byte_size(get.())
+          if rem(n, 40) == 0, do: Process.sleep(20)   # a deliberately slow consumer
+          {n + 1, max(peak, :erlang.memory(:total))}
+        end)
+
+      assert count == 400
+      growth_mb = (peak - before) / 1_000_000
+      assert growth_mb < 80, "heap grew #{Float.round(growth_mb, 1)}MB reading a 200MB archive — backpressure is not holding"
+    end
+  end
 end
