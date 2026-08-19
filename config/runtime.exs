@@ -48,7 +48,22 @@ if config_env() == :prod do
       port: port,
       cipher_suite: :strong,
       certfile: System.get_env("SSL_CERT_FILE"),
-      keyfile: System.get_env("SSL_KEY_FILE")
+      keyfile: System.get_env("SSL_KEY_FILE"),
+      # Load shedding. Without a ceiling the server accepts every arriving
+      # connection, spawns a process for each, and the BEAM grows until it
+      # crosses its cgroup memory limit — at which point the kernel stalls
+      # the whole VM and the watchdog restarts it. That is a 2026-08-19
+      # outage (a 300-concurrent load test drove the BEAM to 6.3G) and it is
+      # exactly what a front-page launch spike would do.
+      #
+      # 400 concurrent is far above real demand (cached pages serve at
+      # ~120/s, so 400 in flight means something pathological); beyond it,
+      # connections wait in the accept queue instead of consuming heap. A
+      # queued request is slow. An OOM restart drops EVERY request.
+      thousand_island_options: [
+        max_connections: 400,
+        num_acceptors: 50
+      ]
     ],
     secret_key_base: secret_key_base
 
