@@ -155,6 +155,22 @@ Same discipline as pipelines 1 and 2, plus three rules of its own:
    every linked domain exists in `domains_current`, and that verified
    brackets are the estimator's vocabulary (so filters keep working).
 
+**No duplicate rows, history only on change.** Records carry a content hash;
+an unchanged business re-read next month writes nothing (the hash already
+exists), a changed one becomes a new row beside the old (facts likewise,
+keyed on their value). The compactor takes the newest fact per
+(domain, fact, source) before applying source precedence.
+
+**Schedule and files.** Wikidata and YC weekly (no files). SEC EDGAR,
+Companies House and Sirene/INPI monthly — the cadence the registries
+publish at — as full snapshots: `companyfacts.zip` + `submissions.zip`
+(all XBRL filers), `BasicCompanyDataAsOneFile` (the whole UK register),
+`StockUniteLegale` + the INPI ratios export (all French legal units /
+accounts). Only the newest snapshot stays on disk
+(`LS.Verification.prune_snapshots/1` after a successful run); Companies
+House's monthly accounts zips (incremental, one per month) are staged into
+`verification_ch_accounts` and deleted immediately.
+
 Everything pulled is **persisted and dated**: the run log records URL,
 snapshot, bytes, records and matches per tier; every parsed record — matched
 or not — sits in `verified_source_records`, so nobody re-downloads a 2 GB

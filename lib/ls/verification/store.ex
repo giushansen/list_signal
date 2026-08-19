@@ -7,6 +7,13 @@ defmodule LS.Verification.Store do
   Sirene pass is ~5 M records and the master's ClickHouse is capped at 7 G, so
   no call here may ever hold a whole source in memory or in one INSERT.
 
+  **No duplicate rows for an unchanged business** (owner, 2026-08-19): every
+  record carries a `content_hash`; `store_chunk/2` looks up the existing
+  `(source_id, content_hash)` pairs for the chunk (an index read) and writes
+  NOTHING for records already stored identically. A changed record is a new
+  row next to the old one — the change is the history. Facts are keyed on
+  their value for the same reason.
+
   The name tier is served by a small side table, `verification_domain_keys`
   (name key + country → domain), rebuilt from `businesses` at the start of a
   name-tier pass in 16 hash shards. Point lookups against it are index reads;
@@ -54,10 +61,36 @@ defmodule LS.Verification.Store do
   """
   def store_chunk(records, fetched_at) do
     rows = Enum.map(records, &record_row(&1, fetched_at))
-    :ok = insert_json("verified_source_records", rows)
-    facts = rows |> Enum.filter(&(&1.matched_domain != "")) |> Enum.flat_map(&facts_for(&1, fetched_at))
+    known = existing_hashes(rows)
+    fresh = Enum.reject(rows, &MapSet.member?(known, {&1.source_id, &1.content_hash}))
+    if fresh != [], do: :ok = insert_json("verified_source_records", fresh)
+    facts = fresh |> Enum.filter(&(&1.matched_domain != "")) |> Enum.flat_map(&facts_for(&1, fetched_at))
     if facts != [], do: :ok = insert_json("verified_facts", facts)
-    {length(rows), length(facts)}
+    {length(fresh), length(facts)}
+  end
+
+  # `{source_id, content_hash}` pairs already stored for these rows — a point
+  # read on the primary key. Only needs the chunk's source (sources never mix
+  # in a chunk).
+  defp existing_hashes([]), do: MapSet.new()
+
+  defp existing_hashes([%{source: source} | _] = rows) do
+    ids = Enum.map_join(rows, ",", &"'#{Clickhouse.escape_public(&1.source_id)}'")
+    {:ok, found} = Clickhouse.query_raw("""
+    SELECT source_id, content_hash FROM verified_source_records
+    WHERE source = '#{Clickhouse.escape_public(source)}' AND source_id IN (#{ids})
+    """, 120_000)
+    MapSet.new(found, fn [id, h] -> {id, h} end)
+  end
+
+  @doc "Hash of everything that makes a record what it is — including its link, so a newly matched record counts as changed (pure)."
+  def content_hash(row) do
+    [row.name, row.country, row.website, row.website_domain, row.revenue_usd, row.revenue_raw, row.employees,
+     row.employees_band, row.period, row.extra, row.matched_domain, row.match_method, row.source_url]
+    |> Enum.map_join("\x1f", &to_string/1)
+    |> then(&:crypto.hash(:sha256, &1))
+    |> Base.encode16(case: :lower)
+    |> binary_part(0, 16)
   end
 
   @doc false
@@ -81,6 +114,7 @@ defmodule LS.Verification.Store do
       source_url: clip(r[:source_url], 500),
       fetched_at: fetched_at
     }
+    |> then(&Map.put(&1, :content_hash, content_hash(&1)))
   end
 
   @doc "Facts a matched record contributes (pure); an unmatched row contributes none."
@@ -174,7 +208,7 @@ defmodule LS.Verification.Store do
     {:ok, rows} = Clickhouse.query_raw("""
     SELECT name_key, country FROM verified_source_records
     WHERE source = '#{Clickhouse.escape_public(to_string(source))}' AND length(name_key) >= 6
-    GROUP BY name_key, country HAVING count() > 1
+    GROUP BY name_key, country HAVING uniqExact(source_id) > 1
     """, 600_000)
     MapSet.new(rows, fn [k, c] -> {k, c} end)
   end
@@ -209,21 +243,30 @@ defmodule LS.Verification.Store do
     later = fetched_at |> NaiveDateTime.add(1, :second)
     src = Clickhouse.escape_public(to_string(source))
 
+    # Every record of the source, not just this run's: an unchanged record
+    # written months ago may match today because OUR table grew. Rows come
+    # in (source_id, fetched_at) order; the newest row per id is its current
+    # state, and only ids whose current state is unmatched are candidates.
     Stream.unfold("", fn
       nil -> nil
       last ->
         {:ok, rows} = Clickhouse.query_raw("""
         SELECT source_id, name, name_key, country, website, website_domain, revenue_usd, revenue_raw,
-               employees, employees_band, period, extra, source_url
-        FROM verified_source_records FINAL
-        WHERE source = '#{src}' AND fetched_at = toDateTime('#{ts(fetched_at)}')
-          AND matched_domain = '' AND country != '' AND length(name_key) >= 6
+               employees, employees_band, period, extra, source_url, matched_domain
+        FROM verified_source_records
+        WHERE source = '#{src}' AND country != '' AND length(name_key) >= 6
           AND source_id > '#{Clickhouse.escape_public(last)}'
-        ORDER BY source_id LIMIT #{@chunk}
+        ORDER BY source_id, fetched_at LIMIT #{@chunk}
         """, 300_000)
+
         case rows do
           [] -> nil
-          rows -> {rows, if(length(rows) < @chunk, do: nil, else: List.last(rows) |> hd())}
+          rows when length(rows) < @chunk -> {current_unmatched(rows), nil}
+          rows ->
+            # Drop the last id (its rows may continue on the next page) and resume from the one before it.
+            last_id = rows |> List.last() |> hd()
+            complete = Enum.reject(rows, &(hd(&1) == last_id))
+            {current_unmatched(complete), if(complete == [], do: nil, else: complete |> List.last() |> hd())}
         end
     end)
     |> Enum.reduce(0, fn rows, matched ->
@@ -245,6 +288,15 @@ defmodule LS.Verification.Store do
     end)
   end
 
+  # Newest row per source_id (rows arrive ordered by fetched_at), unmatched only.
+  defp current_unmatched(rows) do
+    rows
+    |> Enum.reduce(%{}, fn row, acc -> Map.put(acc, hd(row), row) end)
+    |> Map.values()
+    |> Enum.filter(&(List.last(&1) == ""))
+    |> Enum.map(&Enum.drop(&1, -1))
+  end
+
   defp row_to_record([id, name, key, country, website, wd, rev, rev_raw, emp, band, period, extra, url], source) do
     %{source: source, source_id: id, name: name, name_key: key, country: country, website: website,
       website_domain: wd, revenue_usd: rev, revenue_raw: rev_raw, employees: emp, employees_band: band,
@@ -253,14 +305,14 @@ defmodule LS.Verification.Store do
 
   # ── Reporting ──
 
-  @doc "Records and matches per source and tier, from the archive itself."
+  @doc "Distinct records and matches per source and tier, from the archive itself."
   def match_report do
     {:ok, rows} = Clickhouse.query_raw("""
-    SELECT source, count() AS records,
-           countIf(match_method = 'website') AS website,
-           countIf(match_method = 'name_country') AS name_country,
-           countIf(website_domain != '') AS with_website
-    FROM verified_source_records FINAL GROUP BY source ORDER BY source
+    SELECT source, uniqExact(source_id) AS records,
+           uniqExactIf(source_id, match_method = 'website') AS website,
+           uniqExactIf(source_id, match_method = 'name_country') AS name_country,
+           uniqExactIf(source_id, website_domain != '') AS with_website
+    FROM verified_source_records GROUP BY source ORDER BY source
     """, 300_000)
     # ClickHouse quotes UInt64 in JSON; keep the report numeric.
     int = fn v when is_binary(v) -> String.to_integer(v); v -> v end

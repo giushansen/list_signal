@@ -27,6 +27,18 @@ defmodule LS.Verification.StoreTest do
     assert Enum.all?(facts, &(&1.domain == "doordash.com" and &1.match_method == "website" and &1.source == "yc"))
   end
 
+  test "content_hash changes with content and with the link, not with fetched_at (unchanged business → no row)" do
+    r = %{source: :yc, source_id: "x", name: "X", website: "https://x.com", employees: 3}
+    a = Store.record_row(r, @ts)
+    b = Store.record_row(r, ~N[2026-09-18 12:00:00])
+    assert a.content_hash == b.content_hash
+    assert String.length(a.content_hash) == 16
+    changed = Store.record_row(%{r | employees: 4}, @ts)
+    assert changed.content_hash != a.content_hash
+    linked = Store.record_row(Map.merge(r, %{matched_domain: "x.com", match_method: "website"}), @ts)
+    assert linked.content_hash != a.content_hash, "a newly linked record must count as changed"
+  end
+
   test "an unmatched record contributes no facts" do
     row = Store.record_row(%{source: :yc, source_id: "x", name: "X", website: "https://x.com", employees: 3}, @ts)
     assert Store.facts_for(row, @ts) == []
@@ -48,7 +60,8 @@ defmodule LS.Verification.StoreTest do
 
     test "the sharded rebuild guards the verified_facts side too (unscoped FINAL = memory bomb)" do
       full = LS.Clickhouse.compact_sql_for_test(0)
-      assert full =~ "FROM verified_facts FINAL\n"
+      assert full =~ "FROM verified_facts\n"
+      assert full =~ "argMax(value, fetched_at) AS value", "newest fact per (domain, fact, source) must be chosen before precedence"
     end
 
     test "explorer revenue/employees filters match the SHOWN value" do

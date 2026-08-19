@@ -895,7 +895,7 @@ defmodule LS.Clickhouse do
     )
     |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
     |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
-    |> String.replace("FROM verified_facts FINAL\n", "FROM verified_facts FINAL WHERE #{guard}\n")
+    |> String.replace("FROM verified_facts\n", "FROM verified_facts WHERE #{guard}\n")
   end
 
   # Pipeline 3's contribution to a `businesses` row: one verified revenue and
@@ -931,7 +931,13 @@ defmodule LS.Clickhouse do
                 fact != 'employees' OR toUInt32OrZero(value) = 0, '',
                 toUInt32OrZero(value) <= 10, '1-10', toUInt32OrZero(value) <= 50, '11-50',
                 toUInt32OrZero(value) <= 500, '51-500', toUInt32OrZero(value) <= 5000, '501-5000', '5001+') AS emp_bracket
-      FROM verified_facts FINAL#{join_scope}
+      FROM (
+        /* newest value per (domain, fact, source): facts are keyed on their
+           value so a new fiscal year sits next to the old one as history */
+        SELECT domain, fact, source, argMax(value, fetched_at) AS value, max(fetched_at) AS fetched_at
+        FROM verified_facts#{join_scope}
+        GROUP BY domain, fact, source
+      )
     )
     GROUP BY domain
     """
