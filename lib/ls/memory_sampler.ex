@@ -14,8 +14,7 @@ defmodule LS.MemorySampler do
   require Logger
 
   @interval_ms 1_000
-  @cgroup_current "/sys/fs/cgroup/memory.current"
-  @cgroup_high "/sys/fs/cgroup/memory.high"
+  @cgroup_root "/sys/fs/cgroup"
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -33,12 +32,17 @@ defmodule LS.MemorySampler do
     {:noreply, state}
   end
 
-  # In a systemd cgroup the app sees its OWN limits at /sys/fs/cgroup/*, which
-  # is what the kernel enforces against it.
+  # The app's own cgroup path comes from /proc/self/cgroup. Reading
+  # /sys/fs/cgroup/memory.current directly gives the ROOT cgroup unless the
+  # namespace is delegated — which systemd does not do here, so the first
+  # version silently sampled the wrong scope and fell back to a notional
+  # 32G ceiling, leaving the guard inert.
   defp read do
-    with {:ok, cur} <- File.read(@cgroup_current),
+    with {:ok, raw} <- File.read("/proc/self/cgroup"),
+         path when is_binary(path) <- parse_cgroup_path(raw),
+         {:ok, cur} <- File.read(Path.join([@cgroup_root, path, "memory.current"])),
          {bytes, _} <- Integer.parse(String.trim(cur)),
-         {:ok, high} <- File.read(@cgroup_high),
+         {:ok, high} <- File.read(Path.join([@cgroup_root, path, "memory.high"])),
          trimmed <- String.trim(high),
          true <- trimmed != "max",
          {limit, _} <- Integer.parse(trimmed) do
@@ -46,6 +50,18 @@ defmodule LS.MemorySampler do
     else
       _ -> fallback()
     end
+  end
+
+  # cgroup v2 line: "0::/system.slice/.../listsignal@master.service"
+  defp parse_cgroup_path(raw) do
+    raw
+    |> String.split("\n", trim: true)
+    |> Enum.find_value(fn line ->
+      case String.split(line, ":", parts: 3) do
+        ["0", "", path] -> String.trim_leading(path, "/")
+        _ -> nil
+      end
+    end)
   end
 
   # No cgroup (dev, test, or an unlimited unit): fall back to the BEAM's own
