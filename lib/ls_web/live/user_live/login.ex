@@ -17,7 +17,7 @@ defmodule LSWeb.UserLive.Login do
               Re-authenticate to continue.
             <% else %>
               Don't have an account?
-              <.link navigate={~p"/users/register"} class="text-emerald-400 hover:underline">Sign up</.link>
+              <.link navigate={~p"/users/register"} data-umami-event="signup_cta" data-umami-event-source="login_page" class="text-emerald-400 hover:underline">Sign up</.link>
             <% end %>
           </p>
         </div>

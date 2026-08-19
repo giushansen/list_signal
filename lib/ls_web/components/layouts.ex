@@ -142,7 +142,7 @@ defmodule LSWeb.Layouts do
               <li><a href="/pricing" class="hover:text-white transition">Pricing</a></li>
               <li><a href="/search" class="hover:text-white transition">Search Stores</a></li>
               <li><a href="/new-stores" class="hover:text-white transition">New Stores Feed</a></li>
-              <li><a href="/users/register" class="hover:text-white transition">Sign Up Free</a></li>
+              <li><a href="/users/register" data-umami-event="signup_cta" data-umami-event-source="footer" class="hover:text-white transition">Sign Up Free</a></li>
               <li><a href="/users/log-in" class="hover:text-white transition">Log In</a></li>
             </ul>
           </div>
