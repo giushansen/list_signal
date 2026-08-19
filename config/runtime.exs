@@ -60,10 +60,10 @@ if config_env() == :prod do
       # ~120/s, so 400 in flight means something pathological); beyond it,
       # connections wait in the accept queue instead of consuming heap. A
       # queued request is slow. An OOM restart drops EVERY request.
-      thousand_island_options: [
-        max_connections: 400,
-        num_acceptors: 50
-      ]
+      # Bandit rejects :max_connections in thousand_island_options (it owns
+      # connection handling itself); the supported lever is num_acceptors,
+      # which bounds how many sockets are accepted concurrently.
+      thousand_island_options: [num_acceptors: 50]
     ],
     secret_key_base: secret_key_base
 

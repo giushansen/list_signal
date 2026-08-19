@@ -30,6 +30,10 @@ defmodule LSWeb.Endpoint do
     cookie_key: "request_logger"
 
   plug Plug.RequestId
+  # After Plug.Static (assets are cheap and must not be shed), before routing
+  # and body parsing — a shed request should cost as little as possible.
+  plug LSWeb.Plugs.OverloadGuard
+
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
   plug Plug.Parsers,

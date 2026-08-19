@@ -51,6 +51,9 @@ defmodule LS.UICache do
     # Not whole store pages — there are 731k of them. Only the aggregates they
     # SHARE (counts per business-model + country), which is a few hundred keys.
     store_aggregate: {21_600, "per-model/country counts shown on store pages"},
+    # Whole assembled store pages. Safe despite 731k possible keys because the
+    # LRU bound evicts the cold tail — only the trafficked head stays resident.
+    store_page: {21_600, "assembled /shopify/* and /website/* page data"},
     # Live feeds: freshness is the product, so seconds not hours.
     feed: {30, "latest-shopify-stores and latest-saas-businesses"},
     # Dashboard: shareable parts only. Result rows are never cached.

@@ -15,9 +15,8 @@ defmodule LSWeb.StoreController do
     domain = slug_to_domain(slug)
     Logger.info("[STORE] show_shopify slug=#{slug} domain=#{domain}")
 
-    case find_store(domain, slug) do
-      {:found, row, resolved_domain} ->
-        store = parse_store(row, resolved_domain)
+    case load_store(domain, slug) do
+      {:found, store} ->
         if is_shopify?(store) do
           render_store(conn, store)
         else
@@ -35,9 +34,8 @@ defmodule LSWeb.StoreController do
     domain = slug_to_domain(slug)
     Logger.info("[STORE] show_website slug=#{slug} domain=#{domain}")
 
-    case find_store(domain, slug) do
-      {:found, row, resolved_domain} ->
-        store = parse_store(row, resolved_domain)
+    case load_store(domain, slug) do
+      {:found, store} ->
         if is_shopify?(store) do
           Logger.info("[STORE] #{domain} IS Shopify, redirecting to /shopify/#{slug}")
           conn |> put_status(301) |> redirect(to: "/shopify/#{slug}")
@@ -96,6 +94,24 @@ defmodule LSWeb.StoreController do
   defp is_shopify?(store), do: Enum.any?(store.tech, &(String.downcase(&1) |> String.contains?("shopify")))
 
   # ── Finding store data ──
+
+  # Assembling a store page costs ~5 ClickHouse queries plus a DNS lookup, and
+  # these are the highest-traffic SEO pages — uncached they served 5 req/s,
+  # which a launch spike would bury. Cached per domain through the shared
+  # bounded LRU: hot pages stay resident, the long tail of 731k evicts, and
+  # the cache can never grow into the memory limit. Single-flight means a
+  # thundering herd on one cold store costs one assembly, not N.
+  #
+  # TTL is 6h against a measured 8.1-day median recrawl interval, so the page
+  # is far fresher than the data behind it.
+  defp load_store(domain, slug) do
+    LS.UICache.fetch(:store_page, domain, fn ->
+      case find_store(domain, slug) do
+        {:found, row, resolved_domain} -> {:found, parse_store(row, resolved_domain)}
+        :not_found -> :not_found
+      end
+    end)
+  end
 
   defp find_store(domain, slug) do
     Logger.debug("[STORE] find_store domain=#{domain} slug=#{slug}")
