@@ -25,3 +25,5 @@ config :logger, level: :warning
 config :ls, :stripe_client, nil
 # Suppress pipeline processes during tests
 config :ls, ls_role: "test"
+# No analytics tag in test HTML (and never a prod beacon from CI).
+config :ls, :umami, website_id: nil

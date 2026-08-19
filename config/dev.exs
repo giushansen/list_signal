@@ -40,3 +40,8 @@ config :logger, compile_time_purge_matching: [
   [module: :tls_record, level_lower_than: :warning],
   [module: :tls_dtls_connection, level_lower_than: :warning]
 ]
+
+# Local browsing must never pollute production analytics: the website_id in
+# config.exs is live, and hostname wouldn't save us — Umami records whatever
+# loads the script. nil makes LSWeb.Layouts.umami/1 render nothing.
+config :ls, :umami, website_id: nil
