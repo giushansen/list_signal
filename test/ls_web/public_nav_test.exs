@@ -8,6 +8,12 @@ defmodule LSWeb.PublicNavTest do
   """
   use LSWeb.ConnCase, async: true
 
+  # Renders 14 real pages x 3 tests against the full local ClickHouse; a
+  # cold /tech assembly alone is several seconds. The 60s default is
+  # marginal, and a test that times out on a slow machine teaches people to
+  # ignore red.
+  @moduletag timeout: 300_000
+
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
   alias LSWeb.Layouts
