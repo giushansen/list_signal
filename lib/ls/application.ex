@@ -85,6 +85,8 @@ defmodule LS.Application do
       # Feeds LSWeb.Plugs.OverloadGuard. Must start before the endpoint so the
       # guard has a reading; until it does, the guard fails open and serves.
       LS.MemorySampler,
+      # Primes the page cache after boot — see LS.CacheWarmer.
+      LS.CacheWarmer,
       # Dedicated HTTP pools. Both 2026-08-03 outages trace to one cause:
       # every ClickHouse call AND the CT poller shared Req's default Finch
       # pool, so a heavy compaction holding connections while inserts churned

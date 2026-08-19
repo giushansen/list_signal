@@ -11,6 +11,12 @@ defmodule LSWeb.StoreController do
   # Column positions derived dynamically from LS.Cluster.Inserter.columns/0 (52-column schema)
 
   # /shopify/:slug — expects a Shopify store. If not Shopify, 301 to /website/:slug
+  @doc "Populate the cache for one domain — see LS.CacheWarmer."
+  def warm(domain) do
+    load_store(domain, String.replace(domain, ".", "-"))
+    :ok
+  end
+
   def show_shopify(conn, %{"slug" => slug}) do
     domain = slug_to_domain(slug)
     Logger.info("[STORE] show_shopify slug=#{slug} domain=#{domain}")

@@ -3,6 +3,19 @@ defmodule LSWeb.TechController do
   use LSWeb, :controller
   plug :cache_headers
 
+  @doc """
+  Populate the cache for `tech_name` without rendering. Used by
+  LS.CacheWarmer so the first visitor after a deploy does not pay the ~7
+  ClickHouse scans a cold assembly costs.
+  """
+  def warm(tech_name) do
+    LS.UICache.fetch(:tech_page, tech_name, fn ->
+      assemble_tech_page(tech_name, String.replace(tech_name, "-", " "))
+    end)
+
+    :ok
+  end
+
   def show(conn, %{"slug" => slug}) do
     # Resolve against the real http_tech values first; naive capitalisation breaks
     # every non-Title-Case tech ("vue-js" -> "Vue Js" never matches "Vue.js").
