@@ -61,7 +61,11 @@ defmodule LS.Verification.StoreTest do
     test "the sharded rebuild guards the verified_facts side too (unscoped FINAL = memory bomb)" do
       full = LS.Clickhouse.compact_sql_for_test(0)
       assert full =~ "FROM verified_facts\n"
-      assert full =~ "argMax(value, fetched_at) AS value", "newest fact per (domain, fact, source) must be chosen before precedence"
+      # Newest fact per (domain, fact, source) via LIMIT 1 BY — NOT an inner
+      # aggregate the outer argMaxIf also reads (nested-aggregate Code 184
+      # silently failed every compaction and froze `businesses` 12h, 2026-08-19).
+      assert full =~ "LIMIT 1 BY domain, fact, source"
+      refute full =~ "max(fetched_at) AS fetched_at", "nested aggregate reintroduced — this froze the compactor once"
     end
 
     test "explorer revenue/employees filters match the SHOWN value" do

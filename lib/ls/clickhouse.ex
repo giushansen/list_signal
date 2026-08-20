@@ -933,10 +933,15 @@ defmodule LS.Clickhouse do
                 toUInt32OrZero(value) <= 500, '51-500', toUInt32OrZero(value) <= 5000, '501-5000', '5001+') AS emp_bracket
       FROM (
         /* newest value per (domain, fact, source): facts are keyed on their
-           value so a new fiscal year sits next to the old one as history */
-        SELECT domain, fact, source, argMax(value, fetched_at) AS value, max(fetched_at) AS fetched_at
+           value so a new fiscal year sits next to the old one as history.
+           LIMIT 1 BY, not GROUP BY+argMax — an inner max(fetched_at) that the
+           outer argMaxIf(value, fetched_at, ...) also reads is a nested
+           aggregate ClickHouse rejects (Code 184), which silently failed
+           EVERY compaction pass and froze `businesses` for 12h on 2026-08-19. */
+        SELECT domain, fact, source, value, fetched_at
         FROM verified_facts#{join_scope}
-        GROUP BY domain, fact, source
+        ORDER BY fetched_at DESC
+        LIMIT 1 BY domain, fact, source
       )
     )
     GROUP BY domain
