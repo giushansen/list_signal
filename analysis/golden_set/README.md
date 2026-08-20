@@ -95,3 +95,40 @@ Nonprofit 11/11, LocalBusiness 12/12); legacy trap classes still weak
 (n=258). Frozen BEFORE any model tuning, per the working agreement.
 Eval page snapshots: `pages_v2_2026-08-17.tar.gz` (in git, because the
 scratchpad copies were wiped twice).
+
+## v4 (2026-08-21) — Shopify/SaaS-heavy, verified-truth cross-checked
+
+`golden_set_v4_2026-08-21.csv` — **225 domains**, seed `gv4`, alive only
+(`http_status=200`, `dns_alive=1`, `is_junk=''`), disjoint sampling from
+`businesses`. Built to two goals the earlier sets did not target:
+
+1. **≥ half Shopify + SaaS** (122 rows / 54%): the two models we sell most.
+   Strata `shopify_ver/plain`, `saas_ver/plain`.
+2. **Cross-checkable against pipeline-3 verified data** (170 rows / 76% carry
+   an authoritative fact): each row's `notes` records the verified employees/
+   revenue we hold from SEC EDGAR / Companies House / Wikidata / Sirene / YC,
+   and where we have a **verified revenue figure the `true_revenue` is that
+   figure** (authoritative, not a guess) — 9 rows. A `bigco_ver` stratum (30
+   rows) adds larger verified companies ($10M–$1B+, 51–5000+ employees) so the
+   estimator's weak high brackets are measured against real truth.
+
+Labeling: a single **Haiku** pass (8 agents, homepage fetch + the verified
+hint as scale evidence), raw labels kept in `gv4_labels/batch_*.jsonl` for
+provenance. Notes prefixed `AI:`. Because 100% of the labels are LLM-authored,
+treat v4 as *LLM-assisted* ground truth (like v1/v2) — strong for finding weak
+classes and for the verified-revenue rows (which are authoritative), weaker as
+the last word on any single model call. Owner spot-checks welcome before it
+grades a shipped change.
+
+Baseline at freeze (`mix ls.golden_eval`, prod predictions at sampling time):
+- 206/225 scored (19 `Unclear`/blank). Junk rate 13.6%.
+- **Model precision by class**: SaaS 78% (n=37), Education 69%, Agency 67%,
+  **Ecommerce 44% (n=61)** — the Shopify-tech-→-Ecommerce trap: many are local
+  services (LocalBusiness) or B2B manufacturers; Newsletter/Tool/Directory 0%.
+- **Revenue estimator: 39.1% exact-bracket (n=23)** against verified truth —
+  far below the 83.9% v3 headline, because this population (small registry-
+  verified firms + a few large verified brands) is exactly where the heuristic
+  estimator is weakest. This is the honest number a revenue model must beat on
+  the domains we actually sell.
+
+Frozen BEFORE any model/estimator tuning, per the working agreement.
