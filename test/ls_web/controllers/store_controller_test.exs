@@ -1,6 +1,14 @@
 defmodule LSWeb.StoreControllerTest do
   use LSWeb.ConnCase, async: true
 
+  setup do
+    # Store pages are public (no SQLite); rendering them against a cold local
+    # ClickHouse can take seconds, and holding the sandbox's only connection
+    # through that starves queued test setups. Same as public_nav_test.
+    Ecto.Adapters.SQL.Sandbox.checkin(LS.Repo)
+    :ok
+  end
+
   describe "GET /store/:slug — country redirects" do
     test "redirects united-states to /top/shopify-stores-us", %{conn: conn} do
       conn = get(conn, "/store/united-states")

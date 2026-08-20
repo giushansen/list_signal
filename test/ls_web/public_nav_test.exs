@@ -14,6 +14,16 @@ defmodule LSWeb.PublicNavTest do
   # ignore red.
   @moduletag timeout: 300_000
 
+  setup do
+    # Public pages never touch SQLite, but ConnCase checks out the sandbox's
+    # ONLY connection in setup — and this module renders 42 pages against a
+    # full local ClickHouse, holding it for minutes. Every other DB test then
+    # queued past its own 60s timeout: ~a dozen unrelated failures per run,
+    # different ones each time. Hand the connection back before rendering.
+    Ecto.Adapters.SQL.Sandbox.checkin(LS.Repo)
+    :ok
+  end
+
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
   alias LSWeb.Layouts

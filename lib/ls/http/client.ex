@@ -191,7 +191,20 @@ defmodule LS.HTTP.Client do
       elapsed_ms: 0
     }, receive_deadline, max_bytes)
 
-    Mint.HTTP.close(conn)
+    # Close the conn RETURNED by the receive loop, not the pre-request one:
+    # Mint conns are immutable snapshots, and closing a stale snapshot after
+    # the loop has advanced the socket state is what let a capped fetch leave
+    # its socket half-open. Always close before parsing begins.
+    result =
+      case result do
+        {:ok, final_conn, response} ->
+          Mint.HTTP.close(final_conn)
+          {:ok, response}
+
+        {:error, final_conn, reason} ->
+          Mint.HTTP.close(final_conn)
+          {:error, reason}
+      end
 
     case result do
       {:ok, response} ->
@@ -232,7 +245,7 @@ defmodule LS.HTTP.Client do
     # Check timeout
     now = System.monotonic_time(:millisecond)
     if now >= deadline do
-      {:error, "receive_timeout"}
+      {:error, conn, "receive_timeout"}
     else
       timeout_ms = deadline - now
 
@@ -242,27 +255,34 @@ defmodule LS.HTTP.Client do
             {:ok, conn, responses} ->
               case process_responses(responses, request_ref, acc, max_bytes) do
                 {:done, response} ->
-                  {:ok, response}
+                  {:ok, conn, response}
 
                 {:continue, new_acc} ->
                   if new_acc.size >= max_bytes do
-                    {:ok, new_acc}
+                    # Hitting the cap ABANDONS the stream — the conn must go
+                    # back to the caller to be closed. This used to return
+                    # without it, leaving an active-mode socket spraying the
+                    # rest of the page into the mailbox as messages while the
+                    # extractors ran regexes: the 2026-08-19 incident process
+                    # had 79,768 queued socket messages (~a still-streaming
+                    # 110MB page) and pinned a core mid-:re.grun.
+                    {:ok, conn, new_acc}
                   else
                     do_receive_response(conn, request_ref, new_acc, deadline, max_bytes)
                   end
 
                 {:error, reason} ->
-                  {:error, reason}
+                  {:error, conn, reason}
               end
 
-            {:error, _conn, error, _responses} ->
-              {:error, format_error(error)}
+            {:error, conn, error, _responses} ->
+              {:error, conn, format_error(error)}
 
             :unknown ->
               do_receive_response(conn, request_ref, acc, deadline, max_bytes)
           end
       after
-        timeout_ms -> {:error, "receive_timeout"}
+        timeout_ms -> {:error, conn, "receive_timeout"}
       end
     end
   end

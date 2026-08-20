@@ -77,7 +77,52 @@ defmodule LS.Tools.Lookup do
   end
   defp fresh_enough?(_), do: false
 
+  # The live pipeline crawls an EXTERNAL site on the master — the only place
+  # in the system where a public, unauthenticated request (the free Domain
+  # Analyzer, a store-page miss) triggers a full crawl with the 84 extraction
+  # regexes. Unbounded, a bot herd on the free tool becomes N concurrent
+  # crawls of attacker-chosen pages on a 4-core box. Cap it: beyond
+  # @max_live_pipelines the visitor gets "busy" instead of the master getting
+  # a load storm.
+  @max_live_pipelines 4
+  @live_counter {__MODULE__, :live_pipelines}
+
+  defp acquire_pipeline_slot do
+    ref =
+      case :persistent_term.get(@live_counter, nil) do
+        nil ->
+          r = :counters.new(1, [:write_concurrency])
+          :persistent_term.put(@live_counter, r)
+          r
+
+        r ->
+          r
+      end
+
+    if :counters.get(ref, 1) < @max_live_pipelines do
+      :counters.add(ref, 1, 1)
+      {:ok, ref}
+    else
+      :busy
+    end
+  end
+
   defp enrich_and_store(domain) do
+    case acquire_pipeline_slot() do
+      :busy ->
+        Logger.warning("[LOOKUP] #{domain} — all #{@max_live_pipelines} live-pipeline slots busy, refusing")
+        {:error, "Analyzer is busy — please try again in a minute."}
+
+      {:ok, slot} ->
+        try do
+          do_enrich_and_store(domain)
+        after
+          :counters.sub(slot, 1, 1)
+        end
+    end
+  end
+
+  defp do_enrich_and_store(domain) do
     {pid, monitor_ref} = spawn_monitor(fn ->
       result = try do
         Logger.info("[LOOKUP][PIPELINE] Spawned pipeline for #{domain}")

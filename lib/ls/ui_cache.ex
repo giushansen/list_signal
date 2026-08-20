@@ -153,15 +153,21 @@ defmodule LS.UICache do
   # Someone else is computing. Poll briefly for their result rather than
   # duplicating the work. If they crash or exceed the wait, compute directly —
   # a slow page is always better than a hung one.
-  defp await(full_key, fun, waited \\ 0)
+  # Absolute ceiling so a wedged key cannot hang a request forever. Short in
+  # test: 60s of waiters queueing behind one slow compute stalled unrelated
+  # tests past ExUnit's timeout, failing a different ~20 tests per run.
+  defp await_ceiling, do: Application.get_env(:ls, :cache_await_ms, 60_000)
 
-  # Absolute ceiling so a wedged key cannot hang a request forever.
-  defp await(full_key, fun, waited) when waited >= 60_000 do
-    Logger.warning("[UICache] waited #{waited}ms for #{inspect(full_key)}, computing directly")
-    fun.()
+  defp await(full_key, fun, waited \\ 0) do
+    if waited >= await_ceiling() do
+      Logger.warning("[UICache] waited #{waited}ms for #{inspect(full_key)}, computing directly")
+      fun.()
+    else
+      do_await(full_key, fun, waited)
+    end
   end
 
-  defp await(full_key, fun, waited) do
+  defp do_await(full_key, fun, waited) do
     Process.sleep(25)
 
     case lookup(full_key) do

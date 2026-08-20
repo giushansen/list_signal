@@ -10,6 +10,15 @@ defmodule LSWeb.TechControllerTest do
   """
   use LSWeb.ConnCase, async: true
 
+  setup do
+    # /tech pages are public — no SQLite involved — but this module renders
+    # them against a full local ClickHouse, and holding the sandbox's ONLY
+    # connection through a multi-second render starves every queued test
+    # setup. Same treatment as public_nav_test.
+    Ecto.Adapters.SQL.Sandbox.checkin(LS.Repo)
+    :ok
+  end
+
   alias LSWeb.TechController
 
   describe "format_count/1" do
