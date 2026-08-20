@@ -189,4 +189,13 @@ defmodule LS.Verification do
 
   @doc "Match rate per source and tier — the number the linker decision is made on."
   def match_report, do: Store.match_report()
+
+  @doc """
+  All numbers the admin Verification tab renders: scheduler state, the latest
+  run per source with timing, Companies-House staging progress, fact totals and
+  product-table coverage. One call, dashboard-safe timeouts.
+  """
+  def dashboard_stats do
+    Map.put(Store.dashboard_stats(), :scheduler, status())
+  end
 end

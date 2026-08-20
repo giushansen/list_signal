@@ -325,6 +325,27 @@ defmodule LS.DataContractTest do
       end)
     end
 
+    test "dashboard_stats returns every section without a nested-aggregate error" do
+      # The admin Verification tab's queries compile as text but ClickHouse
+      # rejected two of them for nested aggregates (Code 184, 2026-08-21) —
+      # the same class of bug that froze the compactor. This asserts the real
+      # server accepts them and the shapes are what the LiveView reads.
+      with_verification(fn ->
+        st = LS.Verification.Store.dashboard_stats()
+        assert is_list(st.sources)
+        assert is_map(st.coverage) and Map.has_key?(st.coverage, :any)
+        assert is_map(st.accounts) and Map.has_key?(st.accounts, :months_ok)
+        assert is_map(st.facts_by_source)
+
+        for src <- st.sources do
+          assert src.source in ["wikidata", "yc", "sec_edgar", "companies_house", "sirene"]
+          assert is_integer(src.records) and src.records >= 0
+          assert is_integer(src.duration_s) and src.duration_s >= 0
+          assert src.matched_website + src.matched_name_country <= src.records or src.records == 0
+        end
+      end)
+    end
+
     test "sources in verified_facts are the ones precedence knows about" do
       with_verification(fn ->
         known = LS.Verification.revenue_precedence() ++ LS.Verification.employees_precedence()

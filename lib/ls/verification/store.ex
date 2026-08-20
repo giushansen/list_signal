@@ -305,6 +305,99 @@ defmodule LS.Verification.Store do
 
   # ── Reporting ──
 
+  @doc """
+  Everything the admin Verification tab shows, in as few ClickHouse round-trips
+  as the 3s dashboard refresh can afford: the latest run per source (with
+  timing), the per-month Companies-House staging progress, verified-fact totals
+  by source, and how many product rows now carry a verified value.
+  """
+  def dashboard_stats do
+    %{
+      sources: latest_runs(),
+      accounts: ch_accounts_progress(),
+      facts_by_source: facts_by_source(),
+      coverage: coverage()
+    }
+  end
+
+  @doc "Latest run per source with duration in seconds (pure-ish: one grouped query)."
+  def latest_runs do
+    case Clickhouse.query_raw("""
+         SELECT source,
+                argMax(status, started_at)               AS status,
+                argMax(snapshot, started_at)             AS snapshot,
+                argMax(records, started_at)              AS records,
+                argMax(matched_website, started_at)      AS matched_website,
+                argMax(matched_name_country, started_at) AS matched_name_country,
+                max(started_at)                          AS last_started,
+                argMax(finished_at, started_at)          AS fin_at,
+                argMax(if(finished_at = toDateTime(0) OR finished_at < started_at, 0,
+                          dateDiff('second', started_at, finished_at)), started_at) AS duration_s,
+                argMax(error, started_at)                AS error,
+                count()                                  AS runs
+         FROM verification_runs FINAL
+         WHERE source IN ('wikidata','yc','sec_edgar','companies_house','sirene')
+         GROUP BY source ORDER BY source
+         """, 5_000) do
+      {:ok, rows} ->
+        Enum.map(rows, fn [src, st, snap, rec, mw, mnc, last_started, fin, dur, err, runs] ->
+          %{source: src, status: st, snapshot: snap, records: to_i(rec),
+            matched_website: to_i(mw), matched_name_country: to_i(mnc),
+            started_at: last_started, finished_at: fin, duration_s: to_i(dur),
+            error: err, runs: to_i(runs)}
+        end)
+
+      _ -> []
+    end
+  end
+
+  @doc "Companies-House accounts staging: months done + rows staged (its heaviest, slowest step)."
+  def ch_accounts_progress do
+    case Clickhouse.query_raw("""
+         SELECT uniqExactIf(snapshot, status = 'ok')  AS months_ok,
+                uniqExactIf(snapshot, status = 'error') AS months_err,
+                (SELECT count() FROM verification_ch_accounts)  AS staged_rows,
+                argMaxIf(snapshot, started_at, status = 'running') AS running_month
+         FROM verification_runs FINAL WHERE source = 'companies_house_accounts'
+         """, 5_000) do
+      {:ok, [[ok, err, rows, running]]} ->
+        %{months_ok: to_i(ok), months_err: to_i(err), staged_rows: to_i(rows), running_month: running}
+
+      _ -> %{months_ok: 0, months_err: 0, staged_rows: 0, running_month: ""}
+    end
+  end
+
+  @doc "Verified-fact counts per source."
+  def facts_by_source do
+    case Clickhouse.query_raw("SELECT source, count() FROM verified_facts GROUP BY source ORDER BY source", 5_000) do
+      {:ok, rows} -> Map.new(rows, fn [s, n] -> {s, to_i(n)} end)
+      _ -> %{}
+    end
+  end
+
+  @doc "How many product rows carry a verified value (what the reader actually sees)."
+  def coverage do
+    case Clickhouse.query_raw("""
+         SELECT countIf(verified_revenue != '')  AS rev,
+                countIf(verified_employees != '') AS emp,
+                countIf(mission_summary != '')    AS mission,
+                countIf(verified_revenue != '' OR verified_employees != '' OR mission_summary != '') AS any
+         FROM businesses FINAL
+         """, 8_000) do
+      {:ok, [[rev, emp, mis, any]]} ->
+        %{revenue: to_i(rev), employees: to_i(emp), mission: to_i(mis), any: to_i(any)}
+
+      _ -> %{revenue: 0, employees: 0, mission: 0, any: 0}
+    end
+  end
+
+  defp to_i(v) when is_integer(v), do: v
+  defp to_i(v) when is_binary(v), do: (case Integer.parse(v) do
+                                         {n, _} -> n
+                                         :error -> 0
+                                       end)
+  defp to_i(_), do: 0
+
   @doc "Distinct records and matches per source and tier, from the archive itself."
   def match_report do
     {:ok, rows} = Clickhouse.query_raw("""

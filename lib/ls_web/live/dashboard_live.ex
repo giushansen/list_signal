@@ -30,6 +30,7 @@ defmodule LSWeb.DashboardLive do
        all_errors: [],
        tab: "discovery",
        enrichment_stats: %{queue: nil, compactor: nil, agents: [], output: %{}},
+       verification_stats: nil,
        table_counts: collect_table_counts(),
        node_resources: [],
        peek: nil, peek_data: nil, show_errors: false
@@ -53,6 +54,7 @@ defmodule LSWeb.DashboardLive do
             worker_health: collect_worker_health(),
             worker_caches: collect_worker_caches(),
             enrichment_stats: collect_enrichment_stats(),
+            verification_stats: collect_verification_stats(),
             table_counts: collect_table_counts(),
             node_resources: collect_node_resources()
           ] ++ if(show_errors, do: [all_errors: collect_all_errors()], else: [])
@@ -89,7 +91,7 @@ defmodule LSWeb.DashboardLive do
   end
 
   @impl true
-  def handle_event("tab", %{"tab" => tab}, socket) when tab in ["discovery", "enrichment"] do
+  def handle_event("tab", %{"tab" => tab}, socket) when tab in ["discovery", "enrichment", "verification"] do
     {:noreply, assign(socket, tab: tab)}
   end
 
@@ -253,6 +255,8 @@ defmodule LSWeb.DashboardLive do
                   phx-click="tab" phx-value-tab="discovery">1 · Discovery</button>
           <button class={"tab" <> if(@tab == "enrichment", do: " on", else: "")}
                   phx-click="tab" phx-value-tab="enrichment">2 · Enrichment</button>
+          <button class={"tab" <> if(@tab == "verification", do: " on", else: "")}
+                  phx-click="tab" phx-value-tab="verification">3 · Verification</button>
         </div>
         <button class={"err-toggle" <> if(length(@all_errors) > 0, do: " has-errors", else: "")} phx-click="toggle_errors">
           <%= if @show_errors do %>✕ hide errors<% else %>{length(@all_errors)} errors<% end %>
@@ -599,6 +603,95 @@ defmodule LSWeb.DashboardLive do
         <% end %>
       <% end %>
 
+      <%!-- ══════════════ PIPELINE 3 · VERIFICATION ══════════════ --%>
+      <%= if @tab == "verification" do %>
+        <%= if @verification_stats == nil do %>
+          <div class="alert-danger">⛔ Verification tables not reachable (pipeline 3 not deployed here, or ClickHouse down)</div>
+        <% else %>
+          <% vs = @verification_stats %>
+          <% sch = vs.scheduler %>
+          <% cov = vs.coverage %>
+          <% running = is_map(sch) && Map.get(sch, :running) %>
+
+          <%!-- HEALTH SUMMARY --%>
+          <div class="health-bar">
+            <span class={"health-dot " <> cond do
+              is_map(sch) && Map.get(sch, :disabled) -> "health-amber"
+              running && running != false -> "health-green"
+              true -> "health-green"
+            end}></span>
+            <span class="health-label">
+              <%= cond do %>
+                <% is_map(sch) && Map.get(sch, :disabled) -> %>Scheduler paused (LS_VERIFY_DISABLED) — run by hand with LS.Verification.run/1
+                <% running && running != false -> %>Ingesting <b>{running}</b> now
+                <% true -> %>Idle — next stale source runs automatically
+              <% end %>
+            </span>
+            <div class="health-metrics">
+              <span class="hm hm-dim">{fmt(cov.any)} businesses verified</span>
+              <span class="hm hm-dim">{fmt(cov.revenue)} revenue</span>
+              <span class="hm hm-dim">{fmt(cov.employees)} employees</span>
+            </div>
+          </div>
+
+          <%!-- PER-SOURCE PIPELINE: fetch → match → facts, with timing --%>
+          <div class="section-label" style="margin-top: 0;">Sources — last run</div>
+          <table class="peek-table" style="min-width:0;width:100%">
+            <thead><tr>
+              <th>source</th><th>status</th><th>snapshot</th><th style="text-align:right">records</th>
+              <th style="text-align:right">website</th><th style="text-align:right">name+country</th>
+              <th style="text-align:right">facts</th><th style="text-align:right">last run</th><th style="text-align:right">took</th>
+            </tr></thead>
+            <tbody>
+              <%= for src <- vs.sources do %>
+                <tr>
+                  <td><b style="color:#e2e8f0">{src.source}</b><%= if running == String.to_atom(src.source) do %> <span class="badge badge-green">running</span><% end %></td>
+                  <td>
+                    <span class={cond do
+                      src.status == "ok" -> "rep-ok"
+                      src.status == "error" -> "rep-warn"
+                      true -> ""
+                    end}>{src.status}</span>
+                  </td>
+                  <td style="color:#64748b">{src.snapshot}</td>
+                  <td style="text-align:right">{fmt(src.records)}</td>
+                  <td style="text-align:right">{if src.matched_website > 0, do: fmt(src.matched_website), else: "—"}</td>
+                  <td style="text-align:right">{if src.matched_name_country > 0, do: fmt(src.matched_name_country), else: "—"}</td>
+                  <td style="text-align:right">{fmt(Map.get(vs.facts_by_source, src.source, 0))}</td>
+                  <td style="text-align:right;color:#64748b">{fmt_ts(src.finished_at)}</td>
+                  <td style="text-align:right">{fmt_dur(src.duration_s)}</td>
+                </tr>
+                <%= if src.status == "error" and src.error not in [nil, ""] do %>
+                  <tr><td colspan="9" style="color:#f87171;font-size:10px">↳ {String.slice(src.error, 0, 140)}</td></tr>
+                <% end %>
+              <% end %>
+              <%= if vs.sources == [] do %>
+                <tr><td colspan="9" style="color:#64748b">No runs yet — the scheduler starts the first source ~15 min after boot.</td></tr>
+              <% end %>
+            </tbody>
+          </table>
+
+          <%!-- COMPANIES HOUSE STAGING (its heaviest, multi-month step) --%>
+          <% acc = vs.accounts %>
+          <div class="section-label">Companies House · accounts staging (per-month iXBRL)</div>
+          <div class="rep-bar">
+            <div class="rep-chip">Months staged <b class={if(acc.months_ok > 0, do: "rep-ok", else: "rep-warn")}>{acc.months_ok}/12</b></div>
+            <%= if acc.months_err > 0 do %><div class="rep-chip">Failed months <b class="rep-warn">{acc.months_err}</b></div><% end %>
+            <div class="rep-chip">Filings staged <b class="rep-ok">{fmt(acc.staged_rows)}</b></div>
+            <%= if acc.running_month not in [nil, ""] do %><div class="rep-chip">Now <b class="rep-ok">{acc.running_month}</b></div><% end %>
+          </div>
+
+          <%!-- WHAT IT PRODUCED --%>
+          <div class="section-label">Verified facts in the product table</div>
+          <div class="rep-bar">
+            <div class="rep-chip">Any verified <b class="rep-ok">{fmt(cov.any)}</b></div>
+            <div class="rep-chip">Revenue <b class={if(cov.revenue > 0, do: "rep-ok", else: "rep-warn")}>{fmt(cov.revenue)}</b></div>
+            <div class="rep-chip">Employees <b class={if(cov.employees > 0, do: "rep-ok", else: "rep-warn")}>{fmt(cov.employees)}</b></div>
+            <div class="rep-chip">Mission <b class={if(cov.mission > 0, do: "rep-ok", else: "rep-warn")}>{fmt(cov.mission)}</b></div>
+          </div>
+        <% end %>
+      <% end %>
+
       <%= if @peek do %>
         <div class="peek-panel">
           <div class="peek-header">
@@ -671,6 +764,19 @@ defmodule LSWeb.DashboardLive do
 
       _ ->
         %{}
+    end
+  end
+
+  # Pipeline 3 (verification). All numbers come from one module call
+  # (LS.Verification.dashboard_stats/0) with dashboard-safe CH timeouts; nil
+  # when the tables/scheduler are absent so the tab degrades to "not deployed".
+  defp collect_verification_stats do
+    try do
+      LS.Verification.dashboard_stats()
+    rescue
+      _ -> nil
+    catch
+      :exit, _ -> nil
     end
   end
 
@@ -1047,6 +1153,28 @@ defmodule LSWeb.DashboardLive do
       true -> "dns-rate-bad"
     end
   end
+
+  # "2026-08-20 15:09:49" -> "08-20 15:09"; the zero DateTime CH uses for
+  # "not finished" renders as a dash.
+  defp fmt_ts(ts) when is_binary(ts) do
+    cond do
+      ts in ["", "1970-01-01 00:00:00", "0000-00-00 00:00:00"] -> "—"
+      String.length(ts) >= 16 -> String.slice(ts, 5, 11)
+      true -> ts
+    end
+  end
+
+  defp fmt_ts(_), do: "—"
+
+  defp fmt_dur(s) when is_integer(s) and s > 0 do
+    cond do
+      s >= 3600 -> "#{Float.round(s / 3600, 1)}h"
+      s >= 60 -> "#{div(s, 60)}m#{rem(s, 60)}s"
+      true -> "#{s}s"
+    end
+  end
+
+  defp fmt_dur(_), do: "—"
 
   defp fmt(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
   defp fmt(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
