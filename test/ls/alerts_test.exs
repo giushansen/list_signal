@@ -39,6 +39,14 @@ defmodule LS.AlertsTest do
     assert Enum.count(a, &String.starts_with?(&1.key, "worker_dead")) == 1
   end
 
+  test "a transient worker excluded from known_workers is never alerted (no false 'down')" do
+    # LS.Metrics.known_workers floors on recent volume, so a one-off node is
+    # simply absent from the expected set — evaluate/1 must not invent it.
+    m = %{healthy() | known_workers: healthy().known_workers}  # transient not present
+    a = Alerts.evaluate(m)
+    refute Enum.any?(a, &String.starts_with?(&1.key, "worker_dead"))
+  end
+
   test "the h1 split-brain signature (resolves DNS, HTTP fails) fires — but only above a sample floor" do
     hot = %{worker: "worker_h1@10.0.0.7", rows: 100_000, http_ok_pct: 2.0, resolved_fail_pct: 95.0, classified_pct: 1.0}
     tiny = %{worker: "worker_new@10.0.0.8", rows: 200, http_ok_pct: 2.0, resolved_fail_pct: 95.0, classified_pct: 1.0}

@@ -41,9 +41,14 @@ defmodule LS.Metrics do
     end)
   end
 
-  @doc "Workers that produced rows in the last `days` — the set we EXPECT to be live."
+  # A real fleet worker moves ~2M rows over 3 days; a transient/local debug
+  # worker (e.g. worker_disc@127.0.0.1, 7.7k rows) does not. Require a floor so
+  # a one-off node that came and went is never alerted as "down".
+  @known_worker_floor 200_000
+
+  @doc "Workers that did real work in the last `days` — the set we EXPECT to be live."
   def known_workers(days \\ 3) do
-    ch_rows("SELECT DISTINCT worker FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(days)} DAY AND worker != ''")
+    ch_rows("SELECT worker, count() FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(days)} DAY AND worker != '' GROUP BY worker HAVING count() >= #{@known_worker_floor}")
     |> Enum.map(&hd/1)
   end
 
