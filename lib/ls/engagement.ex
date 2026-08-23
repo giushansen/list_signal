@@ -203,6 +203,7 @@ defmodule LS.Engagement do
         base_email(user)
         |> subject("#{format_number(new_count)} new businesses match your last search")
         |> text_body(digest_body(user, new_count, filters, signals))
+        |> html_body(digest_html_body(user, new_count, filters, signals))
         |> header("List-Unsubscribe", "<#{unsubscribe_url(user)}>")
         |> header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
 
@@ -270,6 +271,7 @@ defmodule LS.Engagement do
     base_email(user)
     |> subject("[preview] #{format_number(new_count)} new businesses match your last search")
     |> text_body(digest_body(user, new_count, filters, signals))
+    |> html_body(digest_html_body(user, new_count, filters, signals))
     |> deliver_preview(user)
   end
 
@@ -318,7 +320,8 @@ defmodule LS.Engagement do
     See them, freshest first:
     https://listsignal.com/dashboard
     #{signal_lines}
-    Want a different cut of the data? Reply and I can build it with you.
+    Want a different cut of the data? Just reply — I read and answer every
+    email myself, and I'm happy to build the exact list you need with you.
 
     Will
 
@@ -326,6 +329,33 @@ defmodule LS.Engagement do
     Unsubscribe: #{unsubscribe_url(user)}
     """
   end
+
+  # HTML twin of digest_body/4. Deliberately plain — this is a founder's
+  # personal note, not a branded blast, so it's just paragraphs. The only
+  # reason it's HTML at all: to hide the long signed unsubscribe token behind
+  # the word "unsubscribe" instead of dumping a 90-char URL in the body.
+  @doc false
+  def digest_html_body(user, new_count, filters, signals) do
+    signal_html =
+      case signals do
+        [] -> ""
+        lines -> ~s(<p style="margin:0 0 16px;color:#555">) <> Enum.map_join(lines, "<br>", &esc/1) <> "</p>"
+      end
+
+    """
+    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:560px">
+      <p style="margin:0 0 16px">Hi 👋</p>
+      <p style="margin:0 0 16px"><strong>#{format_number(new_count)}</strong> new businesses matched your last search this week (#{esc(describe(filters))}).</p>
+      <p style="margin:0 0 16px"><a href="https://listsignal.com/dashboard" style="color:#10b981;font-weight:600;text-decoration:none">See them, freshest first →</a></p>
+      #{signal_html}
+      <p style="margin:0 0 16px">Want a different cut of the data? Just reply — I read and answer every email myself, and I'm happy to build the exact list you need with you.</p>
+      <p style="margin:0 0 4px">Will</p>
+      <p style="margin:24px 0 0;font-size:12px;color:#999">One of these a week, about your own search. <a href="#{unsubscribe_url(user)}" style="color:#999">Unsubscribe</a>.</p>
+    </div>
+    """
+  end
+
+  defp esc(s), do: s |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
   # ── Unsubscribe ──────────────────────────────────────────────────────────
 
