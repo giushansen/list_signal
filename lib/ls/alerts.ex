@@ -28,7 +28,8 @@ defmodule LS.Alerts do
   @disk_pct_warn 80                  # early runway: the CH backup needs ~1.5x the DB free
   @disk_pct_ceiling 88               # 240G disk-full caused a 521 outage before
   @sqlite_backup_age_h 6             # hourly job; 6h means it has missed several
-  @ch_backup_age_h 60                # daily-ish job; >2.5 days = the product DB is unbacked
+  @product_backup_age_h 14           # runs every 6h; businesses+biz_* = weeks of crawling
+  @ch_backup_age_h 216               # weekly job (domains_history); >9d = it has skipped a run
   @mem_avail_mb_floor 900            # master beam is capped ~8G on a 16G box
   @queue_pct_ceiling 92.0
   @reputation_age_ceiling_h 50       # 24h/12h download loops; >2 days = downloads failing
@@ -149,33 +150,30 @@ defmodule LS.Alerts do
   end
 
   # Silent backup failure is the worst bug class: you learn about it only when
-  # you need the backup. Aug 2026: unpruned releases filled the disk, backup.sh
-  # skipped the ClickHouse dump for days, and a truncated .tar looked like an
-  # archive. All three of those now page.
+  # you need the backup. Severity follows how expensive the tier is to rebuild
+  # (backup.sh's own reasoning): the product tier is weeks of crawling, sqlite
+  # is irreplaceable-but-tiny, and the ClickHouse tier is domains_history,
+  # which is history rather than derived state.
   defp backups(acc, %{backups: b}) when is_map(b) do
     acc
-    |> then(fn a ->
-      case b.ch_age_h do
-        nil -> [al(:critical, "backup_ch_missing", "No ClickHouse backup exists", "the product database has NO completed backup archive") | a]
-        age when age > @ch_backup_age_h -> [al(:critical, "backup_ch_stale", "ClickHouse backup stale", "newest ClickHouse archive is #{div(age, 24)}d old — the product DB is effectively unbacked") | a]
-        _ -> a
-      end
-    end)
-    |> then(fn a ->
-      case b.sqlite_age_h do
-        nil -> a
-        age when age > @sqlite_backup_age_h -> [al(:warning, "backup_sqlite_stale", "SQLite backup stale", "newest users/billing backup is #{age}h old") | a]
-        _ -> a
-      end
-    end)
-    |> then(fn a ->
-      if is_integer(b[:partial_archives]) and b.partial_archives > 0,
-        do: [al(:warning, "backup_partial", "Partial backup archive left behind", "#{b.partial_archives} uncompressed .tar from a dump that died mid-run — it is NOT a usable backup") | a],
-        else: a
-    end)
+    |> stale_backup(b[:product_age_h], @product_backup_age_h, :critical, "backup_product", "Product backup stale",
+         "businesses + biz_* — weeks of crawling to rebuild")
+    |> stale_backup(b[:sqlite_age_h], @sqlite_backup_age_h, :critical, "backup_sqlite", "SQLite backup stale",
+         "users/plans/Stripe — irreplaceable")
+    |> stale_backup(b[:ch_age_h], @ch_backup_age_h, :warning, "backup_ch", "ClickHouse backup stale",
+         "domains_history weekly dump")
   end
 
   defp backups(acc, _), do: acc
+
+  # One shape for all three tiers: missing entirely, or older than its cadence.
+  defp stale_backup(acc, age, ceiling, severity, key, subject, what) do
+    cond do
+      is_nil(age) -> [al(severity, "#{key}_missing", "No #{subject |> String.downcase() |> String.replace(" stale", "")} exists", "no archive at all — #{what}") | acc]
+      age > ceiling -> [al(severity, key, subject, "newest archive is #{age}h old (expected < #{ceiling}h) — #{what}") | acc]
+      true -> acc
+    end
+  end
 
   defp verification(acc, %{verification: %{sources: sources, scheduler: sched}}) when is_list(sources) do
     running = sched && Map.get(sched, :running)

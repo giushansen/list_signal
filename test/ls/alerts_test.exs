@@ -14,7 +14,7 @@ defmodule LS.AlertsTest do
       queue: %{queue_pct: 40.0},
       node_resources: [{:"master@10.0.0.1", %{disk_used_pct: 60, disk_used_gb: 200, disk_total_gb: 361, mem_avail_mb: 8000}}],
       reputation_ages: %{tranco: 5, majestic: 6, blocklist: 3},
-      backups: %{sqlite_age_h: 1, ch_age_h: 20, ch_archives: 3, partial_archives: 0},
+      backups: %{sqlite_age_h: 1, product_age_h: 3, ch_age_h: 20},
       verification: %{scheduler: %{running: false, disabled: false}, sources: [%{source: "yc", status: "ok", duration_s: 30, error: ""}]},
       poller: nil,
       ctl_diff: %{new: [], retired: []}
@@ -79,14 +79,24 @@ defmodule LS.AlertsTest do
     assert "verify_error:sec_edgar" in keys(a)
   end
 
-  test "an unbacked or stale ClickHouse backup is critical (Aug 2026: disk bloat silently skipped it)" do
-    missing = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 1, ch_age_h: nil, ch_archives: 0, partial_archives: 1}})
-    assert Enum.any?(missing, &(&1.key == "backup_ch_missing" and &1.severity == :critical))
-    assert Enum.any?(missing, &(&1.key == "backup_partial" and &1.severity == :warning))
+  test "each backup tier alerts at its own cadence, severity by rebuild cost" do
+    # backup.sh tiers: sqlite hourly, product 4x/day, ClickHouse weekly.
+    stale = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 9, product_age_h: 30, ch_age_h: 400}})
+    assert Enum.any?(stale, &(&1.key == "backup_product" and &1.severity == :critical)), "product = weeks of crawling"
+    assert Enum.any?(stale, &(&1.key == "backup_sqlite" and &1.severity == :critical)), "sqlite = irreplaceable"
+    assert Enum.any?(stale, &(&1.key == "backup_ch" and &1.severity == :warning)), "CH = weekly history dump"
+  end
 
-    stale = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 9, ch_age_h: 200, ch_archives: 1, partial_archives: 0}})
-    assert Enum.any?(stale, &(&1.key == "backup_ch_stale" and &1.severity == :critical))
-    assert Enum.any?(stale, &(&1.key == "backup_sqlite_stale" and &1.severity == :warning))
+  test "a tier with no archive at all is reported as missing, not merely stale" do
+    none = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 1, product_age_h: nil, ch_age_h: 20}})
+    assert Enum.any?(none, &(&1.key == "backup_product_missing" and &1.severity == :critical))
+  end
+
+  test "a weekly ClickHouse dump 20h old is NOT stale (its cadence is 7 days)" do
+    # Regression: an earlier version used a 60h ceiling meant for a daily job
+    # and would have paged every week on a healthy weekly backup.
+    a = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 1, product_age_h: 3, ch_age_h: 170}})
+    refute Enum.any?(a, &String.starts_with?(&1.key, "backup_"))
   end
 
   test "disk warns early at 80% so backups keep their headroom, criticals at 88%" do
