@@ -72,21 +72,26 @@ defmodule LS.Engagement do
       base_email(user)
       |> subject("What list are you trying to build?")
       |> text_body("""
-      Hey — Will here, I run ListSignal.
+      Hi,
 
-      Thanks for signing up. One question, because it genuinely shapes what I
-      build next:
+      Will here, I built ListSignal.
 
-      What list are you trying to build?
+      One question, because it shapes what I build next: what list are you
+      trying to build?
 
-      (Shopify stores in a country? SaaS companies using some tool? Stores
-      with weak SEO you could pitch?)
+      Two things people come here for:
 
-      Reply and tell me — I read every answer, and if you describe it I'll
-      often just build the first version of the list with you.
+      1. Shopify stores that went live this week and already have a contact
+         address. About 5,000 of those every week, and you reach them before
+         anyone else does.
+
+      2. SaaS companies under $10M that are hiring right now. Big enough to
+         have budget, small enough that you reach the person who decides.
+
+      Tell me what you are after and I can build the list with you.
 
       Will
-      https://listsignal.com
+      listsignal.com
       """)
 
     deliver(email, "welcome", user)
@@ -111,23 +116,7 @@ defmodule LS.Engagement do
           email =
             base_email(user)
             |> subject("Your ListSignal search matched #{format_number(count)} businesses")
-            |> text_body("""
-            Hey — Will from ListSignal.
-
-            Yesterday you ran a search that currently matches #{format_number(count)}
-            businesses (#{describe(filters)}).
-
-            The free plan lets you browse them but not take them with you. Two
-            ways to get the list itself:
-
-            - Starter is $29/mo and exports 5,000 rows a month, cancel anytime:
-              https://listsignal.com/pricing
-            - Or just reply to this email and I'll send you the first 25 rows
-              free — no card, no catch. I'm the founder; I'd rather you see
-              the data quality than take my word for it.
-
-            Will
-            """)
+            |> text_body(wall_body(count, filters))
 
           case deliver(email, "wall", user) do
             :ok ->
@@ -210,29 +199,10 @@ defmodule LS.Engagement do
 
     # An empty digest is worse than none: skip quiet weeks silently.
     if new_count > 0 or signals != [] do
-      signal_lines =
-        case signals do
-          [] -> ""
-          lines -> "\nSignals this week:\n" <> Enum.map_join(lines, "\n", &("  - " <> &1)) <> "\n"
-        end
-
       email =
         base_email(user)
         |> subject("#{format_number(new_count)} new businesses match your last search")
-        |> text_body("""
-        Your last ListSignal search (#{describe(filters)}) matched
-        #{format_number(new_count)} NEW businesses this week.
-
-        See them (sorted freshest first):
-        https://listsignal.com/dashboard
-        #{signal_lines}
-        Will
-        https://listsignal.com
-
-        --
-        One email a week, only about your own search. Stop them here:
-        #{unsubscribe_url(user)}
-        """)
+        |> text_body(digest_body(user, new_count, filters, signals))
         |> header("List-Unsubscribe", "<#{unsubscribe_url(user)}>")
         |> header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
 
@@ -263,6 +233,98 @@ defmodule LS.Engagement do
       %{"filters" => filters} when is_map(filters) and map_size(filters) > 0 -> filters
       _ -> nil
     end
+  end
+
+  @doc """
+  Send all three templates to one address so the owner can judge the real
+  thing: same renderer, same From, same Mailgun path as production. Uses the
+  recipient's own last search when they have one, otherwise a representative
+  example, so the wall and digest read exactly as a customer would see them.
+  """
+  def preview_all(email_address) do
+    user =
+      Repo.get_by(User, email: email_address) ||
+        %User{id: 0, email: email_address, digest_subscribed: true}
+
+    filters = last_search(email_address) || %{"tech" => "Shopify", "has_email" => "true"}
+
+    send_welcome(user)
+    send_wall_preview(user, filters)
+    send_digest_preview(user, filters)
+    :ok
+  end
+
+  defp send_wall_preview(user, filters) do
+    count = count_for(filters)
+
+    base_email(user)
+    |> subject("[preview] Your ListSignal search matched #{format_number(count)} businesses")
+    |> text_body(wall_body(count, filters))
+    |> deliver_preview(user)
+  end
+
+  defp send_digest_preview(user, filters) do
+    new_count = count_new_for(filters, 7)
+    signals = signal_highlights(filters)
+
+    base_email(user)
+    |> subject("[preview] #{format_number(new_count)} new businesses match your last search")
+    |> text_body(digest_body(user, new_count, filters, signals))
+    |> deliver_preview(user)
+  end
+
+  defp deliver_preview(email, user), do: deliver(email, "preview", user)
+
+  @doc false
+  def wall_body(count, filters) do
+    """
+    Hi,
+
+    Will from ListSignal.
+
+    The search you ran yesterday matches #{format_number(count)} businesses
+    (#{describe(filters)}).
+
+    Free accounts can browse them, exporting needs a paid plan. Two ways
+    to get the list:
+
+    Starter is $29/mo for 5,000 rows a month, cancel any time:
+    https://listsignal.com/pricing
+
+    Or reply here and I will send you the first 25 rows free. No card.
+    I would rather you see the data quality than take my word for it.
+
+    And if this list is not quite the right one, tell me what you
+    actually need and I can build it with you.
+
+    Will
+    """
+  end
+
+  @doc false
+  def digest_body(user, new_count, filters, signals) do
+    signal_lines =
+      case signals do
+        [] -> ""
+        lines -> "\n" <> Enum.join(lines, "\n") <> "\n"
+      end
+
+    """
+    Hi,
+
+    #{format_number(new_count)} new businesses matched your last search this week
+    (#{describe(filters)}).
+
+    See them, freshest first:
+    https://listsignal.com/dashboard
+    #{signal_lines}
+    Want a different cut of the data? Reply and I can build it with you.
+
+    Will
+
+    You get one of these a week, about your own search.
+    Unsubscribe: #{unsubscribe_url(user)}
+    """
   end
 
   # ── Unsubscribe ──────────────────────────────────────────────────────────

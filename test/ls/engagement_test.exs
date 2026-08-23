@@ -52,9 +52,35 @@ defmodule LS.EngagementTest do
       assert_email_sent(fn email ->
         assert email.subject == "What list are you trying to build?"
         assert {_, "will@listsignal.com"} = email.from
-        assert email.text_body =~ "Reply and tell me"
+        assert email.text_body =~ "I can build the list with you"
         assert email.html_body == nil, "plain text outperforms designed HTML; keep it plain"
       end)
+    end
+  end
+
+  describe "the copy itself (it must not read like a machine wrote it)" do
+    test "no em-dashes and no '--' separators in any customer-facing body" do
+      user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
+      filters = %{"tech" => "Shopify"}
+
+      bodies = [
+        Engagement.wall_body(1_847, filters),
+        Engagement.digest_body(user, 1_240, filters, ["Klaviyo: 340 added it, 89 dropped it"])
+      ]
+
+      for body <- bodies do
+        refute body =~ "\u2014", "em-dash reads as machine-written; the owner asked for none"
+        refute body =~ "\u2013", "en-dash reads as machine-written"
+        refute body =~ "\n--", "the '--' signature separator reads as machine-written"
+      end
+    end
+
+    test "each body offers a way to talk to a human" do
+      user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
+      filters = %{"tech" => "Shopify"}
+
+      assert Engagement.wall_body(10, filters) =~ "build it with you"
+      assert Engagement.digest_body(user, 10, filters, []) =~ "Reply"
     end
   end
 
