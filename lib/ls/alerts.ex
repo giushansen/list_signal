@@ -25,7 +25,10 @@ defmodule LS.Alerts do
   @worker_6h_floor 20_000            # normal ~170-230k/6h; below this a node is effectively dead
   @resolved_fail_ceiling 30.0        # normal 5-9%; ~100% is the h1 split-brain
   @stale_seconds_ceiling 5_400       # businesses should be < ~90 min old (compactor)
+  @disk_pct_warn 80                  # early runway: the CH backup needs ~1.5x the DB free
   @disk_pct_ceiling 88               # 240G disk-full caused a 521 outage before
+  @sqlite_backup_age_h 6             # hourly job; 6h means it has missed several
+  @ch_backup_age_h 60                # daily-ish job; >2.5 days = the product DB is unbacked
   @mem_avail_mb_floor 900            # master beam is capped ~8G on a 16G box
   @queue_pct_ceiling 92.0
   @reputation_age_ceiling_h 50       # 24h/12h download loops; >2 days = downloads failing
@@ -43,6 +46,7 @@ defmodule LS.Alerts do
       queue: Metrics.queue(),
       node_resources: Metrics.node_resources(),
       reputation_ages: Metrics.reputation_ages(),
+      backups: Metrics.backup_status(),
       verification: Metrics.verification(),
       poller: Metrics.poller(),
       ctl_diff: LS.CTL.LogList.diff_current()
@@ -61,6 +65,7 @@ defmodule LS.Alerts do
     |> resources(m)
     |> queue(m)
     |> reputation(m)
+    |> backups(m)
     |> verification(m)
     |> ctl_sources(m)
     |> Enum.sort_by(&(&1.severity == :critical), :desc)
@@ -109,9 +114,20 @@ defmodule LS.Alerts do
     Enum.reduce(nodes, acc, fn {node, r}, a ->
       a
       |> then(fn a ->
-        if is_integer(r[:disk_used_pct]) and r.disk_used_pct >= @disk_pct_ceiling,
-          do: [al(:critical, "disk:#{node}", "Disk almost full: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB)") | a],
-          else: a
+        cond do
+          not is_integer(r[:disk_used_pct]) -> a
+
+          r.disk_used_pct >= @disk_pct_ceiling ->
+            [al(:critical, "disk:#{node}", "Disk almost full: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB)") | a]
+
+          # Early warning: below this the ClickHouse dump (needs ~1.5x the DB
+          # free) starts getting skipped silently — that is how the product DB
+          # went unbacked in Aug 2026.
+          r.disk_used_pct >= @disk_pct_warn ->
+            [al(:warning, "disk_warn:#{node}", "Disk filling: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB) — backups need headroom") | a]
+
+          true -> a
+        end
       end)
       |> then(fn a ->
         if is_integer(r[:mem_avail_mb]) and r.mem_avail_mb < @mem_avail_mb_floor,
@@ -131,6 +147,35 @@ defmodule LS.Alerts do
       a -> [al(:warning, "reputation:#{name}", "#{name} download stale", "#{name} data is #{age}h old — download loop may be failing") | a]
     end
   end
+
+  # Silent backup failure is the worst bug class: you learn about it only when
+  # you need the backup. Aug 2026: unpruned releases filled the disk, backup.sh
+  # skipped the ClickHouse dump for days, and a truncated .tar looked like an
+  # archive. All three of those now page.
+  defp backups(acc, %{backups: b}) when is_map(b) do
+    acc
+    |> then(fn a ->
+      case b.ch_age_h do
+        nil -> [al(:critical, "backup_ch_missing", "No ClickHouse backup exists", "the product database has NO completed backup archive") | a]
+        age when age > @ch_backup_age_h -> [al(:critical, "backup_ch_stale", "ClickHouse backup stale", "newest ClickHouse archive is #{div(age, 24)}d old — the product DB is effectively unbacked") | a]
+        _ -> a
+      end
+    end)
+    |> then(fn a ->
+      case b.sqlite_age_h do
+        nil -> a
+        age when age > @sqlite_backup_age_h -> [al(:warning, "backup_sqlite_stale", "SQLite backup stale", "newest users/billing backup is #{age}h old") | a]
+        _ -> a
+      end
+    end)
+    |> then(fn a ->
+      if is_integer(b[:partial_archives]) and b.partial_archives > 0,
+        do: [al(:warning, "backup_partial", "Partial backup archive left behind", "#{b.partial_archives} uncompressed .tar from a dump that died mid-run — it is NOT a usable backup") | a],
+        else: a
+    end)
+  end
+
+  defp backups(acc, _), do: acc
 
   defp verification(acc, %{verification: %{sources: sources, scheduler: sched}}) when is_list(sources) do
     running = sched && Map.get(sched, :running)

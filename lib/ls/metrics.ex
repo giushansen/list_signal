@@ -172,6 +172,41 @@ defmodule LS.Metrics do
     end
   end
 
+  @doc """
+  Freshness of the on-disk backups (master only). Silent backup failure is the
+  worst class of bug there is — you only find out when you need the backup.
+
+  Returns `%{sqlite_age_h, ch_age_h, ch_archives, partial_archives}`; `nil`
+  ages mean "no such backup exists at all". A `.tar` without its `.tar.gz` is a
+  PARTIAL archive left by a run that died mid-dump (2026-08-24: disk pressure
+  from unpruned releases truncated the weekly ClickHouse dump after one table).
+  """
+  def backup_status(dir \\ "/home/ls/backups") do
+    case File.ls(dir) do
+      {:ok, files} ->
+        %{
+          sqlite_age_h: newest_age_h(dir, files, ~r/^sqlite_.*\.db$/),
+          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]?_.*\.tar\.gz$/),
+          ch_archives: Enum.count(files, &Regex.match?(~r/^ch[dw]?_.*\.tar\.gz$/, &1)),
+          partial_archives: Enum.count(files, &Regex.match?(~r/^ch[dw]?_.*\.tar$/, &1))
+        }
+
+      _ -> %{sqlite_age_h: nil, ch_age_h: nil, ch_archives: nil, partial_archives: 0}
+    end
+  end
+
+  defp newest_age_h(dir, files, re) do
+    files
+    |> Enum.filter(&Regex.match?(re, &1))
+    |> Enum.map(&File.stat!(Path.join(dir, &1), time: :posix).mtime)
+    |> case do
+      [] -> nil
+      times -> div(System.os_time(:second) - Enum.max(times), 3600)
+    end
+  rescue
+    _ -> nil
+  end
+
   # ── Node resources (every node over erpc) ──
 
   @doc "Per-node CPU/RAM/disk/network, `[{node, map}]`. Unreachable nodes are dropped."
