@@ -284,13 +284,26 @@ defmodule LS.Clickhouse do
 
   # ── VS / Compare pages ──
 
+  @doc """
+  Everything `/compare/a-vs-b` renders.
+
+  Every sub-query DEGRADES instead of raising. These are the heaviest scans on
+  the public site (~55s cold on a busy box), and each of the four below used to
+  be a hard `{:ok, x} = ...` match while `both_count` already fell back to 0 —
+  so a single ClickHouse timeout raised MatchError and Phoenix served 500 on a
+  public SEO page. Seen 2026-08-24 on /compare/klaviyo-vs-mailchimp whenever
+  the compactor was mid-pass. A page missing one panel beats a 500.
+
+  Sets `degraded: true` when anything fell back, so the caller can decline to
+  cache a half-empty page for the profile's full TTL.
+  """
   def compare_techs(tech_a, tech_b) do
     count_a = tech_store_count(tech_a)
     count_b = tech_store_count(tech_b)
-    {:ok, stores_a} = stores_by_tech(tech_a, 10)
-    {:ok, stores_b} = stores_by_tech(tech_b, 10)
-    {:ok, countries_a} = tech_country_distribution(tech_a)
-    {:ok, countries_b} = tech_country_distribution(tech_b)
+    results = [stores_by_tech(tech_a, 10), stores_by_tech(tech_b, 10),
+               tech_country_distribution(tech_a), tech_country_distribution(tech_b)]
+    [stores_a, stores_b, countries_a, countries_b] = Enum.map(results, &ok_or_empty/1)
+    degraded? = Enum.any?(results, &(not match?({:ok, _}, &1)))
     both_count = case query("""
     SELECT count() FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_a)}%' AND http_tech LIKE '%#{escape(tech_b)}%'
@@ -301,9 +314,14 @@ defmodule LS.Clickhouse do
     %{
       tech_a: %{name: tech_a, count: count_a, stores: stores_a, countries: countries_a},
       tech_b: %{name: tech_b, count: count_b, stores: stores_b, countries: countries_b},
-      both_count: both_count
+      both_count: both_count,
+      degraded: degraded?
     }
   end
+
+  @doc false
+  def ok_or_empty({:ok, rows}), do: rows
+  def ok_or_empty(_), do: []
 
   def tech_country_distribution(tech_name) do
     query("""

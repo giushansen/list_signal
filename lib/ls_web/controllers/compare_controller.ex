@@ -21,6 +21,12 @@ defmodule LSWeb.CompareController do
             LS.Clickhouse.compare_techs(tech_a, tech_b)
           end)
 
+        # A degraded result (a ClickHouse scan timed out) still renders — but it
+        # must NOT sit in the cache for the profile's full 6h, or one busy
+        # moment pins a half-empty page in front of visitors and Googlebot for
+        # the rest of the day. Drop it so the next request tries again.
+        if Map.get(data, :degraded), do: LS.UICache.invalidate(:compare_page, {tech_a, tech_b})
+
         # Observed switching in both directions (90d, 6h-cached). The single
         # most differentiated fact on the page: nobody else can say "N stores
         # left A for B this quarter" from live crawls.
