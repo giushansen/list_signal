@@ -134,6 +134,9 @@ defmodule LS.CTL.Poller do
     GenServer.call(__MODULE__, :stats, 30_000)
   end
 
+  @doc "The configured CT log sources (used by LS.CTL.LogList to diff against Chrome's list)."
+  def configs, do: Application.get_env(:ls, :ctl_logs, @log_configs)
+
   @impl true
   def init(_opts) do
     :ets.new(@ets_work_queue, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])

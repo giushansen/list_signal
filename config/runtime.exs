@@ -8,6 +8,15 @@ end
 # Pipeline 3 (verification). SEC EDGAR's fair-access policy requires a
 # contact in the User-Agent; the same UA identifies us to every source.
 config :ls, :sec_edgar_contact, System.get_env("SEC_EDGAR_CONTACT", "will@keybloc.io")
+
+# Ops email: where infra/quality alerts and the weekly report go, and the
+# From identity every ListSignal email shares (was hardcoded in UserNotifier).
+config :ls, :mail_from, {"ListSignal", System.get_env("MAIL_FROM", "team@listsignal.com")}
+
+config :ls, :alert_emails,
+  (System.get_env("LS_ALERT_EMAILS", "will@listsignal.com")
+   |> String.split(",", trim: true)
+   |> Enum.map(&String.trim/1))
 config :ls, :verification_dir, System.get_env("LS_VERIFICATION_DIR", "/home/ls/verification")
 
 config :ls, :stripe_publishable_key, System.get_env("STRIPE_PUBLISHABLE_KEY")

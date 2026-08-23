@@ -354,4 +354,31 @@ defmodule LS.DataContractTest do
       end)
     end
   end
+
+  describe "ops alerting + weekly report contract" do
+    @tag timeout: 180_000
+    test "gather + evaluate + the weekly report all run against real ClickHouse without raising" do
+      with_clickhouse(fn ->
+        # gather hits every metric query and node erpc; evaluate is pure over it.
+        m = LS.Alerts.gather()
+        alerts = LS.Alerts.evaluate(m)
+        assert is_list(alerts)
+        for a <- alerts, do: assert(a.severity in [:critical, :warning] and is_binary(a.subject))
+
+        # the weekly report must render to HTML with its three chapters.
+        html = LS.Report.Weekly.html()
+        assert is_binary(html)
+        assert html =~ "1 · Infrastructure"
+        assert html =~ "2 · Traffic"
+        assert html =~ "3 · Software"
+        refute html =~ "nil/nil"
+      end)
+    end
+
+    test "ops_email_log exists and cooldown reads it without error" do
+      with_clickhouse(fn ->
+        assert {:ok, _} = Clickhouse.query_raw("SELECT count() FROM ops_email_log")
+      end)
+    end
+  end
 end

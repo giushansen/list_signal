@@ -30,7 +30,7 @@ One OTP codebase, role-selected at boot by `LS_ROLE` (see `LS.Application`):
 
 | Role | Runs | Where |
 |---|---|---|
-| `master` | `LS.CTL.Poller`, `LS.Cluster.WorkQueue`, `LS.Cluster.Inserter`, `LS.Cluster.Monitor`, `LS.Recrawl.Scheduler`, `LS.Cluster.Compactor`, `LS.Verification.Scheduler`, Phoenix web | ls-master (also hosts ClickHouse + SQLite) |
+| `master` | `LS.CTL.Poller`, `LS.Cluster.WorkQueue`, `LS.Cluster.Inserter`, `LS.Cluster.Monitor`, `LS.Recrawl.Scheduler`, `LS.Cluster.Compactor`, `LS.Verification.Scheduler`, `LS.Ops.Sentinel`, Phoenix web | ls-master (also hosts ClickHouse + SQLite) |
 | `worker` | `LS.Cluster.WorkerAgent` + resolvers/caches | 11 nodes; names derived at boot as `worker_<host>@<wg0-ip>` |
 | `standalone` | both | local dev (`make dev`) |
 
@@ -136,6 +136,32 @@ CT items — workers process both identically.
 Phoenix (`LSWeb`) on the master serves the public directory
 (`/shopify/:slug`, `/website/:slug`, `/top/*`, `/compare/*`), SEO pages from
 `domains_fast`, and the account/billing area backed by SQLite + Stripe.
+
+## Ops alerting & the weekly report
+
+Master-only, one GenServer — `LS.Ops.Sentinel`:
+
+- **Alerts** every 15 min via `LS.Alerts`: `evaluate/1` is a PURE function over
+  a metrics snapshot (`LS.Metrics`), so every threshold is unit-tested without
+  a cluster. It emails only when something that hurts the business is wrong —
+  stalled ingestion, a dead or degraded worker (incl. the h1 split-brain
+  signature: resolves DNS but HTTP fails), a quarantined worker, a frozen
+  compactor, disk ≥88% or low RAM, a full queue, stale reputation downloads, a
+  failed/wedged verification source, and **CT-log source changes** (a new
+  usable log Chrome lists that we don't poll, or one we poll that has retired —
+  `LS.CTL.LogList` diffs Chrome's list against `LS.CTL.Poller.configs/0`).
+  Per-alert 6h cooldown via `ls.ops_email_log` so a standing problem is one
+  email, not ninety-six. Silence means healthy.
+- **Weekly report** (Mon 08:xx UTC) via `LS.Report.Weekly`: one HTML email,
+  three chapters — infrastructure (CPU/RAM/disk/network per node), traffic
+  (crawl outcome & error rates, ingestion trend, bytes downloaded per source),
+  and software (pipeline throughput, crawl yield by domain kind, data quality).
+  Deduped through the same `ops_email_log` so a restart can't double-send.
+
+Recipients come from `LS_ALERT_EMAILS` (default `will@listsignal.com`); the
+shared From identity is `MAIL_FROM` (default `team@listsignal.com`). Set
+`LS_ALERTS_DISABLED=1` to pause. Both alerts and the report read the SAME
+`LS.Metrics`, so they can never disagree with each other or the dashboard.
 
 ## Operational invariants worth knowing
 

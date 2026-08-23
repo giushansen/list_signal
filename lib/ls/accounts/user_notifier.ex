@@ -10,7 +10,7 @@ defmodule LS.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"ListSignal", "team@listsignal.com"})
+      |> from(LS.Ops.Mail.from())
       |> subject(subject)
       |> text_body(body)
 

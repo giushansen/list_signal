@@ -133,6 +133,8 @@ defmodule LS.Application do
       # from one polite client, never spread across the fleet.
       {Task.Supervisor, name: LS.Verification.TaskSupervisor},
       LS.Verification.Scheduler,
+      # Ops: infra/quality alerts (email) + the weekly report. Master-only.
+      LS.Ops.Sentinel,
       LSWeb.Endpoint
     ]
     if mode == "ctl_live", do: master ++ [LS.CTL.PlatformRegistry, LS.CTL.Poller],
