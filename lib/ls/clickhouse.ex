@@ -848,6 +848,47 @@ defmodule LS.Clickhouse do
     query_raw(sql, 300_000)
   end
 
+  # ── Engagement digests ──
+
+  @doc """
+  Count businesses matching a saved dashboard search, optionally only those
+  FIRST SEEN in the last `:first_seen_days` — the "new since your last visit"
+  number the weekly digest is built around. Filters are the same map the
+  explorer records into the audit trail, so the digest counts exactly what
+  the user's search would show today.
+  """
+  def count_businesses_for_digest(filters) when is_map(filters) do
+    {days, rest} = Map.pop(filters, :first_seen_days)
+    base = LS.Explorer.count_sql(rest)
+
+    sql =
+      cond do
+        is_nil(days) -> base
+        String.contains?(base, "WHERE") -> base <> " AND first_seen > now() - INTERVAL #{days} DAY"
+        true -> base <> " WHERE first_seen > now() - INTERVAL #{days} DAY"
+      end
+
+    case query_raw(sql) do
+      {:ok, [[n]]} -> {:ok, to_count(n)}
+      err -> err
+    end
+  end
+
+  @doc "Added/removed counts for one tech over `days` — the digest's signal line."
+  def signal_counts_for(tech, days) do
+    sql = """
+    SELECT countIf(kind = 'tech_added' OR kind = 'app_added') AS added,
+           countIf(kind = 'tech_removed' OR kind = 'app_removed') AS removed
+    FROM biz_signal
+    WHERE value = '#{escape(tech)}' AND changed_at > now() - INTERVAL #{days} DAY
+    """
+
+    case query_raw(sql) do
+      {:ok, [[a, r]]} -> {:ok, to_count(a), to_count(r)}
+      err -> err
+    end
+  end
+
   # ── Recrawl scheduler ──
 
   @doc """

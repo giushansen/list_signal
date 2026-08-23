@@ -822,7 +822,10 @@ defmodule LSWeb.ExplorerLive do
             <div class="ml-auto flex-shrink-0">
               <%= cond do %>
                 <% @plan not in ["starter", "pro"] -> %>
-                  <button phx-click="show_upgrade" title="CSV export is available on Starter and Pro"
+                  <%!-- Their number, not our copy: "unlock these 1,847" converts
+                       where a grey "upgrade required" just reads as a wall. --%>
+                  <button phx-click="show_upgrade"
+                    title={if is_integer(@total) and @total > 0, do: "Unlock these #{format_number(@total)} businesses as CSV — Starter is $29/mo, cancel anytime. Or reply to your welcome email and I'll send 25 rows free.", else: "CSV export is available on Starter and Pro"}
                     data-umami-event="export_upgrade_prompt"
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition text-[12px] font-semibold"
                     aria-label="Export CSV — upgrade required">

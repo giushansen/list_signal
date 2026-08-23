@@ -80,6 +80,8 @@ defmodule LSWeb.Router do
     # legacy path kept as a 301 so old links and indexed pages keep working
     get "/saas", FeedController, :saas_legacy
     get "/hiring", HiringController, :index
+    # Login-free by design: unsubscribe links live in emails.
+    get "/digest/unsubscribe/:token", DigestController, :unsubscribe
 
     # Purchased CSV download. Public by design: the buyer paid from a cold
     # email and has no account — the unguessable token IS the credential.

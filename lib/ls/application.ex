@@ -89,6 +89,8 @@ defmodule LS.Application do
       LS.MailboxSentinel,
       # Primes the page cache after boot — see LS.CacheWarmer.
       LS.CacheWarmer,
+      # Founder activation emails (welcome / wall / weekly digest) — master only.
+      LS.Engagement,
       # Dedicated HTTP pools. Both 2026-08-03 outages trace to one cause:
       # every ClickHouse call AND the CT poller shared Req's default Finch
       # pool, so a heavy compaction holding connections while inserts churned

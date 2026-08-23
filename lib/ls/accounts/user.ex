@@ -20,6 +20,12 @@ defmodule LS.Accounts.User do
     field :plan, :string, default: "free"
     field :trial_ends_at, :utc_datetime
     field :exports_used_this_month, :integer, default: 0
+
+    # Engagement (see LS.Engagement). digest_subscribed is the durable
+    # opt-out; honouring it must survive provider switches and rebuilds.
+    field :digest_subscribed, :boolean, default: true
+    field :digest_last_sent_at, :utc_datetime
+    field :wall_email_sent_at, :utc_datetime
     field :exports_reset_at, :utc_datetime
 
     timestamps(type: :utc_datetime)

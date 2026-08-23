@@ -276,9 +276,19 @@ defmodule LS.Accounts do
         """
 
       {%User{confirmed_at: nil} = user, _token} ->
-        user
-        |> User.confirm_changeset()
-        |> update_user_and_delete_all_tokens()
+        result =
+          user
+          |> User.confirm_changeset()
+          |> update_user_and_delete_all_tokens()
+
+        # First confirmation = the activation moment. The founder welcome goes
+        # out NOW (sub-minute welcomes see ~10x the engagement of hour-late
+        # ones) and off-process, so a mail hiccup can never break login.
+        with {:ok, {confirmed, _}} <- result do
+          Task.start(fn -> LS.Engagement.send_welcome(confirmed) end)
+        end
+
+        result
 
       {user, token} ->
         Repo.delete!(token)
