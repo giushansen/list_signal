@@ -1,0 +1,82 @@
+<main class="pt-[100px] pb-20"><div class="mx-auto max-w-[1000px] px-6">
+  <nav class="mb-6 text-sm text-white/40">
+    <a href="/" class="hover:text-white">Home</a><span class="mx-2">&#8250;</span>
+    <a href="/trends" class="hover:text-white">Adoption Trends</a><span class="mx-2">&#8250;</span>
+    <span class="text-white/60"><%= @tech %></span>
+  </nav>
+
+  <h1 class="font-display text-[clamp(28px,4vw,40px)] font-bold tracking-tight mb-4"><%= @tech %> Adoption Trend</h1>
+  <p class="text-white/60 mb-8 max-w-[700px]">
+    Live install and churn numbers for <%= @tech %>, counted from observed tech-stack changes
+    across continuously re-crawled websites. Updated daily.
+  </p>
+
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+    <div class="rounded-xl border border-white/[0.07] bg-[#111B33] px-5 py-4">
+      <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Businesses using it</div>
+      <div class="font-display text-2xl font-bold text-white tabular-nums"><%= format_number(@total) %></div>
+    </div>
+    <div class="rounded-xl border border-white/[0.07] bg-[#111B33] px-5 py-4">
+      <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Installed, last 30d</div>
+      <div class="font-display text-2xl font-bold text-emerald-400 tabular-nums">+<%= format_number(@trends.adds_30d) %></div>
+      <div class="text-[11px] text-white/30 mt-0.5">+<%= format_number(@trends.adds_7d) %> this week</div>
+    </div>
+    <div class="rounded-xl border border-white/[0.07] bg-[#111B33] px-5 py-4">
+      <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Dropped, last 30d</div>
+      <div class="font-display text-2xl font-bold text-red-400 tabular-nums">−<%= format_number(@trends.drops_30d) %></div>
+      <div class="text-[11px] text-white/30 mt-0.5">−<%= format_number(@trends.drops_7d) %> this week</div>
+    </div>
+    <div class="rounded-xl border border-white/[0.07] bg-[#111B33] px-5 py-4">
+      <div class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Net, last 30d</div>
+      <div class="font-display text-2xl font-bold tabular-nums"><.net_badge adds={@trends.adds_30d} drops={@trends.drops_30d} /></div>
+    </div>
+  </div>
+
+  <%= if @adopters != [] do %>
+    <section class="rounded-xl border border-white/[0.07] bg-[#111B33] p-6 mb-8" aria-label="Recent adopters">
+      <h2 class="font-display text-lg font-semibold mb-1">Recently adopted <%= @tech %></h2>
+      <p class="text-[13px] text-white/40 mb-4">Fresh from the crawl — newest first.</p>
+      <ul class="divide-y divide-white/[0.05]">
+        <%= for [domain, at] <- @adopters do %>
+          <li>
+            <a href={"/website/#{String.replace(domain, ".", "-")}"} class="flex items-center justify-between gap-3 py-2.5 group">
+              <span class="text-sm text-white/85 group-hover:text-accent transition-colors"><%= domain %></span>
+              <span class="shrink-0 text-[11px] text-white/30"><%= String.slice(to_string(at), 0, 10) %></span>
+            </a>
+          </li>
+        <% end %>
+      </ul>
+    </section>
+  <% end %>
+
+  <div class="rounded-xl border border-accent/20 bg-accent/5 p-6 mb-10 text-center">
+    <p class="text-white/80 mb-3 font-medium">
+      <%= format_number(@trends.adds_30d) %> businesses installed <%= @tech %> in the last 30 days —
+      each one made a buying decision this month.
+    </p>
+    <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="trends_gate"
+       class="inline-flex items-center gap-2 rounded-xl bg-accent px-7 py-3.5 font-display text-sm font-semibold text-white hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+      Get all <%= format_number(@trends.adds_30d) %> new <%= @tech %> adopters — emails included
+    </a>
+  </div>
+
+  <nav class="mb-10" aria-label="Related pages">
+    <h2 class="text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">Explore related</h2>
+    <div class="flex flex-wrap gap-2">
+      <%= for {href, label} <- @related do %>
+        <a href={href} class="inline-block rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-sm text-white/70 hover:border-accent/30 hover:text-accent transition-all"><%= label %></a>
+      <% end %>
+    </div>
+  </nav>
+
+  <section class="mb-4" itemscope itemtype="https://schema.org/FAQPage">
+    <h2 class="font-display text-xl font-semibold mb-4">About this data</h2>
+    <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+      <h3 itemprop="name" class="font-medium text-white mb-2">How does ListSignal count <%= @tech %> installs and churn?</h3>
+      <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+        <p itemprop="text" class="text-sm text-white/60">Each business website is re-crawled continuously and its detected stack is diffed between crawls. An install means <%= @tech %> appeared on a site where it wasn't previously detected; churn means it disappeared. This measures production deployments on live sites, not downloads or surveys.</p>
+      </div>
+    </div>
+  </section>
+</div></main>
+<footer class="border-t border-white/[0.07] py-8 text-center text-[13px] text-white/35">&copy; 2026 ListSignal</footer>

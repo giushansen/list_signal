@@ -44,6 +44,7 @@ defmodule LSWeb.TechController do
     |> assign(:page_description, tech_page_description(actual_name, stats.total))
     |> assign(:tech_name, actual_name)
     |> assign(:slug, slug)
+    |> assign(:related, tech_related(actual_name, slug))
     |> assign(:stores, stores)
     |> assign(:store_count, store_count)
     |> assign(:stats, stats)
@@ -286,4 +287,20 @@ defmodule LSWeb.TechController do
       }
     })
   end
+  # 3-6 relevant next hops: trend page, top-using page, curated compares that
+  # include this tech. Balanced on purpose — a wall of links dilutes both the
+  # reader's attention and the internal PageRank each link passes.
+  defp tech_related(tech, slug) do
+    compares =
+      LSWeb.SitemapController.compare_pairs()
+      |> Enum.filter(fn {a, b} -> a == tech or b == tech end)
+      |> Enum.take(3)
+      |> Enum.map(fn {a, b} ->
+        {"/compare/#{LS.Clickhouse.tech_slug(a)}-vs-#{LS.Clickhouse.tech_slug(b)}", "#{a} vs #{b}"}
+      end)
+
+    [{"/trends/#{slug}", "#{tech} adoption trend"},
+     {"/top/shopify-stores-using-#{slug}", "Top Shopify stores using #{tech}"}] ++ compares
+  end
+
 end

@@ -24,6 +24,30 @@ defmodule LSWeb.TopController do
     "HK" => "Hong Kong", "TW" => "Taiwan", "AE" => "UAE", "ZA" => "South Africa"
   }
 
+  # /top/<slug> segment pages. These slugs were linked from the footer for
+  # months while parse_top_slug/1 had no branch for them — live 404s advertised
+  # sitewide. Names must match the classifier's business_model / industry
+  # vocabularies exactly.
+  @model_slugs %{
+    "ecommerce" => "Ecommerce", "saas" => "SaaS", "agency" => "Agency",
+    "marketplace" => "Marketplace", "tool" => "Tool", "directory" => "Directory",
+    "newsletter" => "Newsletter", "manufacturer" => "Manufacturer"
+  }
+
+  @industry_slugs %{
+    "fashion" => "Fashion", "beauty" => "Beauty", "healthcare" => "Healthcare",
+    "education" => "Education", "fintech" => "Fintech", "travel" => "Travel",
+    "legal" => "Legal", "security" => "Security", "logistics" => "Logistics",
+    "marketing" => "Marketing", "devtools" => "DevTools",
+    "productivity" => "Productivity", "ai" => "AI & ML",
+    "real-estate" => "Real Estate", "food-beverage" => "Food & Beverage",
+    "home-garden" => "Home & Garden", "media" => "Media & Entertainment",
+    "hr" => "HR & Recruiting", "construction" => "Construction & Manufacturing"
+  }
+
+  @doc "slug => display name, both kinds — the sitemap emits from these."
+  def segment_slugs, do: %{model: @model_slugs, industry: @industry_slugs}
+
   def show(conn, %{"slug" => slug}) do
     case parse_top_slug(slug) do
       {:country, code} ->
@@ -34,6 +58,9 @@ defmodule LSWeb.TopController do
 
       {:tech_country, tech_name, code} ->
         render_tech_country_top(conn, tech_name, code, slug)
+
+      {:segment, kind, name} ->
+        render_segment_top(conn, kind, name, slug)
 
       :error ->
         conn |> put_status(404) |> assign(:page_title, "Page Not Found")
@@ -103,6 +130,56 @@ defmodule LSWeb.TopController do
     end
   end
 
+  defp render_segment_top(conn, kind, name, slug) do
+    case LS.Clickhouse.top_by_segment(kind, name, 50) do
+      {:ok, rows} when rows != [] ->
+        stores = parse_rows(rows)
+        total = segment_total(kind, name)
+        noun = if kind == :tech, do: "#{name} Stores", else: "#{name} Businesses"
+        total_str = if total, do: LSWeb.StoreHTML.format_number(total), else: "#{length(stores)}+"
+
+        conn
+        |> assign(:page_title, "Top #{noun} — Ranked by Traffic")
+        |> assign(:page_description, "The #{length(stores)} highest-ranked #{name} businesses out of #{total_str} tracked, from live crawls of the whole web. Checked continuously by ListSignal.")
+        |> assign(:heading, "Top #{noun}")
+        |> assign(:subtext, "Out of #{total_str} #{name} businesses ListSignal tracks — ranked by traffic estimate, checked continuously.")
+        |> assign(:cta_text, "Get all #{total_str} #{name} businesses as a list — emails included")
+        |> assign(:related, segment_related(kind, slug))
+        |> assign(:stores, stores) |> assign(:slug, slug)
+        |> assign(:json_ld, list_json_ld("Top #{noun}", length(stores)))
+        |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:show)
+
+      {:ok, _empty} ->
+        not_found(conn)
+
+      {:error, reason} ->
+        unavailable(conn, slug, reason)
+    end
+  end
+
+  defp segment_total(:tech, _name), do: LS.Clickhouse.shopify_store_count()
+  defp segment_total(kind, name), do: LS.Clickhouse.segment_counts(kind)[name]
+
+  # 4-5 sibling links, deterministic rotation per slug so the mesh varies page
+  # to page instead of every page linking the same four siblings.
+  defp segment_related(kind, slug) do
+    %{model: models, industry: industries} = segment_slugs()
+    pool = if kind == :industry, do: industries, else: models
+
+    siblings =
+      pool
+      |> Map.keys()
+      |> Enum.sort()
+      |> Enum.reject(&(&1 == slug))
+      |> then(fn keys ->
+        offset = rem(:erlang.phash2(slug), max(length(keys), 1))
+        Enum.slice(keys ++ keys, offset, 3)
+      end)
+      |> Enum.map(fn s -> {"/top/#{s}", "Top #{pool[s]}"} end)
+
+    siblings ++ [{"/trends", "Tech adoption trends"}, {"/countries", "Stores by country"}]
+  end
+
   defp not_found(conn) do
     conn |> put_status(404) |> assign(:page_title, "Page Not Found")
     |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:not_found)
@@ -142,6 +219,15 @@ defmodule LSWeb.TopController do
       slug =~ ~r/^shopify-stores-([a-z]{2})$/ ->
         [_, country] = Regex.run(~r/^shopify-stores-([a-z]{2})$/, slug)
         {:country, String.upcase(country)}
+
+      slug == "shopify" ->
+        {:segment, :tech, "Shopify"}
+
+      Map.has_key?(@model_slugs, slug) ->
+        {:segment, :model, @model_slugs[slug]}
+
+      Map.has_key?(@industry_slugs, slug) ->
+        {:segment, :industry, @industry_slugs[slug]}
 
       true -> :error
     end

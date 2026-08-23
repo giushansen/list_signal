@@ -60,6 +60,8 @@ defmodule LSWeb.Router do
     get "/tech/:slug", TechController, :show
     get "/compare/:slug", CompareController, :show
     get "/top/:slug", TopController, :show
+    get "/trends", TrendController, :index
+    get "/trends/:slug", TrendController, :show
 
     get "/apps", DirectoryController, :apps
     get "/countries", DirectoryController, :countries

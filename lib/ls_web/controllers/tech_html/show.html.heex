@@ -233,6 +233,17 @@
       </div>
     <% end %>
 
+    <%= if assigns[:related] && @related != [] do %>
+      <nav class="mb-10" aria-label="Related pages">
+        <h2 class="text-[12px] font-semibold text-white/40 uppercase tracking-wider mb-3">Explore related</h2>
+        <div class="flex flex-wrap gap-2">
+          <%= for {href, label} <- @related do %>
+            <a href={href} class="inline-block rounded-lg border border-white/[0.08] bg-white/[0.03] px-4 py-2 text-sm text-white/70 hover:border-accent/30 hover:text-accent transition-all"><%= label %></a>
+          <% end %>
+        </div>
+      </nav>
+    <% end %>
+
     <%!-- ═══ FAQ — SEO + AI friendly ═══ --%>
     <section class="mb-10" itemscope itemtype="https://schema.org/FAQPage" aria-label={"Frequently asked questions about #{@tech_name}"}>
       <h2 class="font-display text-xl font-semibold mb-4">Frequently Asked Questions</h2>

@@ -21,7 +21,23 @@ defmodule LSWeb.CompareController do
             LS.Clickhouse.compare_techs(tech_a, tech_b)
           end)
 
+        # Observed switching in both directions (90d, 6h-cached). The single
+        # most differentiated fact on the page: nobody else can say "N stores
+        # left A for B this quarter" from live crawls.
+        switchers_ab = LS.Clickhouse.switchers(tech_a, tech_b)
+        switchers_ba = LS.Clickhouse.switchers(tech_b, tech_a)
+
+        related = [
+          {"/trends/#{LS.Clickhouse.tech_slug(tech_a)}", "#{tech_a} adoption trend"},
+          {"/trends/#{LS.Clickhouse.tech_slug(tech_b)}", "#{tech_b} adoption trend"},
+          {"/tech/#{LS.Clickhouse.tech_slug(tech_a)}", "Businesses using #{tech_a}"},
+          {"/tech/#{LS.Clickhouse.tech_slug(tech_b)}", "Businesses using #{tech_b}"}
+        ]
+
         conn
+        |> assign(:switchers_ab, switchers_ab)
+        |> assign(:switchers_ba, switchers_ba)
+        |> assign(:related, related)
         |> assign(:page_title, "#{tech_a} vs #{tech_b} — Shopify App Comparison")
         |> assign(:page_description, "Compare #{tech_a} (#{data.tech_a.count} stores) vs #{tech_b} (#{data.tech_b.count} stores). See which Shopify stores use each app.")
         |> assign(:data, data)

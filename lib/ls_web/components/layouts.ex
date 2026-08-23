@@ -24,6 +24,17 @@ defmodule LSWeb.Layouts do
         <% end %>
         <meta property="og:site_name" content="ListSignal" />
         <meta property="og:type" content="website" />
+        <%!-- og:title/description existed nowhere, so every share and every
+             answer-engine card rendered bare URLs. Mirror the SEO tags. --%>
+        <meta property="og:title" content={assigns[:page_title] || "ListSignal — Domain Intelligence, Checked in Real Time"} />
+        <%= if assigns[:page_description] do %>
+          <meta property="og:description" content={@page_description} />
+          <meta name="twitter:description" content={@page_description} />
+        <% end %>
+        <meta property="og:image" content="https://listsignal.com/og-card.png" />
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={assigns[:page_title] || "ListSignal — Domain Intelligence, Checked in Real Time"} />
+        <meta name="twitter:image" content="https://listsignal.com/og-card.png" />
         <%= if assigns[:conn] do %>
           <link rel="canonical" href={"https://listsignal.com" <> @conn.request_path} />
           <meta property="og:url" content={"https://listsignal.com" <> @conn.request_path} />

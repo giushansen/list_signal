@@ -568,6 +568,170 @@ defmodule LS.Clickhouse do
 
   def similar_stores(_, _, _, _, _, _), do: []
 
+  # ── Trends: the biz_signal change feed as public, citable numbers ──
+  #
+  # biz_signal records tech_added / tech_removed / app_added / app_removed /
+  # started_hiring per domain (emitted by the compactor below). Nobody else
+  # publishes weekly adoption AND churn per technology, which makes these pages
+  # the most AI-citable thing we can serve. Everything here is 6h-cached: the
+  # numbers move daily, the pages are CDN-cached anyway, the master has 3 cores.
+
+  @trend_ttl :timer.hours(6)
+
+  @doc "Adds/drops for one tech: %{adds_7d, drops_7d, adds_30d, drops_30d}."
+  def tech_trends(tech) do
+    LS.LandingCache.cached({:tech_trends, tech}, @trend_ttl, fn ->
+      query("""
+      SELECT countIf(kind='tech_added'   AND changed_at >= now() - INTERVAL 7 DAY),
+             countIf(kind='tech_removed' AND changed_at >= now() - INTERVAL 7 DAY),
+             countIf(kind='tech_added'   AND changed_at >= now() - INTERVAL 30 DAY),
+             countIf(kind='tech_removed' AND changed_at >= now() - INTERVAL 30 DAY)
+      FROM biz_signal
+      WHERE value = '#{escape(tech)}' AND kind IN ('tech_added','tech_removed')
+      """)
+    end)
+    |> case do
+      {:ok, [[a7, d7, a30, d30]]} -> %{adds_7d: a7, drops_7d: d7, adds_30d: a30, drops_30d: d30}
+      _ -> nil
+    end
+  end
+
+  @doc "Top movers by 30d adoption: [[tech, adds_30d, drops_30d], ...]."
+  def tech_movers(limit \\ 25) do
+    LS.LandingCache.cached({:tech_movers, limit}, @trend_ttl, fn ->
+      query("""
+      SELECT value, countIf(kind='tech_added') AS adds, countIf(kind='tech_removed') AS drops
+      FROM biz_signal
+      WHERE changed_at >= now() - INTERVAL 30 DAY AND kind IN ('tech_added','tech_removed')
+      GROUP BY value HAVING adds >= 50
+      ORDER BY adds DESC LIMIT #{limit}
+      """)
+    end)
+    |> case do
+      {:ok, rows} -> rows
+      _ -> []
+    end
+  end
+
+  @doc "Most recent adopters of a tech: [[domain, changed_at], ...] — teaser rows."
+  def recent_adopters(tech, limit \\ 6) do
+    LS.LandingCache.cached({:recent_adopters, tech}, @trend_ttl, fn ->
+      query("""
+      SELECT domain, max(changed_at) AS at FROM biz_signal
+      WHERE kind = 'tech_added' AND value = '#{escape(tech)}'
+        AND changed_at >= now() - INTERVAL 30 DAY
+      GROUP BY domain ORDER BY at DESC LIMIT #{limit}
+      """)
+    end)
+    |> case do
+      {:ok, rows} -> rows
+      _ -> []
+    end
+  end
+
+  @doc """
+  Domains that dropped `from` and added `to` inside the window — observed
+  switching, a number a vendor's competitive team cannot get anywhere else.
+  Returns %{count, sample} (sample = up to 5 most recent domains).
+  """
+  def switchers(from, to, days \\ 90) do
+    LS.LandingCache.cached({:switchers, from, to, days}, @trend_ttl, fn ->
+      query("""
+      SELECT domain, max(changed_at) AS at FROM biz_signal
+      WHERE changed_at >= now() - INTERVAL #{days} DAY
+        AND ((kind='tech_removed' AND value='#{escape(from)}')
+          OR (kind='tech_added'  AND value='#{escape(to)}'))
+      GROUP BY domain
+      HAVING countIf(kind='tech_removed' AND value='#{escape(from)}') > 0
+         AND countIf(kind='tech_added'  AND value='#{escape(to)}') > 0
+      ORDER BY at DESC LIMIT 500
+      """)
+    end)
+    |> case do
+      {:ok, rows} -> %{count: length(rows), sample: rows |> Enum.take(5) |> Enum.map(&hd/1)}
+      _ -> %{count: 0, sample: []}
+    end
+  end
+
+  # ── Industry / business-model top pages ──
+
+  @doc """
+  Top businesses for an industry or business model, same row shape as the
+  country tops so TopHTML's show template renders it unchanged.
+  """
+  def top_by_segment(kind, name, limit \\ 50) do
+    where =
+      case kind do
+        :industry -> "industry = '#{escape(name)}'"
+        :model -> "business_model = '#{escape(name)}'"
+        # /top/shopify — a platform, not a model, so match the tech stack
+        :tech -> "http_tech LIKE '%#{escape(name)}%'"
+      end
+
+    LS.LandingCache.cached({:top_segment, kind, name}, @trend_ttl, fn ->
+      query("""
+      SELECT domain, http_title, http_tech, inferred_country, tranco_rank
+      FROM businesses
+      WHERE is_junk = '' AND http_title != '' AND #{where}
+      ORDER BY coalesce(tranco_rank, 99999999) ASC LIMIT #{limit}
+      """)
+    end)
+  end
+
+  @doc "Non-junk, titled business counts per industry/model — sitemap gating."
+  def segment_counts(kind) do
+    field = segment_field(kind)
+
+    LS.LandingCache.cached({:segment_counts, kind}, @trend_ttl, fn ->
+      query("""
+      SELECT #{field}, count() FROM businesses
+      WHERE is_junk = '' AND http_title != '' AND #{field} != ''
+      GROUP BY #{field}
+      """)
+    end)
+    |> case do
+      {:ok, rows} -> Map.new(rows, fn [k, v] -> {k, v} end)
+      _ -> %{}
+    end
+  end
+
+  defp segment_field(:industry), do: "industry"
+  defp segment_field(:model), do: "business_model"
+
+  @doc """
+  Shopify-store counts per (tech, country) for the given techs, in ONE scan —
+  a per-tech loop would be N full scans of domains_fast on 3 cores. Returns
+  %{{tech, country} => count}; feeds the /top/shopify-stores-using-X-in-CC
+  sitemap section, thresholded by the caller.
+  """
+  def tech_country_matrix(techs) when is_list(techs) and techs != [] do
+    LS.LandingCache.cached({:tech_country_matrix, Enum.sort(techs)}, @trend_ttl, fn ->
+      cols =
+        techs
+        |> Enum.with_index()
+        |> Enum.map_join(", ", fn {t, i} ->
+          "countIf(http_tech LIKE '%#{escape(t)}%') AS t#{i}"
+        end)
+
+      query("""
+      SELECT country, #{cols} FROM domains_fast
+      WHERE is_shopify = 1 AND http_title != '' AND country != ''
+      GROUP BY country
+      """)
+    end)
+    |> case do
+      {:ok, rows} ->
+        for [country | counts] <- rows,
+            {count, i} <- Enum.with_index(counts),
+            reduce: %{} do
+          acc -> Map.put(acc, {Enum.at(techs, i), country}, count)
+        end
+
+      _ ->
+        %{}
+    end
+  end
+
   # ── biz_signal: observed business changes ──
 
   @doc """

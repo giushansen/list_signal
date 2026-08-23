@@ -61,6 +61,9 @@ defmodule LSWeb.SitemapController do
     {"Cookiebot", "UserWay"}
   ]
 
+  @doc "Curated compare pairs — TrendController links compares per tech from here."
+  def compare_pairs, do: @compare_pairs
+
   def index(conn, _params) do
     base = "https://listsignal.com"
 
@@ -142,7 +145,38 @@ defmodule LSWeb.SitemapController do
       entry(base, "/scoring/shopify-store-score", "0.8", "monthly"),
     ]
 
-    all = marketing ++ compares ++ stores ++ techs ++ countries
+    # Adoption-trend pages: only techs with real movement (adds >= 50/30d via
+    # tech_movers), so every URL Google gets has a live, citable number on it.
+    trends =
+      [entry(base, "/trends", "0.8", "daily")] ++
+        (LS.Clickhouse.tech_movers(60)
+         |> Enum.map(fn [tech | _] ->
+           entry(base, "/trends/" <> LS.Clickhouse.tech_slug(tech), "0.7", "daily")
+         end))
+
+    # Industry / business-model tops: only segments with >= 500 titled,
+    # non-junk businesses. Fixes the footer's long-dead /top/fashion links.
+    segments =
+      for {kind, slugs} <- LSWeb.TopController.segment_slugs(),
+          counts = LS.Clickhouse.segment_counts(kind),
+          {slug, name} <- slugs,
+          Map.get(counts, name, 0) >= 500 do
+        entry(base, "/top/" <> slug, "0.7", "weekly")
+      end
+
+    # Tech-in-country: the route existed for months with zero sitemap presence.
+    # Curated commercial techs x countries with >= 25 stores (one CH scan, 6h
+    # cached) — long-tail queries like "shopify stores using klaviyo in france".
+    combo_techs = ~w(Klaviyo Gorgias Tidio Attentive Afterpay Mailchimp Zendesk Stripe PayPal Recharge)
+    tech_country =
+      for {{tech, cc}, count} <- LS.Clickhouse.tech_country_matrix(combo_techs),
+          count >= 25 do
+        entry(base, "/top/shopify-stores-using-#{LS.Clickhouse.tech_slug(tech)}-in-#{String.downcase(cc)}", "0.6", "weekly")
+      end
+
+    all =
+      marketing ++ compares ++ trends ++ segments ++ tech_country ++
+        [entry(base, "/top/shopify", "0.8", "weekly")] ++ stores ++ techs ++ countries
     xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" <> Enum.join(all, "\n") <> "\n</urlset>"
 
     conn
