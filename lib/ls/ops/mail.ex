@@ -20,8 +20,8 @@ defmodule LS.Ops.Mail do
   Send an ops email. `body` is HTML; a plain-text fallback is derived from it.
   Returns `:ok` / `{:error, reason}` and never raises.
   """
-  @spec send(String.t(), String.t()) :: :ok | {:error, term()}
-  def send(subject, html) when is_binary(subject) and is_binary(html) do
+  @spec send(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
+  def send(subject, html, opts \\ []) when is_binary(subject) and is_binary(html) do
     case recipients() do
       [] ->
         Logger.warning("[OPS MAIL] no LS_ALERT_EMAILS configured — dropping #{inspect(subject)}")
@@ -35,6 +35,7 @@ defmodule LS.Ops.Mail do
           |> subject(subject)
           |> html_body(html)
           |> text_body(to_text(html))
+          |> maybe_reply_to(opts[:reply_to])
 
         case LS.Mailer.deliver(email) do
           {:ok, _} -> :ok
@@ -44,6 +45,10 @@ defmodule LS.Ops.Mail do
   rescue
     e -> Logger.error("[OPS MAIL] #{Exception.message(e)}"); {:error, Exception.message(e)}
   end
+
+  # Let a flag/report email reply straight to the customer who sent it.
+  defp maybe_reply_to(email, addr) when is_binary(addr) and addr != "", do: reply_to(email, addr)
+  defp maybe_reply_to(email, _), do: email
 
   # Crude HTML→text so the multipart email always has a readable fallback.
   defp to_text(html) do
