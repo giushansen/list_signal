@@ -76,21 +76,11 @@ defmodule LS.Engagement do
 
       Will here, I built ListSignal.
 
-      One question, because it shapes what I build next: what list are you
-      trying to build?
+      What list are you trying to build? Whatever it is, tell me and I can build it with you.
 
-      Two things people come here for:
+      Two examples of what is possible: Shopify stores that went live this week and already have a contact address, or SaaS companies under $10M that are hiring right now.
 
-      1. Shopify stores that went live this week and already have a contact
-         address. About 5,000 of those every week, and you reach them before
-         anyone else does.
-
-      2. SaaS companies under $10M that are hiring right now. Big enough to
-         have budget, small enough that you reach the person who decides.
-
-      Tell me what you are after and I can build the list with you.
-
-      Will
+      Will from ListSignal
       listsignal.com
       """)
 
@@ -282,24 +272,13 @@ defmodule LS.Engagement do
     """
     Hi,
 
-    Will from ListSignal.
+    Your search yesterday matches #{format_number(count)} businesses (#{describe(filters)}).
 
-    The search you ran yesterday matches #{format_number(count)} businesses
-    (#{describe(filters)}).
+    Export them on a paid plan: https://listsignal.com/pricing?ref=email-wall
 
-    Free accounts can browse them, exporting needs a paid plan. Two ways
-    to get the list:
+    Or reply to this email and I will send you the first 25 rows free.
 
-    Starter is $29/mo for 5,000 rows a month, cancel any time:
-    https://listsignal.com/pricing
-
-    Or reply here and I will send you the first 25 rows free. No card.
-    I would rather you see the data quality than take my word for it.
-
-    And if this list is not quite the right one, tell me what you
-    actually need and I can build it with you.
-
-    Will
+    Will from ListSignal
     """
   end
 
@@ -314,26 +293,23 @@ defmodule LS.Engagement do
     """
     Hi,
 
-    #{format_number(new_count)} new businesses matched your last search this week
-    (#{describe(filters)}).
+    #{format_number(new_count)} new businesses matched your last search this week (#{describe(filters)}).
 
-    See them, freshest first:
-    https://listsignal.com/dashboard
+    See them, freshest first: https://listsignal.com/dashboard?ref=email-digest
     #{signal_lines}
-    Want a different cut of the data? Just reply — I read and answer every
-    email myself, and I'm happy to build the exact list you need with you.
+    Want a different cut of the data? Reply and I can build it with you.
 
-    Will
+    Will from ListSignal
 
     You get one of these a week, about your own search.
     Unsubscribe: #{unsubscribe_url(user)}
     """
   end
 
-  # HTML twin of digest_body/4. Deliberately plain — this is a founder's
-  # personal note, not a branded blast, so it's just paragraphs. The only
-  # reason it's HTML at all: to hide the long signed unsubscribe token behind
-  # the word "unsubscribe" instead of dumping a 90-char URL in the body.
+  # HTML twin of digest_body/4. Deliberately plain: this is a founder's
+  # personal note, not a branded blast, so it is just paragraphs. The only
+  # reason it is HTML at all is to hide the long signed unsubscribe token
+  # behind the word "unsubscribe" instead of dumping a 90-char URL.
   @doc false
   def digest_html_body(user, new_count, filters, signals) do
     signal_html =
@@ -344,12 +320,12 @@ defmodule LS.Engagement do
 
     """
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:560px">
-      <p style="margin:0 0 16px">Hi 👋</p>
+      <p style="margin:0 0 16px">Hi,</p>
       <p style="margin:0 0 16px"><strong>#{format_number(new_count)}</strong> new businesses matched your last search this week (#{esc(describe(filters))}).</p>
-      <p style="margin:0 0 16px"><a href="https://listsignal.com/dashboard" style="color:#10b981;font-weight:600;text-decoration:none">See them, freshest first →</a></p>
+      <p style="margin:0 0 16px"><a href="https://listsignal.com/dashboard?ref=email-digest" style="color:#10b981;font-weight:600;text-decoration:none">See them, freshest first</a></p>
       #{signal_html}
-      <p style="margin:0 0 16px">Want a different cut of the data? Just reply — I read and answer every email myself, and I'm happy to build the exact list you need with you.</p>
-      <p style="margin:0 0 4px">Will</p>
+      <p style="margin:0 0 16px">Want a different cut of the data? Reply and I can build it with you.</p>
+      <p style="margin:0 0 4px">Will from ListSignal</p>
       <p style="margin:24px 0 0;font-size:12px;color:#999">One of these a week, about your own search. <a href="#{unsubscribe_url(user)}" style="color:#999">Unsubscribe</a>.</p>
     </div>
     """
@@ -442,15 +418,46 @@ defmodule LS.Engagement do
     end
   end
 
+  # "Shopify + with email + 10+ products", not "tech: Shopify, has_email: true".
+  # The raw filter map is an implementation detail; a customer should read
+  # their own search back in words they would have used.
   defp describe(filters) do
     filters
-    |> Enum.reject(fn {_k, v} -> v in [nil, ""] end)
-    |> Enum.map_join(", ", fn {k, v} -> "#{k}: #{v}" end)
+    |> Enum.reject(fn {_k, v} -> v in [nil, "", "false"] end)
+    |> Enum.map(fn {k, v} -> humanise(to_string(k), to_string(v)) end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" + ")
     |> case do
       "" -> "all businesses"
       s -> s
     end
   end
+
+  defp humanise("tech", v), do: v
+  defp humanise("shopify_app", v), do: v
+  defp humanise("business_model", v), do: v
+  defp humanise("industry", v), do: v
+  defp humanise("country", v), do: v
+  defp humanise("language", v), do: v
+  defp humanise("revenue", v), do: v
+  defp humanise("employees", v), do: "#{v} employees"
+  defp humanise("domain_search", v), do: "\"#{v}\""
+  defp humanise("has_email", _), do: "with email"
+  defp humanise("has_pricing", _), do: "with public pricing"
+  defp humanise("hiring", _), do: "hiring"
+  defp humanise("min_products", v), do: "#{v}+ products"
+  defp humanise("max_products", v), do: "under #{v} products"
+  defp humanise("min_price_avg", v), do: "avg price $#{v}+"
+  defp humanise("max_price_avg", v), do: "avg price under $#{v}"
+  defp humanise("min_seo_score", v), do: "SEO #{v}+"
+  defp humanise("max_seo_score", v), do: "SEO under #{v}"
+  defp humanise("min_job_count", v), do: "#{v}+ open roles"
+  defp humanise("min_new_products_30d", _v), do: "adding new products"
+  defp humanise("ats_platform", v), do: "hiring via #{v}"
+  defp humanise("freshness", "24h"), do: "found in the last 24h"
+  defp humanise("freshness", "7d"), do: "found this week"
+  defp humanise("freshness", "30d"), do: "found this month"
+  defp humanise(_k, _v), do: nil
 
   defp format_number(n) when is_integer(n),
     do: n |> Integer.to_string() |> String.replace(~r/(?<=\d)(?=(\d{3})+$)/, ",")

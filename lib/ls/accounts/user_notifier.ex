@@ -23,19 +23,14 @@ defmodule LS.Accounts.UserNotifier do
   Deliver instructions to update a user email.
   """
   def deliver_update_email_instructions(user, url) do
-    deliver(user.email, "Update email instructions", """
+    deliver(user.email, "Confirm your new email address", """
+    Hi,
 
-    ==============================
+    Use this link to confirm your new email address: #{url}
 
-    Hi #{user.email},
+    If you did not ask to change it, you can ignore this email.
 
-    You can change your email by visiting the URL below:
-
-    #{url}
-
-    If you didn't request this change, please ignore this.
-
-    ==============================
+    Will from ListSignal
     """)
   end
 
@@ -50,36 +45,26 @@ defmodule LS.Accounts.UserNotifier do
   end
 
   defp deliver_magic_link_instructions(user, url) do
-    deliver(user.email, "Log in instructions", """
+    deliver(user.email, "Your ListSignal login link", """
+    Hi,
 
-    ==============================
+    Here is your login link: #{url}
 
-    Hi #{user.email},
+    If you did not ask for it, you can ignore this email.
 
-    You can log into your account by visiting the URL below:
-
-    #{url}
-
-    If you didn't request this email, please ignore this.
-
-    ==============================
+    Will from ListSignal
     """)
   end
 
   defp deliver_confirmation_instructions(user, url) do
-    deliver(user.email, "Confirmation instructions", """
+    deliver(user.email, "Confirm your ListSignal account", """
+    Hi,
 
-    ==============================
+    Confirm your account with this link: #{url}
 
-    Hi #{user.email},
+    Once you are in, tell me what list you are trying to build and I can build it with you.
 
-    You can confirm your account by visiting the URL below:
-
-    #{url}
-
-    If you didn't create an account with us, please ignore this.
-
-    ==============================
+    Will from ListSignal
     """)
   end
 end

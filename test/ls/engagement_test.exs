@@ -52,7 +52,12 @@ defmodule LS.EngagementTest do
       assert_email_sent(fn email ->
         assert email.subject == "What list are you trying to build?"
         assert {_, "will@listsignal.com"} = email.from
-        assert email.text_body =~ "I can build the list with you"
+        assert email.text_body =~ "What list are you trying to build?"
+        assert email.text_body =~ "I can build it with you"
+
+        refute email.text_body =~ ~r/people come (here )?for/i,
+               "the welcome must ASK what they want, not tell them what people want — " <>
+                 "the whole point is discovering what paying customers actually need"
         assert email.html_body == nil, "plain text outperforms designed HTML; keep it plain"
       end)
     end
@@ -79,8 +84,30 @@ defmodule LS.EngagementTest do
       user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
       filters = %{"tech" => "Shopify"}
 
-      assert Engagement.wall_body(10, filters) =~ "build it with you"
-      assert Engagement.digest_body(user, 10, filters, []) =~ "Reply"
+      assert Engagement.wall_body(10, filters) =~ "reply to this email"
+      assert Engagement.digest_body(user, 10, filters, []) =~ "Reply and I can build it with you"
+    end
+
+    test "paragraphs are not hard-wrapped mid-sentence" do
+      # Manual line breaks inside a paragraph render as stray returns in real
+      # mail clients, which is what made these read like machine output.
+      user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
+
+      for body <- [
+            Engagement.wall_body(1_847, %{"tech" => "Shopify"}),
+            Engagement.digest_body(user, 1_240, %{"tech" => "Shopify"}, [])
+          ] do
+        for line <- String.split(body, "\n") do
+          trimmed = String.trim(line)
+
+          # A short line is fine (blank, link, sign-off). A long line that does
+          # NOT end a sentence means the paragraph was broken by hand.
+          if String.length(trimmed) in 40..90 and not String.contains?(trimmed, "http") do
+            assert String.match?(trimmed, ~r/[.:?!]$/) or String.length(trimmed) > 90,
+                   "line looks hand-wrapped mid-sentence: #{inspect(trimmed)}"
+          end
+        end
+      end
     end
   end
 
@@ -93,7 +120,7 @@ defmodule LS.EngagementTest do
 
       assert_email_sent(fn email ->
         assert email.subject =~ "businesses"
-        assert email.text_body =~ "tech: Shopify"
+        assert email.text_body =~ "(Shopify)", "the search must read back in words, not as a filter map"
         assert email.text_body =~ "25 rows"
       end)
 
