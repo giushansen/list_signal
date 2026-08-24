@@ -1,21 +1,20 @@
 defmodule LS.Accounts.UserNotifier do
   @moduledoc "Builds and delivers account emails (magic-link login, confirmations) via `LS.Mailer`."
   import Swoosh.Email
-  import LS.EmailLayout, only: [shell: 1, p: 1, cta: 2]
 
   alias LS.Mailer
   alias LS.Accounts.User
 
-  # Multipart: HTML hides the long signed URL behind a clickable phrase, and
-  # the text fallback keeps the raw link so a plain-text client can still log
-  # in. An auth email that renders as a dead end is a locked-out customer.
-  defp deliver(recipient, subject, body, html) do
+  # Plain text on purpose. These carry login and confirmation links, so the
+  # only thing that matters is that the link always works: HTML would add a
+  # rendering failure mode for no benefit, and most clients auto-link a bare
+  # URL anyway.
+  defp deliver(recipient, subject, body) do
     email =
       new()
       |> to(recipient)
       |> from(LS.Ops.Mail.from())
       |> subject(subject)
-      |> html_body(html)
       |> text_body(body)
 
     with {:ok, _metadata} <- Mailer.deliver(email) do
@@ -40,13 +39,7 @@ defmodule LS.Accounts.UserNotifier do
 
       Will
       ListSignal
-      """,
-      shell(
-        p("Hi,") <>
-          cta(url, "Confirm your new email address") <>
-          p("If you did not ask to change it, you can ignore this email.") <>
-          p("Will<br>ListSignal")
-      )
+      """
     )
   end
 
@@ -74,13 +67,7 @@ defmodule LS.Accounts.UserNotifier do
 
       Will
       ListSignal
-      """,
-      shell(
-        p("Hi,") <>
-          cta(url, "Log in to ListSignal") <>
-          p("If you did not ask for it, you can ignore this email.") <>
-          p("Will<br>ListSignal")
-      )
+      """
     )
   end
 
@@ -98,14 +85,7 @@ defmodule LS.Accounts.UserNotifier do
 
       Will
       ListSignal
-      """,
-      shell(
-        p("Hi,") <>
-          p("You're one click away.") <>
-          cta(url, "Confirm your account") <>
-          p("Working on a list? Reply and I'll build it with you.") <>
-          p("Will<br>ListSignal")
-      )
+      """
     )
   end
 end

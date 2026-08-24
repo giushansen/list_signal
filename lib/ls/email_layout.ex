@@ -14,6 +14,9 @@ defmodule LS.EmailLayout do
   links, and why they must keep doing so.
   """
 
+  # As little markup as will still render correctly: a readable font, sane
+  # line-height, and a width that stops long lines sprawling on desktop.
+  # Everything else is plain paragraphs.
   @accent "#10b981"
   @shell "font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;" <>
            "font-size:15px;line-height:1.6;color:#1a1a1a;max-width:560px"
@@ -26,11 +29,11 @@ defmodule LS.EmailLayout do
 
   @doc "The one thing we want clicked, as words rather than a URL."
   def cta(url, label) do
-    ~s(<p style="margin:0 0 16px"><a href="#{url}" style="color:#{@accent};font-weight:600;text-decoration:none">#{label}</a></p>)
+    ~s(<p style="margin:0 0 16px"><a href="#{url}" style="color:#{@accent}">#{label}</a></p>)
   end
 
   @doc "An inline link inside running text."
-  def link(url, label), do: ~s(<a href="#{url}" style="color:#{@accent};text-decoration:none">#{label}</a>)
+  def link(url, label), do: ~s(<a href="#{url}" style="color:#{@accent}">#{label}</a>)
 
   @doc "A short list, styled tight so it reads as part of the note."
   def bullets(items) do
