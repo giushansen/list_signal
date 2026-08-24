@@ -88,6 +88,14 @@ defmodule LSWeb.ExplorerFiltersTest do
       assert sql == "WHERE #{@rev} IN ('<$1M','$1B+')"
     end
 
+    test "'With catalogue' filters to real storefronts, not sites that merely load Shopify" do
+      # http_tech LIKE '%Shopify%' is true for a church with a merch button, an
+      # AI consultancy and a recruiting site (real examples, 2026-08-24).
+      # product_count > 0 means /products.json actually answered.
+      assert Explorer.where_sql(has_catalog: "true") == "WHERE product_count > 0"
+      assert Explorer.where_sql(has_catalog: "") == ""
+    end
+
     test "empty filters produce no WHERE clause" do
       assert Explorer.where_sql(revenue: "", employees: "", tech: "") == ""
     end

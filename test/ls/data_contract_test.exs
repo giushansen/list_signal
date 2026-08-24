@@ -355,6 +355,28 @@ defmodule LS.DataContractTest do
     end
   end
 
+  describe "catalogue filter contract" do
+    test "'With catalogue' matches rows, and is strictly narrower than the Shopify tech match" do
+      # The whole point of the toggle: a Shopify-tech match includes non-stores,
+      # so the catalogue subset must be real AND smaller. If it ever equals the
+      # tech match the toggle has stopped meaning anything.
+      with_clickhouse(fn ->
+        {:ok, [[tech, catalog]]} =
+          Clickhouse.query_raw("""
+          SELECT countIf(positionCaseInsensitive(http_tech,'Shopify') > 0),
+                 countIf(positionCaseInsensitive(http_tech,'Shopify') > 0 AND product_count > 0)
+          FROM businesses
+          """, 30_000)
+
+        tech = if is_binary(tech), do: String.to_integer(tech), else: tech
+        catalog = if is_binary(catalog), do: String.to_integer(catalog), else: catalog
+
+        assert catalog > 0, "the 'With catalogue' toggle offers a filter that matches nothing"
+        assert catalog < tech, "catalogue must be a strict subset of the Shopify tech match"
+      end)
+    end
+  end
+
   describe "ops alerting + weekly report contract" do
     @tag timeout: 180_000
     test "gather + evaluate + the weekly report all run against real ClickHouse without raising" do

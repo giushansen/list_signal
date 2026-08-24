@@ -84,7 +84,14 @@ defmodule LS.LandingCache do
   defp fetch_all do
     insert_last_min = fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE")
     %{
-      store_count: fetch_count("SELECT count() FROM domains_current WHERE http_tech LIKE '%Shopify%'"),
+      # Count the product table, NOT domains_current. Same predicate, very
+      # different universe: domains_current holds every domain ever crawled, so
+      # it claimed 4.13M Shopify "stores" of which only 561k had ever returned
+      # a successful HTTP status and 3.06M had no current status at all. A
+      # customer filtering the dashboard (which reads `businesses`) saw 777k
+      # and rightly asked why the homepage said 4M. Sell the number a customer
+      # can actually reach. (2026-08-24)
+      store_count: fetch_count("SELECT count() FROM businesses WHERE http_tech LIKE '%Shopify%'"),
       total_domains: fetch_count("SELECT count() FROM domains_current"),
       tech_count: fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains_current WHERE http_tech != ''"),
       app_count: fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains_current WHERE http_apps != ''"),

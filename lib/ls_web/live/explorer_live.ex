@@ -565,7 +565,7 @@ defmodule LSWeb.ExplorerLive do
   defp filter_shape(filters) do
     model = Map.get(filters, :business_model, "")
     tech = Map.get(filters, :tech, "")
-    depth_in_use? = Enum.any?(~w(has_email hiring has_pricing min_products max_products
+    depth_in_use? = Enum.any?(~w(has_email hiring has_pricing has_catalog min_products max_products
                                  min_price_avg max_price_avg min_seo_score max_seo_score)a,
                               &(Map.get(filters, &1, "") != ""))
 
@@ -586,7 +586,7 @@ defmodule LSWeb.ExplorerLive do
       revenue: "", employees: "", language: "", domain_search: "", freshness: "",
       # Depth filters — the ones our buyers actually qualify on. The backend
       # has supported these for a while; they were simply never exposed.
-      has_email: "", has_pricing: "", hiring: "",
+      has_email: "", has_pricing: "", hiring: "", has_catalog: "",
       min_products: "", max_products: "", min_price_avg: "", max_price_avg: "",
       min_seo_score: "", max_seo_score: "", min_new_products_30d: "", ats_platform: ""
     }
@@ -890,6 +890,7 @@ defmodule LSWeb.ExplorerLive do
               <% end %>
 
               <%= if shape in [:commerce, :any] do %>
+                <.toggle_filter label="With catalogue" field="has_catalog" filters={@filters} />
                 <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
                   <span class="text-gray-500">Products</span>
                   <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />

@@ -575,6 +575,13 @@ defmodule LS.Explorer do
   # Kept opt-in for now: measure the junk rate with the golden set first, flip
   # to exclude-by-default once the detector's precision is verified.
   defp filter_clause({:exclude_junk, "true"}), do: ["is_junk = ''"]
+  # "With catalogue" — the difference between a real store and a site that
+  # merely loads a Shopify script. `is_shopify`/http_tech only says the page
+  # mentions Shopify, which is also true of a church with a merch button, an
+  # AI consultancy and a recruiting site (all real examples, 2026-08-24).
+  # product_count > 0 means we successfully read /products.json: an actual
+  # storefront with actual products.
+  defp filter_clause({:has_catalog, "true"}), do: ["product_count > 0"]
   defp filter_clause({:has_pricing, "true"}), do: ["pricing_points > 0"]
   defp filter_clause({:has_email, "true"}), do: ["http_emails != ''"]
   defp filter_clause({:hiring, "true"}), do: ["job_count > 0"]
