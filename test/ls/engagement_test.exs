@@ -65,9 +65,59 @@ defmodule LS.EngagementTest do
         refute email.html_body =~ "<table", "a founder's note is not a layout table"
         # The welcome deliberately has no link: its only call to action is a
         # reply, so the reply-to address is the thing that must be right.
-        assert email.text_body =~ "Just reply to this one."
+        assert email.text_body =~ "Just reply with what you need."
         assert email.reply_to == {"", "will@listsignal.com"}
       end)
+    end
+  end
+
+  describe "the search description (it must never misrepresent the search)" do
+    test "multi-value filters keep their real AND/OR meaning" do
+      # country IN (...) is OR; tech is AND (every one must be present).
+      # Saying "or" where the query means "and" promises a list we did not build.
+      or_body = Engagement.wall_body(1, %{"country" => "FR,GB,US"})
+      assert or_body =~ "France, United Kingdom or United States"
+
+      and_body = Engagement.wall_body(1, %{"tech" => "Klaviyo,Gorgias"})
+      assert and_body =~ "Klaviyo and Gorgias"
+    end
+
+    test "an unknown filter is described, never silently dropped" do
+      # 2026-08-24: the dashboard gained a "discovered" filter, the describer
+      # did not know it, and emails quoted a NARROWER search than the customer
+      # ran. Ugly beats wrong.
+      body = Engagement.wall_body(1, %{"brand_new_filter" => "42"})
+      assert body =~ "brand new filter: 42"
+    end
+
+    test "every filter the dashboard can produce has a phrasing" do
+      # Guards against the same drift: if the explorer gains a filter and this
+      # list is not updated, the fallback shows a raw key in a customer email.
+      known =
+        ~w(business_model tech shopify_app industry country language revenue employees
+           domain_search has_email has_pricing has_catalog hiring exclude_junk
+           min_products max_products min_price_avg max_price_avg min_seo_score
+           max_seo_score min_job_count min_new_products_30d ats_platform
+           discovered freshness)
+
+      for key <- known do
+        described = Engagement.wall_body(1, %{key => sample_value(key)})
+
+        refute described =~ "#{String.replace(key, "_", " ")}:",
+               "#{key} fell through to the raw-key fallback; give it a phrasing"
+      end
+    end
+  end
+
+  defp sample_value("discovered"), do: "24h"
+  defp sample_value("freshness"), do: "7d"
+  defp sample_value("country"), do: "FR"
+  defp sample_value("revenue"), do: "<$1M"
+  defp sample_value(k) do
+    cond do
+      String.starts_with?(k, "has_") or k in ~w(hiring exclude_junk) -> "true"
+      String.starts_with?(k, "min_") or String.starts_with?(k, "max_") -> "10"
+      true -> "Shopify"
     end
   end
 
@@ -100,8 +150,11 @@ defmodule LS.EngagementTest do
       ]
 
       for body <- bodies do
-        # Em-dashes are fine (the owner writes with them); the ASCII "--"
-        # signature separator is the machine tell he objected to.
+        # The owner has flagged em-dashes twice as the thing that makes copy
+        # read machine-written. They are banned from anything a customer sees;
+        # code comments are free to use them.
+        refute body =~ "\u2014", "em-dash in customer copy"
+        refute body =~ "\u2013", "en-dash in customer copy"
         refute body =~ "\n--", "the '--' signature separator reads as machine-written"
       end
     end
@@ -151,7 +204,7 @@ defmodule LS.EngagementTest do
 
       assert_email_sent(fn email ->
         assert email.subject =~ "businesses"
-        assert email.text_body =~ "— Shopify —", "the search must read back in words, not as a filter map"
+        assert email.text_body =~ "(Shopify)", "the search must read back in words, not as a filter map"
         assert email.text_body =~ "25 rows"
       end)
 

@@ -100,17 +100,17 @@ defmodule LS.Engagement do
     """
     Hi,
 
-    Will here — I run ListSignal.
+    Will here, I run ListSignal.
 
     Tell me the kind of company you're after and I'll put the list together with you.
 
     A couple of examples of the sort of thing that's possible:
 
-    - A list of Shopify stores we discovered in the last 7 days — many of them just launched — that already have a contact address on the site.#{stat_sentence(stat)}
+    - A list of Shopify stores we discovered in the last 7 days, many of them just launched, that already have a contact address on the site.#{stat_sentence(stat)}
 
     - A list of SaaS companies under $10M in revenue that are hiring right now, that run Intercom, HubSpot and the like. Hiring means budget, and budget means they're buying.
 
-    Just reply to this one.
+    Just reply with what you need.
 
     Will
     ListSignal
@@ -123,18 +123,18 @@ defmodule LS.Engagement do
 
     shell(
       p("Hi,") <>
-        p("Will here — I run ListSignal.") <>
+        p("Will here, I run ListSignal.") <>
         p("Tell me the kind of company you're after and I'll put the list together with you.") <>
         p("A couple of examples of the sort of thing that's possible:") <>
         p(
-          "A list of Shopify stores we discovered in the last 7 days — many of them just " <>
-            "launched — that already have a contact address on the site.#{stat_sentence(stat)}"
+          "A list of Shopify stores we discovered in the last 7 days, many of them just " <>
+            "launched, that already have a contact address on the site.#{stat_sentence(stat)}"
         ) <>
         p(
           "A list of SaaS companies under $10M in revenue that are hiring right now, that run " <>
             "Intercom, HubSpot and the like. Hiring means budget, and budget means they're buying."
         ) <>
-        p("Just reply to this one.") <>
+        p("Just reply with what you need.") <>
         p("Will<br>ListSignal")
     )
   end
@@ -345,7 +345,7 @@ defmodule LS.Engagement do
     """
     Hi,
 
-    Your search for businesses from yesterday — #{describe(filters)} — found #{format_number(count)} matches. They're in your account whenever you want them.
+    Your search yesterday (#{describe(filters)}) turned up #{format_number(count)} matches. They're in your account whenever you want them.
 
     What the CSV gets you:
 
@@ -369,7 +369,7 @@ defmodule LS.Engagement do
     shell(
       p("Hi,") <>
         p(
-          "Your search for businesses from yesterday — #{esc(describe(filters))} — found " <>
+          "Your search yesterday (#{esc(describe(filters))}) turned up " <>
             "<strong>#{format_number(count)}</strong> matches. They're in your account whenever you want them."
         ) <>
         p("What the CSV gets you:") <>
@@ -406,7 +406,7 @@ defmodule LS.Engagement do
     """
     Hi,
 
-    #{format_number(new_count)} businesses turned up this week that fit your search — #{describe(filters)}. All new since the last time you looked.
+    #{format_number(new_count)} businesses turned up this week that fit your search (#{describe(filters)}). All new since the last time you looked.
     #{signal_block}#{upsell}
     Will
     ListSignal
@@ -441,7 +441,7 @@ defmodule LS.Engagement do
       p("Hi,") <>
         p(
           "<strong>#{format_number(new_count)}</strong> businesses turned up this week that fit " <>
-            "your search — #{esc(describe(filters))}. All new since the last time you looked."
+            "your search (#{esc(describe(filters))}). All new since the last time you looked."
         ) <>
         signal_html <>
         upsell <>
@@ -544,33 +544,60 @@ defmodule LS.Engagement do
       "and it's no longer showing on #{format_number(r)}."
   end
 
-  # "Shopify + with email + 10+ products", not "tech: Shopify, has_email: true".
-  # The raw filter map is an implementation detail; a customer should read
-  # their own search back in words they would have used.
+  # Render a saved search back in the customer's own words.
+  #
+  # Two rules that matter, because getting them wrong misrepresents what they
+  # searched for:
+  #
+  #   * multi-value filters differ in logic. country/revenue/industry are OR
+  #     ("France, UK or United States" -> IN (...)), while tech/apps are AND
+  #     (every one must be present). Saying "or" where the query means "and"
+  #     would promise a list we did not build.
+  #   * an UNKNOWN filter is never dropped. 2026-08-24: the dashboard gained a
+  #     "discovered" filter, this function did not know it, and the email
+  #     silently described a narrower search than the customer actually ran.
+  #     Unknown keys now fall back to "key: value", which is ugly but honest.
   defp describe(filters) do
     filters
     |> Enum.reject(fn {_k, v} -> v in [nil, "", "false"] end)
+    |> Enum.sort_by(fn {k, _v} -> describe_order(to_string(k)) end)
     |> Enum.map(fn {k, v} -> humanise(to_string(k), to_string(v)) end)
-    |> Enum.reject(&is_nil/1)
+    |> Enum.reject(&(&1 in [nil, ""]))
     |> Enum.join(" + ")
     |> case do
       "" -> "all businesses"
-      s -> s
+      text -> text
     end
   end
 
-  defp humanise("tech", v), do: v
-  defp humanise("shopify_app", v), do: v
-  defp humanise("business_model", v), do: v
-  defp humanise("industry", v), do: v
-  defp humanise("country", v), do: v
-  defp humanise("language", v), do: v
-  defp humanise("revenue", v), do: v
-  defp humanise("employees", v), do: "#{v} employees"
-  defp humanise("domain_search", v), do: "\"#{v}\""
-  defp humanise("has_email", _), do: "with email"
+  # What the business IS, then where, then what it has, then when we found it.
+  defp describe_order("business_model"), do: 0
+  defp describe_order("tech"), do: 1
+  defp describe_order("shopify_app"), do: 1
+  defp describe_order("industry"), do: 2
+  defp describe_order("country"), do: 3
+  defp describe_order("discovered"), do: 9
+  defp describe_order("freshness"), do: 9
+  defp describe_order(_), do: 5
+
+  # OR within the filter: any of these values matches.
+  defp humanise("country", v), do: any_of(v, &LS.Countries.name/1)
+  defp humanise("revenue", v), do: any_of(v, & &1)
+  defp humanise("industry", v), do: any_of(v, & &1)
+  defp humanise("business_model", v), do: any_of(v, & &1)
+  defp humanise("language", v), do: any_of(v, & &1)
+  defp humanise("employees", v), do: any_of(v, &"#{&1} employees")
+
+  # AND within the filter: every value must be present on the site.
+  defp humanise("tech", v), do: all_of(v, & &1)
+  defp humanise("shopify_app", v), do: all_of(v, & &1)
+
+  defp humanise("domain_search", v), do: ~s("#{v}")
+  defp humanise("has_email", _), do: "with a contact address"
   defp humanise("has_pricing", _), do: "with public pricing"
+  defp humanise("has_catalog", _), do: "with a real catalogue"
   defp humanise("hiring", _), do: "hiring"
+  defp humanise("exclude_junk", _), do: nil
   defp humanise("min_products", v), do: "#{v}+ products"
   defp humanise("max_products", v), do: "under #{v} products"
   defp humanise("min_price_avg", v), do: "avg price $#{v}+"
@@ -580,10 +607,30 @@ defmodule LS.Engagement do
   defp humanise("min_job_count", v), do: "#{v}+ open roles"
   defp humanise("min_new_products_30d", _v), do: "adding new products"
   defp humanise("ats_platform", v), do: "hiring via #{v}"
-  defp humanise("freshness", "24h"), do: "found in the last 24h"
-  defp humanise("freshness", "7d"), do: "found this week"
-  defp humanise("freshness", "30d"), do: "found this month"
-  defp humanise(_k, _v), do: nil
+  defp humanise("discovered", "24h"), do: "found in the last 24 hours"
+  defp humanise("discovered", "7d"), do: "found in the last 7 days"
+  defp humanise("discovered", "30d"), do: "found in the last 30 days"
+  defp humanise("freshness", "24h"), do: "checked in the last 24 hours"
+  defp humanise("freshness", "7d"), do: "checked in the last 7 days"
+  defp humanise("freshness", "30d"), do: "checked in the last 30 days"
+
+  # Honest fallback rather than silence. If this shows up in an email it is a
+  # prompt to add a phrasing above, not a reason to hide the filter.
+  defp humanise(key, value), do: "#{String.replace(key, "_", " ")}: #{value}"
+
+  defp any_of(raw, mapper), do: join_values(raw, mapper, " or ")
+  defp all_of(raw, mapper), do: join_values(raw, mapper, " and ")
+
+  defp join_values(raw, mapper, final_word) do
+    values = raw |> String.split(",", trim: true) |> Enum.map(&(&1 |> String.trim() |> mapper.()))
+
+    case values do
+      [] -> nil
+      [one] -> one
+      [a, b] -> "#{a}#{final_word}#{b}"
+      many -> Enum.join(Enum.drop(many, -1), ", ") <> final_word <> List.last(many)
+    end
+  end
 
   defp format_number(n) when is_integer(n),
     do: n |> Integer.to_string() |> String.replace(~r/(?<=\d)(?=(\d{3})+$)/, ",")

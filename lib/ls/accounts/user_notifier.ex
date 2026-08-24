@@ -78,7 +78,7 @@ defmodule LS.Accounts.UserNotifier do
       """
       Hi,
 
-      You're one click away — confirm here:
+      You're one click away. Confirm here:
       #{url}
 
       Working on a list? Reply and I'll build it with you.
