@@ -71,6 +71,7 @@ defmodule LS.Engagement do
     email =
       base_email(user)
       |> subject("What list are you trying to build?")
+      |> html_body(welcome_html_body())
       |> text_body("""
       Hi,
 
@@ -106,6 +107,7 @@ defmodule LS.Engagement do
           email =
             base_email(user)
             |> subject("Your ListSignal search matched #{format_number(count)} businesses")
+            |> html_body(wall_html_body(count, filters))
             |> text_body(wall_body(count, filters))
 
           case deliver(email, "wall", user) do
@@ -250,6 +252,7 @@ defmodule LS.Engagement do
 
     base_email(user)
     |> subject("[preview] Your ListSignal search matched #{format_number(count)} businesses")
+    |> html_body(wall_html_body(count, filters))
     |> text_body(wall_body(count, filters))
     |> deliver_preview(user)
   end
@@ -312,27 +315,63 @@ defmodule LS.Engagement do
   # reason it is HTML at all is to hide the long signed unsubscribe token
   # behind the word "unsubscribe" instead of dumping a 90-char URL.
   @doc false
+  def welcome_html_body do
+    import LS.EmailLayout
+
+    shell(
+      p("Hi,") <>
+        p("Will here, I built ListSignal.") <>
+        p("What list are you trying to build? Whatever it is, tell me and I can build it with you.") <>
+        p(
+          "Two examples of what is possible: Shopify stores that went live this week and already " <>
+            "have a contact address, or SaaS companies under $10M that are hiring right now."
+        ) <>
+        p("Will from ListSignal<br>" <> link("https://listsignal.com", "listsignal.com"))
+    )
+  end
+
+  @doc false
+  def wall_html_body(count, filters) do
+    import LS.EmailLayout
+
+    shell(
+      p("Hi,") <>
+        p(
+          "Your search yesterday matches <strong>#{format_number(count)}</strong> businesses " <>
+            "(#{esc(describe(filters))})."
+        ) <>
+        cta("https://listsignal.com/pricing?ref=email-wall", "Export them on a paid plan") <>
+        p("Or reply to this email and I will send you the first 25 rows free.") <>
+        p("Will from ListSignal")
+    )
+  end
+
+  @doc false
   def digest_html_body(user, new_count, filters, signals) do
+    import LS.EmailLayout
+
     signal_html =
       case signals do
         [] -> ""
-        lines -> ~s(<p style="margin:0 0 16px;color:#555">) <> Enum.map_join(lines, "<br>", &esc/1) <> "</p>"
+        lines -> p(Enum.map_join(lines, "<br>", &esc/1))
       end
 
-    """
-    <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:560px">
-      <p style="margin:0 0 16px">Hi,</p>
-      <p style="margin:0 0 16px"><strong>#{format_number(new_count)}</strong> new businesses matched your last search this week (#{esc(describe(filters))}).</p>
-      #{signal_html}
-      <p style="margin:0 0 16px"><a href="https://listsignal.com/pricing?ref=email-unlock-export" style="color:#10b981;font-weight:600;text-decoration:none">Unlock the full list</a></p>
-      <p style="margin:0 0 16px">Or reply to this email and I will send you the first 25 rows free.</p>
-      <p style="margin:0 0 4px">Will from ListSignal</p>
-      <p style="margin:24px 0 0;font-size:12px;color:#999">One of these a week, about your own search. <a href="#{unsubscribe_url(user)}" style="color:#999">Unsubscribe</a>.</p>
-    </div>
-    """
+    shell(
+      p("Hi,") <>
+        p(
+          "<strong>#{format_number(new_count)}</strong> new businesses matched your last search " <>
+            "this week (#{esc(describe(filters))})."
+        ) <>
+        signal_html <>
+        cta("https://listsignal.com/pricing?ref=email-unlock-export", "Unlock the full list") <>
+        p("Or reply to this email and I will send you the first 25 rows free.") <>
+        p("Will from ListSignal") <>
+        fine(
+          "One of these a week, about your own search. " <>
+            link(unsubscribe_url(user), "Unsubscribe") <> "."
+        )
+    )
   end
-
-  defp esc(s), do: s |> to_string() |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
 
   # ── Unsubscribe ──────────────────────────────────────────────────────────
 

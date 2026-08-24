@@ -58,8 +58,31 @@ defmodule LS.EngagementTest do
         refute email.text_body =~ ~r/people come (here )?for/i,
                "the welcome must ASK what they want, not tell them what people want — " <>
                  "the whole point is discovering what paying customers actually need"
-        assert email.html_body == nil, "plain text outperforms designed HTML; keep it plain"
+        # HTML exists only to hide long URLs behind words. It must still read
+        # as a personal note: no images, no layout tables, no branded header.
+        assert email.html_body =~ "<p", "the HTML twin should be paragraphs"
+        refute email.html_body =~ "<img", "a founder's note has no images"
+        refute email.html_body =~ "<table", "a founder's note is not a layout table"
+        assert email.text_body =~ "listsignal.com", "the text fallback must keep a usable link"
       end)
+    end
+  end
+
+  describe "links are words, not tracking URLs" do
+    test "every HTML body hides its ref-tagged URL behind clickable text" do
+      user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
+
+      wall = Engagement.wall_html_body(23_424, %{"tech" => "WordPress"})
+      digest = Engagement.digest_html_body(user, 1_240, %{"tech" => "WordPress"}, [])
+
+      for {body, label} <- [{wall, "Export them on a paid plan"}, {digest, "Unlock the full list"}] do
+        assert body =~ ~s(>#{label}<), "the CTA must be a clickable phrase"
+
+        # The ref code belongs in href, never in the visible text.
+        visible = String.replace(body, ~r/<[^>]+>/, "")
+        refute visible =~ "ref=", "customers must not see our attribution plumbing"
+        refute visible =~ "https://", "no raw URLs in the rendered HTML"
+      end
     end
   end
 
