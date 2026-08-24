@@ -1411,8 +1411,32 @@ defmodule LS.Clickhouse do
     e -> {:error, Exception.message(e)}
   end
 
-  def query_raw(sql, receive_timeout \\ @timeout) do
-    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact"
+  @doc """
+  Run `sql` and return `{:ok, rows}`.
+
+  The URL carries `cancel_http_readonly_queries_on_client_close=1` because a
+  client timeout does NOT stop ClickHouse on its own. On 2026-08-24 that cost
+  the dashboard an outage: the Explorer's Req gives up after 20s, but the
+  abandoned SELECT kept running server-side for 250s+; the user retried, each
+  retry queued another, and 16 identical scans piled up on an already-saturated
+  box until every query timed out and the page showed "Search unavailable".
+  With this setting the server drops the query the moment we hang up, so a slow
+  page can no longer snowball into an outage. It applies to readonly queries
+  only, so compaction and other INSERTs are untouched.
+  """
+  def query_raw(sql, receive_timeout \\ @timeout, opts \\ []) do
+    # max_execution_time is opt-in per call, NOT derived from receive_timeout:
+    # compaction deliberately outlives its client budget (a pass that reports a
+    # client timeout at 300s can still finish and commit server-side), and
+    # capping it would turn a slow compaction into a failed one. Read paths
+    # that a user is waiting on pass it explicitly — see LS.Explorer.
+    server_cap =
+      case opts[:max_execution_time] do
+        s when is_integer(s) and s > 0 -> "&max_execution_time=#{s}"
+        _ -> ""
+      end
+
+    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1#{server_cap}"
     case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       # DDL / OPTIMIZE / statements with no result set return an empty 200 body.

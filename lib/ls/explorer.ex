@@ -185,7 +185,10 @@ defmodule LS.Explorer do
   end
 
   def list(filters, opts \\ []) do
-    case Clickhouse.query_raw(list_sql(filters, opts), @query_timeout) do
+    # Bound server-side too: a user-facing scan that outlives our own timeout is
+    # pure waste and, on 2026-08-24, the fuel for a pile-up that took the
+    # dashboard down (16 abandoned scans still running at 250s).
+    case Clickhouse.query_raw(list_sql(filters, opts), @query_timeout, max_execution_time: div(@query_timeout, 1000)) do
       {:ok, rows} -> {:ok, rows_to_maps(rows, column_names())}
       err -> err
     end
@@ -195,7 +198,7 @@ defmodule LS.Explorer do
   def count_sql(filters), do: "SELECT count() FROM businesses #{build_where(filters)}"
 
   def count(filters) do
-    case Clickhouse.query_raw(count_sql(filters), @query_timeout) do
+    case Clickhouse.query_raw(count_sql(filters), @query_timeout, max_execution_time: div(@query_timeout, 1000)) do
       {:ok, [[count]]} when is_integer(count) -> {:ok, count}
       {:ok, [[count]]} when is_binary(count) -> {:ok, String.to_integer(count)}
       _ -> {:ok, 0}
