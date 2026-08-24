@@ -121,6 +121,47 @@ defmodule LS.EngagementTest do
     end
   end
 
+  describe "unsubscribe reaches every marketing email" do
+    test "welcome, wall and digest all carry one-click unsubscribe headers" do
+      user = user!("headers@example.com")
+      searched!("headers@example.com", %{"tech" => "Shopify"}, 24)
+      seed_fresh_business!()
+
+      Engagement.send_welcome(user)
+      Engagement.send_wall_emails()
+      Engagement.send_digests()
+
+      for _ <- 1..3 do
+        assert_email_sent(fn email ->
+          headers = Map.new(email.headers)
+
+          assert headers["List-Unsubscribe"] =~ "/digest/unsubscribe/",
+                 "#{email.subject} has no List-Unsubscribe header"
+
+          assert headers["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"
+        end)
+      end
+    end
+
+    test "opting out silences the wall email too, not just the digest" do
+      # A customer who unsubscribed and then received a sales pitch would be
+      # right to report it as spam.
+      user = user!("optout@example.com")
+      searched!("optout@example.com", %{"tech" => "Shopify"}, 24)
+
+      {:ok, _} = Engagement.unsubscribe(Engagement.unsubscribe_token(user))
+
+      Engagement.send_wall_emails()
+      refute_email_sent()
+    end
+
+    test "the wall email shows a visible opt-out, not only a header" do
+      user = %LS.Accounts.User{id: 1, email: "w@example.com", digest_subscribed: true}
+      body = Engagement.wall_body(1_847, %{"tech" => "Shopify"}, user)
+      assert body =~ "Unsubscribe: https://listsignal.com/digest/unsubscribe/"
+    end
+  end
+
   describe "links are words, not tracking URLs" do
     test "every HTML body hides its ref-tagged URL behind clickable text" do
       user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}

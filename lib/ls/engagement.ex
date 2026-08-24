@@ -71,7 +71,7 @@ defmodule LS.Engagement do
     stat = fresh_shopify_stat()
 
     email =
-      base_email(user)
+      marketing_email(user)
       |> subject("What list are you trying to build?")
       |> html_body(welcome_html_body(stat))
       |> text_body(welcome_body(stat))
@@ -159,10 +159,10 @@ defmodule LS.Engagement do
           count = count_for(filters)
 
           email =
-            base_email(user)
+            marketing_email(user)
             |> subject("Your ListSignal search matched #{format_number(count)} businesses")
-            |> html_body(wall_html_body(count, filters))
-            |> text_body(wall_body(count, filters))
+            |> html_body(wall_html_body(count, filters, user))
+            |> text_body(wall_body(count, filters, user))
 
           case deliver(email, "wall", user) do
             :ok ->
@@ -200,7 +200,11 @@ defmodule LS.Engagement do
         where: u.email in ^searched,
         where: is_nil(u.wall_email_sent_at),
         where: u.plan == "free" or is_nil(u.plan),
-        where: not is_nil(u.confirmed_at)
+        where: not is_nil(u.confirmed_at),
+        # Opting out of the digest opts out of every marketing email. A
+        # customer who unsubscribed and then received a sales pitch would be
+        # right to report it as spam.
+        where: u.digest_subscribed == true
       )
       |> Repo.all()
     end
@@ -246,12 +250,10 @@ defmodule LS.Engagement do
     # An empty digest is worse than none: skip quiet weeks silently.
     if new_count > 0 or signals != nil do
       email =
-        base_email(user)
+        marketing_email(user)
         |> subject("#{format_number(new_count)} new businesses match your last search")
         |> text_body(digest_body(user, new_count, filters, signals))
         |> html_body(digest_html_body(user, new_count, filters, signals))
-        |> header("List-Unsubscribe", "<#{unsubscribe_url(user)}>")
-        |> header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
 
       case deliver(email, "digest", user) do
         :ok ->
@@ -320,10 +322,10 @@ defmodule LS.Engagement do
   defp send_wall_preview(user, filters) do
     count = count_for(filters)
 
-    base_email(user)
+    marketing_email(user)
     |> subject("[preview] Your ListSignal search matched #{format_number(count)} businesses")
-    |> html_body(wall_html_body(count, filters))
-    |> text_body(wall_body(count, filters))
+    |> html_body(wall_html_body(count, filters, user))
+    |> text_body(wall_body(count, filters, user))
     |> deliver_preview(user)
   end
 
@@ -331,7 +333,7 @@ defmodule LS.Engagement do
     new_count = count_new_for(filters, 7)
     signals = signal_highlights(filters)
 
-    base_email(user)
+    marketing_email(user)
     |> subject("[preview] #{format_number(new_count)} new businesses match your last search")
     |> text_body(digest_body(user, new_count, filters, signals))
     |> html_body(digest_html_body(user, new_count, filters, signals))
@@ -341,7 +343,7 @@ defmodule LS.Engagement do
   defp deliver_preview(email, user), do: deliver(email, "preview", user)
 
   @doc false
-  def wall_body(count, filters) do
+  def wall_body(count, filters, user \\ nil) do
     """
     Hi,
 
@@ -359,11 +361,15 @@ defmodule LS.Engagement do
 
     Will
     ListSignal
+    #{unsubscribe_footer(user)}
     """
   end
 
+  defp unsubscribe_footer(nil), do: ""
+  defp unsubscribe_footer(user), do: "\nNot useful? Unsubscribe: #{unsubscribe_url(user)}\n"
+
   @doc false
-  def wall_html_body(count, filters) do
+  def wall_html_body(count, filters, user \\ nil) do
     import LS.EmailLayout
 
     shell(
@@ -380,8 +386,16 @@ defmodule LS.Engagement do
         ]) <>
         cta("https://listsignal.com/pricing?ref=email-wall", "See export plans") <>
         p("Or reply and I'll send the first 25 rows free, so you can see the data first.") <>
-        p("Will<br>ListSignal")
+        p("Will<br>ListSignal") <>
+        wall_unsubscribe_html(user)
     )
+  end
+
+  defp wall_unsubscribe_html(nil), do: ""
+
+  defp wall_unsubscribe_html(user) do
+    import LS.EmailLayout
+    fine("Not useful? " <> link(unsubscribe_url(user), "Unsubscribe") <> ".")
   end
 
   @doc false
@@ -476,6 +490,16 @@ defmodule LS.Engagement do
   end
 
   # ── shared ───────────────────────────────────────────────────────────────
+
+  # Anything promotional carries one-click unsubscribe. Gmail and Yahoo's bulk
+  # sender rules expect it, and more to the point a customer who wants out
+  # should be able to say so from the message itself.
+  defp marketing_email(user) do
+    user
+    |> base_email()
+    |> header("List-Unsubscribe", "<#{unsubscribe_url(user)}>")
+    |> header("List-Unsubscribe-Post", "List-Unsubscribe=One-Click")
+  end
 
   defp base_email(user) do
     new()
