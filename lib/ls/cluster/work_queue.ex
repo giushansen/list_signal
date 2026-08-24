@@ -181,6 +181,7 @@ defmodule LS.Cluster.WorkQueue do
     stats = %{
       queue_depth: queue_size,
       queue_pct: if(max_queue_size() > 0, do: Float.round(queue_size / max_queue_size() * 100, 1), else: 0.0),
+      queue_max: max_queue_size(),
       queue_memory_mb: queue_mem_mb,
       inflight_batches: inflight_count,
       total_enqueued: total_enqueued,

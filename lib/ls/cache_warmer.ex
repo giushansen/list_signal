@@ -18,6 +18,10 @@ defmodule LS.CacheWarmer do
 
   # Let the app finish booting (EXLA, reference data) before adding work.
   @start_delay_ms 90_000
+  # When LS.CacheSnapshot restored the cache, warming is almost all no-ops, so
+  # there is nothing to wait for — check early and finish before traffic
+  # arrives. A cold boot still waits the full delay.
+  @early_check_ms 20_000
   # Space out warms so this never competes with real requests.
   @spacing_ms 750
   @top_techs 60
@@ -25,16 +29,39 @@ defmodule LS.CacheWarmer do
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
+  # Overridable so tests can exercise the two-phase start without waiting out a
+  # real boot delay.
+  defp start_delay_ms, do: Application.get_env(:ls, :warm_start_delay_ms, @start_delay_ms)
+  defp early_check_ms, do: Application.get_env(:ls, :warm_early_check_ms, @early_check_ms)
+
   @doc "Warm now, off the caller's process (used after a manual cache flush)."
   def warm_async, do: Process.send_after(__MODULE__, :warm, 0)
 
   @impl true
   def init(_opts) do
     if enabled?() do
-      Process.send_after(self(), :warm, @start_delay_ms)
+      Process.send_after(self(), :maybe_warm_early, early_check_ms())
     end
 
     {:ok, %{}}
+  end
+
+  # Two-phase start. A restored cache means the warm pass is a walk over keys
+  # that are already present, costing nothing — so run it now and close the
+  # post-deploy cold window. Nothing restored means every key is a real
+  # ClickHouse assembly, which must not compete with a booting app.
+  @impl true
+  def handle_info(:maybe_warm_early, state) do
+    restored = LS.CacheSnapshot.restored_count()
+
+    if restored > 0 do
+      Logger.info("[WARM] #{restored} entries restored — warming early")
+      send(self(), :warm)
+    else
+      Process.send_after(self(), :warm, max(start_delay_ms() - early_check_ms(), 0))
+    end
+
+    {:noreply, state}
   end
 
   @impl true

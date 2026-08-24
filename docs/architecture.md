@@ -137,6 +137,53 @@ Phoenix (`LSWeb`) on the master serves the public directory
 (`/shopify/:slug`, `/website/:slug`, `/top/*`, `/compare/*`), SEO pages from
 `domains_fast`, and the account/billing area backed by SQLite + Stripe.
 
+### Page caches, and why they survive a deploy
+
+`LS.UICache` (assembled pages, single-flight, LRU-bounded) and
+`LS.LandingCache` (landing metrics + tech aggregates) are what keep ClickHouse
+read CPU at ~0.9 cores instead of ~13.7. That speed comes with a dependency:
+ETS is empty after every restart, so a deploy used to mean a cold start. The
+deploy that shipped the caches returned a 25-second `503` on `/top/fashion`
+with a load average of 39.9.
+
+Two mechanisms close that window:
+
+- **`LS.CacheSnapshot`** writes both tables to `/tmp` every 5 minutes and on
+  graceful shutdown, and reads them back at boot. Entries are stored as
+  *milliseconds remaining*, so the monotonic clock in `LandingCache` survives a
+  restart; downtime is charged against the remaining TTL, so a restore can
+  never serve data staler than the TTL promised. Restores use `insert_new`, so
+  anything already recomputed since boot wins. Each restored TTL is shortened
+  by a random 0-25% so a batch warmed together does not expire together.
+- **`LS.CacheWarmer`** starts in two phases. If the snapshot restored entries,
+  the warm pass is a walk over keys that are already present and costs nothing,
+  so it runs 20s after boot. If nothing was restored, every key is a real
+  ClickHouse assembly and it waits the full 90s for boot to finish.
+
+## Staffing: how many workers do we need?
+
+`LS.Cluster.QueueTrend` samples the queue every minute and keeps an hour of
+history. It exists because the dashboard used to divide the instantaneous
+enqueue rate by a hard-coded `500` domains/worker/minute, and **both halves
+were wrong**: three consecutive prod samples read 38,613 / 3,348 / 7,803 per
+minute (CT logs arrive in bursts), and worker-reported throughput is a lifetime
+average, so it measures how much work there *was*, not how much a worker *can*
+do.
+
+The replacement measures both sides:
+
+- **Demand** is the delta of the monotonic `total_enqueued` counter over the
+  whole window — immune to burstiness by construction.
+- **Capacity** is the best drain observed while the queue was deeper than 5,000
+  items, i.e. while no worker could have been idle. If the queue never got that
+  deep, capacity is reported as unknown and `workers_needed` is `nil` — the
+  module reports "unproven" rather than inventing a number.
+
+`runway_minutes` says how long the queue absorbs the current trend, which is
+what separates "a backlog is growing" from "we are short of workers". The queue
+holds 3M items and sawtooths between ~2K and ~210K over a day, so multi-hour
+excursions are normal and are what the buffer is for.
+
 ## Ops alerting & the weekly report
 
 Master-only, one GenServer — `LS.Ops.Sentinel`:

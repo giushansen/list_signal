@@ -403,4 +403,50 @@ defmodule LS.DataContractTest do
       end)
     end
   end
+
+  # 2026-08-24: the biz_signal domain lookup on the store page read 115 MB and
+  # 75 ms per call because every granule had to be scanned — biz_signal is
+  # ordered by (signal, seen_at), so a domain filter had no index to use. At
+  # ~1,200 calls per half hour that was ~4.75 TB of reads a day. A bloom_filter
+  # skip index on `domain` cut it to 10 MB / 16 ms. These check the index is
+  # actually there and actually correct, because a skip index that is silently
+  # missing looks exactly like one that is working, only slower.
+  describe "biz_signal domain skip index" do
+    test "the bloom filter index exists — without it the store page reads 115MB per domain" do
+      with_clickhouse(fn ->
+        assert {:ok, [[n]]} =
+                 Clickhouse.query_raw(
+                   "SELECT count() FROM system.data_skipping_indices " <>
+                     "WHERE table = 'biz_signal' AND name = 'idx_biz_signal_domain'"
+                 )
+
+        assert to_int(n) == 1, "idx_biz_signal_domain is missing — run migration 015"
+      end)
+    end
+
+    test "the index never hides a row: a domain lookup returns the same rows with the index forced off" do
+      with_clickhouse(fn ->
+        # A bloom filter may only produce FALSE POSITIVES (extra granules read),
+        # never false negatives. If this ever differs, the index is dropping
+        # data and every store page is silently incomplete.
+        sql = fn extra ->
+          "SELECT count() FROM biz_signal WHERE domain IN " <>
+            "(SELECT domain FROM biz_signal ORDER BY changed_at DESC LIMIT 30)" <> extra
+        end
+
+        assert {:ok, [[with_idx]]} = Clickhouse.query_raw(sql.(""))
+
+        assert {:ok, [[without_idx]]} =
+                 Clickhouse.query_raw(sql.(" SETTINGS use_skip_indexes = 0"))
+
+        assert to_int(with_idx) == to_int(without_idx),
+               "skip index changed the result set — it is dropping rows"
+      end)
+    end
+  end
+
+  # ClickHouse returns counts as strings over some formats; a test that compares
+  # them raw passes for the wrong reason.
+  defp to_int(v) when is_integer(v), do: v
+  defp to_int(v) when is_binary(v), do: String.to_integer(String.trim(v))
 end

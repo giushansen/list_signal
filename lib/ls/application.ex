@@ -116,11 +116,17 @@ defmodule LS.Application do
       LS.BGP.Resolver,
       LS.RDAP.Client,
       {LS.LandingCache, []},
+      # Reads the page caches back from /tmp so a deploy starts warm.
+      # Must come after every table it persists (LS.UICache above,
+      # LS.LandingCache on the line above) — see LS.CacheSnapshot.
+      LS.CacheSnapshot,
       LS.Reputation.Tranco,
       LS.Reputation.Majestic,
       LS.Reputation.Blocklist,
       LS.ML.Classifier,
       LS.Cluster.WorkQueue,
+      # Hour-long queue history behind the workers-needed figure.
+      LS.Cluster.QueueTrend,
       # Allow time for the terminate/2 flush (ClickHouse insert has a 30s receive_timeout)
       Supervisor.child_spec(LS.Cluster.Inserter, shutdown: 35_000),
       LS.Cluster.Optimizer,

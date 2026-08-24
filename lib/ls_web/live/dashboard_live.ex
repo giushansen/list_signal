@@ -25,6 +25,7 @@ defmodule LSWeb.DashboardLive do
        role: System.get_env("LS_ROLE", "standalone"),
        master_stats: collect_master_stats(),
        worker_stats: [],
+       trend: %{status: :insufficient_data},
        worker_health: [],
        worker_caches: [],
        all_errors: [],
@@ -51,6 +52,7 @@ defmodule LSWeb.DashboardLive do
           [
             master_stats: collect_master_stats(),
             worker_stats: collect_worker_stats(),
+            trend: LS.Cluster.QueueTrend.analysis(length(Node.list())),
             worker_health: collect_worker_health(),
             worker_caches: collect_worker_caches(),
             enrichment_stats: collect_enrichment_stats(),
@@ -305,7 +307,7 @@ defmodule LSWeb.DashboardLive do
       <% end %>
 
       <%!-- HEALTH SUMMARY --%>
-      <% {health_color, health_msg, workers_needed} = pipeline_health(@master_stats) %>
+      <% {health_color, health_msg} = pipeline_health(@master_stats, @trend) %>
       <div class="health-bar">
         <span class={"health-dot " <> health_color}></span>
         <span class="health-label">{health_msg}</span>
@@ -313,15 +315,22 @@ defmodule LSWeb.DashboardLive do
           <span class="hm hm-dim">CTL {ctl_per_min(@master_stats)}/m</span>
           <span class="hm">input <b>{qv(@master_stats.queue, :enqueue_rate_per_min)}/m</b></span>
           <span class="hm">drain <b>{qv(@master_stats.queue, :drain_rate_per_min)}/m</b></span>
-          <span class="hm">ratio <b>{capacity_ratio(@master_stats)}</b></span>
           <span class="hm">workers <b>{length(@worker_stats)}</b></span>
           <span class="hm">CH err <b class={if(iv(@master_stats.inserter, :total_errors) > 0, do: "hm-warn", else: "")}>{iv(@master_stats.inserter, :total_errors)}</b></span>
-          <% surplus = worker_surplus(@master_stats) %>
-          <%= cond do %>
-            <% surplus > 0 -> %><span class="hm hm-ok">surplus ~{surplus}</span>
-            <% workers_needed > length(@worker_stats) -> %><span class="hm hm-warn">need ~{workers_needed}</span>
-            <% true -> %><span class="hm">at capacity</span>
-          <% end %>
+          <span class={"hm " <> staffing_class(@trend)}>{staffing_label(@trend)}</span>
+        </div>
+      </div>
+
+      <%!-- STAFFING: measured over an hour, not one bursty sample. --%>
+      <div class="health-bar health-sub">
+        <span class="health-label">Staffing ({trend_window(@trend)})</span>
+        <div class="health-metrics">
+          <span class="hm">demand <b>{trend_v(@trend, :demand_per_min)}/m</b></span>
+          <span class="hm">drain <b>{trend_v(@trend, :drain_per_min)}/m</b></span>
+          <span class="hm">fleet capacity <b>{trend_v(@trend, :capacity_per_min)}/m</b></span>
+          <span class="hm hm-dim">per worker <b>{trend_v(@trend, :per_worker_per_min)}/m</b></span>
+          <span class="hm">backlog <b>{trend_v(@trend, :depth)}</b> ({trend_slope(@trend)})</span>
+          <span class="hm">buffer <b>{runway_label(@trend)}</b></span>
         </div>
       </div>
 
@@ -1098,43 +1107,84 @@ defmodule LSWeb.DashboardLive do
   defp rep_val(ms, :majestic), do: get_in(ms, [:majestic, :domains_loaded]) || 0
   defp rep_val(ms, :blocklist), do: get_in(ms, [:blocklist, :total]) || 0
 
-  # Measured single-worker throughput (domains/min). Fleet is homogeneous
-  # 1-core/2GB boxes + h1; peak fleet drain ~5800/min over 11 ≈ 525/worker.
-  # Used only to estimate surplus/needed — the real "are we keeping up" signal
-  # is the queue staying empty (drain >= enqueue), not this constant.
-  @per_worker_per_min 500
-
-  # The REAL input is the new-domain ENQUEUE rate, not the CTL poller's
-  # domains_per_sec (that counts duplicate cert-renewals + is a lifetime avg,
-  # which is why this box used to scream "need 21" while the queue sat empty).
-  defp pipeline_health(ms) do
-    enq = qv(ms.queue, :enqueue_rate_per_min)
-    drain = qv(ms.queue, :drain_rate_per_min)
+  # Staffing is answered by LS.Cluster.QueueTrend over an hour of history.
+  # It is NOT derived from the instantaneous enqueue rate: three consecutive
+  # prod samples read 38,613 / 3,348 / 7,803 per minute, so a per-sample figure
+  # flapped between "need 1" and "need 21" while the queue sat comfortable.
+  defp pipeline_health(ms, trend) do
     qpct = qv(ms.queue, :queue_pct)
     wc = length(Node.list())
-    needed = if enq > 0, do: max(1, ceil(enq / @per_worker_per_min)), else: 0
+    growing = (trend[:depth_slope_per_min] || 0) > 0
+
     cond do
-      wc == 0 -> {"health-red", "No workers connected", 1}
-      enq == 0 -> {"health-green", "No new domains inbound", 0}
-      qpct >= 90 -> {"health-red", "Queue full — add workers", needed}
-      drain < enq * 0.9 and qpct >= 25 -> {"health-amber", "Queue backing up", needed}
-      true -> {"health-green", "Workers keeping up", needed}
+      wc == 0 -> {"health-red", "No workers connected"}
+      qpct >= 90 -> {"health-red", "Queue nearly full — add workers"}
+      trend[:status] == :insufficient_data -> {"health-green", "Measuring throughput…"}
+      short_staffed?(trend) and growing -> {"health-amber", "Backlog growing — short of workers"}
+      growing and qpct >= 50 -> {"health-amber", "Backlog growing — buffer half used"}
+      growing -> {"health-green", "Absorbing a burst in the queue"}
+      true -> {"health-green", "Workers keeping up"}
     end
   end
 
-  # drain / true-enqueue. ~100% with an empty queue = perfectly matched.
-  defp capacity_ratio(ms) do
-    enq = qv(ms.queue, :enqueue_rate_per_min)
-    drain = qv(ms.queue, :drain_rate_per_min)
-    if enq > 0, do: "#{Float.round(drain / enq * 100, 0)}%", else: "-"
+  defp short_staffed?(%{workers_needed: n, workers: w}) when is_integer(n), do: n > w
+  defp short_staffed?(_), do: false
+
+  # ── staffing display helpers ──
+
+  defp trend_v(trend, key) do
+    case trend[key] do
+      nil -> "—"
+      v when is_integer(v) -> format_int(v)
+      v -> to_string(v)
+    end
   end
 
-  # Surplus workers at current load (estimate). Positive = spare capacity.
-  defp worker_surplus(ms) do
-    enq = qv(ms.queue, :enqueue_rate_per_min)
-    wc = length(Node.list())
-    needed = if enq > 0, do: max(1, ceil(enq / @per_worker_per_min)), else: 0
-    wc - needed
+  defp trend_window(%{status: :insufficient_data}), do: "warming up"
+  defp trend_window(%{window_minutes: m}) when is_integer(m) and m > 0, do: "#{m} min"
+  defp trend_window(_), do: "warming up"
+
+  defp trend_slope(trend) do
+    case trend[:depth_slope_per_min] do
+      nil -> "—"
+      s when s > 0 -> "+#{format_int(s)}/m"
+      s when s < 0 -> "#{format_int(s)}/m"
+      _ -> "flat"
+    end
+  end
+
+  # The buffer only has a runway while the backlog is actually growing.
+  defp runway_label(trend) do
+    case trend[:runway_minutes] do
+      :infinity -> "not filling"
+      m when is_integer(m) and m >= 1440 -> "#{div(m, 1440)}d"
+      m when is_integer(m) and m >= 60 -> "#{div(m, 60)}h"
+      m when is_integer(m) -> "#{m} min"
+      _ -> "—"
+    end
+  end
+
+  defp staffing_label(%{status: :insufficient_data}), do: "measuring…"
+  defp staffing_label(%{workers_needed: nil}), do: "capacity unproven"
+
+  defp staffing_label(%{workers_needed: n, workers: w}) do
+    cond do
+      n > w -> "need #{n} (#{n - w} short)"
+      w - n > 0 -> "surplus #{w - n}"
+      true -> "at capacity"
+    end
+  end
+
+  defp staffing_label(_), do: "—"
+
+  defp staffing_class(%{workers_needed: n, workers: w}) when is_integer(n) and n > w, do: "hm-warn"
+  defp staffing_class(%{workers_needed: n, workers: w}) when is_integer(n) and w > n, do: "hm-ok"
+  defp staffing_class(_), do: "hm-dim"
+
+  defp format_int(n) when is_integer(n) and n < 0, do: "-" <> format_int(-n)
+
+  defp format_int(n) when is_integer(n) do
+    n |> Integer.to_charlist() |> Enum.reverse() |> Enum.chunk_every(3) |> Enum.join(",") |> String.reverse()
   end
 
   # per-minute rate helpers (one unit across the whole pipeline)
