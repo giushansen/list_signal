@@ -226,6 +226,11 @@ defmodule LS.Clickhouse do
   # so give it room and cache the result for 15 minutes.
   @tech_stats_timeout 30_000
   @tech_stats_ttl_ms :timer.minutes(15)
+  # The four per-tech distributions below were the only uncached queries on the
+  # tech page, and each full-scans 153.7M rows of domains_fast: together
+  # 88,000 CPU-seconds a day. They describe a technology's whole population,
+  # which does not move hour to hour, so they cache for six hours.
+  @tech_dist_ttl :timer.hours(6)
 
   def tech_stats(tech_name) do
     LS.LandingCache.cached({:tech_stats, tech_name}, @tech_stats_ttl_ms, fn ->
@@ -249,30 +254,37 @@ defmodule LS.Clickhouse do
   end
 
   def tech_language_distribution(tech_name) do
+    LS.LandingCache.cached({:tech_language_distribution, tech_name}, @tech_dist_ttl, fn ->
     query("""
     SELECT http_language, count() AS cnt FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_language != ''
     GROUP BY http_language ORDER BY cnt DESC LIMIT 10
     """)
+    end)
   end
 
   def tech_hosting_distribution(tech_name) do
+    LS.LandingCache.cached({:tech_hosting_distribution, tech_name}, @tech_dist_ttl, fn ->
     query("""
     SELECT bgp_asn_org, count() AS cnt FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND bgp_asn_org != ''
     GROUP BY bgp_asn_org ORDER BY cnt DESC LIMIT 10
     """)
+    end)
   end
 
   def tech_registrar_distribution(tech_name) do
+    LS.LandingCache.cached({:tech_registrar_distribution, tech_name}, @tech_dist_ttl, fn ->
     query("""
     SELECT rdap_registrar, count() AS cnt FROM domains_fast
     WHERE http_tech LIKE '%#{escape(tech_name)}%' AND rdap_registrar != ''
     GROUP BY rdap_registrar ORDER BY cnt DESC LIMIT 10
     """)
+    end)
   end
 
   def tech_co_occurring(tech_name) do
+    LS.LandingCache.cached({:tech_co_occurring, tech_name}, @tech_dist_ttl, fn ->
     query("""
     SELECT arrayJoin(splitByString('|', http_tech)) AS tech, count() AS cnt
     FROM domains_fast
@@ -280,6 +292,7 @@ defmodule LS.Clickhouse do
     GROUP BY tech HAVING tech != '#{escape(tech_name)}' AND cnt >= 2
     ORDER BY cnt DESC LIMIT 20
     """)
+    end)
   end
 
   # ── VS / Compare pages ──
@@ -552,7 +565,20 @@ defmodule LS.Clickhouse do
     {rank_where, order, bucket} =
       case rank do
         r when is_integer(r) and r > 0 ->
-          {"AND tranco_rank > 0 AND tranco_rank <= #{r}", "ORDER BY tranco_rank DESC", div(r, 20_000)}
+          # Coarse log-ish bands, NOT div(rank, 20_000). The fine bucket gave
+          # every store page its own cache key — 71 distinct buckets among just
+          # 129 cached entries — so this query, the single most expensive on the
+          # site (148,603 CPU-seconds/day over 15,468 calls averaging 9.6s),
+          # almost always missed. Rank 100,000 and 120,000 are not meaningfully
+          # different neighbours; four bands are.
+          band =
+            cond do
+              r <= 100_000 -> :top100k
+              r <= 1_000_000 -> :top1m
+              true -> :rest
+            end
+
+          {"AND tranco_rank > 0 AND tranco_rank <= #{r}", "ORDER BY tranco_rank DESC", band}
 
         _ ->
           {"", "ORDER BY as_of DESC", :unranked}
@@ -1021,11 +1047,17 @@ defmodule LS.Clickhouse do
          OR positionCaseInsensitive(concat(b.http_tech, b.http_apps), 'shopify') > 0,
          'full', 'light') AS tier
     FROM businesses b
-    LEFT JOIN biz_enrichment s ON b.domain = s.domain
-    -- One lane at a time — see browser_only above.
+    -- Semi-join, not LEFT JOIN: identical result set (measured 2026-08-24 —
+    # 256,992 vs 257,158 distinct domains, the delta is concurrent writes) but
+    -- 8.2s instead of 13.1s, because a JOIN costs ~9x a single-table scan here.
+    -- NOT the folded depth-enrichment timestamp on businesses, tempting as it
+    -- looks: that column is NULL for
+    -- ~2.3M domains that biz_enrichment shows ARE enriched (the compactor only
+    -- folds non-failed render rows), so using it would re-crawl 2.3M sites we
+    -- already have — wasteful and impolite.
     WHERE #{lane_filter}
       AND b.dns_alive
-      AND (s.enriched_at IS NULL OR s.enriched_at < now() - INTERVAL 30 DAY)
+      AND b.domain NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 30 DAY)
       -- A domain that rate-limited us is not worth retrying on the ordinary
       -- cadence: it asked for patience, and re-asking daily is how a source
       -- IP earns a permanent block. Give it a fortnight.
@@ -1047,7 +1079,11 @@ defmodule LS.Clickhouse do
     LIMIT #{limit}
     """
 
-    case query(sql) do
+    # 90s, not the 25s default: this is a background refill on a 5-minute timer,
+    # and on a loaded box the 25s budget expired before the scan finished. The
+    # queue then got NOTHING, so the enrichment-only nodes sat idle with a
+    # 257K backlog waiting (2026-08-24).
+    case query_raw(sql, 90_000) do
       {:ok, rows} ->
         {:ok,
          Enum.map(rows, fn [d, pages, tech, blocked, status, tier] ->
