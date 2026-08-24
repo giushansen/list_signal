@@ -40,7 +40,7 @@ defmodule LS.Report.Weekly do
       #{header(tc)}
       #{chapter("1 · Infrastructure", infra_table(res))}
       #{chapter("2 · Traffic, errors &amp; downloads", crawl_block(crawl) <> ingestion_table(daily, enrich) <> downloads_table(vdl))}
-      #{chapter("3 · Software — pipelines &amp; data quality", pipelines_block(tc, daily, enrich) <> quality_block(clazz, est, tc) <> models_table(models))}
+      #{chapter("3 · Software — pipelines &amp; data quality", pipelines_block(tc, daily, enrich) <> quality_block(clazz, est, tc) <> models_table(models) <> query_cost_block())}
       <p style="color:#9aa4b2;font-size:12px;margin-top:28px">Generated #{now()} UTC · reply to this email or open /admin for live detail.</p>
     </div>
     """
@@ -175,6 +175,26 @@ defmodule LS.Report.Weekly do
       table(["business model", "count", "share"], rows)
   end
 
+  # ClickHouse capacity, from its own query_log. The point is early warning: a
+  # query that creeps to the top of this table is the one that will saturate the
+  # box, and it is cheaper to notice here than during an outage.
+  defp query_cost_block do
+    split = Metrics.ch_cpu_split(168)
+    total = split.read_cpu_s + split.write_cpu_s
+    cores = Float.round(total / (split.hours * 3600), 2)
+    read_pct = if total > 0, do: round(100 * split.read_cpu_s / total), else: 0
+
+    rows =
+      Metrics.top_queries(168, 8)
+      |> Enum.map(fn q -> [esc(q.pattern), fmt(q.calls), fmt(q.cpu_s) <> "s", "#{q.avg_ms}ms", bytes(q.bytes)] end)
+
+    """
+    <p style="margin:14px 0 6px;font-weight:600">ClickHouse cost — the capacity signal</p>
+    <p style="margin:0 0 8px">#{fmt(total)} CPU-seconds this week = <b>#{cores} cores</b> demanded continuously
+      (#{read_pct}% reads). Compare against the box's core count: sustained demand above it is why pages queue.</p>
+    """ <> table(["query", "calls", "CPU", "avg", "read"], rows)
+  end
+
   # ── node rates: two resource reads a few seconds apart → network throughput ──
 
   defp node_rates do
@@ -207,6 +227,9 @@ defmodule LS.Report.Weekly do
 
     "<table style=\"border-collapse:collapse;width:100%;margin:4px 0 8px\"><thead><tr>#{th}</tr></thead><tbody>#{trs}</tbody></table>"
   end
+
+  # Query text comes from ClickHouse; escape before it lands in an email body.
+  defp esc(s), do: s |> to_string() |> String.replace("&", "&amp;") |> String.replace("<", "&lt;") |> String.replace(">", "&gt;")
 
   defp color(true, s), do: "<span style=\"color:#dc2626;font-weight:600\">#{s}</span>"
   defp color(_, s), do: s

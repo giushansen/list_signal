@@ -135,6 +135,43 @@ defmodule LS.Metrics do
     end
   end
 
+  @doc """
+  The queries that cost the most ClickHouse CPU over `hours`, newest-heaviest
+  first. ClickHouse's own `system.query_log` already records duration, rows and
+  bytes for every query with a 7-day TTL — no extra tooling needed; what was
+  missing was somewhere to SEE it. Surfacing this weekly is how a 148,000
+  CPU-second/day query gets noticed before it takes the dashboard down.
+  """
+  def top_queries(hours \\ 168, limit \\ 8) do
+    ch_rows("""
+    SELECT substring(replaceRegexpAll(normalizeQuery(query), '\\s+', ' '), 1, 60) AS pattern,
+           count() AS calls,
+           round(sum(query_duration_ms) / 1000) AS cpu_s,
+           round(avg(query_duration_ms)) AS avg_ms,
+           sum(read_bytes) AS bytes
+    FROM system.query_log
+    WHERE type = 'QueryFinish' AND query_kind = 'Select'
+      AND event_time > now() - INTERVAL #{i(hours)} HOUR
+    GROUP BY pattern ORDER BY cpu_s DESC LIMIT #{i(limit)}
+    """)
+    |> Enum.map(fn [p, c, cpu, avg, b] ->
+      %{pattern: p, calls: to_i(c), cpu_s: to_i(cpu), avg_ms: to_i(avg), bytes: to_i(b)}
+    end)
+  end
+
+  @doc "ClickHouse CPU-seconds over `hours`, split reads vs writes — the capacity number."
+  def ch_cpu_split(hours \\ 168) do
+    case Clickhouse.query_raw("""
+         SELECT round(sumIf(query_duration_ms, query_kind != 'Insert') / 1000) AS read_cpu_s,
+                round(sumIf(query_duration_ms, query_kind = 'Insert') / 1000) AS write_cpu_s
+         FROM system.query_log
+         WHERE type = 'QueryFinish' AND event_time > now() - INTERVAL #{i(hours)} HOUR
+         """, 20_000) do
+      {:ok, [[r, w]]} -> %{read_cpu_s: to_i(r), write_cpu_s: to_i(w), hours: hours}
+      _ -> %{read_cpu_s: 0, write_cpu_s: 0, hours: hours}
+    end
+  end
+
   # ── GenServer-backed (master processes) ──
 
   @doc "WorkQueue depth/fill, safe when not running."
