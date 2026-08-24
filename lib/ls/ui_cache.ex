@@ -60,7 +60,10 @@ defmodule LS.UICache do
     dropdown: {1_800, "filter dropdown option lists"},
     segment_counts: {600, "segment button counts"},
     filter_count: {300, "total for a filter set"},
-    sitemap_techs: {21_600, "techs with enough Shopify stores to earn a URL"}
+    sitemap_techs: {21_600, "techs with enough Shopify stores to earn a URL"},
+    # Quoted in the welcome email. Cached because every new signup would
+    # otherwise pay a full scan of `businesses` at the worst possible moment.
+    welcome_stat: {21_600, "fresh contactable Shopify stores, last 7 days"}
   }
 
   # Hard ceilings. 5k entries of page data is tens of MB — a rounding error

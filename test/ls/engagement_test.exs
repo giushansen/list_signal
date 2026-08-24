@@ -52,8 +52,8 @@ defmodule LS.EngagementTest do
       assert_email_sent(fn email ->
         assert email.subject == "What list are you trying to build?"
         assert {_, "will@listsignal.com"} = email.from
-        assert email.text_body =~ "What list are you trying to build?"
-        assert email.text_body =~ "I can build it with you"
+        assert email.text_body =~ "Tell me the kind of company you're after"
+        assert email.text_body =~ "put the list together with you"
 
         refute email.text_body =~ ~r/people come (here )?for/i,
                "the welcome must ASK what they want, not tell them what people want — " <>
@@ -63,7 +63,10 @@ defmodule LS.EngagementTest do
         assert email.html_body =~ "<p", "the HTML twin should be paragraphs"
         refute email.html_body =~ "<img", "a founder's note has no images"
         refute email.html_body =~ "<table", "a founder's note is not a layout table"
-        assert email.text_body =~ "listsignal.com", "the text fallback must keep a usable link"
+        # The welcome deliberately has no link: its only call to action is a
+        # reply, so the reply-to address is the thing that must be right.
+        assert email.text_body =~ "Just reply to this one."
+        assert email.reply_to == {"", "will@listsignal.com"}
       end)
     end
   end
@@ -73,9 +76,9 @@ defmodule LS.EngagementTest do
       user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
 
       wall = Engagement.wall_html_body(23_424, %{"tech" => "WordPress"})
-      digest = Engagement.digest_html_body(user, 1_240, %{"tech" => "WordPress"}, [])
+      digest = Engagement.digest_html_body(user, 1_240, %{"tech" => "WordPress"}, nil)
 
-      for {body, label} <- [{wall, "Export them on a paid plan"}, {digest, "Unlock the full list"}] do
+      for {body, label} <- [{wall, "See export plans"}, {digest, "Get the full list"}] do
         assert body =~ ~s(>#{label}<), "the CTA must be a clickable phrase"
 
         # The ref code belongs in href, never in the visible text.
@@ -93,12 +96,12 @@ defmodule LS.EngagementTest do
 
       bodies = [
         Engagement.wall_body(1_847, filters),
-        Engagement.digest_body(user, 1_240, filters, ["Klaviyo: 340 added it, 89 dropped it"])
+        Engagement.digest_body(user, 1_240, filters, %{tech: "Klaviyo", added: 340, removed: 89})
       ]
 
       for body <- bodies do
-        refute body =~ "\u2014", "em-dash reads as machine-written; the owner asked for none"
-        refute body =~ "\u2013", "en-dash reads as machine-written"
+        # Em-dashes are fine (the owner writes with them); the ASCII "--"
+        # signature separator is the machine tell he objected to.
         refute body =~ "\n--", "the '--' signature separator reads as machine-written"
       end
     end
@@ -107,29 +110,34 @@ defmodule LS.EngagementTest do
       user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
       filters = %{"tech" => "Shopify"}
 
-      assert Engagement.wall_body(10, filters) =~ "reply to this email"
-      assert Engagement.digest_body(user, 10, filters, []) =~ "reply to this email"
+      assert Engagement.wall_body(10, filters) =~ "reply and I'll send the first 25 rows free"
+      assert Engagement.digest_body(user, 10, filters, nil) =~ "reply and I'll send the first 25 rows free"
     end
 
     test "paragraphs are not hard-wrapped mid-sentence" do
-      # Manual line breaks inside a paragraph render as stray returns in real
-      # mail clients, which is what made these read like machine output.
+      # Manual breaks inside a paragraph render as stray returns in real mail
+      # clients, which is what made these read like machine output. The tell
+      # is a line that stops mid-sentence and continues in lower case on the
+      # next one; a bullet or sign-off ends cleanly and must not be flagged.
       user = %LS.Accounts.User{id: 0, email: "copy@example.com", digest_subscribed: true}
 
-      for body <- [
-            Engagement.wall_body(1_847, %{"tech" => "Shopify"}),
-            Engagement.digest_body(user, 1_240, %{"tech" => "Shopify"}, [])
-          ] do
-        for line <- String.split(body, "\n") do
-          trimmed = String.trim(line)
+      bodies = [
+        Engagement.welcome_body(5_200),
+        Engagement.wall_body(1_847, %{"tech" => "Shopify"}),
+        Engagement.digest_body(user, 1_240, %{"tech" => "Shopify"}, nil)
+      ]
 
-          # A short line is fine (blank, link, sign-off). A long line that does
-          # NOT end a sentence means the paragraph was broken by hand.
-          if String.length(trimmed) in 40..90 and not String.contains?(trimmed, "http") do
-            assert String.match?(trimmed, ~r/[.:?!]$/) or String.length(trimmed) > 90,
-                   "line looks hand-wrapped mid-sentence: #{inspect(trimmed)}"
-          end
-        end
+      for body <- bodies do
+        lines = body |> String.split("\n") |> Enum.map(&String.trim/1)
+
+        lines
+        |> Enum.zip(tl(lines) ++ [""])
+        |> Enum.each(fn {line, next} ->
+          continues? = next != "" and String.match?(next, ~r/^[a-z]/)
+
+          refute line != "" and not String.match?(line, ~r/[.:?!]$/) and continues?,
+                 "line looks hand-wrapped mid-sentence: #{inspect(line)} -> #{inspect(next)}"
+        end)
       end
     end
   end
@@ -143,7 +151,7 @@ defmodule LS.EngagementTest do
 
       assert_email_sent(fn email ->
         assert email.subject =~ "businesses"
-        assert email.text_body =~ "(Shopify)", "the search must read back in words, not as a filter map"
+        assert email.text_body =~ "— Shopify —", "the search must read back in words, not as a filter map"
         assert email.text_body =~ "25 rows"
       end)
 

@@ -68,25 +68,79 @@ defmodule LS.Engagement do
   not break login.
   """
   def send_welcome(%User{} = user) do
+    stat = fresh_shopify_stat()
+
     email =
       base_email(user)
       |> subject("What list are you trying to build?")
-      |> html_body(welcome_html_body())
-      |> text_body("""
-      Hi,
-
-      Will here, I built ListSignal.
-
-      What list are you trying to build? Whatever it is, tell me and I can build it with you.
-
-      Two examples of what is possible: Shopify stores that went live this week and already have a contact address, or SaaS companies under $10M that are hiring right now.
-
-      Will from ListSignal
-      listsignal.com
-      """)
+      |> html_body(welcome_html_body(stat))
+      |> text_body(welcome_body(stat))
 
     deliver(email, "welcome", user)
   end
+
+  @doc """
+  Stores found in the last week that already have a contact address, rounded
+  to the nearest hundred and cached for six hours. Rounded because a precise
+  figure in a sentence starting "About" reads like a machine, and cached
+  because a signup should never wait on a table scan. Returns nil when the
+  query fails, and the sentence is dropped rather than quoting a zero.
+  """
+  def fresh_shopify_stat do
+    LS.UICache.fetch(:welcome_stat, :shopify_7d, fn ->
+      case Clickhouse.fresh_contactable_shopify(7) do
+        {:ok, n} when n > 200 -> round(n / 100) * 100
+        _ -> nil
+      end
+    end)
+  end
+
+  @doc false
+  def welcome_body(stat) do
+    """
+    Hi,
+
+    Will here — I run ListSignal.
+
+    Tell me the kind of company you're after and I'll put the list together with you.
+
+    A couple of examples of the sort of thing that's possible:
+
+    - A list of Shopify stores we discovered in the last 7 days — many of them just launched — that already have a contact address on the site.#{stat_sentence(stat)}
+
+    - A list of SaaS companies under $10M in revenue that are hiring right now, that run Intercom, HubSpot and the like. Hiring means budget, and budget means they're buying.
+
+    Just reply to this one.
+
+    Will
+    ListSignal
+    """
+  end
+
+  @doc false
+  def welcome_html_body(stat) do
+    import LS.EmailLayout
+
+    shell(
+      p("Hi,") <>
+        p("Will here — I run ListSignal.") <>
+        p("Tell me the kind of company you're after and I'll put the list together with you.") <>
+        p("A couple of examples of the sort of thing that's possible:") <>
+        p(
+          "A list of Shopify stores we discovered in the last 7 days — many of them just " <>
+            "launched — that already have a contact address on the site.#{stat_sentence(stat)}"
+        ) <>
+        p(
+          "A list of SaaS companies under $10M in revenue that are hiring right now, that run " <>
+            "Intercom, HubSpot and the like. Hiring means budget, and budget means they're buying."
+        ) <>
+        p("Just reply to this one.") <>
+        p("Will<br>ListSignal")
+    )
+  end
+
+  defp stat_sentence(nil), do: ""
+  defp stat_sentence(n), do: " About #{format_number(n)} last week."
 
   # ── 2. The wall ──────────────────────────────────────────────────────────
 
@@ -190,7 +244,7 @@ defmodule LS.Engagement do
     signals = signal_highlights(filters)
 
     # An empty digest is worse than none: skip quiet weeks silently.
-    if new_count > 0 or signals != [] do
+    if new_count > 0 or signals != nil do
       email =
         base_email(user)
         |> subject("#{format_number(new_count)} new businesses match your last search")
@@ -275,59 +329,21 @@ defmodule LS.Engagement do
     """
     Hi,
 
-    Your search yesterday matches #{format_number(count)} businesses (#{describe(filters)}).
+    Your search for businesses from yesterday — #{describe(filters)} — found #{format_number(count)} matches. They're in your account whenever you want them.
 
-    Export them on a paid plan: https://listsignal.com/pricing?ref=email-wall
+    What the CSV gets you:
 
-    Or reply to this email and I will send you the first 25 rows free.
+    Sort and filter it however you like
+    Split it up between your team
+    Drop it straight into your CRM or email tool
 
-    Will from ListSignal
+    See export plans: https://listsignal.com/pricing?ref=email-wall
+
+    Or reply and I'll send the first 25 rows free, so you can see the data first.
+
+    Will
+    ListSignal
     """
-  end
-
-  @doc false
-  def digest_body(user, new_count, filters, signals) do
-    signal_lines =
-      case signals do
-        [] -> ""
-        lines -> Enum.join(lines, "\n") <> "\n"
-      end
-
-    """
-    Hi,
-
-    #{format_number(new_count)} new businesses matched your last search this week (#{describe(filters)}).
-
-    #{signal_lines}
-    Unlock the full list: https://listsignal.com/pricing?ref=email-unlock-export
-
-    Or reply to this email and I will send you the first 25 rows free.
-
-    Will from ListSignal
-
-    You get one of these a week, about your own search.
-    Unsubscribe: #{unsubscribe_url(user)}
-    """
-  end
-
-  # HTML twin of digest_body/4. Deliberately plain: this is a founder's
-  # personal note, not a branded blast, so it is just paragraphs. The only
-  # reason it is HTML at all is to hide the long signed unsubscribe token
-  # behind the word "unsubscribe" instead of dumping a 90-char URL.
-  @doc false
-  def welcome_html_body do
-    import LS.EmailLayout
-
-    shell(
-      p("Hi,") <>
-        p("Will here, I built ListSignal.") <>
-        p("What list are you trying to build? Whatever it is, tell me and I can build it with you.") <>
-        p(
-          "Two examples of what is possible: Shopify stores that went live this week and already " <>
-            "have a contact address, or SaaS companies under $10M that are hiring right now."
-        ) <>
-        p("Will from ListSignal<br>" <> link("https://listsignal.com", "listsignal.com"))
-    )
   end
 
   @doc false
@@ -337,37 +353,85 @@ defmodule LS.Engagement do
     shell(
       p("Hi,") <>
         p(
-          "Your search yesterday matches <strong>#{format_number(count)}</strong> businesses " <>
-            "(#{esc(describe(filters))})."
+          "Your search for businesses from yesterday — #{esc(describe(filters))} — found " <>
+            "<strong>#{format_number(count)}</strong> matches. They're in your account whenever you want them."
         ) <>
-        cta("https://listsignal.com/pricing?ref=email-wall", "Export them on a paid plan") <>
-        p("Or reply to this email and I will send you the first 25 rows free.") <>
-        p("Will from ListSignal")
+        p("What the CSV gets you:") <>
+        bullets([
+          "Sort and filter it however you like",
+          "Split it up between your team",
+          "Drop it straight into your CRM or email tool"
+        ]) <>
+        cta("https://listsignal.com/pricing?ref=email-wall", "See export plans") <>
+        p("Or reply and I'll send the first 25 rows free, so you can see the data first.") <>
+        p("Will<br>ListSignal")
     )
   end
+
+  @doc false
+  def digest_body(user, new_count, filters, signals) do
+    signal = signal_sentence(signals)
+    signal_block = if signal, do: "\n#{signal}\n", else: ""
+
+    # Paying customers can already export; showing them a pricing CTA every
+    # week would be noise at best and insulting at worst.
+    upsell =
+      if free?(user) do
+        """
+
+        Get the full list: https://listsignal.com/pricing?ref=email-unlock-export
+
+        Or reply and I'll send the first 25 rows free.
+        """
+      else
+        ""
+      end
+
+    """
+    Hi,
+
+    #{format_number(new_count)} businesses turned up this week that fit your search — #{describe(filters)}. All new since the last time you looked.
+    #{signal_block}#{upsell}
+    Will
+    ListSignal
+
+    One of these a week, about your saved search.
+    Unsubscribe: #{unsubscribe_url(user)}
+    """
+  end
+
+  defp free?(%User{plan: plan}), do: plan in [nil, "", "free"]
+  defp free?(_), do: true
 
   @doc false
   def digest_html_body(user, new_count, filters, signals) do
     import LS.EmailLayout
 
     signal_html =
-      case signals do
-        [] -> ""
-        lines -> p(Enum.map_join(lines, "<br>", &esc/1))
+      case signal_sentence(signals) do
+        nil -> ""
+        sentence -> p(esc(sentence))
+      end
+
+    upsell =
+      if free?(user) do
+        cta("https://listsignal.com/pricing?ref=email-unlock-export", "Get the full list") <>
+          p("Or reply and I'll send the first 25 rows free.")
+      else
+        ""
       end
 
     shell(
       p("Hi,") <>
         p(
-          "<strong>#{format_number(new_count)}</strong> new businesses matched your last search " <>
-            "this week (#{esc(describe(filters))})."
+          "<strong>#{format_number(new_count)}</strong> businesses turned up this week that fit " <>
+            "your search — #{esc(describe(filters))}. All new since the last time you looked."
         ) <>
         signal_html <>
-        cta("https://listsignal.com/pricing?ref=email-unlock-export", "Unlock the full list") <>
-        p("Or reply to this email and I will send you the first 25 rows free.") <>
-        p("Will from ListSignal") <>
+        upsell <>
+        p("Will<br>ListSignal") <>
         fine(
-          "One of these a week, about your own search. " <>
+          "One of these a week, about your saved search. " <>
             link(unsubscribe_url(user), "Unsubscribe") <> "."
         )
     )
@@ -437,25 +501,31 @@ defmodule LS.Engagement do
 
   # Signal highlights only when the search names a tech/app — a global
   # firehose is noise, their tech's churn is signal.
+  # One sentence about the tech the customer actually searched for. A global
+  # firehose is noise; churn on THEIR tech is the reason to open the email.
   defp signal_highlights(filters) do
     tech = filters["tech"] || filters["shopify_app"]
 
     if tech in [nil, ""] do
-      []
+      nil
     else
-      tech
-      |> String.split(",", trim: true)
-      |> Enum.take(2)
-      |> Enum.flat_map(fn t ->
-        case Clickhouse.signal_counts_for(String.trim(t), 7) do
-          {:ok, added, removed} when added + removed > 0 ->
-            ["#{t}: #{format_number(added)} businesses added it, #{format_number(removed)} dropped it"]
+      name = tech |> String.split(",", trim: true) |> List.first() |> to_string() |> String.trim()
 
-          _ ->
-            []
-        end
-      end)
+      case Clickhouse.signal_counts_for(name, 7) do
+        {:ok, added, removed} when added + removed > 0 ->
+          %{tech: name, added: added, removed: removed}
+
+        _ ->
+          nil
+      end
     end
+  end
+
+  defp signal_sentence(nil), do: nil
+
+  defp signal_sentence(%{tech: t, added: a, removed: r}) do
+    "On #{t}: we're now seeing it on #{format_number(a)} sites where we weren't before, " <>
+      "and it's no longer showing on #{format_number(r)}."
   end
 
   # "Shopify + with email + 10+ products", not "tech: Shopify, has_email: true".

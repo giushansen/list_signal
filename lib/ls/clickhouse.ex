@@ -907,6 +907,27 @@ defmodule LS.Clickhouse do
     end
   end
 
+  @doc """
+  Shopify stores discovered in the last `days` that already carry a contact
+  address. This is the number the welcome email quotes, so it must be true and
+  it must be cheap: the caller caches it, and it is a single scan of
+  `businesses` (~0.3s) rather than anything per-recipient.
+  """
+  def fresh_contactable_shopify(days \\ 7) do
+    sql = """
+    SELECT count() FROM businesses
+    WHERE positionCaseInsensitive(http_tech, 'shopify') > 0
+      AND http_emails != ''
+      AND first_seen > now() - INTERVAL #{days} DAY
+    SETTINGS max_threads = 2
+    """
+
+    case query_raw(sql) do
+      {:ok, [[n]]} -> {:ok, to_count(n)}
+      err -> err
+    end
+  end
+
   # ── Recrawl scheduler ──
 
   @doc """

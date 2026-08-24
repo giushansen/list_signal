@@ -32,6 +32,12 @@ defmodule LS.EmailLayout do
   @doc "An inline link inside running text."
   def link(url, label), do: ~s(<a href="#{url}" style="color:#{@accent};text-decoration:none">#{label}</a>)
 
+  @doc "A short list, styled tight so it reads as part of the note."
+  def bullets(items) do
+    lis = Enum.map_join(items, "", &~s(<li style="margin:0 0 4px">#{&1}</li>))
+    ~s(<ul style="margin:0 0 16px;padding-left:20px">#{lis}</ul>)
+  end
+
   @doc "Small print (unsubscribe, disclaimers)."
   def fine(html), do: ~s(<p style="margin:24px 0 0;font-size:12px;color:#999">#{html}</p>)
 

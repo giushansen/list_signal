@@ -33,17 +33,19 @@ defmodule LS.Accounts.UserNotifier do
       """
       Hi,
 
-      Use this link to confirm your new email address: #{url}
+      Confirm your new email address:
+      #{url}
 
       If you did not ask to change it, you can ignore this email.
 
-      Will from ListSignal
+      Will
+      ListSignal
       """,
       shell(
         p("Hi,") <>
           cta(url, "Confirm your new email address") <>
           p("If you did not ask to change it, you can ignore this email.") <>
-          p("Will from ListSignal")
+          p("Will<br>ListSignal")
       )
     )
   end
@@ -65,17 +67,19 @@ defmodule LS.Accounts.UserNotifier do
       """
       Hi,
 
-      Here is your login link: #{url}
+      Log in to ListSignal:
+      #{url}
 
       If you did not ask for it, you can ignore this email.
 
-      Will from ListSignal
+      Will
+      ListSignal
       """,
       shell(
         p("Hi,") <>
           cta(url, "Log in to ListSignal") <>
           p("If you did not ask for it, you can ignore this email.") <>
-          p("Will from ListSignal")
+          p("Will<br>ListSignal")
       )
     )
   end
@@ -87,17 +91,20 @@ defmodule LS.Accounts.UserNotifier do
       """
       Hi,
 
-      Confirm your account with this link: #{url}
+      You're one click away — confirm here:
+      #{url}
 
-      Once you are in, tell me what list you are trying to build and I can build it with you.
+      Working on a list? Reply and I'll build it with you.
 
-      Will from ListSignal
+      Will
+      ListSignal
       """,
       shell(
         p("Hi,") <>
+          p("You're one click away.") <>
           cta(url, "Confirm your account") <>
-          p("Once you are in, tell me what list you are trying to build and I can build it with you.") <>
-          p("Will from ListSignal")
+          p("Working on a list? Reply and I'll build it with you.") <>
+          p("Will<br>ListSignal")
       )
     )
   end
