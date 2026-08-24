@@ -287,7 +287,7 @@ defmodule LS.Engagement do
     signal_lines =
       case signals do
         [] -> ""
-        lines -> "\n" <> Enum.join(lines, "\n") <> "\n"
+        lines -> Enum.join(lines, "\n") <> "\n"
       end
 
     """
@@ -295,9 +295,10 @@ defmodule LS.Engagement do
 
     #{format_number(new_count)} new businesses matched your last search this week (#{describe(filters)}).
 
-    See them, freshest first: https://listsignal.com/dashboard?ref=email-digest
     #{signal_lines}
-    Want a different cut of the data? Reply and I can build it with you.
+    Unlock the full list: https://listsignal.com/pricing?ref=email-unlock-export
+
+    Or reply to this email and I will send you the first 25 rows free.
 
     Will from ListSignal
 
@@ -322,9 +323,9 @@ defmodule LS.Engagement do
     <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:560px">
       <p style="margin:0 0 16px">Hi,</p>
       <p style="margin:0 0 16px"><strong>#{format_number(new_count)}</strong> new businesses matched your last search this week (#{esc(describe(filters))}).</p>
-      <p style="margin:0 0 16px"><a href="https://listsignal.com/dashboard?ref=email-digest" style="color:#10b981;font-weight:600;text-decoration:none">See them, freshest first</a></p>
       #{signal_html}
-      <p style="margin:0 0 16px">Want a different cut of the data? Reply and I can build it with you.</p>
+      <p style="margin:0 0 16px"><a href="https://listsignal.com/pricing?ref=email-unlock-export" style="color:#10b981;font-weight:600;text-decoration:none">Unlock the full list</a></p>
+      <p style="margin:0 0 16px">Or reply to this email and I will send you the first 25 rows free.</p>
       <p style="margin:0 0 4px">Will from ListSignal</p>
       <p style="margin:24px 0 0;font-size:12px;color:#999">One of these a week, about your own search. <a href="#{unsubscribe_url(user)}" style="color:#999">Unsubscribe</a>.</p>
     </div>

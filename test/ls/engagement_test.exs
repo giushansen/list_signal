@@ -85,7 +85,7 @@ defmodule LS.EngagementTest do
       filters = %{"tech" => "Shopify"}
 
       assert Engagement.wall_body(10, filters) =~ "reply to this email"
-      assert Engagement.digest_body(user, 10, filters, []) =~ "Reply and I can build it with you"
+      assert Engagement.digest_body(user, 10, filters, []) =~ "reply to this email"
     end
 
     test "paragraphs are not hard-wrapped mid-sentence" do
@@ -191,6 +191,7 @@ defmodule LS.EngagementTest do
 
       assert_email_sent(fn email ->
         assert email.text_body =~ "/digest/unsubscribe/"
+        assert email.text_body =~ "ref=email-unlock-export", "the digest's CTA must be attributable in Umami"
         assert Enum.any?(email.headers, fn {k, _} -> k == "List-Unsubscribe" end),
                "one-click unsubscribe header is what keeps us out of spam folders"
       end)
