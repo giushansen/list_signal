@@ -616,6 +616,15 @@ defmodule LS.Explorer do
   # `businesses` has no enriched_at: the compactor records `as_of` — the
   # newest crawl of any kind we hold for that domain — which is exactly what
   # "freshness" means to a customer.
+  # "Discovered" = first_seen, i.e. when this domain FIRST entered the index —
+  # the "new business" signal buyers pay for. Distinct from :freshness below,
+  # which is as_of (when we last re-crawled a row we already had). Confusing
+  # the two overstates a new-store list by ~3x: on 2026-08-24, freshness=7d
+  # matched 3,195,733 rows while first_seen within 7d matched 955,774.
+  defp filter_clause({:discovered, "24h"}), do: ["first_seen >= now() - INTERVAL 1 DAY"]
+  defp filter_clause({:discovered, "7d"}), do: ["first_seen >= now() - INTERVAL 7 DAY"]
+  defp filter_clause({:discovered, "30d"}), do: ["first_seen >= now() - INTERVAL 30 DAY"]
+
   defp filter_clause({:freshness, "24h"}) do
     ["as_of >= now() - INTERVAL 1 DAY"]
   end

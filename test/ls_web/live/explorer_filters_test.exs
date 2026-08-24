@@ -96,6 +96,23 @@ defmodule LSWeb.ExplorerFiltersTest do
       assert Explorer.where_sql(has_catalog: "") == ""
     end
 
+    test "'Discovered' filters on first_seen — NOT the same as 'Freshness'" do
+      # The distinction the whole "new stores" pitch rests on. freshness is
+      # as_of (last re-crawl) and matched 3.2M rows on prod; discovered is
+      # first_seen and matched 955k. Selling the former as the latter would
+      # overstate a new-store list by ~3x.
+      assert Explorer.where_sql(discovered: "7d") == "WHERE first_seen >= now() - INTERVAL 7 DAY"
+      assert Explorer.where_sql(freshness: "7d") == "WHERE as_of >= now() - INTERVAL 7 DAY"
+      refute Explorer.where_sql(discovered: "7d") == Explorer.where_sql(freshness: "7d")
+
+      for window <- ~w(24h 7d 30d) do
+        assert Explorer.where_sql(discovered: window) =~ "first_seen >="
+      end
+
+      assert Explorer.where_sql(discovered: "") == ""
+      assert Explorer.where_sql(discovered: "nonsense") == ""
+    end
+
     test "empty filters produce no WHERE clause" do
       assert Explorer.where_sql(revenue: "", employees: "", tech: "") == ""
     end

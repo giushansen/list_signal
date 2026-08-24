@@ -371,6 +371,7 @@ defmodule LSWeb.ExplorerLive do
   defp fetch_dropdown_options("revenue", _q), do: LS.Revenue.Estimator.revenue_labels()
   defp fetch_dropdown_options("employees", _q), do: LS.Revenue.Estimator.employee_labels()
   defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
+  defp fetch_dropdown_options("discovered", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 
   # Cached fleet-wide: these DISTINCTs scan millions of rows and their answer
@@ -583,7 +584,7 @@ defmodule LSWeb.ExplorerLive do
   defp default_filters do
     %{
       tech: "", shopify_app: "", country: "", business_model: "", industry: "",
-      revenue: "", employees: "", language: "", domain_search: "", freshness: "",
+      revenue: "", employees: "", language: "", domain_search: "", freshness: "", discovered: "",
       # Depth filters — the ones our buyers actually qualify on. The backend
       # has supported these for a while; they were simply never exposed.
       has_email: "", has_pricing: "", hiring: "", has_catalog: "",
@@ -645,7 +646,8 @@ defmodule LSWeb.ExplorerLive do
     label_map = %{
       tech: "Tech", shopify_app: "Shopify Apps", country: "Country",
       business_model: "Business", industry: "Industry", revenue: "Revenue",
-      employees: "Employees", language: "Language", freshness: "Freshness"
+      employees: "Employees", language: "Language", freshness: "Freshness",
+      discovered: "Discovered"
     }
 
     filters
@@ -767,6 +769,7 @@ defmodule LSWeb.ExplorerLive do
           <input type="hidden" name="language" value={@filters.language} />
           <input type="hidden" name="domain_search" value={@filters.domain_search} />
           <input type="hidden" name="freshness" value={@filters.freshness} />
+          <input type="hidden" name="discovered" value={@filters.discovered} />
         </form>
 
         <%!-- Click-outside backdrop when a dropdown is open (pointer-events only, no layout impact) --%>
@@ -808,6 +811,7 @@ defmodule LSWeb.ExplorerLive do
               {"revenue", "Revenue", "💰", true},
               {"employees", "Employees", "👥", true},
               {"language", "Language", "🗣️", true},
+              {"discovered", "Discovered", "✨", true},
               {"freshness", "Freshness", "🕐", true}
             ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>
               <.filter_dropdown
