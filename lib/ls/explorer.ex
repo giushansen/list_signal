@@ -227,7 +227,8 @@ defmodule LS.Explorer do
         end
       end)
 
-    case Clickhouse.query_raw("SELECT #{selects} FROM businesses", @query_timeout) do
+    case Clickhouse.query_raw("SELECT #{selects} FROM businesses", @query_timeout,
+           max_execution_time: div(@query_timeout, 1000)) do
       {:ok, [row]} ->
         labelled_filters
         |> Enum.map(fn {id, _} -> id end)

@@ -1506,7 +1506,13 @@ defmodule LS.Clickhouse do
   # ── Private ──
 
   defp query(sql) do
-    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact"
+    # Same cancel-on-hangup guarantee as query_raw/3. This private helper backs
+    # most of the public page queries (tech, top, compare, store, landing), and
+    # it built its OWN url — so on 2026-08-24 those paths stayed unbounded while
+    # query_raw was already fixed: 62 of 68 in-flight Explorer-shaped scans
+    # carried no cap at all. Every read path must hang up together or the
+    # pile-up simply moves to whichever one was missed.
+    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1"
     case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: @timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       {:ok, %{status: 200, body: body}} when is_binary(body) -> {:ok, body}
