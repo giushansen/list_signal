@@ -295,6 +295,22 @@ defmodule LS.Engagement do
 
     filters = last_search(email_address) || %{"tech" => "Shopify", "has_email" => "true"}
 
+    # Transactional first, in the order a customer meets them.
+    LS.Accounts.UserNotifier.deliver_login_instructions(
+      %{user | confirmed_at: nil},
+      "https://listsignal.com/users/log-in/EXAMPLE-CONFIRM-TOKEN"
+    )
+
+    LS.Accounts.UserNotifier.deliver_login_instructions(
+      %{user | confirmed_at: DateTime.utc_now()},
+      "https://listsignal.com/users/log-in/EXAMPLE-LOGIN-TOKEN"
+    )
+
+    LS.Accounts.UserNotifier.deliver_update_email_instructions(
+      user,
+      "https://listsignal.com/users/settings/confirm-email/EXAMPLE-TOKEN"
+    )
+
     send_welcome(user)
     send_wall_preview(user, filters)
     send_digest_preview(user, filters)
