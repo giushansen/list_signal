@@ -173,27 +173,39 @@ defmodule LS.Metrics do
   end
 
   @doc """
-  Freshness of the on-disk backups (master only). Silent backup failure is the
-  worst class of bug there is — you only find out when you need the backup.
+  Freshness of the on-disk backup tiers (master only). Silent backup failure is
+  the worst class of bug there is — you only find out when you need it.
 
-  Returns `%{sqlite_age_h, ch_age_h, ch_archives, partial_archives}`; `nil`
-  ages mean "no such backup exists at all". A `.tar` without its `.tar.gz` is a
-  PARTIAL archive left by a run that died mid-dump (2026-08-24: disk pressure
-  from unpruned releases truncated the weekly ClickHouse dump after one table).
+  Mirrors `devops/listsignal/backup.sh`'s three tiers, and matches the names it
+  actually writes (`.tar`, not `.tar.gz` — contents are already per-table
+  `.zst`, so there is no second compression pass):
+
+    * `sqlite_*.db`   hourly — users/plans/Stripe, tiny and irreplaceable
+    * `prod_*.tar`    every 6h — businesses + biz_* : weeks of crawling to rebuild
+    * `ch[dw]_*.tar`  daily — domains_history, the one big non-derivable table
+
+  Ages are in hours. `nil` means that tier has NO archive. When the backup
+  directory does not exist at all (dev, a worker, a fresh box) the whole map is
+  `nil` under `:dir` — the caller must then skip backup alerts entirely rather
+  than report three missing backups on a machine that never had any.
   """
   def backup_status(dir \\ "/home/ls/backups") do
     case File.ls(dir) do
       {:ok, files} ->
         %{
+          dir: dir,
           sqlite_age_h: newest_age_h(dir, files, ~r/^sqlite_.*\.db$/),
-          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]?_.*\.tar\.gz$/),
-          ch_archives: Enum.count(files, &Regex.match?(~r/^ch[dw]?_.*\.tar\.gz$/, &1)),
-          partial_archives: Enum.count(files, &Regex.match?(~r/^ch[dw]?_.*\.tar$/, &1))
+          product_age_h: newest_age_h(dir, files, ~r/^prod_.*\.tar$/),
+          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]_.*\.tar(\.gz)?$/)
         }
 
-      _ -> %{sqlite_age_h: nil, ch_age_h: nil, ch_archives: nil, partial_archives: 0}
+      _ ->
+        %{dir: nil, sqlite_age_h: nil, product_age_h: nil, ch_age_h: nil}
     end
   end
+
+  @doc "The tier keys `backup_status/0` always reports. Pins the seam with `LS.Alerts`."
+  def backup_tiers, do: [:sqlite_age_h, :product_age_h, :ch_age_h]
 
   defp newest_age_h(dir, files, re) do
     files

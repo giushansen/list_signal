@@ -154,6 +154,10 @@ defmodule LS.Alerts do
   # (backup.sh's own reasoning): the product tier is weeks of crawling, sqlite
   # is irreplaceable-but-tiny, and the ClickHouse tier is domains_history,
   # which is history rather than derived state.
+  # No backup directory (dev box, a worker, a fresh install) => nothing to judge.
+  # Without this, a machine that never had backups reports three missing ones.
+  defp backups(acc, %{backups: %{dir: nil}}), do: acc
+
   defp backups(acc, %{backups: b}) when is_map(b) do
     acc
     |> stale_backup(b[:product_age_h], @product_backup_age_h, :critical, "backup_product", "Product backup stale",

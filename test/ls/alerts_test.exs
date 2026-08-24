@@ -14,7 +14,7 @@ defmodule LS.AlertsTest do
       queue: %{queue_pct: 40.0},
       node_resources: [{:"master@10.0.0.1", %{disk_used_pct: 60, disk_used_gb: 200, disk_total_gb: 361, mem_avail_mb: 8000}}],
       reputation_ages: %{tranco: 5, majestic: 6, blocklist: 3},
-      backups: %{sqlite_age_h: 1, product_age_h: 3, ch_age_h: 20},
+      backups: %{dir: "/home/ls/backups", sqlite_age_h: 1, product_age_h: 3, ch_age_h: 20},
       verification: %{scheduler: %{running: false, disabled: false}, sources: [%{source: "yc", status: "ok", duration_s: 30, error: ""}]},
       poller: nil,
       ctl_diff: %{new: [], retired: []}
@@ -81,21 +81,53 @@ defmodule LS.AlertsTest do
 
   test "each backup tier alerts at its own cadence, severity by rebuild cost" do
     # backup.sh tiers: sqlite hourly, product 4x/day, ClickHouse weekly.
-    stale = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 9, product_age_h: 30, ch_age_h: 400}})
+    stale = Alerts.evaluate(%{healthy() | backups: %{dir: "/b", sqlite_age_h: 9, product_age_h: 30, ch_age_h: 400}})
     assert Enum.any?(stale, &(&1.key == "backup_product" and &1.severity == :critical)), "product = weeks of crawling"
     assert Enum.any?(stale, &(&1.key == "backup_sqlite" and &1.severity == :critical)), "sqlite = irreplaceable"
     assert Enum.any?(stale, &(&1.key == "backup_ch" and &1.severity == :warning)), "CH = weekly history dump"
   end
 
   test "a tier with no archive at all is reported as missing, not merely stale" do
-    none = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 1, product_age_h: nil, ch_age_h: 20}})
+    none = Alerts.evaluate(%{healthy() | backups: %{dir: "/b", sqlite_age_h: 1, product_age_h: nil, ch_age_h: 20}})
     assert Enum.any?(none, &(&1.key == "backup_product_missing" and &1.severity == :critical))
   end
 
   test "a weekly ClickHouse dump 20h old is NOT stale (its cadence is 7 days)" do
     # Regression: an earlier version used a 60h ceiling meant for a daily job
     # and would have paged every week on a healthy weekly backup.
-    a = Alerts.evaluate(%{healthy() | backups: %{sqlite_age_h: 1, product_age_h: 3, ch_age_h: 170}})
+    a = Alerts.evaluate(%{healthy() | backups: %{dir: "/b", sqlite_age_h: 1, product_age_h: 3, ch_age_h: 170}})
+    refute Enum.any?(a, &String.starts_with?(&1.key, "backup_"))
+  end
+
+  test "SEAM: every tier LS.Metrics reports is a tier LS.Alerts reads" do
+    # 2026-08-24: alerts.ex was changed to read b[:product_age_h] while the
+    # matching metrics.ex edit silently never persisted, so the key was ALWAYS
+    # nil and the owner got "No product backup exists" every 6h while backups
+    # were fine. The unit tests passed because evaluate/1 is pure and was fed a
+    # hand-built map — nothing pinned the Metrics->Alerts seam. This does.
+    keys = LS.Metrics.backup_status("/nonexistent-#{System.unique_integer([:positive])}") |> Map.keys()
+    assert :dir in keys
+    for tier <- LS.Metrics.backup_tiers(), do: assert(tier in keys, "backup_status must report #{tier}")
+
+    src = File.read!("lib/ls/alerts.ex")
+    for tier <- LS.Metrics.backup_tiers() do
+      assert src =~ "b[:#{tier}]", "LS.Alerts must read #{tier}"
+    end
+
+    # The direction that actually bit: LS.Alerts reading a key LS.Metrics never
+    # sets. Such a key is silently nil forever, which this alerter reports as
+    # "no backup exists" — a false critical every cooldown window.
+    read_by_alerts =
+      Regex.scan(~r/b\[:(\w+_age_h)\]/, src) |> Enum.map(&List.last/1) |> Enum.uniq() |> Enum.map(&String.to_atom/1)
+
+    for key <- read_by_alerts do
+      assert key in LS.Metrics.backup_tiers(),
+             "LS.Alerts reads b[:#{key}] but LS.Metrics.backup_status/0 never sets it — it will always be nil"
+    end
+  end
+
+  test "a machine with no backup directory reports nothing (not three missing backups)" do
+    a = Alerts.evaluate(%{healthy() | backups: %{dir: nil, sqlite_age_h: nil, product_age_h: nil, ch_age_h: nil}})
     refute Enum.any?(a, &String.starts_with?(&1.key, "backup_"))
   end
 
