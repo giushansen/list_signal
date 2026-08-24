@@ -560,7 +560,7 @@ defmodule LS.Clickhouse do
 
     LS.LandingCache.cached({:similar_stores, business_model, country, tier, bucket}, @similar_stores_ttl, fn ->
       query("""
-      SELECT domain, http_title, tranco_rank, http_tech LIKE '%Shopify%' AS is_shopify
+      SELECT domain, http_title, tranco_rank, is_shopify
       FROM businesses
       WHERE business_model = '#{escape(business_model)}'
         AND inferred_country = '#{escape(country)}'

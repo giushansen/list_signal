@@ -113,6 +113,19 @@ defmodule LSWeb.ExplorerFiltersTest do
       assert Explorer.where_sql(discovered: "nonsense") == ""
     end
 
+    test "Shopify and SaaS filters use the stored flags, not wide-column scans" do
+      # Measured on prod: http_tech substring scan 3,651ms/688MB vs is_shopify
+      # 42ms/13MB; business_model='SaaS' 529ms/141MB vs is_saas 67ms/13MB.
+      # Both flags are MATERIALIZED from the very expressions they replace, so
+      # this is a pure performance substitution (row counts verified identical).
+      assert Explorer.where_sql(business_model: "Shopify") == "WHERE is_shopify = 1"
+      assert Explorer.where_sql(business_model: "SaaS") == "WHERE is_saas = 1"
+
+      # A multi-select still has to use the real column.
+      assert Explorer.where_sql(business_model: "SaaS,Agency") =~ "business_model IN"
+      assert Explorer.where_sql(business_model: "Agency") == "WHERE business_model = 'Agency'"
+    end
+
     test "empty filters produce no WHERE clause" do
       assert Explorer.where_sql(revenue: "", employees: "", tech: "") == ""
     end

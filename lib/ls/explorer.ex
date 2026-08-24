@@ -525,13 +525,21 @@ defmodule LS.Explorer do
     clauses =
       case regular do
         [] -> clauses
+        # is_saas is the same test as business_model = 'SaaS' (verified equal:
+        # 841,843 rows either way) but reads a 13 MB UInt8 instead of 141 MB of
+        # LowCardinality: 529ms -> 67ms. Only for the single-value case; a
+        # multi-select still needs the IN over the real column.
+        ["SaaS"] -> clauses ++ ["is_saas = 1"]
         [single] -> clauses ++ ["business_model = '#{esc(single)}'"]
         many -> clauses ++ ["business_model IN (#{Enum.map_join(many, ",", &"'#{esc(&1)}'")})" ]
       end
 
     clauses =
       if shopify != [] do
-        clauses ++ ["positionCaseInsensitive(http_tech, 'Shopify') > 0"]
+        # Same predicate as before (verified equal: 783,287 rows either way),
+        # but the flag is 13 MB of UInt8 instead of decompressing and
+        # substring-searching 688 MB of http_tech: 3,651ms -> 42ms.
+        clauses ++ ["is_shopify = 1"]
       else
         clauses
       end
