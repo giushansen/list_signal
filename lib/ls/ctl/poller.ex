@@ -8,8 +8,15 @@ defmodule LS.CTL.Poller do
   - Auto-scaling workers (up to 100 per log)
   - Multiple CT logs in parallel
 
-  CT Log URLs updated February 2026.
-  Source: Chrome CT log list v80.6 (2025-12-25)
+  CT Log URLs updated 2026-08-24 to Chrome's live list: the four 2026h1 shards
+  (Argon/Xenon/Wyvern/Tiger) were dropped — their temporal window closed on
+  Jul 1, and the poller confirmed tree_size frozen with behind=0 and
+  total_processed=0, i.e. zero inflow — and the seven remaining Chrome-usable
+  logs were added (DigiCert Sphinx, Sectigo Elephant/Mammoth/Sabre/Tiger h2,
+  TrustAsia log2026a/b), so all 11 usable logs are now polled. `LS.CTL.LogList`
+  diffs this list against Chrome's on a schedule and emails when it drifts, so
+  the next rotation should not need to be noticed by hand.
+  Source: Chrome CT log list (fetched live, see LS.CTL.LogList)
   https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/certificate_transparency/data/log_list.json
 
   NOTE: CT logs are sharded by certificate expiry date (H1 = Jan-Jun, H2 = Jul-Dec).
@@ -39,18 +46,7 @@ defmodule LS.CTL.Poller do
   # ===========================================================================
 
   @log_configs [
-    # --- Google (US-based, "Argon" line) ---
-    # Covers certs expiring Jan 1 2026 – Jul 1 2026
-    %{
-      name: "Google Argon 2026h1",
-      url: "https://ct.googleapis.com/logs/us1/argon2026h1/ct/v1",
-      batch_size: 32,
-      avg_entries: 26,
-      min_workers: 2,
-      max_workers: 30,
-      target_lag: 10_000
-    },
-    # Covers certs expiring Jul 1 2026 – Jan 1 2027
+    # --- Google (US "Argon" / EU "Xenon"), batch capped at 32 by the operator ---
     %{
       name: "Google Argon 2026h2",
       url: "https://ct.googleapis.com/logs/us1/argon2026h2/ct/v1",
@@ -58,18 +54,6 @@ defmodule LS.CTL.Poller do
       avg_entries: 26,
       min_workers: 2,
       max_workers: 30,
-      target_lag: 10_000
-    },
-
-    # --- Google (EU-based, "Xenon" line) ---
-    # Same cert coverage as Argon but EU infrastructure — often faster for bulk scraping
-    %{
-      name: "Google Xenon 2026h1",
-      url: "https://ct.googleapis.com/logs/eu1/xenon2026h1/ct/v1",
-      batch_size: 32,
-      avg_entries: 26,
-      min_workers: 2,
-      max_workers: 20,
       target_lag: 10_000
     },
     %{
@@ -82,8 +66,7 @@ defmodule LS.CTL.Poller do
       target_lag: 10_000
     },
 
-    # --- Cloudflare (Nimbus line) ---
-    # Covers all certs expiring in 2026 (full year shard)
+    # --- Cloudflare (full-year 2026 shard) ---
     %{
       name: "Cloudflare Nimbus 2026",
       url: "https://ct.cloudflare.com/logs/nimbus2026/ct/v1",
@@ -94,30 +77,77 @@ defmodule LS.CTL.Poller do
       target_lag: 50_000
     },
 
-    # --- DigiCert (Wyvern line — replaces Nessie, retired Apr 2025) ---
+    # --- DigiCert (Wyvern + Sphinx lines) ---
     %{
-      name: "DigiCert Wyvern 2026h1",
-      url: "https://wyvern.ct.digicert.com/2026h1/ct/v1",
-      batch_size: 64,
-      avg_entries: 64,
+      name: "DigiCert Wyvern 2026h2",
+      url: "https://wyvern.ct.digicert.com/2026h2/ct/v1",
+      batch_size: 128,
+      avg_entries: 116,
       min_workers: 1,
       max_workers: 5,
       target_lag: 20_000
     },
     %{
-      name: "DigiCert Wyvern 2026h2",
-      url: "https://wyvern.ct.digicert.com/2026h2/ct/v1",
-      batch_size: 128,    # was 64 — actual yield is ~116
-      avg_entries: 116,    # was 64
+      name: "DigiCert Sphinx 2026h2",
+      url: "https://sphinx.ct.digicert.com/2026h2/ct/v1",
+      batch_size: 128,
+      avg_entries: 116,
       min_workers: 1,
       max_workers: 5,
       target_lag: 20_000
     },
 
-    # --- Sectigo (Elephant line — replaces Mammoth/Sabre, read-only Sep 2025) ---
+    # --- Sectigo (Elephant / Mammoth / Sabre / Tiger lines) ---
     %{
-      name: "Sectigo Tiger 2026h1",
-      url: "https://tiger2026h1.ct.sectigo.com/ct/v1",
+      name: "Sectigo Tiger 2026h2",
+      url: "https://tiger2026h2.ct.sectigo.com/ct/v1",
+      batch_size: 128,
+      avg_entries: 128,
+      min_workers: 1,
+      max_workers: 5,
+      target_lag: 50_000
+    },
+    %{
+      name: "Sectigo Elephant 2026h2",
+      url: "https://elephant2026h2.ct.sectigo.com/ct/v1",
+      batch_size: 128,
+      avg_entries: 128,
+      min_workers: 1,
+      max_workers: 5,
+      target_lag: 50_000
+    },
+    %{
+      name: "Sectigo Mammoth 2026h2",
+      url: "https://mammoth2026h2.ct.sectigo.com/ct/v1",
+      batch_size: 128,
+      avg_entries: 128,
+      min_workers: 1,
+      max_workers: 5,
+      target_lag: 50_000
+    },
+    %{
+      name: "Sectigo Sabre 2026h2",
+      url: "https://sabre2026h2.ct.sectigo.com/ct/v1",
+      batch_size: 128,
+      avg_entries: 128,
+      min_workers: 1,
+      max_workers: 5,
+      target_lag: 50_000
+    },
+
+    # --- TrustAsia (new to us 2026-08-24; Chrome-usable, covers 2026) ---
+    %{
+      name: "TrustAsia log2026a",
+      url: "https://ct2026-a.trustasia.com/log2026a/ct/v1",
+      batch_size: 128,
+      avg_entries: 128,
+      min_workers: 1,
+      max_workers: 5,
+      target_lag: 50_000
+    },
+    %{
+      name: "TrustAsia log2026b",
+      url: "https://ct2026-b.trustasia.com/log2026b/ct/v1",
       batch_size: 128,
       avg_entries: 128,
       min_workers: 1,
