@@ -117,8 +117,14 @@ defmodule LS.Application do
       LS.RDAP.Client,
       {LS.LandingCache, []},
       # Reads the page caches back from /tmp so a deploy starts warm.
-      # Must come after every table it persists (LS.UICache above,
-      # LS.LandingCache on the line above) — see LS.CacheSnapshot.
+      #
+      # ORDER IS LOAD-BEARING, both ways:
+      #   * AFTER every table it restores (LS.UICache in common_children,
+      #     LS.LandingCache on the line above) or there is nothing to write to.
+      #   * BEFORE LSWeb.Endpoint, so the cache is populated before the port is
+      #     bound and no request can ever arrive to a cold cache on a graceful
+      #     restart. This is what stops the 25s 503 of 2026-08-24.
+      # Pinned by ls/application_boot_order_test.exs.
       LS.CacheSnapshot,
       LS.Reputation.Tranco,
       LS.Reputation.Majestic,
