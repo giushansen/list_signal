@@ -213,6 +213,20 @@ defmodule LS.CacheSnapshotTest do
     end
   end
 
+  describe "ctl dump stays under the file cap" do
+    test "an oversized dedup cache is truncated per-table, never allowed to kill the whole snapshot" do
+      now = System.system_time(:second)
+
+      for i <- 1..1_000_100 do
+        :ets.insert(:ctl_cache, {"d#{i}.example", {1, 0, now, now}})
+      end
+
+      assert {:ok, n} = LS.CacheSnapshot.save()
+      assert n <= 1_000_000, "ctl rows must be capped so the page caches always fit"
+      assert n > 900_000
+    end
+  end
+
   describe "pure entry_remaining/4" do
     test "computes milliseconds left for both row shapes and drops foreign rows" do
       assert CacheSnapshot.entry_remaining({:k, :v, 100, 0}, :wall_4, 40, nil) == [{:k, :v, 60_000}]

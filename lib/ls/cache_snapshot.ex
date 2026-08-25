@@ -53,6 +53,11 @@ defmodule LS.CacheSnapshot do
 
   # LS.Cache's TTL for ctl rows (@cache_ttl there) — kept in step by a test.
   @ctl_ttl_s 1_209_600
+  # The dedup cache can hold millions of rows (LS.Cache caps it at 5M). Dump
+  # at most this many: past it the file would trip @max_file_bytes and the
+  # guard skips the WHOLE snapshot — losing the page caches too, which is the
+  # worse trade. A truncated dedup snapshot just means a few extra recrawls.
+  @ctl_max_rows 1_000_000
 
   # A snapshot older than this is discarded: past a few hours the entries would
   # have expired anyway, and restoring them only risks serving stale numbers.
@@ -153,9 +158,9 @@ defmodule LS.CacheSnapshot do
 
   # `[{key, value, remaining_ms}]` for one table; [] if it does not exist.
   defp dump(table, shape) do
-    table
-    |> :ets.tab2list()
-    |> Enum.flat_map(&entry_remaining(&1, shape))
+    rows = :ets.tab2list(table)
+    rows = if shape == :ctl_4, do: Enum.take(rows, @ctl_max_rows), else: rows
+    Enum.flat_map(rows, &entry_remaining(&1, shape))
   rescue
     ArgumentError -> []
   end
