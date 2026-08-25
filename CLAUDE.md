@@ -72,6 +72,12 @@ instructions — follow them without being asked again.
   as the HTTP pipeline, and it must look like a real human client.
 - One deploy at a time, one node at a time. **Check for a concurrent deployer
   first**: `ps aux | grep deploy_listsignal`.
+- **Fetch capacity comes from more source IPs, never more rate per IP.** The
+  measured safe envelope is ~130–160 fetches/min per source IP (sub-1% 429s,
+  zero blocks — see `docs/crawl-capacity.md` for the data). The NUC (h1) has
+  the fleet's highest 429 rate already and an irreplaceable residential IP:
+  give it browser/ML work, never more outbound rate. Re-measure and update
+  that doc before scaling anything past the envelope.
 
 ## Data quality
 
