@@ -61,6 +61,10 @@ defmodule LS.UICache do
     segment_counts: {600, "segment button counts"},
     filter_count: {300, "total for a filter set"},
     sitemap_techs: {21_600, "techs with enough Shopify stores to earn a URL"},
+    # The whole rendered sitemap XML: five CH scans and 29.5s to build under
+    # load (2026-08-25) — Googlebot times out around 30s, so an uncached
+    # sitemap risks the crawl itself.
+    sitemap_page: {21_600, "the fully rendered /sitemap.xml document"},
     # Quoted in the welcome email. Cached because every new signup would
     # otherwise pay a full scan of `businesses` at the worst possible moment.
     welcome_stat: {21_600, "fresh contactable Shopify stores, last 7 days"}

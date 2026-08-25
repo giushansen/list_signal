@@ -65,6 +65,21 @@ defmodule LSWeb.SitemapController do
   def compare_pairs, do: @compare_pairs
 
   def index(conn, _params) do
+    # The whole rendered XML is one cache entry. Building it runs five
+    # ClickHouse scans (10k store domains, every tech slug, countries, the
+    # tech-country matrix, movers) — measured at 29.5s under load on
+    # 2026-08-25, which is past Googlebot's patience and can cost the crawl.
+    # The URL set drifts far slower than 6h, and LS.CacheSnapshot carries the
+    # entry across deploys.
+    xml = LS.UICache.fetch(:sitemap_page, :xml, fn -> build_xml() end)
+
+    conn
+    |> put_resp_content_type("application/xml")
+    |> put_resp_header("cache-control", "public, s-maxage=86400, max-age=3600")
+    |> send_resp(200, xml)
+  end
+
+  defp build_xml do
     base = "https://listsignal.com"
 
     stores = case LS.Clickhouse.all_shopify_domains(10_000) do
@@ -177,12 +192,7 @@ defmodule LSWeb.SitemapController do
     all =
       marketing ++ compares ++ trends ++ segments ++ tech_country ++
         [entry(base, "/top/shopify", "0.8", "weekly")] ++ stores ++ techs ++ countries
-    xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" <> Enum.join(all, "\n") <> "\n</urlset>"
-
-    conn
-    |> put_resp_content_type("application/xml")
-    |> put_resp_header("cache-control", "public, s-maxage=86400, max-age=3600")
-    |> send_resp(200, xml)
+    "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n" <> Enum.join(all, "\n") <> "\n</urlset>"
   end
 
   defp entry(base, path, priority, freq) do
