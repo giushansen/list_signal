@@ -91,6 +91,8 @@ defmodule LS.Application do
       LS.CacheWarmer,
       # Founder activation emails (welcome / wall / weekly digest) — master only.
       LS.Engagement,
+      # Pipeline 3: job-platform boards (harvest + resync + WTTJ) — master only.
+      LS.Verification.BoardScheduler,
       # Dedicated HTTP pools. Both 2026-08-03 outages trace to one cause:
       # every ClickHouse call AND the CT poller shared Req's default Finch
       # pool, so a heavy compaction holding connections while inserts churned
