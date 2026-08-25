@@ -34,6 +34,15 @@ defmodule LS.Verification.HRBoardsTest do
     end
   end
 
+  test "reserved path segments never become boards (workable /j/ shortlinks, greenhouse /embed/)" do
+    # 2026-08-26: most stored workable URLs are apply.workable.com/j/XXXX
+    # shortlinks; without the blocklist the harvest creates a phantom 'j'
+    # board that 404s on every sync forever.
+    sql = HRBoards.harvest_sql_for_test("workable")
+    assert sql =~ "slug NOT IN ('j'"
+    assert sql =~ "'embed'"
+  end
+
   test "greenhouse pattern handles both boards. and job-boards. hosts" do
     {_, re} = List.keyfind(HRBoards.patterns(), "greenhouse", 0)
     assert Regex.run(re, "https://boards.greenhouse.io/airbnb/jobs/1", capture: :all_but_first) == ["airbnb"]

@@ -40,6 +40,9 @@ defmodule LS.Verification.HRBoards do
   @doc "SQL patterns exposed for the contract test: every pattern must extract from a real stored URL."
   def patterns, do: @patterns
 
+  @doc false
+  def harvest_sql_for_test(platform), do: harvest_sql(platform)
+
   # ── Harvest: biz_career URLs → hr_boards rows ─────────────────────────────
 
   def harvest_from_careers do
@@ -72,6 +75,10 @@ defmodule LS.Verification.HRBoards do
       WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
     )
     WHERE slug != ''
+      -- Reserved path segments, not company slugs: workable shortlinks are
+      -- /j/XXXX, greenhouse iframes are /embed/... Harvesting them would
+      -- create phantom boards that 404 forever.
+      AND slug NOT IN ('j', 'jobs', 'embed', 'api', 'boards', 'careers')
       AND (('#{platform}', slug) NOT IN (SELECT platform, slug FROM hr_boards))
     GROUP BY slug
     SETTINGS max_threads = 2, max_bytes_before_external_group_by = 1000000000
