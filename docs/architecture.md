@@ -31,7 +31,7 @@ One OTP codebase, role-selected at boot by `LS_ROLE` (see `LS.Application`):
 | Role | Runs | Where |
 |---|---|---|
 | `master` | `LS.CTL.Poller`, `LS.Cluster.WorkQueue`, `LS.Cluster.Inserter`, `LS.Cluster.Monitor`, `LS.Recrawl.Scheduler`, `LS.Cluster.Compactor`, `LS.Verification.Scheduler`, `LS.Ops.Sentinel`, Phoenix web | ls-master (also hosts ClickHouse + SQLite) |
-| `worker` | `LS.Cluster.WorkerAgent` + resolvers/caches | 11 nodes; names derived at boot as `worker_<host>@<wg0-ip>` |
+| `worker` | `LS.Cluster.WorkerAgent` + resolvers/caches | 13 nodes (see `devops/listsignal/fleet.conf` for the roster + lanes); names derived at boot as `worker_<host>@<wg0-ip>` |
 | `standalone` | both | local dev (`make dev`) |
 
 Nodes form a mesh over WireGuard (`10.0.0.0/24`); workers connect to
