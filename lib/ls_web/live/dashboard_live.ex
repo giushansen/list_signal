@@ -313,8 +313,8 @@ defmodule LSWeb.DashboardLive do
         <span class="health-label">{health_msg}</span>
         <div class="health-metrics">
           <span class="hm hm-dim">CTL {ctl_per_min(@master_stats)}/m</span>
-          <span class="hm">input <b>{qv(@master_stats.queue, :enqueue_rate_per_min)}/m</b></span>
-          <span class="hm">drain <b>{qv(@master_stats.queue, :drain_rate_per_min)}/m</b></span>
+          <span class="hm">input <b>{rate(@master_stats.queue, :enqueue_rate_per_min)}/m</b></span>
+          <span class="hm">drain <b>{rate(@master_stats.queue, :drain_rate_per_min)}/m</b></span>
           <span class="hm">workers <b>{length(@worker_stats)}</b></span>
           <span class="hm">CH err <b class={if(iv(@master_stats.inserter, :total_errors) > 0, do: "hm-warn", else: "")}>{iv(@master_stats.inserter, :total_errors)}</b></span>
           <span class={"hm " <> staffing_class(@trend)}>{staffing_label(@trend)}</span>
@@ -364,13 +364,13 @@ defmodule LSWeb.DashboardLive do
         <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">dedup</span></div>
         <div class="stage stage-input">
           <div class="stage-name">Enqueued ★ real input</div>
-          <div class="stage-value">{qv(@master_stats.queue, :enqueue_rate_per_min)}<span class="stage-unit">/m</span></div>
+          <div class="stage-value">{rate(@master_stats.queue, :enqueue_rate_per_min)}<span class="stage-unit">/m</span></div>
           <div class="stage-sub">new domains only<br/>queue {fmt(qv(@master_stats.queue, :queue_depth))} · {qv(@master_stats.queue, :queue_pct)}% full</div>
         </div>
-        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{qv(@master_stats.queue, :drain_rate_per_min)}/m</span></div>
+        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{rate(@master_stats.queue, :drain_rate_per_min)}/m</span></div>
         <div class="stage">
           <div class="stage-name">Workers</div>
-          <div class="stage-value">{qv(@master_stats.queue, :drain_rate_per_min)}<span class="stage-unit">/m</span></div>
+          <div class="stage-value">{rate(@master_stats.queue, :drain_rate_per_min)}<span class="stage-unit">/m</span></div>
           <div class="stage-sub">{length(@worker_stats)} nodes · {qv(@master_stats.queue, :inflight_batches)} in-flight<br/>{fmt(qv(@master_stats.queue, :total_completed))} done · {fmt(qv(@master_stats.queue, :total_requeued))} retry</div>
         </div>
         <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{iv(@master_stats.inserter, :insert_rate_per_min)}/m</span></div>
@@ -1098,6 +1098,10 @@ defmodule LSWeb.DashboardLive do
 
   defp qv(nil, _), do: 0
   defp qv(q, k), do: Map.get(q, k, 0)
+
+  # Rates arrive as floats and LiveView prints 12000.0 as "1.2e4" — render
+  # them as plain comma-grouped integers.
+  defp rate(q, k), do: q |> qv(k) |> round() |> format_int()
   defp iv(nil, _), do: 0
   defp iv(i, k), do: Map.get(i, k, 0)
   defp plc(nil), do: 0
@@ -1181,9 +1185,12 @@ defmodule LSWeb.DashboardLive do
   defp staffing_class(%{workers_needed: n, workers: w}) when is_integer(n) and w > n, do: "hm-ok"
   defp staffing_class(_), do: "hm-dim"
 
-  defp format_int(n) when is_integer(n) and n < 0, do: "-" <> format_int(-n)
+  @doc false
+  # Public for the regression test: queue rates are floats and LiveView
+  # renders 12000.0 as "1.2e4" (seen on the discovery tab 2026-08-25).
+  def format_int(n) when is_integer(n) and n < 0, do: "-" <> format_int(-n)
 
-  defp format_int(n) when is_integer(n) do
+  def format_int(n) when is_integer(n) do
     n |> Integer.to_charlist() |> Enum.reverse() |> Enum.chunk_every(3) |> Enum.join(",") |> String.reverse()
   end
 
