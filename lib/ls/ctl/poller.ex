@@ -1,160 +1,40 @@
 defmodule LS.CTL.Poller do
   @moduledoc """
-  Adaptive Multi-Worker CT Log Poller with Smart Platform Detection
+  Multi-worker CT log poller across BOTH publication protocols — classic
+  RFC 6962 (`get-sth`/`get-entries`) and the Static CT API (checkpoint +
+  CDN-served 256-entry data tiles, `c2sp.org/static-ct-api`), which is how
+  Let's Encrypt publishes since Feb 2026 and how several newer operators
+  publish exclusively.
 
-  Features:
-  - Smart CTL cache with platform detection
-  - Allows duplicate domains until platform detected
-  - Auto-scaling workers (up to 100 per log)
-  - Multiple CT logs in parallel
+  ## Where the log list comes from (2026-08-25)
 
-  CT Log URLs updated 2026-08-24 to Chrome's live list: the four 2026h1 shards
-  (Argon/Xenon/Wyvern/Tiger) were dropped — their temporal window closed on
-  Jul 1, and the poller confirmed tree_size frozen with behind=0 and
-  total_processed=0, i.e. zero inflow — and the seven remaining Chrome-usable
-  logs were added (DigiCert Sphinx, Sectigo Elephant/Mammoth/Sabre/Tiger h2,
-  TrustAsia log2026a/b), so all 11 usable logs are now polled. `LS.CTL.LogList`
-  diffs this list against Chrome's on a schedule and emails when it drifts, so
-  the next rotation should not need to be noticed by hand.
-  Source: Chrome CT log list (fetched live, see LS.CTL.LogList)
-  https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/certificate_transparency/data/log_list.json
+  Sources are no longer hardcoded. `LS.CTL.Sources.desired/2` derives them
+  from Chrome's log list at boot, and `:reconcile_sources` re-derives every
+  #{div(21_600_000, 3_600_000)}h — starting pollers for logs Chrome added and retiring pollers for logs
+  it pulled, then emailing what changed. The hand-maintained list went stale
+  twice in two days (frozen 2026h1 shards polling for zero rows; Sectigo
+  Mammoth/Sabre retired under us) and each staleness silently narrows
+  discovery, which is the product's most upstream data.
 
-  NOTE: CT logs are sharded by certificate expiry date (H1 = Jan-Jun, H2 = Jul-Dec).
-  Logs must be updated every ~6 months as old shards freeze and new ones become active.
-  DigiCert replaced Nessie/Yeti with Wyvern+Sphinx lines in 2025.
-  Let's Encrypt shut down all RFC 6962 logs (Feb 28 2026) — migrated to Static CT API.
-  Sectigo replaced Mammoth/Sabre (read-only Sep 2025) with Elephant+Tiger lines.
+  Entry parsing lives in `LS.CTL.Wire` (pure, hostile-input-tested): both
+  entry types (precerts included — most CAs log nothing else) and every SAN
+  in each certificate, not just the first.
+
+  Downstream: `LS.Cache.ctl_track/2` dedups the cross-log firehose, the
+  `PlatformRegistry` filters shared-hosting platforms, and only genuinely new
+  base domains reach `LS.Cluster.WorkQueue`.
   """
 
   use GenServer
   require Logger
 
-  alias LS.CTL.DomainParser
   alias LS.Cache
-  alias LS.CTL.PlatformRegistry
+  alias LS.CTL.{PlatformRegistry, Sources, Wire}
 
   @ets_work_queue :ctl_work_queue
-
-  # ===========================================================================
-  # CT LOG CONFIGS - Updated February 2026
-  #
-  # To update in future: check Chrome's log_list.json for "usable" logs
-  # whose temporal_interval covers the current date.
-  # Google logs cap batch_size at 32.
-  # Cloudflare/Sectigo support larger batches (256-512).
-  # DigiCert Wyvern/Sphinx - test batch sizes with scripts/analyze_ct_logs.exs
-  # ===========================================================================
-
-  @log_configs [
-    # --- Google (US "Argon" / EU "Xenon"), batch capped at 32 by the operator ---
-    %{
-      name: "Google Argon 2026h2",
-      url: "https://ct.googleapis.com/logs/us1/argon2026h2/ct/v1",
-      batch_size: 32,
-      avg_entries: 26,
-      min_workers: 2,
-      max_workers: 30,
-      target_lag: 10_000
-    },
-    %{
-      name: "Google Xenon 2026h2",
-      url: "https://ct.googleapis.com/logs/eu1/xenon2026h2/ct/v1",
-      batch_size: 32,
-      avg_entries: 26,
-      min_workers: 2,
-      max_workers: 20,
-      target_lag: 10_000
-    },
-
-    # --- Cloudflare (full-year 2026 shard) ---
-    %{
-      name: "Cloudflare Nimbus 2026",
-      url: "https://ct.cloudflare.com/logs/nimbus2026/ct/v1",
-      batch_size: 512,
-      avg_entries: 512,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    },
-
-    # --- DigiCert (Wyvern + Sphinx lines) ---
-    %{
-      name: "DigiCert Wyvern 2026h2",
-      url: "https://wyvern.ct.digicert.com/2026h2/ct/v1",
-      batch_size: 128,
-      avg_entries: 116,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 20_000
-    },
-    %{
-      name: "DigiCert Sphinx 2026h2",
-      url: "https://sphinx.ct.digicert.com/2026h2/ct/v1",
-      batch_size: 128,
-      avg_entries: 116,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 20_000
-    },
-
-    # --- Sectigo (Elephant / Mammoth / Sabre / Tiger lines) ---
-    %{
-      name: "Sectigo Tiger 2026h2",
-      url: "https://tiger2026h2.ct.sectigo.com/ct/v1",
-      batch_size: 128,
-      avg_entries: 128,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    },
-    %{
-      name: "Sectigo Elephant 2026h2",
-      url: "https://elephant2026h2.ct.sectigo.com/ct/v1",
-      batch_size: 128,
-      avg_entries: 128,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    },
-    %{
-      name: "Sectigo Mammoth 2026h2",
-      url: "https://mammoth2026h2.ct.sectigo.com/ct/v1",
-      batch_size: 128,
-      avg_entries: 128,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    },
-    %{
-      name: "Sectigo Sabre 2026h2",
-      url: "https://sabre2026h2.ct.sectigo.com/ct/v1",
-      batch_size: 128,
-      avg_entries: 128,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    },
-
-    # --- TrustAsia (new to us 2026-08-24; Chrome-usable, covers 2026) ---
-    %{
-      name: "TrustAsia log2026a",
-      url: "https://ct2026-a.trustasia.com/log2026a/ct/v1",
-      batch_size: 128,
-      avg_entries: 128,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    },
-    %{
-      name: "TrustAsia log2026b",
-      url: "https://ct2026-b.trustasia.com/log2026b/ct/v1",
-      batch_size: 128,
-      avg_entries: 128,
-      min_workers: 1,
-      max_workers: 5,
-      target_lag: 50_000
-    }
-  ]
+  @reconcile_ms :timer.hours(6)
+  # Tiles are immutable 256-entry CDN objects; claims stay tile-aligned.
+  @tile_size 256
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -164,20 +44,27 @@ defmodule LS.CTL.Poller do
     GenServer.call(__MODULE__, :stats, 30_000)
   end
 
-  @doc "The configured CT log sources (used by LS.CTL.LogList to diff against Chrome's list)."
-  def configs, do: Application.get_env(:ls, :ctl_logs, @log_configs)
+  @doc "The sources being polled right now (admin display + LS.CTL.LogList's drift diff)."
+  def configs do
+    case Application.get_env(:ls, :ctl_logs) do
+      nil -> GenServer.call(__MODULE__, :configs, 5_000)
+      logs -> logs
+    end
+  catch
+    :exit, _ -> Sources.fallback()
+  end
 
   @impl true
   def init(_opts) do
     :ets.new(@ets_work_queue, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
 
-    logs = Application.get_env(:ls, :ctl_logs, @log_configs)
+    logs = Application.get_env(:ls, :ctl_logs) || boot_sources()
 
     log_states = Enum.map(logs, fn config ->
-      case get_tree_size(config.url) do
+      case get_tree_size(config) do
         {:ok, tree_size} ->
-          :ets.insert(@ets_work_queue, {config.name, tree_size})
-          Logger.info("📊 #{config.name}: tree_size=#{tree_size}")
+          :ets.insert(@ets_work_queue, {config.name, start_index(config, tree_size)})
+          Logger.info("📊 #{config.name}: tree_size=#{tree_size} (#{config[:protocol] || :rfc6962})")
           spawn_workers(config, config.min_workers)
 
           %{
@@ -211,6 +98,7 @@ defmodule LS.CTL.Poller do
     }
 
     schedule_worker_adjustment()
+    Process.send_after(self(), :reconcile_sources, @reconcile_ms)
 
     if failed_count > 0 do
       Logger.warning("⚠️  CTL Poller started: #{active_count}/#{length(logs)} logs active (#{failed_count} failed)")
@@ -224,9 +112,9 @@ defmodule LS.CTL.Poller do
   @impl true
   def handle_info(:adjust_workers, state) do
     new_logs = Enum.map(state.logs, fn log_state ->
-      case get_tree_size(log_state.config.url) do
+      case get_tree_size(log_state.config) do
         {:ok, current_tree_size} ->
-          [{_, next_index}] = :ets.lookup(@ets_work_queue, log_state.config.name)
+          next_index = next_index_of(log_state.config.name)
           behind = current_tree_size - next_index
           optimal_workers = calculate_optimal_workers(behind, log_state.config)
 
@@ -234,7 +122,7 @@ defmodule LS.CTL.Poller do
             # Revive a previously failed log
             log_state.tree_size == 0 and current_tree_size > 0 ->
               Logger.info("🔄 #{log_state.config.name}: Revived! tree_size=#{current_tree_size}")
-              :ets.insert(@ets_work_queue, {log_state.config.name, current_tree_size})
+              :ets.insert(@ets_work_queue, {log_state.config.name, start_index(log_state.config, current_tree_size)})
               spawn_workers(log_state.config, log_state.config.min_workers)
               %{log_state | active_workers: log_state.config.min_workers, tree_size: current_tree_size}
 
@@ -255,6 +143,22 @@ defmodule LS.CTL.Poller do
 
     schedule_worker_adjustment()
     {:noreply, %{state | logs: new_logs}}
+  end
+
+  @impl true
+  def handle_info(:reconcile_sources, state) do
+    Process.send_after(self(), :reconcile_sources, @reconcile_ms)
+
+    case Sources.fetch_desired() do
+      {:ok, desired} ->
+        {:noreply, apply_reconcile(state, Sources.reconcile(running_configs(state), desired))}
+
+      {:error, reason} ->
+        # A failed fetch changes nothing (Sources.reconcile also refuses to
+        # stop anything on an empty list) — ingestion outlives gstatic blips.
+        Logger.warning("[CTL] source reconcile skipped: #{inspect(reason)}")
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -282,18 +186,21 @@ defmodule LS.CTL.Poller do
   end
 
   @impl true
+  def handle_call(:configs, _from, state), do: {:reply, running_configs(state), state}
+
+  @impl true
   def handle_call(:stats, _from, state) do
     uptime = System.monotonic_time(:second) - state.start_time
 
     log_stats = Enum.map(state.logs, fn log_state ->
-      [{_, next_index}] = :ets.lookup(@ets_work_queue, log_state.config.name)
-      behind = log_state.tree_size - next_index
+      next_index = next_index_of(log_state.config.name)
 
       %{
         name: log_state.config.name,
+        protocol: log_state.config[:protocol] || :rfc6962,
         tree_size: log_state.tree_size,
         next_index: next_index,
-        behind: behind,
+        behind: max(log_state.tree_size - next_index, 0),
         active_workers: log_state.active_workers,
         total_processed: log_state.total_processed
       }
@@ -339,41 +246,75 @@ defmodule LS.CTL.Poller do
   end
 
   defp worker_loop(log_config, manager_pid) do
-    # Check tree_size BEFORE claiming to avoid index racing
-    case get_tree_size(log_config.url) do
-      {:ok, tree_size} ->
-        [{_, current_index}] = :ets.lookup(@ets_work_queue, log_config.name)
-        cond do
-          # Caught up — wait for new entries
-          current_index >= tree_size ->
-            Process.sleep(5_000)
-            worker_loop(log_config, manager_pid)
-          # Index way ahead of tree (log shrank or reset) — fix once, quietly
-          current_index > tree_size + 1000 ->
-            Logger.info("🔄 #{log_config.name}: Index reset (was #{current_index}, tree: #{tree_size})")
-            :ets.insert(@ets_work_queue, {log_config.name, tree_size})
-            Process.sleep(5_000)
-            worker_loop(log_config, manager_pid)
-          # Behind — claim and process
-          true ->
-            case claim_next_batch(log_config.name, log_config.batch_size) do
-              {:ok, start_idx, end_idx} ->
-                actual_end = min(end_idx, tree_size - 1)
-                if start_idx < tree_size do
-                  stats = fetch_and_process(log_config, start_idx, actual_end)
-                  send(manager_pid, {:work_done, log_config.name, stats})
-                end
-                worker_loop(log_config, manager_pid)
-              {:error, _} ->
+    # A retired source's ETS row is deleted by :reconcile_sources; its workers
+    # notice here and exit. They are spawn_linked, so anything but a normal
+    # exit would take the whole poller down with them.
+    case :ets.lookup(@ets_work_queue, log_config.name) do
+      [] ->
+        :ok
+
+      [{_, current_index}] ->
+        # Check tree_size BEFORE claiming to avoid index racing
+        case get_tree_size(log_config) do
+          {:ok, tree_size} ->
+            # Static logs are read in immutable full tiles: entries past the
+            # last complete tile stay unclaimed until the tile fills (≤255
+            # entries of lag, i.e. seconds).
+            head = effective_head(log_config, tree_size)
+
+            cond do
+              # Caught up — wait for new entries
+              current_index >= head ->
                 Process.sleep(5_000)
                 worker_loop(log_config, manager_pid)
+
+              # Index way ahead of tree (log shrank or reset) — fix once, quietly
+              current_index > head + 1000 ->
+                Logger.info("🔄 #{log_config.name}: Index reset (was #{current_index}, tree: #{tree_size})")
+                :ets.insert(@ets_work_queue, {log_config.name, start_index(log_config, tree_size)})
+                Process.sleep(5_000)
+                worker_loop(log_config, manager_pid)
+
+              # Behind — claim and process
+              true ->
+                case claim_next_batch(log_config.name, log_config.batch_size) do
+                  {:ok, start_idx, end_idx} ->
+                    actual_end = min(end_idx, head - 1)
+
+                    if start_idx < head do
+                      stats = fetch_and_process(log_config, start_idx, actual_end)
+                      send(manager_pid, {:work_done, log_config.name, stats})
+                    end
+
+                    worker_loop(log_config, manager_pid)
+
+                  {:error, _} ->
+                    Process.sleep(5_000)
+                    worker_loop(log_config, manager_pid)
+                end
             end
+
+          {:error, _reason} ->
+            Process.sleep(5_000)
+            worker_loop(log_config, manager_pid)
         end
-      {:error, _reason} ->
-        Process.sleep(5_000)
-        worker_loop(log_config, manager_pid)
     end
   end
+
+  defp next_index_of(name) do
+    case :ets.lookup(@ets_work_queue, name) do
+      [{_, idx}] -> idx
+      [] -> 0
+    end
+  end
+
+  # Static logs start at (and reset to) a tile boundary so claims of
+  # @tile_size stay aligned with the immutable tile objects forever.
+  defp start_index(%{protocol: :static_ct}, tree_size), do: tree_size - rem(tree_size, @tile_size)
+  defp start_index(_config, tree_size), do: tree_size
+
+  defp effective_head(%{protocol: :static_ct}, tree_size), do: tree_size - rem(tree_size, @tile_size)
+  defp effective_head(_config, tree_size), do: tree_size
 
   defp claim_next_batch(log_name, batch_size) do
     try do
@@ -386,14 +327,59 @@ defmodule LS.CTL.Poller do
     end
   end
 
-  defp fetch_and_process(log_config, start_idx, end_idx) do
-    case fetch_entries(log_config.url, start_idx, end_idx) do
-      {:ok, entries} ->
-        process_entries_with_cache(entries)
+  # A data tile is an immutable CDN object: it arrives whole or not at all,
+  # so the range-consumer below does not apply — but a transient CDN error
+  # would otherwise skip 256 claimed entries forever, so failures get retried
+  # in place a few times before giving up.
+  defp fetch_and_process(%{protocol: :static_ct} = config, start_idx, end_idx) do
+    Enum.reduce_while(1..3, %{processed: 0, written: 0, filtered: 0}, fn attempt, zero ->
+      case fetch_parsed(config, start_idx, end_idx) do
+        {:ok, parsed_entries} ->
+          {:halt, process_entries_with_cache(parsed_entries)}
 
-      {:error, _reason} ->
-        %{processed: 0, written: 0, filtered: 0}
+        {:error, _} when attempt < 3 ->
+          Process.sleep(2_000 * attempt)
+          {:cont, zero}
+
+        {:error, _} ->
+          {:halt, zero}
+      end
+    end)
+  end
+
+  defp fetch_and_process(log_config, start_idx, end_idx) do
+    {parsed_entries, _consumed} =
+      consume_range(start_idx, end_idx, fn s, e -> fetch_parsed(log_config, s, e) end)
+
+    process_entries_with_cache(parsed_entries)
+  end
+
+  @doc false
+  # Fetch [start, end] completely, however many round-trips it takes. A log
+  # may return fewer entries than asked (Google caps get-entries by response
+  # size, so 32 asked can be 7 answered) and the claim counter has already
+  # advanced past `end` — anything not fetched here is skipped FOREVER. Found
+  # live 2026-08-25: 25 of 32 entries silently dropped on a Google batch.
+  # Returns {entries, consumed}; an error mid-range keeps what was fetched;
+  # the guard bounds a log that keeps answering short.
+  def consume_range(start_idx, end_idx, fetch_fun), do: do_consume(start_idx, end_idx, fetch_fun, [], 0)
+
+  defp do_consume(start_idx, end_idx, _f, acc, guard) when start_idx > end_idx or guard >= 50,
+    do: finish(acc)
+
+  defp do_consume(start_idx, end_idx, fetch_fun, acc, guard) do
+    case fetch_fun.(start_idx, end_idx) do
+      {:ok, entries} when is_list(entries) and entries != [] ->
+        do_consume(start_idx + length(entries), end_idx, fetch_fun, [entries | acc], guard + 1)
+
+      _empty_or_error ->
+        finish(acc)
     end
+  end
+
+  defp finish(acc) do
+    entries = acc |> Enum.reverse() |> Enum.concat()
+    {entries, length(entries)}
   end
 
   defp calculate_optimal_workers(behind, config) do
@@ -410,29 +396,70 @@ defmodule LS.CTL.Poller do
   # CT LOG API
   # ============================================================================
 
-  defp fetch_entries(log_url, start_idx, end_idx) do
-    url = "#{log_url}/get-entries"
+  # Returns `{:ok, [[cert_data]]}` — one inner list per log entry, each
+  # holding one cert_data per base domain in that certificate (LS.CTL.Wire).
+  defp fetch_parsed(%{protocol: :static_ct} = config, start_idx, _end_idx) do
+    tile = div(start_idx, @tile_size)
+    url = "#{config.url}/tile/data/#{Wire.tile_path(tile)}"
 
-    case Req.get(url, params: [start: start_idx, end: end_idx], receive_timeout: 30_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
-      {:ok, %{status: 200, body: %{"entries" => entries}}} ->
-        {:ok, entries}
+    case Req.get(url, receive_timeout: 30_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
+      {:ok, %{status: 200, body: body}} when is_binary(body) ->
+        {:ok, tile_entries(body)}
+
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
+
       {:error, error} ->
         {:error, error}
     end
   end
 
-  defp get_tree_size(log_url) do
-    url = "#{log_url}/get-sth"
+  defp fetch_parsed(config, start_idx, end_idx) do
+    url = "#{config.url}/get-entries"
 
-    case Req.get(url, receive_timeout: 10_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
-      {:ok, %{status: 200, body: %{"tree_size" => size}}} ->
-        {:ok, size}
+    case Req.get(url, params: [start: start_idx, end: end_idx], receive_timeout: 30_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
+      {:ok, %{status: 200, body: %{"entries" => entries}}} when is_list(entries) ->
+        {:ok, Enum.map(entries, &leaf_entries/1)}
+
       {:ok, %{status: status}} ->
         {:error, {:http_error, status}}
+
       {:error, error} ->
         {:error, error}
+    end
+  end
+
+  defp leaf_entries(%{"leaf_input" => leaf_input}) when is_binary(leaf_input) do
+    with {:ok, decoded} <- Base.decode64(leaf_input),
+         {:ok, entries} <- Wire.parse_leaf_input(decoded) do
+      entries
+    else
+      _ -> []
+    end
+  end
+
+  defp leaf_entries(_), do: []
+
+  defp tile_entries(body) do
+    {:ok, flat} = Wire.parse_data_tile(body)
+    # One wrapper per cert_data keeps the `processed` counter per-certificate,
+    # matching the RFC-6962 path closely enough for the admin display.
+    Enum.map(flat, &[&1])
+  end
+
+  defp get_tree_size(%{protocol: :static_ct} = config) do
+    case Req.get("#{config.url}/checkpoint", receive_timeout: 10_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000, decode_body: false) do
+      {:ok, %{status: 200, body: body}} when is_binary(body) -> Wire.parse_checkpoint(body)
+      {:ok, %{status: status}} -> {:error, {:http_error, status}}
+      {:error, error} -> {:error, error}
+    end
+  end
+
+  defp get_tree_size(config) do
+    case Req.get("#{config.url}/get-sth", receive_timeout: 10_000, retry: false, finch: LS.Finch.CTL, pool_timeout: 10_000) do
+      {:ok, %{status: 200, body: %{"tree_size" => size}}} when is_integer(size) -> {:ok, size}
+      {:ok, %{status: status}} -> {:error, {:http_error, status}}
+      {:error, error} -> {:error, error}
     end
   end
 
@@ -440,172 +467,114 @@ defmodule LS.CTL.Poller do
   # ENTRY PROCESSING - SIMPLIFIED WITH SMART CACHE
   # ============================================================================
 
-  defp process_entries_with_cache(entries) do
-    Enum.reduce(entries, %{processed: 0, written: 0, filtered: 0}, fn entry, acc ->
-      case parse_entry(entry) do
-        {:ok, cert_data} ->
-          domain = cert_data.ctl_domain
-
-          # Step 1: ONE platform check. The registry's ETS holds the static
-          # curated list (absorbed at boot), the seeds, the persisted table and
-          # every velocity-learned platform — an O(labels) suffix walk instead
-          # of the old O(list) SharedHostingFilter scan per certificate.
-          if PlatformRegistry.known?(domain) do
-            %{acc | processed: acc.processed + 1, filtered: acc.filtered + 1}
-          else
-            # Step 2: Track in smart cache (updates cert_count, subdomain_count)
-            track_result = Cache.ctl_track(domain, cert_data.ctl_subdomain_count)
-            if Cache.ctl_is_platform?(domain) do
-              # Feed the registry. It applies its own grace window, so a startup
-              # that briefly spikes subdomains is not promoted permanently.
-              PlatformRegistry.observe(domain, %{
-                reason: "cert_rate",
-                cert_count: Cache.ctl_cert_count(domain),
-                max_subdomain_count: cert_data.ctl_subdomain_count || 0,
-                estimated_hosted_domains: Cache.ctl_cert_count(domain)
-              })
-
-              %{acc | filtered: acc.filtered + 1}
-            else
-              if track_result == :new do
-                
-                LS.Cluster.WorkQueue.enqueue(cert_data)
-              end
-              %{acc | written: acc.written + 1}
-            end
-          end
-
-        {:error, _} ->
-          %{acc | processed: acc.processed + 1}
-      end
+  defp process_entries_with_cache(parsed_entries) do
+    Enum.reduce(parsed_entries, %{processed: 0, written: 0, filtered: 0}, fn cert_datas, acc ->
+      acc = %{acc | processed: acc.processed + 1}
+      Enum.reduce(cert_datas, acc, &process_cert_data/2)
     end)
   end
 
-  defp parse_entry(%{"leaf_input" => leaf_input}) do
-    with {:ok, decoded} <- Base.decode64(leaf_input),
-         {:ok, cert_data} <- parse_leaf_input(decoded) do
-      {:ok, cert_data}
+  # One base domain from one certificate: platform-filter, dedup, enqueue.
+  defp process_cert_data(cert_data, acc) do
+    domain = cert_data.ctl_domain
+
+    # Step 1: ONE platform check. The registry's ETS holds the static curated
+    # list, the seeds, the persisted table and every velocity-learned platform
+    # — an O(labels) suffix walk per domain.
+    if PlatformRegistry.known?(domain) do
+      %{acc | filtered: acc.filtered + 1}
     else
-      _ -> {:error, :parse_failed}
-    end
-  end
-  defp parse_entry(_), do: {:error, :invalid_entry}
+      # Step 2: track in the smart cache (updates cert_count, subdomain_count)
+      track_result = Cache.ctl_track(domain, cert_data.ctl_subdomain_count)
 
-  defp parse_leaf_input(<<_version::8, _leaf_type::8, _timestamp::64, 0::16, cert_length::24, cert_der::binary-size(cert_length), _rest::binary>>) do
-    case X509.Certificate.from_der(cert_der) do
-      {:ok, cert} -> parse_certificate(cert)
-      {:error, _} -> {:error, :invalid_x509_cert}
-    end
-  end
-  defp parse_leaf_input(<<_version::8, _leaf_type::8, _timestamp::64, 1::16, _rest::binary>>), do: {:error, :skip_precert}
-  defp parse_leaf_input(_), do: {:error, :invalid_format}
+      if Cache.ctl_is_platform?(domain) do
+        # Feed the registry. It applies its own grace window, so a startup
+        # that briefly spikes subdomains is not promoted permanently.
+        PlatformRegistry.observe(domain, %{
+          reason: "cert_rate",
+          cert_count: Cache.ctl_cert_count(domain),
+          max_subdomain_count: cert_data.ctl_subdomain_count || 0,
+          estimated_hosted_domains: Cache.ctl_cert_count(domain)
+        })
 
-  defp parse_certificate(cert) do
-    domain = extract_domain(cert)
-
-    if domain do
-      case DomainParser.parse(domain) do
-        {:ok, base_domain, tld} ->
-          {subdomain_count, subdomain_list} = extract_subdomains(domain, base_domain)
-
-          {:ok, %{
-            ctl_domain: base_domain,
-            ctl_tld: tld,
-            ctl_issuer: extract_issuer(cert),
-            ctl_subdomain_count: subdomain_count,
-            ctl_subdomains: subdomain_list
-          }}
-        :error ->
-          {:error, :invalid_domain}
-      end
-    else
-      {:error, :no_domain}
-    end
-  end
-
-  defp extract_subdomains(full_domain, base_domain) do
-    clean_full = String.replace(full_domain, ~r/^\*\./, "")
-
-    if clean_full == base_domain do
-      {0, ""}
-    else
-      base_len = String.length(base_domain)
-      full_len = String.length(clean_full)
-
-      if full_len > base_len + 1 do
-        subdomain_part = String.slice(clean_full, 0, full_len - base_len - 1)
-        subdomains = String.split(subdomain_part, ".")
-        |> Enum.take(50)
-        |> Enum.join("|")
-
-        {length(String.split(subdomains, "|")), subdomains}
+        %{acc | filtered: acc.filtered + 1}
       else
-        {0, ""}
+        if track_result == :new do
+          LS.Cluster.WorkQueue.enqueue(cert_data)
+        end
+
+        %{acc | written: acc.written + 1}
       end
     end
   end
 
-  defp extract_domain(cert) do
-    case X509.Certificate.subject(cert) do
-      {:rdnSequence, attrs} ->
-        find_cn(attrs) || find_san(cert)
-      _ ->
-        find_san(cert)
-    end
-  end
+  defp running_configs(state), do: Enum.map(state.logs, & &1.config)
 
-  defp find_cn(attrs) do
-    attrs
-    |> Enum.find(fn attr_list ->
-      Enum.any?(attr_list, fn
-        {:AttributeTypeAndValue, {2, 5, 4, 3}, _} -> true
-        _ -> false
-      end)
-    end)
-    |> case do
-      nil -> nil
-      attr_list ->
-        Enum.find_value(attr_list, fn
-          {:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, domain}} -> domain
-          _ -> nil
-        end)
-    end
-  end
+  # Start pollers Chrome added, retire pollers it pulled, email the change.
+  # Retiring = deleting the ETS row; the log's workers see it and exit on
+  # their next loop, so no process bookkeeping is needed here.
+  defp apply_reconcile(state, %{start: [], stop: []}), do: state
 
-  defp find_san(cert) do
-    case X509.Certificate.extension(cert, :subject_alt_name) do
-      {:Extension, {2, 5, 29, 17}, _, san_value} ->
-        san_value
-        |> Enum.find_value(fn
-          {:dNSName, domain} -> to_string(domain)
-          _ -> nil
-        end)
-      _ ->
-        nil
-    end
-  end
-
-  defp extract_issuer(cert) do
-    case X509.Certificate.issuer(cert) do
-      {:rdnSequence, attrs} ->
-        attrs
-        |> Enum.find(fn attr_list ->
-          Enum.any?(attr_list, fn
-            {:AttributeTypeAndValue, {2, 5, 4, 3}, _} -> true
-            _ -> false
-          end)
-        end)
-        |> case do
-          nil -> "Unknown"
-          attr_list ->
-            Enum.find_value(attr_list, fn
-              {:AttributeTypeAndValue, {2, 5, 4, 3}, {:utf8String, issuer}} -> issuer
-              {:AttributeTypeAndValue, {2, 5, 4, 3}, {:printableString, issuer}} -> to_string(issuer)
-              _ -> nil
-            end) || "Unknown"
+  defp apply_reconcile(state, %{start: to_start, stop: to_stop}) do
+    kept =
+      Enum.reject(state.logs, fn ls ->
+        if ls.config.name in to_stop do
+          :ets.delete(@ets_work_queue, ls.config.name)
+          Logger.info("[CTL] retired source: #{ls.config.name}")
+          true
         end
-      _ ->
-        "Unknown"
+      end)
+
+    started =
+      Enum.flat_map(to_start, fn config ->
+        case get_tree_size(config) do
+          {:ok, tree_size} ->
+            :ets.insert(@ets_work_queue, {config.name, start_index(config, tree_size)})
+            spawn_workers(config, config.min_workers)
+            Logger.info("[CTL] new source: #{config.name} (#{config.protocol}, tree=#{tree_size})")
+            [%{config: config, tree_size: tree_size, active_workers: config.min_workers, total_processed: 0}]
+
+          {:error, reason} ->
+            # Enter it at tree 0; the :adjust_workers revive path retries it.
+            Logger.warning("[CTL] new source #{config.name} unreachable (#{inspect(reason)}) — will retry")
+            :ets.insert(@ets_work_queue, {config.name, 0})
+            [%{config: config, tree_size: 0, active_workers: 0, total_processed: 0}]
+        end
+      end)
+
+    email_source_change(to_start, to_stop)
+    %{state | logs: kept ++ started}
+  end
+
+  # The owner asked to hear about every CT source change by email — this is
+  # the upstream of ALL domain discovery (and of Scoutbloc's phishing watch),
+  # so a silent rotation is never acceptable. Sent directly, not via
+  # LS.Alerts' cooldown: rotations are rare and each one matters.
+  defp email_source_change(started, stopped) do
+    body =
+      "<h3>CT log sources reconciled</h3>" <>
+        "<p>The poller updated itself from Chrome's log list:</p><ul>" <>
+        Enum.map_join(started, "", &"<li>ADDED: #{&1.name} (#{&1.protocol})</li>") <>
+        Enum.map_join(stopped, "", &"<li>RETIRED: #{&1}</li>") <>
+        "</ul><p>No action needed unless a name here surprises you — " <>
+        "LS.CTL.Sources.fallback/0 should be refreshed in the next deploy.</p>"
+
+    case LS.Ops.Mail.send("[ListSignal] CT sources: +#{length(started)} −#{length(stopped)}", body) do
+      :ok -> :ok
+      other -> Logger.warning("[CTL] source-change email failed: #{inspect(other)}")
+    end
+  end
+
+  # Chrome's list at boot, the baked snapshot if the fetch fails — a booting
+  # poller must never sit sourceless waiting on gstatic.
+  defp boot_sources do
+    case Sources.fetch_desired() do
+      {:ok, sources} ->
+        sources
+
+      {:error, reason} ->
+        Logger.warning("[CTL] live log list unavailable at boot (#{inspect(reason)}); using baked fallback")
+        Sources.fallback()
     end
   end
 

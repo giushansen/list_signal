@@ -200,10 +200,10 @@ defmodule LS.Alerts do
   defp ctl_sources(acc, %{ctl_diff: %{new: new, retired: retired}}) do
     acc
     |> then(fn a ->
-      if new == [], do: a, else: [al(:warning, "ctl_new:#{keyify(new)}", "New CT log source(s) available", "Chrome lists usable CT logs we don't poll: #{Enum.join(new, ", ")}. Add to LS.CTL.Poller @log_configs.") | a]
+      if new == [], do: a, else: [al(:warning, "ctl_new:#{keyify(new)}", "New CT log source(s) available", "Chrome lists ingestible CT logs we don't poll: #{Enum.join(new, ", ")}. The poller reconciles every 6h — if this alert persists, the reconcile loop is broken (check [CTL] lines in the master journal).") | a]
     end)
     |> then(fn a ->
-      if retired == [], do: a, else: [al(:warning, "ctl_retired:#{keyify(retired)}", "CT log source(s) retiring", "logs we poll are no longer usable in Chrome's list: #{Enum.join(retired, ", ")}. They will stop yielding certs.") | a]
+      if retired == [], do: a, else: [al(:warning, "ctl_retired:#{keyify(retired)}", "CT log source(s) retiring", "Logs we poll are no longer ingestible in Chrome's list: #{Enum.join(retired, ", ")}. The poller retires them itself within 6h — if this alert persists, the reconcile loop is broken.") | a]
     end)
   end
 

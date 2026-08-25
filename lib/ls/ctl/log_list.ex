@@ -2,28 +2,24 @@ defmodule LS.CTL.LogList do
   @moduledoc """
   Detects when the certificate-transparency landscape shifts under us.
 
-  Our poller (`LS.CTL.Poller`) polls a HARDCODED list of 8 CT logs that must be
-  hand-updated every ~6 months as shards freeze and CAs rotate lines
-  (Let's Encrypt shut its RFC-6962 logs in Feb 2026; Sectigo replaced
-  Mammoth/Sabre; DigiCert replaced Nessie/Yeti). Miss a change and discovery
-  silently narrows.
+  Since 2026-08-25 the poller reconciles its own sources from Chrome's list
+  every 6 hours (`LS.CTL.Sources`), so this module is the BACKSTOP, not the
+  primary mechanism: if `diff_current/0` is persistently non-empty, the
+  reconcile loop itself is broken (fetch failing, apply crashing) — which is
+  exactly the failure that must never go unnoticed, because it silently
+  narrows discovery, the product's most upstream data.
 
-  This module fetches Chrome's authoritative log list and, purely in `diff/2`,
-  compares the **usable** logs whose temporal interval covers today against
-  what we poll:
-
-    * `new`     — usable logs Chrome lists that we do NOT poll (add them).
-    * `retired` — logs we poll that are no longer usable/qualified (they will
-      stop yielding certs).
-
-  `LS.Alerts` turns a non-empty diff into an email so the owner updates
-  `@log_configs` deliberately, not after noticing a traffic drop.
+  `diff/2` stays pure: `new` = ingestible logs Chrome lists that we do not
+  poll; `retired` = logs we poll that Chrome no longer lists as ingestible.
+  Both publication protocols are compared — RFC-6962 logs by submission URL,
+  tiled logs by monitoring URL, matching how the poller addresses each.
+  `LS.Alerts` turns a non-empty diff into an email.
   """
 
   require Logger
 
   @list_url "https://www.gstatic.com/ct/log_list/v3/all_logs_list.json"
-  @usable_states ~w(usable qualified readonly)
+  @usable_states ~w(usable qualified)
 
   @doc "Fetch Chrome's list and diff against the live poller configs. `%{new, retired}` (empty on fetch failure — never invents a change)."
   def diff_current do
@@ -59,7 +55,7 @@ defmodule LS.CTL.LogList do
     %{new: new, retired: retired}
   end
 
-  @doc "Chrome's usable logs whose temporal interval covers `today` → `[%{description, url}]`."
+  @doc "Chrome's ingestible logs (both protocols) covering `today` → `[%{description, url}]`. Tiled logs are keyed by monitoring URL, like the poller."
   def fetch_usable(today \\ Date.utc_today()) do
     case LS.Verification.HTTP.get_json(@list_url, timeout: 30_000, gap_ms: 0) do
       {:ok, %{"operators" => operators}} -> {:ok, parse(operators, today)}
@@ -70,10 +66,13 @@ defmodule LS.CTL.LogList do
 
   @doc false
   def parse(operators, today) when is_list(operators) do
-    for op <- operators, log <- Map.get(op, "logs", []),
+    for op <- operators,
+        {kind, url_field} <- [{"logs", "url"}, {"tiled_logs", "monitoring_url"}],
+        log <- List.wrap(op[kind]),
+        is_map(log),
         get_in(log, ["state"]) |> usable_state?(),
         covers_today?(log, today),
-        url = log["url"],
+        url = log[url_field],
         is_binary(url) do
       %{description: log["description"] || url, url: url}
     end

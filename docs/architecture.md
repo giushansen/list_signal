@@ -6,7 +6,7 @@ as a searchable directory of businesses (Shopify stores, SaaS, agencies, …).
 
 ```
                         ┌──────────────── MASTER (ls-master) ────────────────┐
- CT logs (8 sources) ──▶│ CTL.Poller ─▶ Cluster.WorkQueue (ETS, capped, TTL) │
+CT logs (~16, both protocols)▶│ CTL.Poller ─▶ Cluster.WorkQueue (ETS, capped, TTL) │
                         │        ▲                 │ dequeue (batches)       │
                         │ Recrawl.Scheduler ───────┘                         │
                         │                                                    │
@@ -40,8 +40,16 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 
 ## The work loop
 
-1. **Discovery** — `LS.CTL.Poller` tails 8 CT logs, parses certificates
-   (`LS.CTL.DomainParser`), filters obvious junk, and enqueues
+1. **Discovery** — `LS.CTL.Poller` tails every CT log Chrome lists as
+   ingestible — RFC-6962 logs via `get-entries` and Static-CT-API logs
+   (Let's Encrypt and newer operators) via CDN data tiles. The source list is
+   derived from Chrome's log list at boot and re-reconciled every 6h
+   (`LS.CTL.Sources`): new logs are picked up and retired ones dropped
+   automatically, with an email describing each change (a persistent
+   `LogList.diff_current/0` drift alert is the backstop — non-empty means the
+   reconcile loop itself is broken). `LS.CTL.Wire` parses BOTH entry types —
+   precerts included, which most CAs (LE among them) exclusively log — and
+   every SAN in each certificate, then filters obvious junk and enqueues
    `%{ctl_domain: d, source: :ctl}` items.
 2. **Queueing** — `LS.Cluster.WorkQueue` is a bounded in-memory queue
    (ETS, 3M cap, 24h TTL). When full, `enqueue/1` returns `:queue_full` and
