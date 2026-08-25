@@ -30,7 +30,12 @@ defmodule LS.Alerts do
   @sqlite_backup_age_h 6             # hourly job; 6h means it has missed several
   @product_backup_age_h 14           # runs every 6h; businesses+biz_* = weeks of crawling
   @ch_backup_age_h 216               # weekly job (domains_history); >9d = it has skipped a run
-  @mem_avail_mb_floor 900            # master beam is capped ~8G on a 16G box
+  # 900 was written for the 16G master and applied to EVERY node — but 250-350MB
+  # available is NORMAL on a busy 2G worker (Linux keeps availability low), so
+  # the first workers to report memory (chi3/ny3, 2026-08-25) alerted on their
+  # healthy steady state. The floor now scales: 10% of the node's RAM, never
+  # below 200MB, with 900 kept as the fallback when total RAM is unknown.
+  @mem_avail_mb_floor 900
   @queue_pct_ceiling 92.0
   @reputation_age_ceiling_h 50       # 24h/12h download loops; >2 days = downloads failing
   @verification_running_ceiling_h 8  # a source stuck 'running' this long is wedged
@@ -131,8 +136,8 @@ defmodule LS.Alerts do
         end
       end)
       |> then(fn a ->
-        if is_integer(r[:mem_avail_mb]) and r.mem_avail_mb < @mem_avail_mb_floor,
-          do: [al(:warning, "mem:#{node}", "Low memory: #{short(node)}", "#{short(node)} only #{r.mem_avail_mb}MB RAM available") | a],
+        if is_integer(r[:mem_avail_mb]) and r.mem_avail_mb < mem_floor_mb(r[:mem_total_mb]),
+          do: [al(:warning, "mem:#{node}", "Low memory: #{short(node)}", "#{short(node)} only #{r.mem_avail_mb}MB RAM available (floor #{mem_floor_mb(r[:mem_total_mb])}MB for a #{r[:mem_total_mb] || "?"}MB node)") | a],
           else: a
       end)
     end)
@@ -268,6 +273,15 @@ defmodule LS.Alerts do
   end
 
   defp al(sev, key, subject, line), do: %{severity: sev, key: key, subject: subject, line: line}
+  @doc false
+  # Size-aware low-memory floor: 10% of total RAM, never below 200MB;
+  # @mem_avail_mb_floor when the node did not report its total.
+  def mem_floor_mb(nil), do: @mem_avail_mb_floor
+  def mem_floor_mb(total_mb) when is_integer(total_mb) and total_mb > 0,
+    do: max(200, div(total_mb, 10))
+
+  def mem_floor_mb(_), do: @mem_avail_mb_floor
+
   defp short(w), do: w |> to_string() |> String.split("@") |> hd() |> String.replace("worker_", "")
   defp keyify(list), do: list |> Enum.join(",") |> then(&:crypto.hash(:md5, &1)) |> Base.encode16() |> binary_part(0, 8)
   defp stale_run?(_s), do: true

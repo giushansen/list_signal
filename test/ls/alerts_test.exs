@@ -153,4 +153,30 @@ defmodule LS.AlertsTest do
     a = Alerts.evaluate(m)
     assert hd(a).severity == :critical
   end
+  describe "size-aware low-memory floor (2026-08-25)" do
+    # The 900MB floor was written for the 16G master but applied to every
+    # node. 250-350MB available is the healthy STEADY STATE of a busy 2G
+    # worker, so the first workers to report memory (chi3/ny3) emailed "Low
+    # memory" from their normal operation — an alert that cries wolf trains
+    # the owner to ignore the real one.
+    test "a 2G worker at its normal 300MB available does not alert" do
+      assert LS.Alerts.mem_floor_mb(1_968) == 200
+      assert 300 >= LS.Alerts.mem_floor_mb(1_968)
+    end
+
+    test "a 2G worker under real exhaustion still alerts" do
+      assert 150 < LS.Alerts.mem_floor_mb(1_968)
+    end
+
+    test "a 4G worker floors at 10% and the 16G master keeps a meaningful floor" do
+      assert LS.Alerts.mem_floor_mb(3_916) == 391
+      assert LS.Alerts.mem_floor_mb(15_993) == 1_599
+    end
+
+    test "a node that did not report its total falls back to the old conservative floor" do
+      assert LS.Alerts.mem_floor_mb(nil) == 900
+      assert LS.Alerts.mem_floor_mb("garbage") == 900
+      assert LS.Alerts.mem_floor_mb(0) == 900
+    end
+  end
 end
