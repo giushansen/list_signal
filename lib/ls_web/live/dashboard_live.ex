@@ -822,8 +822,15 @@ defmodule LSWeb.DashboardLive do
       (SELECT countIf(seo_score IS NOT NULL) FROM biz_enrichment) AS with_seo,
       (SELECT countIf(product_count IS NOT NULL) FROM biz_enrichment) AS with_catalog,
       (SELECT countIf(render_engine = 'camoufox') FROM biz_enrichment) AS via_browser,
-      (SELECT count() FROM businesses) AS businesses,
-      (SELECT countIf(depth_enriched_at IS NOT NULL) FROM businesses) AS businesses_enriched
+      (SELECT uniq(domain) FROM businesses) AS businesses,
+      -- uniq over biz_enrichment, NOT depth_enriched_at on businesses: that
+      -- column only the newer depth pass sets, so it is NULL for the ~2-3M
+      -- businesses enriched before it existed. It made the admin read
+      -- "11M/14.3M" — a phantom 3M backlog — while real coverage was 98%
+      -- (owner chased it on 2026-08-25). uniq() is approximate (~1% error)
+      -- which is fine for a dashboard pair; the data-contract suite holds
+      -- this metric to the truth within 5%.
+      (SELECT uniq(domain) FROM biz_enrichment) AS businesses_enriched
     """
 
     case LS.Clickhouse.query_raw(sql, 5_000) do

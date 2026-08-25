@@ -17,7 +17,7 @@ defmodule LS.CacheSnapshotTest do
     path = Path.join(System.tmp_dir!(), "ls_snapshot_test_#{System.unique_integer([:positive])}.bin")
     Application.put_env(:ls, :cache_snapshot_path, path)
 
-    for t <- [:ls_ui_cache, :landing_cache] do
+    for t <- [:ls_ui_cache, :landing_cache, :ctl_cache] do
       if :ets.info(t) == :undefined, do: :ets.new(t, [:named_table, :set, :public])
       :ets.delete_all_objects(t)
     end
@@ -171,6 +171,45 @@ defmodule LS.CacheSnapshotTest do
 
     test "saving with no tables present does not raise" do
       assert {:ok, 0} = CacheSnapshot.save()
+    end
+  end
+
+  describe "the CTL dedup cache survives a deploy (2026-08-25)" do
+    # Before this, every deploy wiped the dedup memory of recently-seen
+    # domains and the poller re-enqueued them all — hours of the fleet
+    # recrawling what it already knew, right when a deploy had also cleared
+    # the work queue.
+    test "a fresh dedup row round-trips verbatim, so ctl_track still answers :tracked after a restart" do
+      now = System.system_time(:second)
+      :ets.insert(:ctl_cache, {"seen.example.com", {3, 2, now - 100, now - 50}})
+
+      assert {:ok, 1} = LS.CacheSnapshot.save()
+      :ets.delete_all_objects(:ctl_cache)
+      assert LS.CacheSnapshot.restore() == 1
+
+      assert [{"seen.example.com", {3, 2, _, _}}] = :ets.lookup(:ctl_cache, "seen.example.com")
+    end
+
+    test "a row older than the 14-day TTL is not resurrected" do
+      now = System.system_time(:second)
+      :ets.insert(:ctl_cache, {"stale.example.com", {1, 0, now - 1_300_000, now - 1_250_000}})
+
+      assert {:ok, 0} = LS.CacheSnapshot.save()
+    end
+
+    test "ctl rows keep their wall-clock timestamps — no jitter may rewrite dedup history" do
+      row = LS.CacheSnapshot.rebuild("d.example", {5, 1, 100, 200}, 3_600_000, 0, :ctl_4, 0, 0)
+      assert row == {"d.example", {5, 1, 100, 200}}
+    end
+
+    test "the snapshot TTL matches LS.Cache's sweeper TTL — drift would resurrect swept rows" do
+      # LS.Cache defines @cache_ttl 1_209_600 (14 days). If someone changes it
+      # there, this file must follow, or restores disagree with the sweeper.
+      source = File.read!("lib/ls/cache.ex")
+      assert source =~ "@cache_ttl 1_209_600"
+
+      snap = File.read!("lib/ls/cache_snapshot.ex")
+      assert snap =~ "@ctl_ttl_s 1_209_600"
     end
   end
 

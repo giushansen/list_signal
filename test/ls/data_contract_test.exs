@@ -445,6 +445,29 @@ defmodule LS.DataContractTest do
     end
   end
 
+  # 2026-08-25: the admin enrichment tab showed "11M/14.3M businesses" — a
+  # phantom 3M backlog — because businesses_enriched counted
+  # depth_enriched_at IS NOT NULL, a column that is NULL for every business
+  # enriched before the depth pass existed. Real coverage was 98%. The owner
+  # nearly bought enrichment nodes to fix a display bug; the metric the admin
+  # promises must track the truth.
+  describe "admin enrichment coverage metric" do
+    test "the businesses_enriched figure matches distinct enriched domains within 5%" do
+      with_clickhouse(fn ->
+        assert {:ok, [[shown]]} = Clickhouse.query_raw("SELECT uniq(domain) FROM biz_enrichment")
+        assert {:ok, [[truth]]} = Clickhouse.query_raw("SELECT uniqExact(domain) FROM biz_enrichment")
+
+        shown = to_int(shown)
+        truth = to_int(truth)
+
+        if truth > 0 do
+          assert abs(shown - truth) / truth < 0.05,
+                 "uniq() drifted \#{shown} vs exact \#{truth} — the admin pair is lying again"
+        end
+      end)
+    end
+  end
+
   # ClickHouse returns counts as strings over some formats; a test that compares
   # them raw passes for the wrong reason.
   defp to_int(v) when is_integer(v), do: v

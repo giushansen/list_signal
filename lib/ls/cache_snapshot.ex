@@ -40,10 +40,19 @@ defmodule LS.CacheSnapshot do
   #
   #   :wall_4   {key, value, expires_at_unix_seconds, inserted_at}  (LS.UICache)
   #   :mono_3   {key, value, expires_at_monotonic_ms}               (LS.LandingCache)
+  #   :ctl_4    {domain, {cert_count, max_sub, first_seen, last_seen}} (LS.Cache
+  #             CTL dedup) — wall-clock throughout, 14-day TTL enforced by
+  #             LS.Cache's sweeper, so rows restore VERBATIM. Added 2026-08-25:
+  #             every deploy wiped the dedup memory of ~1M recently-seen
+  #             domains, so the poller re-enqueued them all and the fleet spent
+  #             hours recrawling what it already knew.
   #
   # Monotonic time is meaningless across a restart, which is why every entry is
   # normalised to "milliseconds remaining" in the file and rebuilt on the way in.
-  @tables [{:ls_ui_cache, :wall_4}, {:landing_cache, :mono_3}]
+  @tables [{:ls_ui_cache, :wall_4}, {:landing_cache, :mono_3}, {:ctl_cache, :ctl_4}]
+
+  # LS.Cache's TTL for ctl rows (@cache_ttl there) — kept in step by a test.
+  @ctl_ttl_s 1_209_600
 
   # A snapshot older than this is discarded: past a few hours the entries would
   # have expired anyway, and restoring them only risks serving stale numbers.
@@ -167,6 +176,12 @@ defmodule LS.CacheSnapshot do
     keep(key, value, expires_at - now_ms)
   end
 
+  def entry_remaining({key, {_cc, _sc, _fs, last_seen} = value}, :ctl_4, now_s, _)
+      when is_integer(last_seen) do
+    now_s = now_s || System.system_time(:second)
+    keep(key, value, (last_seen + @ctl_ttl_s - now_s) * 1000)
+  end
+
   def entry_remaining(_row, _shape, _, _), do: []
 
   defp keep(key, value, remaining) when is_integer(remaining) and remaining > 0,
@@ -235,16 +250,20 @@ defmodule LS.CacheSnapshot do
   def rebuild(key, value, remaining, age, shape, now_s, now_mono, jitter \\ nil) do
     left = remaining - age
 
-    if left < @min_keep_ms do
-      nil
-    else
-      left = round(left * (1.0 - 0.25 * (jitter || :rand.uniform())))
-      build_row(key, value, left, shape, now_s, now_mono)
+    cond do
+      left < @min_keep_ms -> nil
+      shape == :ctl_4 -> build_row(key, value, left, shape, now_s, now_mono)
+      true ->
+        left = round(left * (1.0 - 0.25 * (jitter || :rand.uniform())))
+        build_row(key, value, left, shape, now_s, now_mono)
     end
   end
 
   defp build_row(key, value, left, :wall_4, now_s, _), do: {key, value, now_s + div(left, 1000), now_s}
   defp build_row(key, value, left, :mono_3, _, now_mono), do: {key, value, now_mono + left}
+  # Wall-clock throughout — the row IS its own freshness record; the sweeper
+  # in LS.Cache expires it. Jitter is skipped: a dedup cache has no stampede.
+  defp build_row(key, value, _left, :ctl_4, _, _), do: {key, value}
 
   defp schedule_save, do: Process.send_after(self(), :save, @save_every_ms)
 end
