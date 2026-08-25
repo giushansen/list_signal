@@ -144,7 +144,7 @@ defmodule LSWeb.UserLive.Settings do
           <h2 class="text-lg font-semibold text-white mb-4">Email Address</h2>
           <.form for={@email_form} id="email_form" phx-submit="update_email" phx-change="validate_email">
             <div class="space-y-3">
-              <input type="email" name={@email_form[:email].name} value={@email_form[:email].value}
+              <input type="email" id="email_form_email" name={@email_form[:email].name} value={@email_form[:email].value}
                 class="w-full bg-[#0B1020] border border-white/[0.06] rounded-lg px-3 py-2.5 text-sm text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition"
                 autocomplete="username" spellcheck="false" required />
               <%= for error <- @email_form[:email].errors do %>
@@ -173,7 +173,13 @@ defmodule LSWeb.UserLive.Settings do
             <div class="space-y-3">
               <div>
                 <label class="block text-sm text-gray-400 mb-1">New password</label>
-                <input type="password" name={@password_form[:password].name}
+                <%!-- id + bound value are LOAD-BEARING (2026-08-25): without them,
+                     every validate re-render patches the inputs positionally, and
+                     the error <p> tags appearing/disappearing between them made
+                     LiveView recreate the OTHER field mid-typing — wiping what the
+                     user had typed. Debounce keeps errors from flickering per key. --%>
+                <input type="password" id="password_form_password" name={@password_form[:password].name}
+                  value={@password_form[:password].value} phx-debounce="500"
                   class="w-full bg-[#0B1020] border border-white/[0.06] rounded-lg px-3 py-2.5 text-sm text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition"
                   autocomplete="new-password" spellcheck="false" required />
                 <%= for error <- @password_form[:password].errors do %>
@@ -182,7 +188,8 @@ defmodule LSWeb.UserLive.Settings do
               </div>
               <div>
                 <label class="block text-sm text-gray-400 mb-1">Confirm password</label>
-                <input type="password" name={@password_form[:password_confirmation].name}
+                <input type="password" id="password_form_password_confirmation" name={@password_form[:password_confirmation].name}
+                  value={@password_form[:password_confirmation].value} phx-debounce="500"
                   class="w-full bg-[#0B1020] border border-white/[0.06] rounded-lg px-3 py-2.5 text-sm text-white focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 focus:outline-none transition"
                   autocomplete="new-password" spellcheck="false" />
                 <%= for error <- @password_form[:password_confirmation].errors do %>

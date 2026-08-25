@@ -88,6 +88,54 @@ defmodule LSWeb.UserLive.SettingsTest do
     end
   end
 
+  describe "typed passwords survive the validate re-render (2026-08-25)" do
+    # Typing in one password field cleared the other: the inputs had no id and
+    # no bound value, so when validation errors appeared/disappeared between
+    # them, LiveView's positional DOM patch recreated the sibling input empty.
+    # Users could not change their password at all. The bound `value` +
+    # stable ids below are what these assertions pin.
+    setup %{conn: conn} do
+      user = user_fixture()
+      %{conn: log_in_user(conn, user), user: user}
+    end
+
+    test "the new-password value is still rendered after the confirmation field triggers validate", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      # The browser sends the WHOLE form on phx-change; simulate typing the
+      # confirmation after the password is already filled in.
+      html =
+        lv
+        |> form("#password_form", %{
+          "user" => %{"password" => "SuperSecret123!", "password_confirmation" => "Sup"}
+        })
+        |> render_change()
+
+      assert html =~ ~s(value="SuperSecret123!"),
+             "the new-password input lost its value on re-render — the disappearing-field bug is back"
+
+      assert html =~ ~s(id="password_form_password"),
+             "stable input ids are load-bearing for the DOM patch"
+
+      assert html =~ ~s(id="password_form_password_confirmation")
+    end
+
+    test "the confirmation value survives errors appearing on the password field", %{conn: conn} do
+      {:ok, lv, _html} = live(conn, ~p"/users/settings")
+
+      html =
+        lv
+        |> form("#password_form", %{
+          "user" => %{"password" => "short", "password_confirmation" => "SuperSecret123!"}
+        })
+        |> render_change()
+
+      # "should be at least N characters" renders above the confirmation input —
+      # exactly the DOM shift that used to wipe it.
+      assert html =~ ~s(value="SuperSecret123!")
+    end
+  end
+
   describe "update password form" do
     setup %{conn: conn} do
       user = user_fixture()
