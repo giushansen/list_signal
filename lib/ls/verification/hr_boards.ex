@@ -156,11 +156,13 @@ defmodule LS.Verification.HRBoards do
     case Clickhouse.query_raw(
            """
            INSERT INTO hr_boards (platform, slug, domain, company, country, first_seen, last_synced, job_count)
-           SELECT b.platform, b.slug, k.domain, b.company, b.country, b.first_seen, b.last_synced, b.job_count
+           SELECT b.platform, b.slug, k.linked_domain, b.company, b.country, b.first_seen, b.last_synced, b.job_count
            FROM (SELECT * FROM hr_boards FINAL
                  WHERE domain = '' AND platform NOT IN ('wttj', 'wttj_cursor', 'cc_discovery')) AS b
            INNER JOIN (
-             SELECT name_key, any(domain) AS domain
+             /* linked_domain, not AS domain: aliasing over the source column
+                makes HAVING read the aggregate and CH rejects the nesting. */
+             SELECT name_key, any(domain) AS linked_domain
              FROM verification_domain_keys
              GROUP BY name_key
              HAVING uniqExact(domain) = 1
