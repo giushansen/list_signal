@@ -265,6 +265,24 @@ defmodule LS.Metrics do
     |> Enum.reject(fn {_, r} -> is_nil(r) end)
   end
 
+  @doc """
+  Nodes that are connected but report NO resources — they answer Erlang
+  distribution yet `LS.Ops.NodeResources` is `:undef` (stale release) or the
+  call times out.
+
+  These are invisible to every RAM/disk/CPU alert, and the silence looks
+  exactly like health. On 2026-08-26 that was 12 of 14 workers: they had been
+  restarted but never re-deployed since the ops tooling shipped, so the only
+  nodes the alerts could see were the two newest — which is why they looked
+  like the only ones with memory trouble.
+  """
+  def unmonitored_nodes do
+    reporting = MapSet.new(node_resources(), fn {n, _} -> n end)
+
+    [Node.self() | Node.list()]
+    |> Enum.reject(&MapSet.member?(reporting, &1))
+  end
+
   # ── helpers ──
 
   defp ch_one(sql, default) do

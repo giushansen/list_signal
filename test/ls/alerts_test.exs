@@ -17,7 +17,8 @@ defmodule LS.AlertsTest do
       backups: %{dir: "/home/ls/backups", sqlite_age_h: 1, product_age_h: 3, ch_age_h: 20},
       verification: %{scheduler: %{running: false, disabled: false}, sources: [%{source: "yc", status: "ok", duration_s: 30, error: ""}]},
       poller: nil,
-      ctl_diff: %{new: [], retired: []}
+      ctl_diff: %{new: [], retired: []},
+      unmonitored_nodes: []
     }
   end
 
@@ -153,30 +154,68 @@ defmodule LS.AlertsTest do
     a = Alerts.evaluate(m)
     assert hd(a).severity == :critical
   end
+  describe "unmonitored nodes are themselves an alert (2026-08-26)" do
+    # 12 of 14 workers had been restarted but never re-deployed since the ops
+    # tooling shipped, so LS.Ops.NodeResources was :undef on them and the
+    # master could only read memory from the two newest nodes. The owner spent
+    # two days believing chi3/ny3 had a memory fault; they were simply the only
+    # nodes being watched. Silence must never look like health again.
+    test "nodes reporting no resources produce a warning naming them" do
+      alerts =
+        Alerts.evaluate(%{
+          healthy()
+          | unmonitored_nodes: [:"worker_lssg1@10.0.0.3", :"worker_lschi1@10.0.0.11"]
+        })
+
+      a = Enum.find(alerts, &(&1.key =~ "unmonitored"))
+      assert a, "a blind spot in resource monitoring must raise an alert"
+      assert a.line =~ "lssg1"
+      assert a.line =~ "lschi1"
+      assert a.line =~ "stale release"
+    end
+
+    test "a fully-monitored fleet raises nothing" do
+      assert Alerts.evaluate(healthy()) |> Enum.find(&(&1.key =~ "unmonitored")) == nil
+    end
+
+    test "a snapshot without the key at all does not crash (older gather/0 in flight during a deploy)" do
+      assert is_list(Alerts.evaluate(Map.delete(healthy(), :unmonitored_nodes)))
+    end
+  end
+
   describe "size-aware low-memory floor (2026-08-25)" do
     # The 900MB floor was written for the 16G master but applied to every
     # node. 250-350MB available is the healthy STEADY STATE of a busy 2G
     # worker, so the first workers to report memory (chi3/ny3) emailed "Low
     # memory" from their normal operation — an alert that cries wolf trains
     # the owner to ignore the real one.
-    test "a 2G worker at its normal 300MB available does not alert" do
-      assert LS.Alerts.mem_floor_mb(1_968) == 200
-      assert 300 >= LS.Alerts.mem_floor_mb(1_968)
+    test "the MEASURED healthy range of a 1-core crawler (205-373MB) does not alert" do
+      floor = Alerts.mem_floor_mb(1_968)
+      # Real readings from sg1/syd1/chi3/ny3 on 2026-08-26.
+      for avail <- [205, 223, 257, 296, 342, 373] do
+        assert avail > floor, "#{avail}MB is a healthy steady state, not an alert"
+      end
     end
 
-    test "a 2G worker under real exhaustion still alerts" do
-      assert 150 < LS.Alerts.mem_floor_mb(1_968)
+    test "a 2G worker in genuine distress still alerts" do
+      assert 80 < Alerts.mem_floor_mb(1_968)
     end
 
-    test "a 4G worker floors at 10% and the 16G master keeps a meaningful floor" do
-      assert LS.Alerts.mem_floor_mb(3_916) == 391
-      assert LS.Alerts.mem_floor_mb(15_993) == 1_599
+    test "the 4G floor sits where real thrashing was observed (chi1/ny2 at 241-277MB)" do
+      floor = Alerts.mem_floor_mb(3_916)
+      assert floor == 195
+      # Those nodes were swapping thousands of pages/sec; a further dip must alert.
+      assert floor < 241
+    end
+
+    test "the 16G master keeps a meaningful floor" do
+      assert Alerts.mem_floor_mb(15_993) == 799
     end
 
     test "a node that did not report its total falls back to the old conservative floor" do
-      assert LS.Alerts.mem_floor_mb(nil) == 900
-      assert LS.Alerts.mem_floor_mb("garbage") == 900
-      assert LS.Alerts.mem_floor_mb(0) == 900
+      assert Alerts.mem_floor_mb(nil) == 900
+      assert Alerts.mem_floor_mb("garbage") == 900
+      assert Alerts.mem_floor_mb(0) == 900
     end
   end
 end

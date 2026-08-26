@@ -30,11 +30,22 @@ defmodule LS.Alerts do
   @sqlite_backup_age_h 6             # hourly job; 6h means it has missed several
   @product_backup_age_h 14           # runs every 6h; businesses+biz_* = weeks of crawling
   @ch_backup_age_h 216               # weekly job (domains_history); >9d = it has skipped a run
-  # 900 was written for the 16G master and applied to EVERY node — but 250-350MB
-  # available is NORMAL on a busy 2G worker (Linux keeps availability low), so
-  # the first workers to report memory (chi3/ny3, 2026-08-25) alerted on their
-  # healthy steady state. The floor now scales: 10% of the node's RAM, never
-  # below 200MB, with 900 kept as the fallback when total RAM is unknown.
+  # Low-memory floor, twice recalibrated (2026-08-25/26).
+  #
+  # 900MB was written for the 16G master and applied to EVERY node. Then 10%
+  # (200MB on a 2G box) still cried wolf: MEASURED healthy steady state on the
+  # 1-core crawlers is 205-373MB available, because Linux fills a small box
+  # with page cache and MemAvailable counts conservatively. Meanwhile the nodes
+  # in genuine distress (chi1, ny2 — thousands of swap-ins/second) sat at
+  # 241-277MB on 4G, i.e. BELOW 5% but above 10%.
+  #
+  # So the floor is 5% of the node's RAM, never below 100MB: a 2G crawler
+  # alerts under 100MB (swap engaged, OOM killer near) and a 4G worker under
+  # 195MB (which is where the real thrashing showed up). Cheap, honest, and
+  # it fires on distress rather than on "busy".
+  @mem_avail_pct_floor 5
+  @mem_avail_mb_min 100
+  # Used only when a node does not report its total RAM at all.
   @mem_avail_mb_floor 900
   @queue_pct_ceiling 92.0
   @reputation_age_ceiling_h 50       # 24h/12h download loops; >2 days = downloads failing
@@ -51,6 +62,7 @@ defmodule LS.Alerts do
       worker_health: Metrics.worker_health(),
       queue: Metrics.queue(),
       node_resources: Metrics.node_resources(),
+      unmonitored_nodes: Metrics.unmonitored_nodes(),
       reputation_ages: Metrics.reputation_ages(),
       backups: Metrics.backup_status(),
       verification: Metrics.verification(),
@@ -74,6 +86,7 @@ defmodule LS.Alerts do
     |> backups(m)
     |> verification(m)
     |> ctl_sources(m)
+    |> unmonitored(m)
     |> Enum.sort_by(&(&1.severity == :critical), :desc)
   end
 
@@ -115,6 +128,28 @@ defmodule LS.Alerts do
     do: [al(:critical, "compaction_stale", "Product table stale", "businesses last updated #{div(s, 60)} min ago — compactor may be failing") | acc]
 
   defp compaction(acc, _), do: acc
+
+  # A node the resource alerts cannot see is worse than a node with a problem:
+  # its silence is indistinguishable from health. See Metrics.unmonitored_nodes/0.
+  defp unmonitored(acc, %{unmonitored_nodes: []}), do: acc
+
+  defp unmonitored(acc, %{unmonitored_nodes: nodes}) when is_list(nodes) do
+    names = nodes |> Enum.map(&short/1) |> Enum.sort() |> Enum.join(", ")
+
+    [
+      al(
+        :warning,
+        "unmonitored:#{length(nodes)}",
+        "#{length(nodes)} node(s) report no resources",
+        "#{names} answer Erlang distribution but not LS.Ops.NodeResources — " <>
+          "usually a stale release (restarted, never re-deployed). They are invisible " <>
+          "to every RAM/disk/CPU alert until deployed."
+      )
+      | acc
+    ]
+  end
+
+  defp unmonitored(acc, _), do: acc
 
   defp resources(acc, %{node_resources: nodes}) do
     Enum.reduce(nodes, acc, fn {node, r}, a ->
@@ -274,11 +309,11 @@ defmodule LS.Alerts do
 
   defp al(sev, key, subject, line), do: %{severity: sev, key: key, subject: subject, line: line}
   @doc false
-  # Size-aware low-memory floor: 10% of total RAM, never below 200MB;
+  # Size-aware low-memory floor: 5% of total RAM, never below 100MB;
   # @mem_avail_mb_floor when the node did not report its total.
   def mem_floor_mb(nil), do: @mem_avail_mb_floor
   def mem_floor_mb(total_mb) when is_integer(total_mb) and total_mb > 0,
-    do: max(200, div(total_mb, 10))
+    do: max(@mem_avail_mb_min, div(total_mb * @mem_avail_pct_floor, 100))
 
   def mem_floor_mb(_), do: @mem_avail_mb_floor
 
