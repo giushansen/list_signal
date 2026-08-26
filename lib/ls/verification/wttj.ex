@@ -133,9 +133,8 @@ defmodule LS.Verification.WTTJ do
   Pure; returns nil when no candidate survives.
   """
   def extract_website(html) do
-    ~r{href="(https?://[^"]+)"}
-    |> Regex.scan(html, capture: :all_but_first)
-    |> List.flatten()
+    html
+    |> hrefs()
     |> Enum.reject(fn url -> Enum.any?(@not_a_website, &String.contains?(url, &1)) end)
     |> Enum.map(&URI.parse(&1).host)
     |> Enum.find(&(is_binary(&1) and String.contains?(&1, ".")))
@@ -143,6 +142,26 @@ defmodule LS.Verification.WTTJ do
       nil -> nil
       host -> String.replace_prefix(host, "www.", "")
     end
+  end
+
+  @doc """
+  Whether a profile render actually hydrated. A loading shell links only to
+  welcometothejungle CDNs (measured: 270 KB of asset hrefs, nothing else);
+  a hydrated profile always carries at least one non-WTTJ href (consent CDN,
+  socials, website). Distinguishing the two matters: no-website on a
+  hydrated page is a durable fact, on a shell it is a render failure that
+  must be retried.
+  """
+  def hydrated?(html) do
+    html
+    |> hrefs()
+    |> Enum.any?(&(not String.contains?(&1, "welcometothejungle")))
+  end
+
+  defp hrefs(html) do
+    ~r{href="(https?://[^"]+)"}
+    |> Regex.scan(html, capture: :all_but_first)
+    |> List.flatten()
   end
 
   @doc """
@@ -176,12 +195,16 @@ defmodule LS.Verification.WTTJ do
   defp resolve_profile(slug) do
     case render("/fr/companies/#{slug}") do
       {:ok, html} ->
-        case extract_website(html) do
-          nil ->
+        case {hydrated?(html), extract_website(html)} do
+          # Loading shell: render failure, leave the slug for the next pass.
+          {false, _} ->
+            false
+
+          {true, nil} ->
             mark_unresolvable(slug)
             false
 
-          domain ->
+          {true, domain} ->
             Clickhouse.query_raw("""
             INSERT INTO hr_boards (platform, slug, domain, company, country, first_seen, last_synced, job_count)
             SELECT platform, slug, '#{Clickhouse.escape_public(domain)}', company, country, first_seen, now(), job_count

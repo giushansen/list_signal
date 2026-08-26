@@ -128,6 +128,21 @@ defmodule LS.Verification.HRBoardsTest do
     assert WTTJ.extract_website("") == nil
   end
 
+  test "an unhydrated loading shell is a render failure, not a no-website fact" do
+    # 2026-08-26: 8 of the first 10 profile renders were CDN-only loading
+    # shells; marking them unresolvable would have permanently dropped
+    # resolvable companies.
+    shell = """
+    <link href="https://cdn.welcometothejungle.com/a.css">
+    <a href="https://cdn.welcometothejungle.com/assets/app.js">x</a>
+    """
+
+    hydrated = shell <> "<a href=\"https://www.linkedin.com/company/acme\">li</a>"
+
+    refute WTTJ.hydrated?(shell)
+    assert WTTJ.hydrated?(hydrated)
+  end
+
   test "WTTJ sweep cursor survives old formats and hostile values" do
     # The cursor is stored as a string in a ClickHouse column; a corrupt or
     # pre-facet value must restart the sweep, never crash the scheduler.
