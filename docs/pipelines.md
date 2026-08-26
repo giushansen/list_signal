@@ -187,7 +187,9 @@ master-only cycle (`LS.Verification.BoardScheduler`):
 
 1. **Harvest** — board slugs are extracted from URLs already stored in
    `biz_career` (greenhouse, lever, ashby, workable, smartrecruiters,
-   recruitee). Attribution carries a *fan-out guard*: only domains that
+   recruitee, workday, personio, breezy — ranked and chosen by how many of
+   our domains reference each platform; iCIMS is a JS widget and
+   teamtailor has no public JSON, both skipped). Attribution carries a *fan-out guard*: only domains that
    reference ≤ 2 slugs on a platform may claim a board — a careers page
    embeds its own board, a job aggregator references dozens, and without
    the guard a company's jobs get written under the aggregator's domain.
@@ -205,8 +207,12 @@ master-only cycle (`LS.Verification.BoardScheduler`):
    `settle_ms` (hydration wait), 4 s between pages, 40 pages per day. The
    listing is result-capped (~22 pages per query), so the sweep runs the
    unfiltered listing plus one query per letter. Slugs resolve to domains
-   via `verification_domain_keys` (dehyphenated slug = FR name key);
-   unresolved slugs stay domainless until a profile-render pass. The
+   via `verification_domain_keys` (dehyphenated slug = FR name key, ~5%
+   hit rate because legal names differ from brand names); unresolved slugs
+   then get one profile render each (20/day) — the profile page carries
+   the company website as its first non-social external link. A render
+   that never hydrates (CDN-only shell) is retried; only a hydrated page
+   without a website is marked unresolvable. The
    sidecar reaches h1 over WireGuard (`LS_BROWSER_BIND` lists the wg IP
    alongside loopback on that node only).
 
