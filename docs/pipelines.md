@@ -176,3 +176,40 @@ snapshot, bytes, records and matches per tier; every parsed record — matched
 or not — sits in `verified_source_records`, so nobody re-downloads a 2 GB
 archive to answer "what does Companies House say about X", and a future
 LLM-assisted linker can work over the unmatched rows offline.
+
+## Pipeline 3 — HR boards (2026-08-26)
+
+The Jobs enricher only saw a company's ATS board when it happened to
+recrawl that company's careers page, so hiring data went stale between
+recrawls. `LS.Verification.HRBoards` + `LS.Verification.WTTJ` make boards
+standing assets (`hr_boards`, migration 014), refreshed on a daily
+master-only cycle (`LS.Verification.BoardScheduler`):
+
+1. **Harvest** — board slugs are extracted from URLs already stored in
+   `biz_career` (greenhouse, lever, ashby, workable, smartrecruiters,
+   recruitee). Attribution carries a *fan-out guard*: only domains that
+   reference ≤ 2 slugs on a platform may claim a board — a careers page
+   embeds its own board, a job aggregator references dozens, and without
+   the guard a company's jobs get written under the aggregator's domain.
+   Reserved path segments (`/j/` shortlinks, `/embed/`, `v1`…) are
+   blocklisted; most workable URLs are shortlinks and yield no slug.
+2. **Sync** — each stale board (> 7 days) is re-read from the platform's
+   *public, unauthenticated* JSON API (the same endpoint their own widgets
+   call), one at a time, 400 ms apart, ≤ 2,000 per cycle. Jobs land in
+   `biz_career`; a `biz_enrichment_log` row (`render_engine='board_sync'`)
+   lets the compactor fold `job_count` into `businesses` without any
+   worker crawl. A 404/410 marks the board gone (`job_count = -2`) so we
+   stop asking.
+3. **WTTJ** — Welcome to the Jungle is a CloudFront-guarded JS SPA, so its
+   FR company directory is walked through the camoufox sidecar with
+   `settle_ms` (hydration wait), 4 s between pages, 40 pages per day. The
+   listing is result-capped (~22 pages per query), so the sweep runs the
+   unfiltered listing plus one query per letter. Slugs resolve to domains
+   via `verification_domain_keys` (dehyphenated slug = FR name key);
+   unresolved slugs stay domainless until a profile-render pass. The
+   sidecar reaches h1 over WireGuard (`LS_BROWSER_BIND` lists the wg IP
+   alongside loopback on that node only).
+
+Incident pinned in `test/ls/hr_boards_test.exs`: timestamps with
+microseconds silently destroyed whole TabSeparated insert batches — the
+same failure class as the three incidents in CLAUDE.md.
