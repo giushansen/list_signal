@@ -89,9 +89,14 @@ defmodule LS.Enrichment.Agent do
     # the 30-day recrawl upgrades any business whose signals improve.
     light? = item[:tier] == "light"
 
+    # 2026-08-26: :legal and :about joined the visit list. In the EU the
+    # statutory imprint (/impressum, /mentions-legales) is where the contact
+    # address legally has to be, and it outyields /kontakt 60% to 22% on
+    # German business domains. Both tiers get :legal — it is the single
+    # highest-yield page in the set — but only the full tier pays for :about.
     pages =
       if light?,
-        do: PageExtractor.pages_to_visit(item[:http_pages], [:contact]),
+        do: PageExtractor.pages_to_visit(item[:http_pages], [:contact, :legal]),
         else: PageExtractor.pages_to_visit(item[:http_pages])
 
     # Homepage routing (2026-07-30): the browser is reserved for businesses
@@ -259,20 +264,37 @@ defmodule LS.Enrichment.Agent do
 
   # ── extraction into child-table rows ───────────────────────────────────────
 
-  # Contact page first (that is where addresses live); fall back to the
-  # homepage so a business is never left with no contact at all.
+  # Read every visited page that plausibly carries an address, in yield order
+  # (measured 2026-08-26 on German business domains: legal 60%, contact 22%,
+  # about 13%). `source_page` records which kind it actually came from —
+  # it used to be hardcoded "contact" for every row, which made the column
+  # useless for judging whether an address is trustworthy. That matters:
+  # imprint pages also carry the site's *agency* and arbitration-board
+  # addresses, so a consumer needs to know it is reading one.
+  @contact_page_kinds [:legal, :contact, :about, :pricing]
+
   defp contacts(visited, domain) do
-    [html_of(visited, :contact), html_of(visited, :pricing)]
-    |> Enum.reject(&is_nil/1)
-    |> Enum.flat_map(fn html ->
-      case PageExtractor.extract_all(html, domain) do
-        {_pages, emails} when is_binary(emails) and emails != "" -> String.split(emails, "|", trim: true)
-        _ -> []
+    @contact_page_kinds
+    |> Enum.flat_map(fn kind ->
+      case html_of(visited, kind) do
+        nil ->
+          []
+
+        html ->
+          case PageExtractor.extract_all(html, domain) do
+            {_pages, emails} when is_binary(emails) and emails != "" ->
+              emails |> String.split("|", trim: true) |> Enum.map(&{&1, kind})
+
+            _ ->
+              []
+          end
       end
     end)
-    |> Enum.uniq()
+    |> Enum.uniq_by(fn {email, _kind} -> email end)
     |> Enum.take(20)
-    |> Enum.map(&%{domain: domain, email: &1, source_page: "contact", seen_at: now()})
+    |> Enum.map(fn {email, kind} ->
+      %{domain: domain, email: email, source_page: to_string(kind), seen_at: now()}
+    end)
   end
 
   # Every currency amount printed on the pricing page, deduped and sorted.

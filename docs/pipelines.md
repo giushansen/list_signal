@@ -39,7 +39,10 @@ that separation is the whole point.
     ║                                                                      ║
     ║   /products.json  ──► catalog stats      (JSON, no browser)          ║
     ║   ATS job API     ──► open roles          (JSON, no browser)         ║
-    ║   /contact        ──► emails                                         ║
+    ║   /impressum      ──► emails  (legally mandated in DE/AT/FR — the    ║
+    ║   /contact             highest-yield contact page in the EU)         ║
+    ║   /about, /team   ──► emails  (the only page type that carries a     ║
+    ║                        NAMED person rather than a role mailbox)      ║
     ║   /pricing        ──► plan prices                                    ║
     ║   homepage HTML   ──► SEO score + Core Web Vitals                    ║
     ║                                                                      ║
@@ -116,7 +119,7 @@ pages per domain.
 | `last_product_at` | same | best dead-store signal there is |
 | `job_count` + departments | Greenhouse/Lever/Ashby JSON | the best public proxy for growth and funding |
 | `ats_platform` | job board URL | a tech signal competitors don't sell |
-| emails | `/contact` | makes a record actionable |
+| emails | `/impressum`, `/contact`, `/about` + homepage head/footer | makes a record actionable — see "Contact extraction" below |
 | plan prices | `/pricing` | SaaS positioning |
 | `seo_score` + issues | homepage HTML | the pitch for agencies |
 | `perf_lcp_ms`, `cls`, `ttfb` | camoufox | real Core Web Vitals |
@@ -219,3 +222,75 @@ master-only cycle (`LS.Verification.BoardScheduler`):
 Incident pinned in `test/ls/hr_boards_test.exs`: timestamps with
 microseconds silently destroyed whole TabSeparated insert batches — the
 same failure class as the three incidents in CLAUDE.md.
+
+## Contact extraction — the scan window (2026-08-26)
+
+`LS.HTTP.PageExtractor` reads a **bounded window** of every page, not the
+whole document: capped `<head>` (32KB) + the first 100KB of `<body>` + the
+**last** 100KB of `<body>`. The tail slice is the point — emails and imprint
+links both live in the footer.
+
+Before this it read only the first 100KB of `<body>` and dropped `<head>`
+entirely. Measured against prod, that lost two distinct classes of address:
+
+| loss | share of no-email domains | cause |
+|------|--------------------------|-------|
+| JSON-LD `schema.org/ContactPoint` | 6.6% | `<head>` discarded before scanning |
+| footer addresses | 12.5% | 57% of homepages exceed 100KB |
+
+Sampled by re-fetching 488 live business domains that the DB recorded as
+`http_emails = ''`. 19.1% of them had a findable address on the homepage the
+whole time — roughly 1.08M domains fleet-wide.
+
+**Why 100KB and not more.** Yield and peak process heap, measured on 393 real
+homepages (mean 186KB, max 2.4MB), one isolated process per page:
+
+| window | yield vs uncapped | median heap | p95 | max |
+|--------|------------------:|------------:|----:|----:|
+| old (100k prefix, no head) | 74.8% | 2,628 KB | 10,578 KB | 11,213 KB |
+| head + 100k + 100k | 96.1% | 2,528 KB | 11,055 KB | 15,091 KB |
+| head + 150k + 150k | 97.6% | 2,192 KB | 12,897 KB | 20,755 KB |
+
+150k buys 4 more domains out of 393 for +85% peak heap and −11% throughput.
+100k costs +35% peak and −2%. At HTTP concurrency 100 that is ~1.5GB worst
+case rather than ~2.1GB, which is what the 1-core nodes can carry. Median
+heap *improves*, because cleaning now runs over a bounded window instead of
+over documents that reach 2.4MB.
+
+**Two traps, both pinned by tests.** Slicing at a byte offset can cut a
+multi-byte UTF-8 codepoint, and the resulting invalid binary makes
+`String.downcase/1` raise — which every caller rescues to `nil`, so the page
+silently reports nothing. And a slice landing inside `<style>` leaves an
+opening tag whose regex then matches to the next closer far away, deleting
+every link between: observed on a site with 246KB of inline CSS, which
+collapsed a 118KB window to 16KB.
+
+### Page kinds
+
+`page_kind/1` gained `:legal` and `:about`. Imprints are matched by **stem on
+the last path segment** as well as by exact path, because Shopify nests them
+(`/pages/impressum`), localised sites prefix them (`/de/impressum`) and
+hand-built sites suffix them (`/impressum-rechtliche-hinweise.html`). That
+took German imprint detection from ~0% to 95.1% on domains known to have one.
+
+`/legal`, `/terms` and `/privacy` are deliberately **excluded** — they name
+policy documents that carry a law firm's or parent company's address on most
+sites, and matching them attributes the wrong company's mailbox to the
+business.
+
+`page_priority/1` now orders by how likely the page is to carry an address
+(legal → contact → about → pricing → career → …) and `cap_per_kind/1` keeps at
+most two paths per kind, because `@max_pages` truncates: a shop with a dozen
+product links used to push its `/impressum` out of `http_pages` entirely.
+
+### What this does NOT do
+
+Extraction does not check that an address belongs to the site it was found
+on. Imprint pages carry third-party addresses — the agency that built the
+site, the host, statutory arbitration boards such as
+`schlichtungsstelle@s-d-r.org`. On the German sample that is the difference
+between a 40.6% recovery rate and an honest 28.1% on-domain one. **A consumer
+that needs "this business's own email" must filter to the domain itself.**
+`biz_contact.source_page` now records which kind of page each address came
+from, so that judgement is possible downstream; it used to be hardcoded
+`"contact"` for every row.
