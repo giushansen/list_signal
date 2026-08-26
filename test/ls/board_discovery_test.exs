@@ -25,6 +25,15 @@ defmodule LS.Verification.BoardDiscoveryTest do
     assert MapSet.equal?(slugs, MapSet.new(["Acme", "acme"]))
   end
 
+  test "board ROOT urls (no trailing slash) yield slugs — CC indexes those" do
+    # 2026-08-26: requiring a trailing slash made lever discovery find 0
+    # slugs on its main host; board roots like jobs.lever.co/acme are the
+    # majority of what Common Crawl has.
+    body = ~s({"url": "https://jobs.lever.co/netflix"}\n{"url": "https://boards.greenhouse.io/stripe?t=x"})
+    assert BoardDiscovery.extract_page_slugs(body, "lever") |> MapSet.to_list() == ["netflix"]
+    assert BoardDiscovery.extract_page_slugs(body, "greenhouse") |> MapSet.to_list() == ["stripe"]
+  end
+
   test "workday slugs join host and site, host lowercased, site case kept" do
     body = ~s({"url": "https://Stord.wd503.myworkdayjobs.com/Stord_External_Career/job/X/Y_JR1"})
     assert BoardDiscovery.extract_page_slugs(body, "workday") |> MapSet.to_list() ==

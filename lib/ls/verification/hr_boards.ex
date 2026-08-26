@@ -28,14 +28,19 @@ defmodule LS.Verification.HRBoards do
   @resync_after_days 7
 
   # slug extraction per platform, from the posting URLs we already store.
+  # Path platforms end the slug with "/", "?" or end-of-URL: posting URLs
+  # always have the slash, but Common Crawl also indexes board ROOTS
+  # ("jobs.lever.co/acme") — requiring the slash silently dropped every one
+  # of those during discovery (measured: lever found 0 slugs on its main
+  # host until this).
   @patterns [
-    {"greenhouse", ~r{(?:job-boards|boards)\.greenhouse\.io/([a-z0-9_-]+)/}i},
-    {"lever", ~r{jobs\.(?:eu\.)?lever\.co/([a-zA-Z0-9_-]+)/}},
-    {"ashby", ~r{jobs\.ashbyhq\.com/([a-zA-Z0-9_-]+)/}},
-    {"workable", ~r{apply\.workable\.com/([a-z0-9-]+)/}i},
+    {"greenhouse", ~r{(?:job-boards|boards)\.greenhouse\.io/([a-z0-9_-]+)(?:[/?]|$)}i},
+    {"lever", ~r{jobs\.(?:eu\.)?lever\.co/([a-zA-Z0-9_-]+)(?:[/?]|$)}},
+    {"ashby", ~r{jobs\.ashbyhq\.com/([a-zA-Z0-9_-]+)(?:[/?]|$)}},
+    {"workable", ~r{apply\.workable\.com/([a-z0-9-]+)(?:[/?]|$)}i},
     # Two shapes in the wild: jobs.smartrecruiters.com/{Co}/{id} public ads
     # and api.smartrecruiters.com/v1/companies/{Co}/postings/{id} API refs.
-    {"smartrecruiters", ~r{smartrecruiters\.com/(?:v1/companies/)?([A-Za-z0-9]+)/}},
+    {"smartrecruiters", ~r{smartrecruiters\.com/(?:v1/companies/)?([A-Za-z0-9]+)(?:[/?]|$)}},
     {"recruitee", ~r{https?://([a-z0-9-]+)\.recruitee\.com}i},
     # Workday needs host AND site ({tenant}.wd{N} + career-site name); the
     # slug is stored as "tenant.wdN:Site". Some URLs carry a locale segment.
