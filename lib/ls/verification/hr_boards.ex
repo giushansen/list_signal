@@ -191,14 +191,38 @@ defmodule LS.Verification.HRBoards do
   defp fetch_board("recruitee", slug),
     do: get_jobs("https://#{slug}.recruitee.com/api/offers/", &parse_recruitee/1)
 
-  defp fetch_board("smartrecruiters", slug),
-    do:
-      get_jobs(
-        "https://api.smartrecruiters.com/v1/companies/#{slug}/postings?limit=100",
-        &parse_smartrecruiters/1
-      )
+  # SmartRecruiters pages at 100 postings per call — the only synced API
+  # that does not return the whole board at once. Follow offsets so large
+  # employers are not silently truncated; 10 pages (1,000 postings) is far
+  # above any board we have seen.
+  defp fetch_board("smartrecruiters", slug), do: fetch_smartrecruiters(slug, 0, [], 10)
 
   defp fetch_board(_other, _slug), do: :error
+
+  defp fetch_smartrecruiters(_slug, _offset, acc, 0), do: {:ok, acc}
+
+  defp fetch_smartrecruiters(slug, offset, acc, pages_left) do
+    url = "https://api.smartrecruiters.com/v1/companies/#{slug}/postings?limit=100&offset=#{offset}"
+
+    case get_jobs(url, &parse_smartrecruiters/1) do
+      {:ok, jobs} when length(jobs) == 100 ->
+        Process.sleep(@gap_ms)
+        fetch_smartrecruiters(slug, offset + 100, acc ++ jobs, pages_left - 1)
+
+      {:ok, jobs} ->
+        {:ok, acc ++ jobs}
+
+      :gone when acc == [] ->
+        :gone
+
+      other when acc == [] ->
+        other
+
+      # A later page failing must not throw away pages already fetched.
+      _ ->
+        {:ok, acc}
+    end
+  end
 
   defp get_jobs(url, parser) do
     case Req.get(url,
