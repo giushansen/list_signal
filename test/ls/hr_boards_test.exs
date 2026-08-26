@@ -19,7 +19,7 @@ defmodule LS.Verification.HRBoardsTest do
     "lever" => "https://jobs.lever.co/acceldata/307e052c-a765-4b81-ba97-53f007e5d96b",
     "ashby" => "https://jobs.ashbyhq.com/localstack/cdacf25f-bffe-4e61-914b-a2353b620fb4",
     "workable" => "https://apply.workable.com/huspy/j/ABC123/",
-    "smartrecruiters" => "https://jobs.smartrecruiters.com/Devoteam1/743999-consultant",
+    "smartrecruiters" => "https://api.smartrecruiters.com/v1/companies/ARHS/postings/744000096592385",
     "recruitee" => "https://acme-corp.recruitee.com/o/some-job"
   }
 
@@ -47,6 +47,19 @@ defmodule LS.Verification.HRBoardsTest do
     {_, re} = List.keyfind(HRBoards.patterns(), "greenhouse", 0)
     assert Regex.run(re, "https://boards.greenhouse.io/airbnb/jobs/1", capture: :all_but_first) == ["airbnb"]
     assert Regex.run(re, "https://job-boards.greenhouse.io/x1/jobs/2", capture: :all_but_first) == ["x1"]
+  end
+
+  test "smartrecruiters pattern handles both the public-ad and API URL shapes" do
+    # 2026-08-26: all 1,077 stored smartrecruiters URLs were API refs
+    # (api.smartrecruiters.com/v1/companies/...); the jobs.-only pattern
+    # harvested 1 phantom slug from the whole set.
+    {_, re} = List.keyfind(HRBoards.patterns(), "smartrecruiters", 0)
+
+    assert Regex.run(re, "https://jobs.smartrecruiters.com/Devoteam1/743999-x", capture: :all_but_first) ==
+             ["Devoteam1"]
+
+    assert Regex.run(re, "https://api.smartrecruiters.com/v1/companies/ARHS/postings/7", capture: :all_but_first) ==
+             ["ARHS"]
   end
 
   test "WTTJ slug extraction from rendered markup, minus the house accounts" do

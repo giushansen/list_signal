@@ -33,7 +33,9 @@ defmodule LS.Verification.HRBoards do
     {"lever", ~r{jobs\.(?:eu\.)?lever\.co/([a-zA-Z0-9_-]+)/}},
     {"ashby", ~r{jobs\.ashbyhq\.com/([a-zA-Z0-9_-]+)/}},
     {"workable", ~r{apply\.workable\.com/([a-z0-9-]+)/}i},
-    {"smartrecruiters", ~r{jobs\.smartrecruiters\.com/([A-Za-z0-9]+)/}},
+    # Two shapes in the wild: jobs.smartrecruiters.com/{Co}/{id} public ads
+    # and api.smartrecruiters.com/v1/companies/{Co}/postings/{id} API refs.
+    {"smartrecruiters", ~r{smartrecruiters\.com/(?:v1/companies/)?([A-Za-z0-9]+)/}},
     {"recruitee", ~r{https?://([a-z0-9-]+)\.recruitee\.com}i}
   ]
 
@@ -78,7 +80,7 @@ defmodule LS.Verification.HRBoards do
       -- Reserved path segments, not company slugs: workable shortlinks are
       -- /j/XXXX, greenhouse iframes are /embed/... Harvesting them would
       -- create phantom boards that 404 forever.
-      AND slug NOT IN ('j', 'jobs', 'embed', 'api', 'boards', 'careers')
+      AND slug NOT IN ('j', 'jobs', 'embed', 'api', 'boards', 'careers', 'v1')
       AND (('#{platform}', slug) NOT IN (SELECT platform, slug FROM hr_boards))
     GROUP BY slug
     SETTINGS max_threads = 2, max_bytes_before_external_group_by = 1000000000
@@ -89,7 +91,7 @@ defmodule LS.Verification.HRBoards do
   defp ch_pattern("lever"), do: "lever\\\\.co/([a-zA-Z0-9_-]+)/"
   defp ch_pattern("ashby"), do: "ashbyhq\\\\.com/([a-zA-Z0-9_-]+)/"
   defp ch_pattern("workable"), do: "workable\\\\.com/([a-z0-9-]+)/"
-  defp ch_pattern("smartrecruiters"), do: "smartrecruiters\\\\.com/([A-Za-z0-9]+)/"
+  defp ch_pattern("smartrecruiters"), do: "smartrecruiters\\\\.com/(?:v1/companies/)?([A-Za-z0-9]+)/"
   defp ch_pattern("recruitee"), do: "//([a-z0-9-]+)\\\\.recruitee\\\\.com"
 
   defp platform_host("greenhouse"), do: "greenhouse.io"
@@ -129,7 +131,7 @@ defmodule LS.Verification.HRBoards do
     Clickhouse.query_raw("""
     SELECT platform, slug, domain FROM hr_boards FINAL
     WHERE last_synced < now() - INTERVAL #{@resync_after_days} DAY
-      AND platform IN ('greenhouse', 'lever', 'ashby', 'workable', 'recruitee')
+      AND platform IN ('greenhouse', 'lever', 'ashby', 'workable', 'recruitee', 'smartrecruiters')
     ORDER BY last_synced ASC
     LIMIT #{limit}
     """)
@@ -172,6 +174,13 @@ defmodule LS.Verification.HRBoards do
 
   defp fetch_board("recruitee", slug),
     do: get_jobs("https://#{slug}.recruitee.com/api/offers/", &parse_recruitee/1)
+
+  defp fetch_board("smartrecruiters", slug),
+    do:
+      get_jobs(
+        "https://api.smartrecruiters.com/v1/companies/#{slug}/postings?limit=100",
+        &parse_smartrecruiters/1
+      )
 
   defp fetch_board(_other, _slug), do: :error
 
@@ -222,6 +231,17 @@ defmodule LS.Verification.HRBoards do
   end
 
   defp parse_recruitee(_), do: []
+
+  defp parse_smartrecruiters(%{"content" => posts}) when is_list(posts) do
+    for p <- posts,
+        do: %{
+          title: p["name"],
+          location: get_in(p, ["location", "city"]),
+          url: "https://jobs.smartrecruiters.com/#{get_in(p, ["company", "identifier"])}/#{p["id"]}"
+        }
+  end
+
+  defp parse_smartrecruiters(_), do: []
 
   # ── Persist ──────────────────────────────────────────────────────────────
 
