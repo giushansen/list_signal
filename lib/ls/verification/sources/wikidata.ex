@@ -258,6 +258,7 @@ defmodule LS.Verification.Sources.Wikidata do
     unit = r["unit"] || ""
     y = year(r["date"])
     raw = String.trim("#{amount} #{unit} #{y}")
+    # y is nil unless it is exactly four digits (see year/1), so this cannot raise.
     recent? = is_binary(y) and String.to_integer(y) >= today.year - @max_age_years
 
     case {Float.parse(to_string(amount)), Map.get(@usd_rates, unit)} do
@@ -275,8 +276,16 @@ defmodule LS.Verification.Sources.Wikidata do
     end
   end
 
-  defp year(nil), do: nil
-  defp year(<<y::binary-size(4), _::binary>>), do: y
+  # Wikidata dates are third-party and NOT always ISO: the SPARQL endpoint also
+  # returns "unknown value", "+2021-01-01T00:00:00Z" and other shapes. Taking
+  # the first four characters blindly and calling String.to_integer/1 on them
+  # raised ArgumentError ("not a textual representation") and killed the whole
+  # wikidata verification run after 22s on 2026-08-26. Only a genuine 4-digit
+  # year is a year.
+  defp year(<<y::binary-size(4), _::binary>>) when is_binary(y) do
+    if y =~ ~r/^\d{4}$/, do: y, else: nil
+  end
+
   defp year(_), do: nil
 
   defp nil_if_empty(nil), do: nil

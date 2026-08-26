@@ -47,6 +47,41 @@ defmodule LS.Verification.SourcesTest do
       assert {100.0, _} = Wikidata.revenue_usd(%{"rev" => "100", "unit" => "Q4917", "date" => "2024-01-01T00:00:00Z"}, ~D[2026-08-19])
     end
 
+    test "a non-ISO date never crashes the run (2026-08-26: it killed wikidata after 22s)" do
+      # The SPARQL endpoint returns more than clean ISO dates. year/1 used to
+      # take the first four characters blindly and String.to_integer/1 raised
+      # ArgumentError "not a textual representation", failing the WHOLE source
+      # run — so ~112k wikidata facts stopped refreshing while the pipeline
+      # reported success everywhere else.
+      hostile = [
+        "unknown value",
+        "+2021-01-01T00:00:00Z",
+        "",
+        "20",
+        "n/a",
+        "----------",
+        "١٩٩٩-01-01",
+        <<0, 1, 2, 3, 4>>,
+        String.duplicate("9", 5_000)
+      ]
+
+      for date <- hostile do
+        row = %{"rev" => "100", "unit" => "Q4917", "date" => date}
+
+        assert {value, raw} = Wikidata.revenue_usd(row, ~D[2026-08-19])
+        assert is_nil(value) or is_float(value)
+        assert is_binary(raw)
+      end
+    end
+
+    test "a real four-digit year still parses, so the hardening did not disable the check" do
+      assert {100.0, _} =
+               Wikidata.revenue_usd(
+                 %{"rev" => "100", "unit" => "Q4917", "date" => "2024-06-01T00:00:00Z"},
+                 ~D[2026-08-19]
+               )
+    end
+
     test "hostile: no website, garbage amounts, negative, absurd magnitude → dropped or no USD" do
       assert Wikidata.build_records([%{"item" => "Q1", "website" => "not a url", "rev" => "1"}], [], []) == []
       assert Wikidata.revenue_usd(%{"rev" => "abc", "unit" => "Q4917"}) == {nil, "abc Q4917"}
