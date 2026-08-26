@@ -43,6 +43,15 @@ defmodule LS.Verification.HRBoardsTest do
     assert sql =~ "'embed'"
   end
 
+  test "aggregator referrers never claim a board (fan-out guard in harvest)" do
+    # A careers page embeds its own board; a job aggregator references many.
+    # Without this guard, any(domain) can attribute a company's board to the
+    # aggregator, and every sync then writes that company's jobs under the
+    # aggregator's domain.
+    sql = HRBoards.harvest_sql_for_test("greenhouse")
+    assert sql =~ "fanout <= 2"
+  end
+
   test "greenhouse pattern handles both boards. and job-boards. hosts" do
     {_, re} = List.keyfind(HRBoards.patterns(), "greenhouse", 0)
     assert Regex.run(re, "https://boards.greenhouse.io/airbnb/jobs/1", capture: :all_but_first) == ["airbnb"]

@@ -65,6 +65,14 @@ defmodule LS.Verification.HRBoards do
   # INSERT-SELECT entirely inside ClickHouse: no rows travel through the BEAM.
   # ReplacingMergeTree(last_synced) means re-harvesting an existing slug with
   # last_synced=0 loses to any synced row at merge time, so re-runs are free.
+  #
+  # The fan-out guard: a company's careers page embeds its own board, so a
+  # legitimate referrer maps to 1 (rarely 2) slugs per platform. Job
+  # aggregators reference dozens; without the guard `any(domain)` can hand a
+  # company's board to the aggregator that linked it, and every later sync
+  # writes that company's jobs under the aggregator's domain (measured
+  # 2026-08-26: 415 of 416 greenhouse referrers were 1:1 — the guard costs
+  # nothing and blocks the pollution as biz_career grows).
   defp harvest_sql(platform) do
     re = ch_pattern(platform)
 
@@ -77,6 +85,14 @@ defmodule LS.Verification.HRBoards do
       WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
     )
     WHERE slug != ''
+      AND domain IN (
+        SELECT domain FROM (
+          SELECT domain, uniqExact(extract(url, '#{re}')) AS fanout
+          FROM biz_career
+          WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
+          GROUP BY domain
+        ) WHERE fanout <= 2
+      )
       -- Reserved path segments, not company slugs: workable shortlinks are
       -- /j/XXXX, greenhouse iframes are /embed/... Harvesting them would
       -- create phantom boards that 404 forever.
