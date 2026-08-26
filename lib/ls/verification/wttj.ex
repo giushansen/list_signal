@@ -10,10 +10,12 @@ defmodule LS.Verification.WTTJ do
 
   The site is a JS SPA behind CloudFront that 403s bot user agents and serves
   empty shells to plain HTTP, so pages go through a camoufox sidecar with
-  `settle_ms` (hydration wait). Renders are the scarcest resource in the
-  fleet: the pager takes a strict per-run page budget and the whole directory
-  (~1.5k pages) spreads over weeks. Politeness is the point, not a limit to
-  engineer around.
+  `settle_ms` (hydration wait). The directory is result-capped (~22 pages per
+  query), so the sweep walks the unfiltered listing plus one query per letter
+  to open fresh result windows. Renders are the scarcest resource in the
+  fleet: the pager takes a strict per-run page budget and a full sweep
+  spreads over ~2 weeks. Politeness is the point, not a limit to engineer
+  around.
 
   Company → website domain resolves via `verification_domain_keys` (8.7M
   name keys) rather than rendering each company page; slugs that do not match
@@ -27,33 +29,43 @@ defmodule LS.Verification.WTTJ do
   @gap_ms 4_000
   @settle_ms 6_000
 
+  # The unfiltered directory is result-capped at ~22 pages (~650 companies);
+  # measured 2026-08-26: page 25+ renders only the wttj self-link. Letter
+  # queries each open their own result window with companies the unfiltered
+  # list never shows, so the sweep walks "" then a..z. One full sweep is a
+  # few hundred renders — about two weeks at the per-run budget, by design.
+  @queries [""] ++ Enum.map(?a..?z, &<<&1>>)
+
   @doc "Sidecar host:port used for renders (a worker's WireGuard address)."
   def sidecar, do: System.get_env("LS_WTTJ_SIDECAR", "10.0.0.7:8900")
 
   def ingest(pages \\ @pages_per_run) do
-    start = next_page()
-    Logger.info("[WTTJ] ingest from page #{start}, budget #{pages}")
+    {qi, page} = cursor()
+    Logger.info("[WTTJ] ingest from query #{qi} page #{page}, budget #{pages}")
 
-    Enum.reduce_while(start..(start + pages - 1), 0, fn page, acc ->
+    Enum.reduce_while(1..pages, {qi, page, 0}, fn _, {qi, page, acc} ->
       Process.sleep(@gap_ms)
 
-      case fetch_directory_page(page) do
+      case fetch_directory_page(Enum.at(@queries, qi), page) do
         {:ok, []} ->
-          Logger.info("[WTTJ] page #{page} empty — end of directory, wrapping to 1")
-          set_next_page(1)
-          {:halt, acc}
+          # End of this query's result window: move to the next query, or
+          # wrap the whole sweep back to the start.
+          next_qi = if qi + 1 < length(@queries), do: qi + 1, else: 0
+          Logger.info("[WTTJ] query #{qi} exhausted at page #{page}, moving to query #{next_qi}")
+          set_cursor(next_qi, 1)
+          {:cont, {next_qi, 1, acc}}
 
         {:ok, slugs} ->
           store_slugs(slugs)
-          set_next_page(page + 1)
-          {:cont, acc + length(slugs)}
+          set_cursor(qi, page + 1)
+          {:cont, {qi, page + 1, acc + length(slugs)}}
 
         :error ->
-          Logger.warning("[WTTJ] page #{page} failed, stopping run")
-          {:halt, acc}
+          Logger.warning("[WTTJ] query #{qi} page #{page} failed, stopping run")
+          {:halt, {qi, page, acc}}
       end
     end)
-    |> then(fn n ->
+    |> then(fn {_, _, n} ->
       resolved = resolve_domains()
       Logger.info("[WTTJ] run done: #{n} slugs seen, #{resolved} domains resolved")
       :ok
@@ -61,11 +73,13 @@ defmodule LS.Verification.WTTJ do
   end
 
   @doc false
-  def fetch_directory_page(page) do
+  def fetch_directory_page(query, page) do
+    qs = if query == "", do: "page=#{page}", else: "query=#{query}&page=#{page}"
+
     body =
       Jason.encode!(%{
         domain: "www.welcometothejungle.com",
-        path: "/fr/companies?page=#{page}",
+        path: "/fr/companies?#{qs}",
         settle_ms: @settle_ms
       })
 
@@ -144,20 +158,36 @@ defmodule LS.Verification.WTTJ do
     end
   end
 
-  defp next_page do
+  # The cursor rides in hr_boards as a synthetic row ("qi:page" in `company`):
+  # no new table for two ints. Old single-int cursors read as {0, page}.
+  defp cursor do
     case Clickhouse.query_raw(
-           "SELECT max(toInt32OrZero(company)) FROM hr_boards FINAL WHERE platform = 'wttj_cursor'"
+           "SELECT argMax(company, last_synced) FROM hr_boards FINAL WHERE platform = 'wttj_cursor'"
          ) do
-      {:ok, [[n]]} when is_integer(n) and n > 0 -> n
-      {:ok, [[n]]} when is_binary(n) -> max(String.to_integer(n), 1)
-      _ -> 1
+      {:ok, [[c]]} when is_binary(c) -> parse_cursor(c)
+      _ -> {0, 1}
     end
   end
 
-  # The cursor rides in hr_boards as a synthetic row: no new table for one int.
-  defp set_next_page(page) do
+  @doc "Parse a stored sweep cursor. Pure; hostile input degrades to the sweep start."
+  def parse_cursor(c) do
+    case String.split(to_string(c), ":") do
+      [qi, page] -> {min(to_int(qi), length(@queries) - 1), max(to_int(page), 1)}
+      [page] -> {0, max(to_int(page), 1)}
+      _ -> {0, 1}
+    end
+  end
+
+  defp set_cursor(qi, page) do
     Clickhouse.query_raw(
-      "INSERT INTO hr_boards (platform, slug, domain, company, country, last_synced) VALUES ('wttj_cursor', 'cursor', '', '#{page}', '', now())"
+      "INSERT INTO hr_boards (platform, slug, domain, company, country, last_synced) VALUES ('wttj_cursor', 'cursor', '', '#{qi}:#{page}', '', now())"
     )
+  end
+
+  defp to_int(s) do
+    case Integer.parse(to_string(s)) do
+      {n, _} when n >= 0 -> n
+      _ -> 0
+    end
   end
 end

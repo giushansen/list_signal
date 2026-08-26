@@ -61,6 +61,17 @@ defmodule LS.Verification.HRBoardsTest do
     assert WTTJ.extract_slugs(html) == ["back-market", "alan"]
   end
 
+  test "WTTJ sweep cursor survives old formats and hostile values" do
+    # The cursor is stored as a string in a ClickHouse column; a corrupt or
+    # pre-facet value must restart the sweep, never crash the scheduler.
+    assert WTTJ.parse_cursor("3:14") == {3, 14}
+    assert WTTJ.parse_cursor("14") == {0, 14}
+    assert WTTJ.parse_cursor("") == {0, 1}
+    assert WTTJ.parse_cursor("999:0") == {26, 1}
+    assert WTTJ.parse_cursor("-1:-5") == {0, 1}
+    assert WTTJ.parse_cursor("a:b:c") == {0, 1}
+  end
+
   test "a live greenhouse board syncs end to end into biz_career" do
     # Network + local ClickHouse: the whole point of the module is that the
     # public JSON really is public. Skips cleanly when CH is down.
