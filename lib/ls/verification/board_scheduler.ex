@@ -38,6 +38,7 @@ defmodule LS.Verification.BoardScheduler do
     safely(fn -> LS.Verification.HRBoards.harvest_from_careers() end)
     safely(fn -> LS.Verification.HRBoards.sync_stale() end)
     safely(fn -> LS.Verification.WTTJ.ingest() end)
+    safely(fn -> LS.Verification.WTTJ.resolve_via_profiles() end)
 
     Logger.info("[BOARDS] cycle finished in #{div(System.monotonic_time(:millisecond) - t0, 60_000)}m")
     Process.send_after(self(), :cycle, @cycle_ms)

@@ -36,7 +36,13 @@ defmodule LS.Verification.HRBoards do
     # Two shapes in the wild: jobs.smartrecruiters.com/{Co}/{id} public ads
     # and api.smartrecruiters.com/v1/companies/{Co}/postings/{id} API refs.
     {"smartrecruiters", ~r{smartrecruiters\.com/(?:v1/companies/)?([A-Za-z0-9]+)/}},
-    {"recruitee", ~r{https?://([a-z0-9-]+)\.recruitee\.com}i}
+    {"recruitee", ~r{https?://([a-z0-9-]+)\.recruitee\.com}i},
+    # Workday needs host AND site ({tenant}.wd{N} + career-site name); the
+    # slug is stored as "tenant.wdN:Site". Some URLs carry a locale segment.
+    {"workday",
+     ~r"https?://([a-z0-9-]+\.wd[0-9]+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9_-]+)/job/"},
+    {"personio", ~r{https?://([a-z0-9-]+)\.jobs\.personio\.(?:de|com)}},
+    {"breezy", ~r{https?://([a-z0-9-]+)\.breezy\.hr}}
   ]
 
   @doc "SQL patterns exposed for the contract test: every pattern must extract from a real stored URL."
@@ -74,20 +80,20 @@ defmodule LS.Verification.HRBoards do
   # 2026-08-26: 415 of 416 greenhouse referrers were 1:1 — the guard costs
   # nothing and blocks the pollution as biz_career grows).
   defp harvest_sql(platform) do
-    re = ch_pattern(platform)
+    expr = slug_expr(platform)
 
     """
     INSERT INTO hr_boards (platform, slug, domain, company, country)
     SELECT '#{platform}', slug, any(domain), '', ''
     FROM (
-      SELECT extract(url, '#{re}') AS slug, domain
+      SELECT #{expr} AS slug, domain
       FROM biz_career
       WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
     )
     WHERE slug != ''
       AND domain IN (
         SELECT domain FROM (
-          SELECT domain, uniqExact(extract(url, '#{re}')) AS fanout
+          SELECT domain, uniqExact(#{expr}) AS fanout
           FROM biz_career
           WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
           GROUP BY domain
@@ -96,12 +102,23 @@ defmodule LS.Verification.HRBoards do
       -- Reserved path segments, not company slugs: workable shortlinks are
       -- /j/XXXX, greenhouse iframes are /embed/... Harvesting them would
       -- create phantom boards that 404 forever.
-      AND slug NOT IN ('j', 'jobs', 'embed', 'api', 'boards', 'careers', 'v1')
+      AND slug NOT IN ('j', 'jobs', 'embed', 'api', 'boards', 'careers', 'v1', 'www', 'app')
       AND (('#{platform}', slug) NOT IN (SELECT platform, slug FROM hr_boards))
     GROUP BY slug
     SETTINGS max_threads = 2, max_bytes_before_external_group_by = 1000000000
     """
   end
+
+  # ClickHouse extract() returns only the first capture group, so Workday's
+  # two-part slug (host + career site) is assembled from two extracts; both
+  # must match or the slug is ''.
+  defp slug_expr("workday") do
+    host = "extract(url, 'https?://([a-z0-9-]+\\\\.wd[0-9]+)\\\\.myworkdayjobs')"
+    site = "extract(url, 'myworkdayjobs\\\\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9_-]+)/job/')"
+    "if(#{host} != '' AND #{site} != '', concat(#{host}, ':', #{site}), '')"
+  end
+
+  defp slug_expr(platform), do: "extract(url, '#{ch_pattern(platform)}')"
 
   defp ch_pattern("greenhouse"), do: "greenhouse\\\\.io/([a-z0-9_-]+)/"
   defp ch_pattern("lever"), do: "lever\\\\.co/([a-zA-Z0-9_-]+)/"
@@ -109,6 +126,8 @@ defmodule LS.Verification.HRBoards do
   defp ch_pattern("workable"), do: "workable\\\\.com/([a-z0-9-]+)/"
   defp ch_pattern("smartrecruiters"), do: "smartrecruiters\\\\.com/(?:v1/companies/)?([A-Za-z0-9]+)/"
   defp ch_pattern("recruitee"), do: "//([a-z0-9-]+)\\\\.recruitee\\\\.com"
+  defp ch_pattern("personio"), do: "//([a-z0-9-]+)\\\\.jobs\\\\.personio\\\\."
+  defp ch_pattern("breezy"), do: "//([a-z0-9-]+)\\\\.breezy\\\\.hr"
 
   defp platform_host("greenhouse"), do: "greenhouse.io"
   defp platform_host("lever"), do: "lever.co"
@@ -116,6 +135,9 @@ defmodule LS.Verification.HRBoards do
   defp platform_host("workable"), do: "workable.com"
   defp platform_host("smartrecruiters"), do: "smartrecruiters.com"
   defp platform_host("recruitee"), do: "recruitee.com"
+  defp platform_host("workday"), do: "myworkdayjobs.com"
+  defp platform_host("personio"), do: "jobs.personio."
+  defp platform_host("breezy"), do: "breezy.hr"
 
   # ── Sync: re-read known boards from the platforms' public JSON ────────────
 
@@ -147,7 +169,8 @@ defmodule LS.Verification.HRBoards do
     Clickhouse.query_raw("""
     SELECT platform, slug, domain FROM hr_boards FINAL
     WHERE last_synced < now() - INTERVAL #{@resync_after_days} DAY
-      AND platform IN ('greenhouse', 'lever', 'ashby', 'workable', 'recruitee', 'smartrecruiters')
+      AND platform IN ('greenhouse', 'lever', 'ashby', 'workable', 'recruitee',
+                       'smartrecruiters', 'workday', 'personio', 'breezy')
     ORDER BY last_synced ASC
     LIMIT #{limit}
     """)
@@ -191,13 +214,92 @@ defmodule LS.Verification.HRBoards do
   defp fetch_board("recruitee", slug),
     do: get_jobs("https://#{slug}.recruitee.com/api/offers/", &parse_recruitee/1)
 
-  # SmartRecruiters pages at 100 postings per call — the only synced API
-  # that does not return the whole board at once. Follow offsets so large
+  # SmartRecruiters pages at 100 postings per call. Follow offsets so large
   # employers are not silently truncated; 10 pages (1,000 postings) is far
   # above any board we have seen.
   defp fetch_board("smartrecruiters", slug), do: fetch_smartrecruiters(slug, 0, [], 10)
 
+  defp fetch_board("breezy", slug),
+    do: get_jobs("https://#{slug}.breezy.hr/json", &parse_breezy/1)
+
+  # Personio boards live on .de or .com depending on the account region; our
+  # stored URLs are overwhelmingly .de, so try that first.
+  defp fetch_board("personio", slug) do
+    fetch = fn tld ->
+      base = "https://#{slug}.jobs.personio.#{tld}"
+      get_jobs("#{base}/xml", &parse_personio(&1, base))
+    end
+
+    case fetch.("de") do
+      :gone -> fetch.("com")
+      other -> other
+    end
+  end
+
+  # Workday slug is "tenant.wdN:Site" (see slug_expr/1); the career-site
+  # JSON is an unauthenticated POST paged at 20.
+  defp fetch_board("workday", slug) do
+    case String.split(slug, ":") do
+      [host, site] -> fetch_workday(host, site, 0, [], 25, nil)
+      _ -> :error
+    end
+  end
+
   defp fetch_board(_other, _slug), do: :error
+
+  defp fetch_workday(_host, _site, _offset, acc, 0, _total), do: {:ok, acc}
+
+  # `total` is only populated on the first page (offset 0 → total: 82,
+  # offset 40 → total: 0 — measured on stord); carry the first page's value
+  # through the recursion or paging stops at 40.
+  defp fetch_workday(host, site, offset, acc, pages_left, total) do
+    tenant = host |> String.split(".") |> hd()
+    url = "https://#{host}.myworkdayjobs.com/wday/cxs/#{tenant}/#{site}/jobs"
+
+    resp =
+      Req.post(url,
+        json: %{limit: 20, offset: offset, searchText: ""},
+        receive_timeout: 20_000,
+        retry: false,
+        finch: LS.Finch.Bulk,
+        pool_timeout: 10_000,
+        headers: [{"user-agent", "ListSignalBot/1.0 (+https://listsignal.com)"}]
+      )
+
+    case resp do
+      {:ok, %{status: 200, body: %{"jobPostings" => posts} = body}} when is_list(posts) ->
+        total = total || body["total"] || 0
+
+        jobs =
+          for p <- posts,
+              do: %{
+                title: p["title"],
+                location: p["locationsText"],
+                url: "https://#{host}.myworkdayjobs.com/#{site}#{p["externalPath"]}"
+              }
+
+        acc = acc ++ jobs
+
+        if length(acc) < total and posts != [] do
+          Process.sleep(@gap_ms)
+          fetch_workday(host, site, offset + 20, acc, pages_left - 1, total)
+        else
+          {:ok, acc}
+        end
+
+      {:ok, %{status: s}} when s in [404, 410] and acc == [] ->
+        :gone
+
+      _ when acc == [] ->
+        :error
+
+      # A later page failing must not throw away pages already fetched.
+      _ ->
+        {:ok, acc}
+    end
+  rescue
+    _ -> if acc == [], do: :error, else: {:ok, acc}
+  end
 
   defp fetch_smartrecruiters(_slug, _offset, acc, 0), do: {:ok, acc}
 
@@ -282,6 +384,39 @@ defmodule LS.Verification.HRBoards do
   end
 
   defp parse_smartrecruiters(_), do: []
+
+  defp parse_breezy(positions) when is_list(positions) do
+    for p <- positions,
+        do: %{title: p["name"], location: get_in(p, ["location", "name"]), url: p["url"]}
+  end
+
+  defp parse_breezy(_), do: []
+
+  # Personio serves XML, not JSON; the shape is flat enough that a scan over
+  # <position> blocks beats pulling in an XML library. Values may be wrapped
+  # in CDATA. Exposed for the parser test.
+  @doc false
+  def parse_personio(xml, base) when is_binary(xml) do
+    for [block] <- Regex.scan(~r{<position>(.*?)</position>}s, xml, capture: :all_but_first),
+        (id = personio_field(block, "id")) != "" do
+      %{
+        title: personio_field(block, "name"),
+        location: personio_field(block, "office"),
+        url: "#{base}/job/#{id}"
+      }
+    end
+  end
+
+  def parse_personio(_, _base), do: []
+
+  defp personio_field(block, tag) do
+    case Regex.run(~r{<#{tag}>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</#{tag}>}s, block,
+           capture: :all_but_first
+         ) do
+      [v] -> String.trim(v)
+      _ -> ""
+    end
+  end
 
   # ── Persist ──────────────────────────────────────────────────────────────
 

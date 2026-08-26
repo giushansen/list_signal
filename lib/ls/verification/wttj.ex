@@ -76,10 +76,17 @@ defmodule LS.Verification.WTTJ do
   def fetch_directory_page(query, page) do
     qs = if query == "", do: "page=#{page}", else: "query=#{query}&page=#{page}"
 
+    case render("/fr/companies?#{qs}") do
+      {:ok, html} -> {:ok, extract_slugs(html)}
+      :error -> :error
+    end
+  end
+
+  defp render(path) do
     body =
       Jason.encode!(%{
         domain: "www.welcometothejungle.com",
-        path: "/fr/companies?#{qs}",
+        path: path,
         settle_ms: @settle_ms
       })
 
@@ -92,10 +99,10 @@ defmodule LS.Verification.WTTJ do
            pool_timeout: 30_000
          ) do
       {:ok, %{status: 200, body: %{"html" => html}}} when is_binary(html) ->
-        {:ok, extract_slugs(html)}
+        {:ok, html}
 
       other ->
-        Logger.debug("[WTTJ] render failed: #{inspect(other) |> String.slice(0, 120)}")
+        Logger.debug("[WTTJ] render #{path} failed: #{inspect(other) |> String.slice(0, 120)}")
         :error
     end
   rescue
@@ -109,6 +116,92 @@ defmodule LS.Verification.WTTJ do
     |> List.flatten()
     |> Enum.uniq()
     |> Enum.reject(&(&1 in ["wttj", "welcome-to-the-jungle"]))
+  end
+
+  # Hosts that appear as external links on every profile but are never the
+  # company's website.
+  @not_a_website ~w(
+    welcometothejungle wttj axept.io googleapis maps.google linkedin.com
+    youtube.com twitter.com x.com facebook.com instagram.com tiktok.com
+    glassdoor apple.com play.google medium.com
+  )
+
+  @doc """
+  The company's website from a rendered profile page, as a bare domain.
+  Measured 2026-08-26: the site link is the first external href that is not
+  a social/utility host (e.g. `https://www.abridge.com` on /fr/companies/abridge).
+  Pure; returns nil when no candidate survives.
+  """
+  def extract_website(html) do
+    ~r{href="(https?://[^"]+)"}
+    |> Regex.scan(html, capture: :all_but_first)
+    |> List.flatten()
+    |> Enum.reject(fn url -> Enum.any?(@not_a_website, &String.contains?(url, &1)) end)
+    |> Enum.map(&URI.parse(&1).host)
+    |> Enum.find(&(is_binary(&1) and String.contains?(&1, ".")))
+    |> case do
+      nil -> nil
+      host -> String.replace_prefix(host, "www.", "")
+    end
+  end
+
+  @doc """
+  Resolve unresolved slugs by rendering their profile pages (the profile
+  shows the company website — registry name keys only match ~5% because
+  legal names differ from brand names). One render per slug, so the budget
+  is deliberately small; failures are marked (job_count = -3) and not
+  retried, keeping the sweep from burning renders on dead profiles.
+  """
+  def resolve_via_profiles(limit \\ 20) do
+    case Clickhouse.query_raw("""
+         SELECT slug FROM hr_boards FINAL
+         WHERE platform = 'wttj' AND domain = '' AND job_count != -3
+         ORDER BY first_seen ASC LIMIT #{limit}
+         """) do
+      {:ok, rows} ->
+        n =
+          Enum.count(rows, fn [slug] ->
+            Process.sleep(@gap_ms)
+            resolve_profile(slug)
+          end)
+
+        Logger.info("[WTTJ] profile pass: #{n}/#{length(rows)} slugs resolved to domains")
+        :ok
+
+      err ->
+        err
+    end
+  end
+
+  defp resolve_profile(slug) do
+    case render("/fr/companies/#{slug}") do
+      {:ok, html} ->
+        case extract_website(html) do
+          nil ->
+            mark_unresolvable(slug)
+            false
+
+          domain ->
+            Clickhouse.query_raw("""
+            INSERT INTO hr_boards (platform, slug, domain, company, country, first_seen, last_synced, job_count)
+            SELECT platform, slug, '#{Clickhouse.escape_public(domain)}', company, country, first_seen, now(), job_count
+            FROM hr_boards FINAL WHERE platform = 'wttj' AND slug = '#{Clickhouse.escape_public(slug)}'
+            """)
+
+            true
+        end
+
+      :error ->
+        false
+    end
+  end
+
+  defp mark_unresolvable(slug) do
+    Clickhouse.query_raw("""
+    INSERT INTO hr_boards (platform, slug, domain, company, country, first_seen, last_synced, job_count)
+    SELECT platform, slug, domain, company, country, first_seen, now(), -3
+    FROM hr_boards FINAL WHERE platform = 'wttj' AND slug = '#{Clickhouse.escape_public(slug)}'
+    """)
   end
 
   defp store_slugs(slugs) do

@@ -20,7 +20,11 @@ defmodule LS.Verification.HRBoardsTest do
     "ashby" => "https://jobs.ashbyhq.com/localstack/cdacf25f-bffe-4e61-914b-a2353b620fb4",
     "workable" => "https://apply.workable.com/huspy/j/ABC123/",
     "smartrecruiters" => "https://api.smartrecruiters.com/v1/companies/ARHS/postings/744000096592385",
-    "recruitee" => "https://acme-corp.recruitee.com/o/some-job"
+    "recruitee" => "https://acme-corp.recruitee.com/o/some-job",
+    "workday" =>
+      "https://stord.wd503.myworkdayjobs.com/Stord_External_Career/job/Remote-United-States/Principal-Technical-Program-Manager_JR102641",
+    "personio" => "https://academia-holding-gmbh.jobs.personio.de/job/2736512?language=de",
+    "breezy" => "https://accrete-ai.breezy.hr/p/00aeaa3ba280-backend-developer"
   }
 
   test "every platform pattern extracts a slug from its real stored URL shape" do
@@ -81,6 +85,47 @@ defmodule LS.Verification.HRBoardsTest do
     """
 
     assert WTTJ.extract_slugs(html) == ["back-market", "alan"]
+  end
+
+  test "workday pattern captures host and site, with and without locale segment" do
+    {_, re} = List.keyfind(HRBoards.patterns(), "workday", 0)
+
+    assert Regex.run(re, "https://stord.wd503.myworkdayjobs.com/Stord_External_Career/job/X/Y",
+             capture: :all_but_first
+           ) == ["stord.wd503", "Stord_External_Career"]
+
+    assert Regex.run(re, "https://acme.wd1.myworkdayjobs.com/en-US/Careers/job/X/Y",
+             capture: :all_but_first
+           ) == ["acme.wd1", "Careers"]
+  end
+
+  test "personio XML parses positions with and without CDATA, drops id-less blocks" do
+    xml = """
+    <workzag-jobs>
+    <position><id>123</id><office>Munich</office><name><![CDATA[Senior Dev]]></name></position>
+    <position><id>456</id><office></office><name>Accountant</name></position>
+    <position><office>Ghost</office><name>No id</name></position>
+    </workzag-jobs>
+    """
+
+    assert HRBoards.parse_personio(xml, "https://x.jobs.personio.de") == [
+             %{title: "Senior Dev", location: "Munich", url: "https://x.jobs.personio.de/job/123"},
+             %{title: "Accountant", location: "", url: "https://x.jobs.personio.de/job/456"}
+           ]
+  end
+
+  test "WTTJ profile website extraction skips social and utility links" do
+    html = """
+    <a href="https://fonts.axept.io/x.css">f</a>
+    <a href="http://maps.google.com/?q=Paris">map</a>
+    <a href="https://www.linkedin.com/company/acme">li</a>
+    <a href="https://www.acme-corp.fr">site</a>
+    <a href="https://twitter.com/acme">tw</a>
+    """
+
+    assert WTTJ.extract_website(html) == "acme-corp.fr"
+    assert WTTJ.extract_website("<a href=\"https://www.youtube.com/c/x\">y</a>") == nil
+    assert WTTJ.extract_website("") == nil
   end
 
   test "WTTJ sweep cursor survives old formats and hostile values" do
