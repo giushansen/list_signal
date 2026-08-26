@@ -384,7 +384,14 @@ defmodule LS.HTTP.PageExtractor do
       #=> [contact: "/contact", pricing: "/pricing"]
   """
   @spec pages_to_visit(String.t() | nil, [atom()]) :: [{atom(), String.t()}]
-  def pages_to_visit(pages, kinds \\ [:contact, :legal, :about, :pricing, :career, :login])
+  # :login is deliberately ABSENT from the default. The enrichment lane fetched
+  # it for months and never read the HTML — `html_of(visited, :login)` is not
+  # called anywhere — so it was one wasted request per domain. Login-page tech
+  # detection genuinely happens, but in DISCOVERY
+  # (`LS.Pipeline.enhance_with_secondary_pages/3`), which fetches /login and
+  # unions the result into `http_tech`. Removing it here pays for most of the
+  # cost of adding :legal and :about (2026-08-26).
+  def pages_to_visit(pages, kinds \\ [:contact, :legal, :about, :pricing, :career])
 
   def pages_to_visit(pages, kinds) when is_binary(pages) and pages != "" do
     pages

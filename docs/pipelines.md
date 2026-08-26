@@ -309,3 +309,77 @@ that needs "this business's own email" must filter to the domain itself.**
 `biz_contact.source_page` now records which kind of page each address came
 from, so that judgement is possible downstream; it used to be hardcoded
 `"contact"` for every row.
+
+## Secondary-page fetching — the funnel (2026-08-26)
+
+Measured on 300 domains through the real `LS.HTTP.Client` (production jitter
+and politeness limiter), because until this release **nothing recorded
+per-page outcomes**: `Enrichment.Agent.fetch_page/3` collapsed every failure
+into `%{html: nil, source: "failed"}`.
+
+| Step | Rate |
+|---|---:|
+| DNS resolved | 99.3% |
+| Homepage fetch OK | 95.7% |
+| Secondary pages OK | 76.2% |
+
+By position: 78.3% / 75.3% / 73.8% for pages 2/3/4 — about 1.5 points lost per
+extra page, a slope rather than a cliff — and **zero `:rate_limited` at any
+depth**. The politeness limiter is not the constraint; going deeper is safe.
+
+### The cause: a redirect follower that kept the old path
+
+`LS.HTTP.Client.resolve_redirect/3` now resolves the `Location` header against
+the URL just requested and carries the resulting **host and path**. It used to
+switch host but re-send the ORIGINAL path, and ignore relative `Location`
+headers entirely. The commonest redirect on the web is a trailing slash on the
+same host (`/contact` → `/contact/`), so we re-requested `/contact`, got the
+same 301, and burned every hop:
+
+| Failure | Share of secondary-page failures |
+|---|---:|
+| `too_many_redirects` | 49.5% |
+| 404 (stale recorded path) | 24.2% |
+| raw 301/307/308 returned as content | 18.7% |
+| timeouts | 4.4% |
+| 4xx/5xx | 2.7% |
+
+**~68% of failures were that one line.** The homepage was largely spared
+because redirecting `/` to `/` on a new host happens to be correct — which is
+why this hid for so long behind a healthy-looking 95.7%.
+
+### `biz_page_fetch` — so the next one is a query
+
+One row per attempted fetch, homepage included: `domain`, `page_kind`, `path`,
+`outcome` (`ok` / `thin` / `http_error` / `rate_limited` / `redirect_loop` /
+`timeout` / `error`), `status`, `elapsed_ms`. 90-day TTL. The funnel above is
+now a `GROUP BY page_kind, outcome` instead of a hand-run probe.
+
+### `/login` is no longer fetched by enrichment
+
+It was in `pages_to_visit/2`'s default for months and `html_of(visited, :login)`
+is called **nowhere** — one wasted request per enriched domain. Login-page tech
+detection is real but happens in DISCOVERY
+(`LS.Pipeline.enhance_with_secondary_pages/3`, which fetches `/login` and
+`/pricing` and unions the result into `http_tech`). Dropping it here pays for
+most of the cost of adding `:legal` and `:about`.
+
+Tech detection coverage, for the record: **97.1%** of live non-junk domains
+carry some `http_tech` and **54.9%** carry an identifiable backend or CMS
+(WordPress 9.24M, PHP 4.80M, Apache 4.92M, Nginx 4.56M, WooCommerce 2.80M).
+Session-cookie signatures are the most reliable backend tell and now also cover
+Symfony, CakePHP, Flask, FastAPI, Phoenix, PrestaShop, Magento, TYPO3, Odoo and
+Strapi.
+
+### `biz_contact.on_domain`
+
+Imprint pages are legally required to name a contact and routinely name someone
+else's — the site's agency, its host, or a German statutory arbitration board
+(`schlichtungsstelle@s-d-r.org` is boilerplate). On German business domains,
+40.6% yield an address from a second page but only **28.1%** yield one on the
+business's own domain.
+
+The flag marks them; it does **not** filter. An off-domain address is real
+signal — the agency relationship is itself sellable, and for a tiny business a
+freemail address is often the only reachable human. Any buyer-facing surface
+that promises "this business's email" must filter `on_domain = 1`.

@@ -27,8 +27,16 @@ defmodule LS.Cluster.EnrichmentWriter do
   def write([]), do: :ok
 
   def write(results) do
-    insert("biz_contact", ~w(domain email source_page seen_at),
+    insert("biz_contact", ~w(domain email source_page on_domain seen_at),
       Enum.flat_map(results, & &1[:contacts] || []))
+
+    # One row per attempted page fetch, homepage included (migration 016).
+    # Before this the enrichment funnel was unobservable: every failure became
+    # `%{html: nil, source: "failed"}` and nothing was stored, so the redirect
+    # bug that cost 68% of secondary-page failures could only be found by
+    # re-crawling a sample by hand.
+    insert("biz_page_fetch", ~w(domain page_kind path outcome status elapsed_ms seen_at),
+      Enum.flat_map(results, & &1[:page_fetches] || []))
 
     # The agent stamps :seen_at on every job row (crawl time). The put_new is
     # only a guard against an older agent still in flight during a rolling

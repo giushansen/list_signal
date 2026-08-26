@@ -164,7 +164,7 @@ defmodule LS.HTTP.Client do
 
     case Mint.HTTP.request(conn, "GET", path, headers, nil) do
       {:ok, conn, request_ref} ->
-        receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes)
+        receive_response(conn, domain, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes)
 
       {:error, _conn, error} ->
         reason = format_error(error)
@@ -179,7 +179,7 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp receive_response(conn, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes) do
+  defp receive_response(conn, domain, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes) do
     # Start receive timeout
     receive_deadline = System.monotonic_time(:millisecond) + recv_timeout
 
@@ -215,13 +215,14 @@ defmodule LS.HTTP.Client do
         if response.status in [301, 302, 303, 307, 308] do
           case get_redirect_location(response.headers) do
             {:ok, location} when is_binary(location) ->
-              # Follow redirect
-              case URI.parse(location) do
-                %URI{host: new_host} when is_binary(new_host) and new_host != "" ->
-                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1, path, recv_timeout, max_bytes)
-                _ ->
+              case resolve_redirect(domain, path, location) do
+                {:ok, new_host, new_path} ->
+                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1, new_path, recv_timeout, max_bytes)
+
+                :stop ->
                   {:ok, %{response | elapsed_ms: elapsed_ms}}
               end
+
             _ ->
               {:ok, %{response | elapsed_ms: elapsed_ms}}
           end
@@ -340,6 +341,61 @@ defmodule LS.HTTP.Client do
       {"location", location} -> {:ok, location}
       _ -> {:error, :no_location}
     end
+  end
+
+  @doc false
+  # Resolve a Location header against the URL we just requested, returning the
+  # host AND path to fetch next.
+  #
+  # INCIDENT 2026-08-26. This used to switch to the redirect's host but re-send
+  # the ORIGINAL path, and ignore relative Location headers entirely. The
+  # commonest redirect on the web is a trailing slash on the same host —
+  # `/contact` -> `/contact/` — so we re-requested `/contact`, got the same 301
+  # back, and burned all @max_redirects hops before giving up. Measured over
+  # 300 domains through the real client: secondary pages (contact, pricing,
+  # login, career) succeeded only 76.2% of the time, and 68% of those failures
+  # were this bug — 49.5% `too_many_redirects` plus 18.7% raw 3xx returned as
+  # if they were content. The homepage was largely spared because redirecting
+  # "/" to "/" on a new host happens to be correct.
+  #
+  # Exposed (via @doc false) so the rule can be tested without a network.
+  def resolve_redirect(current_host, current_path, location) do
+    case URI.parse(location) do
+      # Absolute URL: take its host and its path.
+      %URI{host: host, path: loc_path, query: q} when is_binary(host) and host != "" ->
+        {:ok, host, path_with_query(loc_path, q)}
+
+      # Relative URL: same host, resolve the path against the current one.
+      %URI{host: nil, path: loc_path, query: q} when is_binary(loc_path) and loc_path != "" ->
+        {:ok, current_host, path_with_query(absolute_path(current_path, loc_path), q)}
+
+      # A Location with neither host nor path (bare "?x=1" or "#frag") tells us
+      # nothing new — following it would loop on the same URL.
+      _ ->
+        :stop
+    end
+  rescue
+    _ -> :stop
+  end
+
+  defp path_with_query(nil, q), do: path_with_query("/", q)
+  defp path_with_query("", q), do: path_with_query("/", q)
+  defp path_with_query(path, nil), do: path
+  defp path_with_query(path, ""), do: path
+  defp path_with_query(path, q), do: path <> "?" <> q
+
+  # "/a/b" + "/c"  -> "/c"      (root-relative)
+  # "/a/b" + "c"   -> "/a/c"    (document-relative)
+  defp absolute_path(_current, "/" <> _ = loc_path), do: loc_path
+
+  defp absolute_path(current, loc_path) do
+    base =
+      current
+      |> String.split("?", parts: 2)
+      |> hd()
+      |> Path.dirname()
+
+    Path.join(base, loc_path)
   end
 
   defp format_error(%Mint.TransportError{reason: reason}), do: "transport:#{inspect(reason)}"

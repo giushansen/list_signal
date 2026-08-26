@@ -121,7 +121,7 @@ defmodule LS.Enrichment.Agent do
     visited =
       Enum.map(pages, fn {kind, path} ->
         Process.sleep(@page_jitter_base_ms + :rand.uniform(@page_jitter_rand_ms))
-        {kind, fetch_page(domain, ip, path)}
+        {kind, fetch_page(domain, ip, path) |> Map.put(:path, path)}
       end)
 
     careers_html = html_of(visited, :career)
@@ -140,6 +140,7 @@ defmodule LS.Enrichment.Agent do
       domain: domain,
       enriched_at: now(),
       contacts: contacts(visited, domain),
+      page_fetches: page_fetches(home, visited, domain),
       # seen_at = crawl time, exactly like contacts. posted_at is NOT a
       # substitute: HTML-scraped jobs have no posted date, and an empty string
       # in the DateTime column killed the whole biz_career insert batch.
@@ -161,7 +162,7 @@ defmodule LS.Enrichment.Agent do
     e ->
       Logger.warning("[ENRICH] #{item[:domain]} failed: #{Exception.message(e)}")
       %{domain: item[:domain], contacts: [], jobs: [], pricing: [],
-        products: [], collections: [], summary: %{}}
+        products: [], collections: [], page_fetches: [], summary: %{}}
   end
 
   # ── page fetching ──────────────────────────────────────────────────────────
@@ -244,16 +245,73 @@ defmodule LS.Enrichment.Agent do
   # Secondary pages are read for text only, never measured — so they are always
   # plain HTTP. No browser fallback: these pages are optional extras, and
   # spending a scarce browser slot on one would starve a homepage render.
+  # Every failure used to collapse into `%{html: nil, source: "failed"}` — no
+  # status, no error, nothing recorded anywhere. "How often does a contact-page
+  # fetch actually work?" was then unanswerable without re-crawling a sample by
+  # hand, which is the only reason the redirect bug (68% of secondary-page
+  # failures) was ever found. The outcome now rides along on the page map and
+  # is written to biz_page_fetch, so the next one is a query instead of a probe.
   defp fetch_page(domain, ip, path) do
     case Client.fetch(domain, ip,
            path: path, timeout: @page_timeout, politeness_retries: 3) do
       {:ok, %{status: s, body: body} = resp} when s in 200..399 and byte_size(body) > 500 ->
-        %{html: body, perf: %{}, source: "http", elapsed_ms: resp[:elapsed_ms]}
+        %{html: body, perf: %{}, source: "http", elapsed_ms: resp[:elapsed_ms],
+          outcome: "ok", status: s}
 
-      _ ->
-        %{html: nil, perf: %{}, source: "failed"}
+      {:ok, %{status: s} = resp} when s in 200..399 ->
+        # 2xx/3xx with a body too small to be a page: usually an unfollowed
+        # redirect or an empty shell, NOT content. Distinguished from a real
+        # error so the two can be counted apart.
+        %{html: nil, perf: %{}, source: "failed", outcome: "thin", status: s,
+          elapsed_ms: resp[:elapsed_ms]}
+
+      {:ok, %{status: s} = resp} ->
+        %{html: nil, perf: %{}, source: "failed", outcome: "http_error", status: s,
+          elapsed_ms: resp[:elapsed_ms]}
+
+      other ->
+        %{html: nil, perf: %{}, source: "failed", outcome: error_outcome(other), status: 0}
     end
   end
+
+  defp error_outcome({:error, _msg, :rate_limited}), do: "rate_limited"
+  defp error_outcome({:error, _msg, :too_many_redirects}), do: "redirect_loop"
+  defp error_outcome({:error, "rate_limited", _}), do: "rate_limited"
+  defp error_outcome({:error, "too_many_redirects", _}), do: "redirect_loop"
+  defp error_outcome({:error, msg}) when is_binary(msg), do: classify_error(msg)
+  defp error_outcome({:error, msg, _}) when is_binary(msg), do: classify_error(msg)
+  defp error_outcome(_), do: "error"
+
+  defp classify_error(msg) do
+    cond do
+      msg =~ "timeout" -> "timeout"
+      msg =~ "rate_limited" -> "rate_limited"
+      msg =~ "redirect" -> "redirect_loop"
+      true -> "error"
+    end
+  end
+
+  # One row per attempted fetch, homepage included, so the funnel is queryable:
+  # how many domains got a homepage, how many got each secondary page, and why
+  # the rest did not.
+  defp page_fetches(home, visited, domain) do
+    rows =
+      [{:home, "/", home} | Enum.map(visited, fn {kind, page} -> {kind, path_of(page), page} end)]
+
+    Enum.map(rows, fn {kind, path, page} ->
+      %{
+        domain: domain,
+        page_kind: to_string(kind),
+        path: path || "",
+        outcome: page[:outcome] || if(page[:html], do: "ok", else: "error"),
+        status: page[:status] || 0,
+        elapsed_ms: page[:elapsed_ms] || 0,
+        seen_at: now()
+      }
+    end)
+  end
+
+  defp path_of(page), do: page[:path]
 
   defp html_of(visited, kind) do
     case List.keyfind(visited, kind, 0) do
@@ -293,9 +351,48 @@ defmodule LS.Enrichment.Agent do
     |> Enum.uniq_by(fn {email, _kind} -> email end)
     |> Enum.take(20)
     |> Enum.map(fn {email, kind} ->
-      %{domain: domain, email: email, source_page: to_string(kind), seen_at: now()}
+      %{
+        domain: domain,
+        email: email,
+        source_page: to_string(kind),
+        on_domain: if(on_domain?(email, domain), do: 1, else: 0),
+        seen_at: now()
+      }
     end)
   end
+
+  @doc """
+  Does this address belong to the site it was found on?
+
+  Imprint pages are legally required to name a contact and routinely name
+  someone else's — the agency that built the site, the host, or a German
+  statutory arbitration board (`schlichtungsstelle@s-d-r.org` is boilerplate).
+  Measured 2026-08-26 on German business domains: 40.6% yield an address from
+  a second page but only 28.1% yield one on the business's own domain, so
+  12.5% of them would be sold as "this company's email" while belonging to
+  somebody else.
+
+  Flagged rather than filtered: an off-domain address is still real signal —
+  the agency relationship is itself sellable, and for a tiny business a
+  freemail address is often the only reachable human. Consumers that need the
+  business's own mailbox filter on `on_domain = 1`.
+
+      iex> LS.Enrichment.Agent.on_domain?("info@acme.de", "acme.de")
+      true
+      iex> LS.Enrichment.Agent.on_domain?("info@agentur.de", "acme.de")
+      false
+  """
+  @spec on_domain?(String.t(), String.t()) :: boolean()
+  def on_domain?(email, domain) when is_binary(email) and is_binary(domain) do
+    with [_local, host] <- String.split(String.downcase(email), "@", parts: 2),
+         base <- domain |> String.downcase() |> String.replace_prefix("www.", "") do
+      host == base or String.ends_with?(host, "." <> base)
+    else
+      _ -> false
+    end
+  end
+
+  def on_domain?(_, _), do: false
 
   # Every currency amount printed on the pricing page, deduped and sorted.
   #

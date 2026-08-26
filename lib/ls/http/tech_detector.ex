@@ -99,6 +99,21 @@ defmodule LS.HTTP.TechDetector do
     |> add(c?(cookies, "asp.net_sessionid") || c?(cookies, ".aspnetcore"), "ASP.NET")
     |> add(c?(cookies, "ci_session"), "CodeIgniter")
     |> add(c?(cookies, "next-auth.session-token") || c?(cookies, "__secure-next-auth"), "NextAuth")
+    # Added 2026-08-26. Session cookies are the single most reliable backend
+    # tell, and these frameworks were missing entirely — a login page is where
+    # they are always set, which is exactly the page discovery already fetches
+    # for tech detection.
+    |> add(c?(cookies, "symfony") || c?(cookies, "sfsession"), "Symfony")
+    |> add(c?(cookies, "cakephp"), "CakePHP")
+    |> add(c?(cookies, "session") && c?(cookies, "httponly") && c?(cookies, "werkzeug"), "Flask")
+    |> add(c?(cookies, "fastapi") || c?(cookies, "fastapisession"), "FastAPI")
+    |> add(c?(cookies, "_phoenix_key") || c?(cookies, "_app_key"), "Phoenix")
+    |> add(c?(cookies, "wordpress_logged_in") || c?(cookies, "wp-settings"), "WordPress")
+    |> add(c?(cookies, "prestashop"), "PrestaShop")
+    |> add(c?(cookies, "frontend_cid") || c?(cookies, "mage-cache"), "Magento")
+    |> add(c?(cookies, "typo3") || c?(cookies, "fe_typo_user"), "TYPO3")
+    |> add(c?(cookies, "sid") && c?(cookies, "odoo"), "Odoo")
+    |> add(c?(cookies, "jwt") && c?(cookies, "strapi"), "Strapi")
   end
 
   # Collect every set-cookie value (case-insensitive name match) from list or map headers.

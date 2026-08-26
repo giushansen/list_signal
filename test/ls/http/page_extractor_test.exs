@@ -218,6 +218,17 @@ defmodule LS.HTTP.PageExtractorTest do
       assert pages =~ "/impressum"
     end
 
+    test "the login page is NOT in the enrichment visit list" do
+      # It was for months, and `html_of(visited, :login)` is called nowhere —
+      # one wasted request per enriched domain. Login-page tech detection does
+      # happen, but in DISCOVERY (Pipeline.enhance_with_secondary_pages/3).
+      # Removing it here paid for most of :legal and :about (2026-08-26).
+      visits = PageExtractor.pages_to_visit("/login|/contact|/impressum")
+      refute Enum.any?(visits, fn {kind, _} -> kind == :login end)
+      assert {:contact, "/contact"} in visits
+      assert {:legal, "/impressum"} in visits
+    end
+
     test "the enrichment lane is told to visit the imprint" do
       # pages_to_visit/2 is the contract between discovery and enrichment.
       # If :legal is missing here the pattern work above buys nothing.
