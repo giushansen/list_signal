@@ -145,6 +145,29 @@ Phoenix (`LSWeb`) on the master serves the public directory
 (`/shopify/:slug`, `/website/:slug`, `/top/*`, `/compare/*`), SEO pages from
 `domains_fast`, and the account/billing area backed by SQLite + Stripe.
 
+### Crawler caches are bounded by size, not only by TTL
+
+`LS.Cache` holds the CT dedup, HTTP politeness, BGP IP→ASN and RDAP caches on
+every worker. Until 2026-08-26 only the CT cache had a size cap; the other
+three were bounded purely by TTL (14 days for HTTP/BGP, 90 for RDAP), so
+nothing was evicted until an entry was two weeks old and the tables grew
+freely until then. Measured on a worker: ~9,800 HTTP and ~6,450 RDAP entries
+per hour, projecting to ~1.7 GB of ETS on nodes with 2–4 GB of RAM in total.
+The BEAM paged that into swap, so long-running workers drifted to ~250 MB
+available and swapped thousands of pages a second, while a freshly restarted
+one sat at ~1.9 GB free — the drift that looked like "memory accumulation
+fixed by redeploying".
+
+Each cache now has an entry cap derived from the node's own RAM (5% of total,
+split 40/40/20 across HTTP/RDAP/BGP, floor 50k each), with **oldest-first**
+eviction via the shared `evict_to/3`. On a 2 GB worker that is ~98 MB instead
+of ~1.8 GB.
+
+Oldest-first is what makes this safe: a size cap only ever drops the coldest
+entries, so the recent window that politeness depends on is exactly what
+survives. TTLs and the per-IP rate limiter are unchanged — the cap is a memory
+bound, never a politeness relaxation.
+
 ### Page caches, and why they survive a deploy
 
 `LS.UICache` (assembled pages, single-flight, LRU-bounded) and
