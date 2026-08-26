@@ -131,31 +131,12 @@ defmodule LS.Enrichment.About do
   end
 
   # "Engineering:12|Sales:4 (18 open)" — one glanceable string describing what
-  # the company is currently building out.
+  # the company is currently building out. Was seniority-based until
+  # 2026-08-26; functional categories are what buyers actually filter on,
+  # and the shared taxonomy keeps this identical to what the board sync
+  # writes for the same company.
   defp positions(jobs) when jobs == [], do: ""
-  defp positions(jobs) do
-    top =
-      jobs
-      |> Enum.map(&seniority/1)
-      |> Enum.frequencies()
-      |> Enum.sort_by(fn {_, n} -> -n end)
-      |> Enum.take(4)
-      |> Enum.map_join("|", fn {k, n} -> "#{k}:#{n}" end)
-
-    "#{top} (#{length(jobs)} open)"
-  end
-
-  defp seniority(%{title: t}) do
-    d = String.downcase(t)
-
-    cond do
-      d =~ ~r/\b(chief|cto|ceo|cfo|coo|vp|head of|director)\b/ -> "Leadership"
-      d =~ ~r/\b(principal|staff|lead|manager)\b/ -> "Senior+"
-      d =~ ~r/\b(senior|sr\.?)\b/ -> "Senior"
-      d =~ ~r/\b(junior|jr\.?|intern|graduate|entry)\b/ -> "Junior"
-      true -> "Mid"
-    end
-  end
+  defp positions(jobs), do: LS.JobCategories.summarize(Enum.map(jobs, & &1.title))
 
   defp most_common([]), do: nil
   defp most_common(values) do

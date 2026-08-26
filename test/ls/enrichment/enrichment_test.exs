@@ -92,7 +92,11 @@ defmodule LS.EnrichmentTest do
       assert r.hq_location =~ "Berlin"
       assert r.job_locations_top =~ "Berlin, Germany:2"
       assert r.positions_overview =~ "(3 open)"
-      assert r.positions_overview =~ "Senior"
+      # Functional categories since 2026-08-26 (was seniority): buyers filter
+      # on what function is being hired, and the board sync writes the same
+      # shape for the same company.
+      assert r.positions_overview =~ "Engineering:2"
+      assert r.positions_overview =~ "Sales:1"
     end
 
     test "falls back to the most common job location when no HQ phrase exists" do

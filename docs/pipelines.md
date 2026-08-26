@@ -188,6 +188,14 @@ recrawls. `LS.Verification.HRBoards` + `LS.Verification.WTTJ` make boards
 standing assets (`hr_boards`, migration 014), refreshed on a daily
 master-only cycle (`LS.Verification.BoardScheduler`):
 
+0. **Discovery** — monthly, the Common Crawl CDX index is queried per
+   platform (`jobs.lever.co/*`, `matchType=domain` for subdomain ATSs):
+   every board URL the web-wide crawl has ever seen, with zero requests to
+   the ATS itself. Discovered boards land domainless; `job_count` lives on
+   the board row and `biz_career`/`businesses` writes begin the moment a
+   domain is resolved (careers harvest, globally-unique name-key match, or
+   WTTJ profile render). The domain is the join key: data waits on the
+   board row until the domain exists in the product.
 1. **Harvest** — board slugs are extracted from URLs already stored in
    `biz_career` (greenhouse, lever, ashby, workable, smartrecruiters,
    recruitee, workday, personio, breezy — ranked and chosen by how many of
@@ -218,6 +226,13 @@ master-only cycle (`LS.Verification.BoardScheduler`):
    without a website is marked unresolvable. The
    sidecar reaches h1 over WireGuard (`LS_BROWSER_BIND` lists the wg IP
    alongside loopback on that node only).
+
+**Snapshot semantics (2026-08-26).** `businesses.positions_overview`
+changed meaning: it now holds the functional hiring snapshot
+(`Engineering:12|Sales:4 (18 open)`, shared taxonomy in
+`LS.JobCategories`) instead of a seniority split. Both the worker About
+enricher and the board sync write the same shape; `biz_career` rows stay
+the raw per-posting evidence the snapshot is recomputed from.
 
 Incident pinned in `test/ls/hr_boards_test.exs`: timestamps with
 microseconds silently destroyed whole TabSeparated insert batches — the

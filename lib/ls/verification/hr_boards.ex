@@ -40,7 +40,7 @@ defmodule LS.Verification.HRBoards do
     # Workday needs host AND site ({tenant}.wd{N} + career-site name); the
     # slug is stored as "tenant.wdN:Site". Some URLs carry a locale segment.
     {"workday",
-     ~r"https?://([a-z0-9-]+\.wd[0-9]+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9_-]+)/job/"},
+     ~r"https?://([a-z0-9-]+\.wd[0-9]+)\.myworkdayjobs\.com/(?:[a-z]{2}-[A-Z]{2}/)?([A-Za-z0-9_-]+)/job/"i},
     {"personio", ~r{https?://([a-z0-9-]+)\.jobs\.personio\.(?:de|com)}},
     {"breezy", ~r{https?://([a-z0-9-]+)\.breezy\.hr}}
   ]
@@ -138,6 +138,50 @@ defmodule LS.Verification.HRBoards do
   defp platform_host("workday"), do: "myworkdayjobs.com"
   defp platform_host("personio"), do: "jobs.personio."
   defp platform_host("breezy"), do: "breezy.hr"
+
+  @doc """
+  Link domainless boards (Common Crawl discoveries) to domains via the
+  verification registry name keys. Only globally-unique keys may link — a
+  name key matching two registry domains is ambiguity, and a wrong link
+  would write one company's jobs under another's domain. Boards that stay
+  domainless still sync (job_count lives on the board row); their
+  `biz_career` writes begin the moment a later pass resolves them.
+  """
+  def resolve_domains_global do
+    case Clickhouse.query_raw(
+           """
+           INSERT INTO hr_boards (platform, slug, domain, company, country, first_seen, last_synced, job_count)
+           SELECT b.platform, b.slug, k.domain, b.company, b.country, b.first_seen, b.last_synced, b.job_count
+           FROM (SELECT * FROM hr_boards FINAL
+                 WHERE domain = '' AND platform NOT IN ('wttj', 'wttj_cursor', 'cc_discovery')) AS b
+           INNER JOIN (
+             SELECT name_key, any(domain) AS domain
+             FROM verification_domain_keys
+             GROUP BY name_key
+             HAVING uniqExact(domain) = 1
+           ) AS k ON replaceAll(replaceAll(
+                       if(b.platform = 'workday', extract(b.slug, '^([a-z0-9-]+)\\\\.wd'), b.slug),
+                       '-', ''), '_', '') = k.name_key
+           SETTINGS max_threads = 2, max_bytes_before_external_group_by = 1500000000
+           """,
+           300_000
+         ) do
+      {:ok, _} ->
+        case Clickhouse.query_raw(
+               "SELECT countIf(domain != ''), count() FROM hr_boards FINAL WHERE platform NOT IN ('wttj', 'wttj_cursor', 'cc_discovery')"
+             ) do
+          {:ok, [[linked, total]]} ->
+            Logger.info("[BOARDS] name-key pass: #{linked}/#{total} boards domain-linked")
+            :ok
+
+          _ ->
+            :ok
+        end
+
+      err ->
+        err
+    end
+  end
 
   # ── Sync: re-read known boards from the platforms' public JSON ────────────
 
@@ -437,11 +481,15 @@ defmodule LS.Verification.HRBoards do
         )
       end
 
-      # The log row is what the compactor folds into `businesses.job_count` —
-      # this is the moment platform data becomes product data.
+      # The log row is what the compactor folds into `businesses` — this is
+      # the moment platform data becomes product data: the count plus the
+      # functional snapshot ("Engineering:12|Sales:4 (18 open)").
+      overview =
+        jobs |> Enum.map(& &1.title) |> LS.JobCategories.summarize() |> Clickhouse.escape_public()
+
       Clickhouse.query_raw("""
-      INSERT INTO biz_enrichment_log (domain, enriched_at, render_engine, job_count, ats_platform)
-      VALUES ('#{Clickhouse.escape_public(domain)}', now(), 'board_sync', #{length(jobs)}, '#{platform}')
+      INSERT INTO biz_enrichment_log (domain, enriched_at, render_engine, job_count, ats_platform, positions_overview)
+      VALUES ('#{Clickhouse.escape_public(domain)}', now(), 'board_sync', #{length(jobs)}, '#{platform}', '#{overview}')
       """)
     end
 

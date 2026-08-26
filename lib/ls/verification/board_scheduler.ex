@@ -35,7 +35,9 @@ defmodule LS.Verification.BoardScheduler do
   def handle_info(:cycle, state) do
     t0 = System.monotonic_time(:millisecond)
 
+    safely(fn -> LS.Verification.BoardDiscovery.run_if_due() end)
     safely(fn -> LS.Verification.HRBoards.harvest_from_careers() end)
+    safely(fn -> LS.Verification.HRBoards.resolve_domains_global() end)
     safely(fn -> LS.Verification.HRBoards.sync_stale() end)
     safely(fn -> LS.Verification.WTTJ.ingest() end)
     safely(fn -> LS.Verification.WTTJ.resolve_via_profiles() end)
