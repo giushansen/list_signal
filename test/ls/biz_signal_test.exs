@@ -23,8 +23,11 @@ defmodule LS.BizSignalTest do
   defp q(sql), do: Clickhouse.query_raw(sql)
 
   defp clean do
+    # mutations_sync: an async DELETE races the next test's reads when the
+    # full suite has ClickHouse busy — flaked 2026-08-26 with rows from the
+    # previous test still visible.
     for t <- ~w(businesses biz_signal domains_history biz_enrichment_log) do
-      q("ALTER TABLE #{t} DELETE WHERE domain = '#{@d}'")
+      q("ALTER TABLE #{t} DELETE WHERE domain = '#{@d}' SETTINGS mutations_sync = 1")
     end
   end
 
