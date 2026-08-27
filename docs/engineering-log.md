@@ -27,6 +27,19 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-08-27
 
+**Workers hold Tranco as a bloom filter.** `tranco_ranks` was 402MB of a 675MB
+BEAM on nodes with 1,968MB total, and it existed to answer one question:
+`LS.HTTP.DomainFilter` asks whether a domain is ranked and bypasses the
+TLD/MX/SPF heuristics when it is (worth ~150K domains per 1.5 days). Workers
+now keep a 4.9MB bloom filter for that test and the master fills `tranco_rank`
+from its own copy, as it already does for `majestic_rank`. Verified on prod:
+zero false negatives across 300 sampled ranked domains, 1.1% false positives,
+BEAM 675MB to 236MB. Bloom filters have no false negatives, so the only cost
+is crawling a domain we would have skipped, which is the direction the filter
+already errs in. Both Tranco and Majestic remain on every `businesses` record
+and both still drive the enrichment tier and ordering: Tranco measures
+traffic, Majestic measures link authority.
+
 **Public copy reads as human-written, enforced by a test.** Em dashes, en
 dashes, curly quotes and ellipsis characters removed from every page template
 and every string that goes out by email. `test/ls_web/human_copy_test.exs`
