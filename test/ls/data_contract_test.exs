@@ -472,4 +472,40 @@ defmodule LS.DataContractTest do
   # them raw passes for the wrong reason.
   defp to_int(v) when is_integer(v), do: v
   defp to_int(v) when is_binary(v), do: String.to_integer(String.trim(v))
+
+  # ==========================================================================
+  # INCIDENT 2026-08-27. Three columns were added to the compaction INSERT and
+  # to the country recompute expression. The `h` relation is an aggregate over
+  # an ALIASED subquery of domains_history, so `h.http_country_evidence` did
+  # not resolve and EVERY compaction pass failed in production with
+  # "Identifier cannot be resolved from subquery with name h".
+  #
+  # 999 unit tests passed the whole time. Nothing in the suite ever executed
+  # the compaction query against a real table, so a query that cannot parse
+  # was indistinguishable from one that works. `businesses` stops updating
+  # when this breaks, which means every list we sell goes stale silently.
+  # ==========================================================================
+  describe "the compaction query actually runs against the real schema" do
+    @tag :data_contract
+    test "compact_sql_shard parses and executes on a live ClickHouse" do
+      case LS.Clickhouse.query_raw("SELECT 1") do
+        {:ok, _} ->
+          # Wrapped in a count so it validates every column reference without
+          # writing anything or hauling back a shard of rows.
+          sql = LS.Clickhouse.compact_sql_shard_preview(0, 4096)
+          select = String.slice(sql, (:binary.match(sql, "\nSELECT") |> elem(0))..-1//1)
+
+          assert {:ok, [[n]]} = LS.Clickhouse.query_raw("SELECT count() FROM (#{select})"),
+                 "compaction SQL failed to execute; businesses would stop updating"
+
+          # ClickHouse returns aggregates as strings over the JSON interface,
+          # which CLAUDE.md names as its own class of silent bug. What matters
+          # here is that the query PARSED and RAN against real columns.
+          assert is_integer(n) or (is_binary(n) and Integer.parse(n) != :error)
+
+        _ ->
+          :ok
+      end
+    end
+  end
 end

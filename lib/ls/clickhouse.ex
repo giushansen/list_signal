@@ -1170,6 +1170,18 @@ defmodule LS.Clickhouse do
     query_raw(compact_sql_shard(shard, total_shards), 300_000, background: true)
   end
 
+  @doc """
+  The compaction SQL for one shard, without running it.
+
+  Public so a data-contract test can EXPLAIN it against the real schema.
+  On 2026-08-27 three new columns were added to the INSERT and to the
+  recompute expression, but the `h` relation is an aggregate over an
+  ALIASED subquery, so `h.http_country_evidence` did not resolve and every
+  compaction pass failed in production. 999 unit tests passed throughout:
+  nothing executed this query against a real table.
+  """
+  def compact_sql_shard_preview(shard \\ 0, total \\ 256), do: compact_sql_shard(shard, total)
+
   defp compact_sql_shard(shard, total) do
     # The shard is a set of DOMAINS, not a raw hash predicate on every table.
     # domains_history is sorted by (domain, enriched_at), so `domain IN (set)`
@@ -1392,6 +1404,9 @@ defmodule LS.Clickhouse do
         argMaxIf(s_dns_cname, s_enriched_at, s_dns_cname != '') AS dns_cname,
         argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
         argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
+        argMaxIf(s_http_country_evidence, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence,
+        argMaxIf(s_http_country_evidence_src, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence_src,
+        argMaxIf(s_rdap_registrant_country, s_enriched_at, s_rdap_registrant_country != '') AS rdap_registrant_country,
         argMaxIf(s_tranco_rank, s_enriched_at, s_tranco_rank IS NOT NULL) AS tranco_rank,
         argMaxIf(s_majestic_rank, s_enriched_at, s_majestic_rank IS NOT NULL) AS majestic_rank,
         argMaxIf(s_majestic_ref_subnets, s_enriched_at, s_majestic_ref_subnets IS NOT NULL) AS majestic_ref_subnets,
@@ -1402,7 +1417,7 @@ defmodule LS.Clickhouse do
         -- above: a parked domain that comes back to life must clear the flag,
         -- and a real site that dies into a parking page must gain it.
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
+      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
       #{scope}
       GROUP BY s_domain
       HAVING (is_malware = '' AND is_phishing = '')
