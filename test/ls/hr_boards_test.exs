@@ -38,6 +38,23 @@ defmodule LS.Verification.HRBoardsTest do
     end
   end
 
+  test "posting dates from every ATS shape normalise to YYYY-MM-DD, opaque ones kept verbatim" do
+    # The nine ATS APIs report dates in five different shapes; buyers need
+    # one comparable "what they are hiring and when", so everything parseable
+    # collapses to a date and anything opaque is passed through honestly
+    # rather than turned into a fabricated precise date.
+    assert HRBoards.normalize_date("2026-06-10T08:51:02-04:00") == "2026-06-10"
+    assert HRBoards.normalize_date("2026-08-05 13:17:11 UTC") == "2026-08-05"
+    assert HRBoards.normalize_date("2026-07-30") == "2026-07-30"
+    assert HRBoards.normalize_date(1_778_698_117_350) == "2026-05-13"
+    assert HRBoards.normalize_date("1778698117350") == "2026-05-13"
+    assert HRBoards.normalize_date("Posted 30 Days Ago") == "Posted 30 Days Ago"
+    assert HRBoards.normalize_date(nil) == ""
+    assert HRBoards.normalize_date("") == ""
+    # A control character in an opaque value can never reach the TSV insert.
+    refute HRBoards.normalize_date("a\tb\nc") =~ ~r/[\t\n]/
+  end
+
   test "reserved path segments never become boards (workable /j/ shortlinks, greenhouse /embed/)" do
     # 2026-08-26: most stored workable URLs are apply.workable.com/j/XXXX
     # shortlinks; without the blocklist the harvest creates a phantom 'j'
@@ -102,15 +119,25 @@ defmodule LS.Verification.HRBoardsTest do
   test "personio XML parses positions with and without CDATA, drops id-less blocks" do
     xml = """
     <workzag-jobs>
-    <position><id>123</id><office>Munich</office><name><![CDATA[Senior Dev]]></name></position>
+    <position><id>123</id><office>Munich</office><name><![CDATA[Senior Dev]]></name><createdAt>2026-07-01</createdAt></position>
     <position><id>456</id><office></office><name>Accountant</name></position>
     <position><office>Ghost</office><name>No id</name></position>
     </workzag-jobs>
     """
 
     assert HRBoards.parse_personio(xml, "https://x.jobs.personio.de") == [
-             %{title: "Senior Dev", location: "Munich", url: "https://x.jobs.personio.de/job/123"},
-             %{title: "Accountant", location: "", url: "https://x.jobs.personio.de/job/456"}
+             %{
+               title: "Senior Dev",
+               location: "Munich",
+               url: "https://x.jobs.personio.de/job/123",
+               posted: "2026-07-01"
+             },
+             %{
+               title: "Accountant",
+               location: "",
+               url: "https://x.jobs.personio.de/job/456",
+               posted: ""
+             }
            ]
   end
 

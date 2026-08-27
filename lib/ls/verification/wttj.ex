@@ -25,8 +25,15 @@ defmodule LS.Verification.WTTJ do
   require Logger
   alias LS.Clickhouse
 
-  @pages_per_run 40
-  @gap_ms 4_000
+  # Pacing (revised 2026-08-27). The old 40 pages/day at 4 s was ~500× more
+  # conservative than the safe envelope and left a ~43-day backlog. WTTJ sees
+  # the AGGREGATE rate regardless of how many source IPs we use, so the rate
+  # is chosen first: one page every ~2.5 s (gentler than the 1/2 s that
+  # Hunter publishes as its own limit), then that single stream is spread
+  # across the sidecar pool so no individual IP is hammered. A full directory
+  # sweep (~600 pages) then clears in well under an hour.
+  @pages_per_run 250
+  @gap_ms 2_500
   @settle_ms 6_000
 
   # The unfiltered directory is result-capped at ~22 pages (~650 companies);
@@ -36,17 +43,43 @@ defmodule LS.Verification.WTTJ do
   # few hundred renders — about two weeks at the per-run budget, by design.
   @queries [""] ++ Enum.map(?a..?z, &<<&1>>)
 
-  @doc "Sidecar host:port used for renders (a worker's WireGuard address)."
-  def sidecar, do: System.get_env("LS_WTTJ_SIDECAR", "10.0.0.7:8900")
+  # The render pool: WireGuard host:port of every node whose camoufox sidecar
+  # is reachable from the master. Renders rotate across it so WTTJ sees a
+  # single polite stream arriving from many source IPs, and no one IP — least
+  # of all h1's irreplaceable residential IP — carries the whole load.
+  # `LS_WTTJ_SIDECARS` (comma-separated) overrides; the legacy single
+  # `LS_WTTJ_SIDECAR` still works as a one-node pool.
+  @default_pool ~w(10.0.0.9:8900 10.0.0.8:8900 10.0.0.10:8900 10.0.0.14:8900 10.0.0.7:8900)
+
+  @doc "The sidecar render pool (list of host:port)."
+  def sidecar_pool do
+    cond do
+      (v = System.get_env("LS_WTTJ_SIDECARS")) not in [nil, ""] ->
+        v |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+
+      (v = System.get_env("LS_WTTJ_SIDECAR")) not in [nil, ""] ->
+        [v]
+
+      true ->
+        @default_pool
+    end
+  end
+
+  @doc "Legacy single-sidecar accessor (first node in the pool)."
+  def sidecar, do: hd(sidecar_pool())
+
+  # Deterministic per-call rotation: no shared state, and successive pages
+  # land on different IPs.
+  defp pick_sidecar(n), do: Enum.at(sidecar_pool(), rem(n, length(sidecar_pool())))
 
   def ingest(pages \\ @pages_per_run) do
     {qi, page} = cursor()
     Logger.info("[WTTJ] ingest from query #{qi} page #{page}, budget #{pages}")
 
-    Enum.reduce_while(1..pages, {qi, page, 0}, fn _, {qi, page, acc} ->
+    Enum.reduce_while(1..pages, {qi, page, 0}, fn i, {qi, page, acc} ->
       Process.sleep(@gap_ms)
 
-      case fetch_directory_page(Enum.at(@queries, qi), page) do
+      case fetch_directory_page(Enum.at(@queries, qi), page, pick_sidecar(i)) do
         {:ok, []} ->
           # End of this query's result window: move to the next query, or
           # wrap the whole sweep back to the start.
@@ -73,16 +106,16 @@ defmodule LS.Verification.WTTJ do
   end
 
   @doc false
-  def fetch_directory_page(query, page) do
+  def fetch_directory_page(query, page, sidecar \\ nil) do
     qs = if query == "", do: "page=#{page}", else: "query=#{query}&page=#{page}"
 
-    case render("/fr/companies?#{qs}") do
+    case render("/fr/companies?#{qs}", sidecar || sidecar()) do
       {:ok, html} -> {:ok, extract_slugs(html)}
       :error -> :error
     end
   end
 
-  defp render(path) do
+  defp render(path, sidecar) do
     body =
       Jason.encode!(%{
         domain: "www.welcometothejungle.com",
@@ -90,7 +123,7 @@ defmodule LS.Verification.WTTJ do
         settle_ms: @settle_ms
       })
 
-    case Req.post("http://#{sidecar()}/render",
+    case Req.post("http://#{sidecar}/render",
            body: body,
            headers: [{"content-type", "application/json"}],
            receive_timeout: 120_000,
@@ -171,7 +204,7 @@ defmodule LS.Verification.WTTJ do
   is deliberately small; failures are marked (job_count = -3) and not
   retried, keeping the sweep from burning renders on dead profiles.
   """
-  def resolve_via_profiles(limit \\ 20) do
+  def resolve_via_profiles(limit \\ 120) do
     case Clickhouse.query_raw("""
          SELECT slug FROM hr_boards FINAL
          WHERE platform = 'wttj' AND domain = '' AND job_count != -3
@@ -179,9 +212,11 @@ defmodule LS.Verification.WTTJ do
          """) do
       {:ok, rows} ->
         n =
-          Enum.count(rows, fn [slug] ->
+          rows
+          |> Enum.with_index()
+          |> Enum.count(fn {[slug], i} ->
             Process.sleep(@gap_ms)
-            resolve_profile(slug)
+            resolve_profile(slug, pick_sidecar(i))
           end)
 
         Logger.info("[WTTJ] profile pass: #{n}/#{length(rows)} slugs resolved to domains")
@@ -192,8 +227,8 @@ defmodule LS.Verification.WTTJ do
     end
   end
 
-  defp resolve_profile(slug) do
-    case render("/fr/companies/#{slug}") do
+  defp resolve_profile(slug, sidecar) do
+    case render("/fr/companies/#{slug}", sidecar) do
       {:ok, html} ->
         case {hydrated?(html), extract_website(html)} do
           # Loading shell: render failure, leave the slug for the next pass.

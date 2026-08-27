@@ -326,7 +326,11 @@ defmodule LS.Verification.HRBoards do
               do: %{
                 title: p["title"],
                 location: p["locationsText"],
-                url: "https://#{host}.myworkdayjobs.com/#{site}#{p["externalPath"]}"
+                url: "https://#{host}.myworkdayjobs.com/#{site}#{p["externalPath"]}",
+                # Workday only exposes a relative "Posted 30 Days Ago" string
+                # publicly, no absolute date; keep it verbatim rather than
+                # inventing a precise date the platform never gave us.
+                posted: p["postedOn"]
               }
 
         acc = acc ++ jobs
@@ -393,34 +397,55 @@ defmodule LS.Verification.HRBoards do
     _ -> :error
   end
 
+  # Each parser carries the posting date the platform exposes, normalised to
+  # "YYYY-MM-DD" (see normalize_date/1). Greenhouse only publishes updated_at
+  # on public boards; the rest give a real published/created date.
   defp parse_greenhouse(%{"jobs" => jobs}) when is_list(jobs) do
     for j <- jobs,
-        do: %{title: j["title"], location: get_in(j, ["location", "name"]), url: j["absolute_url"]}
+        do: %{
+          title: j["title"],
+          location: get_in(j, ["location", "name"]),
+          url: j["absolute_url"],
+          posted: j["updated_at"]
+        }
   end
 
   defp parse_greenhouse(_), do: []
 
   defp parse_lever(jobs) when is_list(jobs) do
     for j <- jobs,
-        do: %{title: j["text"], location: get_in(j, ["categories", "location"]), url: j["hostedUrl"]}
+        do: %{
+          title: j["text"],
+          location: get_in(j, ["categories", "location"]),
+          url: j["hostedUrl"],
+          posted: j["createdAt"]
+        }
   end
 
   defp parse_lever(_), do: []
 
   defp parse_ashby(%{"jobs" => jobs}) when is_list(jobs) do
-    for j <- jobs, do: %{title: j["title"], location: j["location"], url: j["jobUrl"]}
+    for j <- jobs,
+        do: %{title: j["title"], location: j["location"], url: j["jobUrl"], posted: j["publishedAt"]}
   end
 
   defp parse_ashby(_), do: []
 
   defp parse_workable(%{"jobs" => jobs}) when is_list(jobs) do
-    for j <- jobs, do: %{title: j["title"], location: j["city"], url: j["url"]}
+    for j <- jobs,
+        do: %{title: j["title"], location: j["city"], url: j["url"], posted: j["published_on"]}
   end
 
   defp parse_workable(_), do: []
 
   defp parse_recruitee(%{"offers" => offers}) when is_list(offers) do
-    for o <- offers, do: %{title: o["title"], location: o["location"], url: o["careers_url"]}
+    for o <- offers,
+        do: %{
+          title: o["title"],
+          location: o["location"],
+          url: o["careers_url"],
+          posted: o["published_at"]
+        }
   end
 
   defp parse_recruitee(_), do: []
@@ -430,7 +455,8 @@ defmodule LS.Verification.HRBoards do
         do: %{
           title: p["name"],
           location: get_in(p, ["location", "city"]),
-          url: "https://jobs.smartrecruiters.com/#{get_in(p, ["company", "identifier"])}/#{p["id"]}"
+          url: "https://jobs.smartrecruiters.com/#{get_in(p, ["company", "identifier"])}/#{p["id"]}",
+          posted: p["releasedDate"]
         }
   end
 
@@ -438,7 +464,12 @@ defmodule LS.Verification.HRBoards do
 
   defp parse_breezy(positions) when is_list(positions) do
     for p <- positions,
-        do: %{title: p["name"], location: get_in(p, ["location", "name"]), url: p["url"]}
+        do: %{
+          title: p["name"],
+          location: get_in(p, ["location", "name"]),
+          url: p["url"],
+          posted: p["published_date"]
+        }
   end
 
   defp parse_breezy(_), do: []
@@ -453,7 +484,8 @@ defmodule LS.Verification.HRBoards do
       %{
         title: personio_field(block, "name"),
         location: personio_field(block, "office"),
-        url: "#{base}/job/#{id}"
+        url: "#{base}/job/#{id}",
+        posted: personio_field(block, "createdAt")
       }
     end
   end
@@ -477,7 +509,15 @@ defmodule LS.Verification.HRBoards do
         Enum.map_join(jobs, "\n", fn j ->
           # job_id is UInt64 and the table dedupes on (domain, job_id): a
           # stable hash of the posting URL keeps weekly resyncs idempotent.
-          [domain, stable_id(j.url || j.title), tsv(j.title), tsv(j.location), tsv(j.url), "", now_s()]
+          [
+            domain,
+            stable_id(j.url || j.title),
+            tsv(j.title),
+            tsv(j.location),
+            tsv(j.url),
+            normalize_date(Map.get(j, :posted)),
+            now_s()
+          ]
           |> Enum.join("\t")
         end)
 
@@ -517,6 +557,37 @@ defmodule LS.Verification.HRBoards do
     <<n::unsigned-64, _::binary>> = :crypto.hash(:sha256, to_string(text))
     Integer.to_string(n)
   end
+
+  @doc """
+  Normalise the many posting-date shapes across ATS APIs to "YYYY-MM-DD".
+  Handles ISO-8601 (greenhouse/ashby/smartrecruiters/breezy), epoch millis
+  (lever), "YYYY-MM-DD HH:MM:SS UTC" (recruitee), bare dates
+  (workable/personio). Anything else (workday's "Posted 30 Days Ago",
+  blanks) is passed through verbatim — an honest value beats a fabricated
+  precise date. Exposed for the parser test.
+  """
+  def normalize_date(nil), do: ""
+  def normalize_date(""), do: ""
+
+  def normalize_date(ms) when is_integer(ms) do
+    case DateTime.from_unix(ms, :millisecond) do
+      {:ok, dt} -> Date.to_iso8601(DateTime.to_date(dt))
+      _ -> ""
+    end
+  end
+
+  def normalize_date(s) when is_binary(s) do
+    cond do
+      # ISO-8601 or "YYYY-MM-DD ..." → keep the date part.
+      Regex.match?(~r/^\d{4}-\d{2}-\d{2}/, s) -> String.slice(s, 0, 10)
+      # Stringified epoch millis (some feeds quote it).
+      Regex.match?(~r/^\d{13}$/, s) -> normalize_date(String.to_integer(s))
+      # Relative/opaque (workday) — keep verbatim rather than invent a date.
+      true -> tsv(s)
+    end
+  end
+
+  def normalize_date(other), do: tsv(to_string(other))
 
   defp tsv(nil), do: ""
 
