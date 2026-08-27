@@ -409,7 +409,11 @@ defmodule LS.Cluster.WorkerAgent do
               _ -> {d, :skip}
             end
           {:error, _} ->
-            Cache.rdap_insert(d)
+            # Do NOT cache a failure: writing to the 90-day done-cache here
+            # meant a registry timeout froze the gap permanently, since every
+            # recrawl saw a hit and never retried. That is a large part of why
+            # only 63.5% of .com businesses carried a creation date (measured
+            # 2026-08-27). A miss simply retries on the next recrawl.
             {d, :skip}
         end
       end,
