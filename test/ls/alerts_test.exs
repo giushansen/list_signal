@@ -18,7 +18,8 @@ defmodule LS.AlertsTest do
       verification: %{scheduler: %{running: false, disabled: false}, sources: [%{source: "yc", status: "ok", duration_s: 30, error: ""}]},
       poller: nil,
       ctl_diff: %{new: [], retired: []},
-      unmonitored_nodes: []
+      unmonitored_nodes: [],
+      watchdog_restarts: []
     }
   end
 
@@ -154,6 +155,38 @@ defmodule LS.AlertsTest do
     a = Alerts.evaluate(m)
     assert hd(a).severity == :critical
   end
+  describe "a silent auto-recovery is still an outage (2026-08-27)" do
+    # The site was down 07:30-07:46 local; the watchdog restarted it and NOTHING
+    # told the owner, because alerting runs inside the process that died. The
+    # same BEAM stall had already recurred on 08-21, 08-22 and twice on 08-26
+    # without anyone noticing. Silence after a restart must never read as uptime.
+    test "a watchdog restart raises a critical alert naming when it happened" do
+      at = ~U[2026-08-26 23:32:09Z]
+      a = Alerts.evaluate(%{healthy() | watchdog_restarts: [%{at: at, line: "web dead after 3 probes"}]})
+      found = Enum.find(a, &String.starts_with?(&1.key, "watchdog_restart"))
+
+      assert found, "an auto-restart means the site was down — it must alert"
+      assert found.severity == :critical
+      assert found.line =~ "2026-08-26 23:32:09"
+    end
+
+    test "several restarts in a day are reported as a count, not one per restart" do
+      restarts = for h <- [1, 5, 9], do: %{at: DateTime.add(~U[2026-08-26 23:32:09Z], -h * 3600), line: "x"}
+      a = Alerts.evaluate(%{healthy() | watchdog_restarts: restarts})
+
+      assert Enum.count(a, &String.starts_with?(&1.key, "watchdog_restart")) == 1
+      assert Enum.find(a, &String.starts_with?(&1.key, "watchdog_restart")).subject =~ "3x"
+    end
+
+    test "no restarts is silence" do
+      assert Alerts.evaluate(healthy()) |> Enum.find(&String.starts_with?(&1.key, "watchdog_restart")) == nil
+    end
+
+    test "a missing key does not crash evaluate/1" do
+      assert is_list(Alerts.evaluate(Map.delete(healthy(), :watchdog_restarts)))
+    end
+  end
+
   describe "unmonitored nodes are themselves an alert (2026-08-26)" do
     # 12 of 14 workers had been restarted but never re-deployed since the ops
     # tooling shipped, so LS.Ops.NodeResources was :undef on them and the

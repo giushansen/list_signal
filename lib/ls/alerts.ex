@@ -63,6 +63,7 @@ defmodule LS.Alerts do
       queue: Metrics.queue(),
       node_resources: Metrics.node_resources(),
       unmonitored_nodes: Metrics.unmonitored_nodes(),
+      watchdog_restarts: Metrics.watchdog_restarts(24),
       reputation_ages: Metrics.reputation_ages(),
       backups: Metrics.backup_status(),
       verification: Metrics.verification(),
@@ -87,6 +88,7 @@ defmodule LS.Alerts do
     |> verification(m)
     |> ctl_sources(m)
     |> unmonitored(m)
+    |> watchdog(m)
     |> Enum.sort_by(&(&1.severity == :critical), :desc)
   end
 
@@ -128,6 +130,28 @@ defmodule LS.Alerts do
     do: [al(:critical, "compaction_stale", "Product table stale", "businesses last updated #{div(s, 60)} min ago — compactor may be failing") | acc]
 
   defp compaction(acc, _), do: acc
+
+  # The watchdog restarting the web means the site WAS down. Alerting runs
+  # inside the process that died, so nothing else can report it — and a silent
+  # auto-recovery reads exactly like uptime. That is how the same stall
+  # recurred four times before anyone looked (2026-08-27).
+  defp watchdog(acc, %{watchdog_restarts: []}), do: acc
+
+  defp watchdog(acc, %{watchdog_restarts: [%{at: at} | _] = restarts}) when is_list(restarts) do
+    [
+      al(
+        :critical,
+        "watchdog_restart:#{DateTime.to_unix(at)}",
+        "Site auto-restarted #{length(restarts)}x in 24h",
+        "The web watchdog restarted listsignal@master — the site was DOWN until it did. " <>
+          "Most recent: #{DateTime.to_string(at)}. Check /var/log/listsignal_watchdog.log " <>
+          "for the memory reading that preceded it."
+      )
+      | acc
+    ]
+  end
+
+  defp watchdog(acc, _), do: acc
 
   # A node the resource alerts cannot see is worse than a node with a problem:
   # its silence is indistinguishable from health. See Metrics.unmonitored_nodes/0.

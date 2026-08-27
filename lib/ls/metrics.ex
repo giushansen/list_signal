@@ -265,6 +265,44 @@ defmodule LS.Metrics do
     |> Enum.reject(fn {_, r} -> is_nil(r) end)
   end
 
+  @watchdog_log "/var/log/listsignal_watchdog.log"
+
+  @doc """
+  Restarts the web watchdog performed in the last `hours`, newest first.
+
+  The watchdog (`/root/watchdog_web.sh`, cron every minute) is the safety net
+  that brings the site back when the BEAM stalls — but until 2026-08-27 it did
+  so SILENTLY: the owner discovered a 16-minute outage by visiting the site,
+  because alerting runs inside the very process that was down. An automated
+  recovery you are never told about is indistinguishable from never having
+  been down, which is how the same fault recurred four times unnoticed.
+  """
+  def watchdog_restarts(hours \\ 24) do
+    cutoff = DateTime.utc_now() |> DateTime.add(-hours * 3600, :second)
+
+    case File.read(@watchdog_log) do
+      {:ok, text} ->
+        text
+        |> String.split("\n", trim: true)
+        |> Enum.filter(&String.contains?(&1, "restarting listsignal@"))
+        |> Enum.flat_map(&parse_watchdog_line(&1, cutoff))
+        |> Enum.reverse()
+
+      _ ->
+        []
+    end
+  end
+
+  defp parse_watchdog_line(line, cutoff) do
+    with [stamp | _] <- String.split(line, " ", parts: 2),
+         {:ok, at, _} <- DateTime.from_iso8601(stamp),
+         :gt <- DateTime.compare(at, cutoff) do
+      [%{at: at, line: String.slice(line, 0, 160)}]
+    else
+      _ -> []
+    end
+  end
+
   @doc """
   Nodes that are connected but report NO resources — they answer Erlang
   distribution yet `LS.Ops.NodeResources` is `:undef` (stale release) or the

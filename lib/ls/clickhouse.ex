@@ -851,8 +851,8 @@ defmodule LS.Clickhouse do
     SETTINGS join_use_nulls = 1, max_threads = 2
     """
 
-    with {:ok, _} <- query_raw(tech_sql, 120_000),
-         {:ok, _} <- query_raw(hiring_sql, 120_000) do
+    with {:ok, _} <- query_raw(tech_sql, 120_000, background: true),
+         {:ok, _} <- query_raw(hiring_sql, 120_000, background: true) do
       :ok
     end
   end
@@ -1113,7 +1113,7 @@ defmodule LS.Clickhouse do
   """
   @spec compact_businesses(integer(), integer() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
   def compact_businesses(since_unix, until_unix \\ nil) do
-    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 300_000),
+    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 300_000, background: true),
          {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
       # ClickHouse JSON quotes UInt64 by default, so count() can arrive as a
       # string — which would crash the compactor's stats arithmetic.
@@ -1136,7 +1136,7 @@ defmodule LS.Clickhouse do
   defp to_count(_), do: 0
 
   @doc "Full `businesses` rebuild — repair tool. See `LS.Cluster.Compactor`."
-  def rebuild_businesses_full, do: query_raw(compact_sql(0), 30 * 60_000)
+  def rebuild_businesses_full, do: query_raw(compact_sql(0), 30 * 60_000, background: true)
 
   @doc """
   Rebuild one hash-shard of `businesses` — the memory-safe backfill unit.
@@ -1148,7 +1148,7 @@ defmodule LS.Clickhouse do
   6.5G cap.
   """
   def compact_shard(shard, total_shards) do
-    query_raw(compact_sql_shard(shard, total_shards), 300_000)
+    query_raw(compact_sql_shard(shard, total_shards), 300_000, background: true)
   end
 
   defp compact_sql_shard(shard, total) do
@@ -1468,6 +1468,15 @@ defmodule LS.Clickhouse do
     e -> {:error, Exception.message(e)}
   end
 
+  @doc false
+  # Which connection pool a call uses. `background: true` routes to the small
+  # LS.Finch.CHBackground pool so a long-running compaction can never consume
+  # the connections the web tier needs — the 2026-08-27 outage. Anything a
+  # user is waiting on stays on the big pool.
+  def finch_for(opts) do
+    if Keyword.get(opts, :background, false), do: LS.Finch.CHBackground, else: LS.Finch.CH
+  end
+
   @doc """
   Run `sql` and return `{:ok, rows}`.
 
@@ -1494,7 +1503,7 @@ defmodule LS.Clickhouse do
       end
 
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1#{server_cap}"
-    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
+    case Req.post(url, finch: finch_for(opts), pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       # DDL / OPTIMIZE / statements with no result set return an empty 200 body.
       {:ok, %{status: 200, body: body}} -> {:ok, body}

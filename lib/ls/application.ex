@@ -101,6 +101,16 @@ defmodule LS.Application do
       # crawler and the compactor can saturate THEIR pool without taking the
       # customer-facing one down with them.
       {Finch, name: LS.Finch.CH, pools: %{default: [size: 150, count: 1]}},
+      # Background ClickHouse work gets its OWN small pool (2026-08-27 outage).
+      # The compactor's `INSERT INTO businesses ... SELECT` runs for 105-110s
+      # per pass and used to draw from LS.Finch.CH — the same 150 connections
+      # the website renders from. Enough slow passes plus normal traffic
+      # exhausted the pool ("Finch was unable to provide a connection"),
+      # Erlang's `global` then disconnected all 14 workers to avoid overlapping
+      # partitions, the BEAM stalled for ~2.5 min and the site was down ~15.
+      # A separate, deliberately SMALL pool means a slow compaction can only
+      # ever starve itself.
+      {Finch, name: LS.Finch.CHBackground, pools: %{default: [size: 12, count: 1]}},
       {Finch, name: LS.Finch.CTL, pools: %{default: [size: 30, count: 1]}},
       # Periodic bulk downloads (Tranco, Majestic, blocklists) hold a
       # connection for minutes at a time. Isolated so they cannot queue

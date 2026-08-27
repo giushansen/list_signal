@@ -33,7 +33,9 @@ defmodule LS.Cluster.Optimizer do
     Enum.each(["domains_current", "businesses"], fn table ->
       started = System.monotonic_time(:millisecond)
 
-      case LS.Clickhouse.query_raw("OPTIMIZE TABLE #{table} FINAL", @optimize_timeout) do
+      # background pool: OPTIMIZE FINAL runs for minutes and must never hold a
+      # connection the web tier needs (2026-08-27 outage).
+      case LS.Clickhouse.query_raw("OPTIMIZE TABLE #{table} FINAL", @optimize_timeout, background: true) do
         {:ok, _} ->
           Logger.info("[Optimizer] OPTIMIZE #{table} FINAL done in #{System.monotonic_time(:millisecond) - started}ms")
 
