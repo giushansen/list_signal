@@ -4,7 +4,7 @@ defmodule LSWeb.CsvDownloadController do
 
   No session, no login: the buyer came from a cold email and has already paid.
   The token in the URL is the credential, so this module is the only place
-  that decides whether a file may be handed over — and it writes down every
+  that decides whether a file may be handed over, and it writes down every
   time it does, because that record is the evidence in a chargeback.
   """
   use LSWeb, :controller

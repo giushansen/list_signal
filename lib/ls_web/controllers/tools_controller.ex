@@ -1,9 +1,9 @@
 defmodule LSWeb.ToolsController do
   @moduledoc """
   Free SEO tool pages.
-  /tools/shopify-checker — is this site on Shopify?
-  /tools/tech-lookup — what tech does this domain use?
-  /api/tools/lookup — JSON endpoint for JS-powered lookups
+  /tools/shopify-checker, is this site on Shopify?
+  /tools/tech-lookup, what tech does this domain use?
+  /api/tools/lookup, JSON endpoint for JS-powered lookups
   """
   use LSWeb, :controller
 

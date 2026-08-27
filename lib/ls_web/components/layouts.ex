@@ -15,9 +15,9 @@ defmodule LSWeb.Layouts do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="robots" content="index, follow" />
         <%= if assigns[:page_title] do %>
-          <title><%= @page_title %> — ListSignal</title>
+          <title><%= @page_title %> | ListSignal</title>
         <% else %>
-          <title>ListSignal — Domain Intelligence, Checked in Real Time</title>
+          <title>ListSignal | Domain Intelligence, Checked in Real Time</title>
         <% end %>
         <%= if assigns[:page_description] do %>
           <meta name="description" content={@page_description} />
@@ -70,7 +70,7 @@ defmodule LSWeb.Layouts do
   The one and only public navbar.
 
   Rendered by `public_root/1` so every marketing/SEO page gets the exact same
-  header. Pages must not ship their own `<nav>` — a per-page navbar is how we
+  header. Pages must not ship their own `<nav>`, a per-page navbar is how we
   ended up with five different variants where /features had no Log in link and
   /privacy had no Features or Pricing link.
   """
@@ -213,7 +213,7 @@ defmodule LSWeb.Layouts do
           </div>
         </nav>
 
-        <%!-- Popular countries — internal linking for SEO --%>
+        <%!-- Popular countries, internal linking for SEO --%>
         <div class="border-t border-white/[0.06] pt-8 mb-8">
           <h3 class="text-[12px] font-semibold text-white uppercase tracking-wider mb-4 text-center">Browse Stores by Country</h3>
           <div class="flex flex-wrap justify-center gap-x-4 gap-y-2 text-[13px] text-white/50">
@@ -262,8 +262,8 @@ defmodule LSWeb.Layouts do
   Umami analytics tag, rendered in every page `<head>`.
 
   No-ops until `config :ls, :umami` has a `website_id` (so dev/test/CI stay
-  clean and CSV buyers' one-off pages never phone home). The id is public — it
-  ships in the script itself — so it lives in config, not in the secrets env.
+  clean and CSV buyers' one-off pages never phone home). The id is public, it
+  ships in the script itself, so it lives in config, not in the secrets env.
   Self-hosted + cookieless, so no consent banner is required.
   """
   def umami(assigns) do
@@ -288,7 +288,7 @@ defmodule LSWeb.Layouts do
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <meta name="csrf-token" content={get_csrf_token()} />
         <meta name="robots" content="noindex, nofollow" />
-        <title>Dashboard — ListSignal</title>
+        <title>Dashboard | ListSignal</title>
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
         <link rel="icon" type="image/x-icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />

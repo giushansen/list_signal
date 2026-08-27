@@ -193,7 +193,7 @@ defmodule LSWeb.DashboardLive do
       .badge-red { color: #f87171; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.2); }
       .worker-batch-info { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4a5568; margin-left: auto; }
 
-      /* Worker pipeline — parallel fork/join layout */
+      /* Worker pipeline, parallel fork/join layout */
       .wp { font-family: 'JetBrains Mono', monospace; }
       .wp-row { display: flex; align-items: stretch; gap: 0; }
       .wp-box { background: #0d1320; border: 1px solid #1a2235; border-radius: 6px; padding: 8px 10px; text-align: center; min-width: 0; }
@@ -203,7 +203,7 @@ defmodule LSWeb.DashboardLive do
       .wp-box-detail { font-size: 8px; color: #374151; margin-top: 1px; }
       .wp-arr { display: flex; align-items: center; justify-content: center; padding: 0 3px; min-width: 20px; font-size: 12px; color: #1e293b; }
 
-      /* Parallel group — vertical stack with bracket */
+      /* Parallel group, vertical stack with bracket */
       .wp-parallel { display: flex; align-items: stretch; gap: 0; }
       .wp-bracket { width: 12px; display: flex; flex-direction: column; justify-content: center; }
       .wp-bracket-left { border-left: 2px solid #334155; border-top: 2px solid #334155; border-bottom: 2px solid #334155; border-radius: 4px 0 0 4px; }
@@ -265,7 +265,7 @@ defmodule LSWeb.DashboardLive do
         </button>
       </div>
 
-      <%!-- END-TABLE TOTALS — the two numbers that say how big the product is --%>
+      <%!-- END-TABLE TOTALS, the two numbers that say how big the product is --%>
       <% tc = @table_counts %>
       <div class="res">
         <div class="res-node" title="Rows in domains_current: one row per domain discovered by pipeline 1.">
@@ -278,7 +278,7 @@ defmodule LSWeb.DashboardLive do
         </div>
       </div>
 
-      <%!-- NODE RESOURCES — live, from /proc on each node (sar is for history) --%>
+      <%!-- NODE RESOURCES, live, from /proc on each node (sar is for history) --%>
       <div class="res">
         <%= for {node, r} <- @node_resources do %>
           <div class="res-node">
@@ -295,7 +295,7 @@ defmodule LSWeb.DashboardLive do
 
       <%= if @tab == "discovery" do %>
       <%= if @master_stats.queue && @master_stats.queue.queue_pct >= 80.0 do %>
-        <div class="alert-warn">⚠ Queue at {@master_stats.queue.queue_pct}% — add workers</div>
+        <div class="alert-warn">⚠ Queue at {@master_stats.queue.queue_pct}%, add workers</div>
       <% end %>
       <% quarantined = Enum.filter(@worker_health, fn {_, h} -> h.quarantined end) %>
       <% missing = missing_workers(@worker_health, @worker_stats) %>
@@ -339,7 +339,7 @@ defmodule LSWeb.DashboardLive do
         <div class="error-panel">
           <div class="section-label" style="margin: 0 0 8px 0;">Recent Errors (all nodes)</div>
           <%= if @all_errors == [] do %>
-            <div class="error-empty">No errors — pipeline running clean</div>
+            <div class="error-empty">No errors, pipeline running clean</div>
           <% else %>
             <%= for e <- Enum.take(@all_errors, 30) do %>
               <div class="error-row">
@@ -392,7 +392,7 @@ defmodule LSWeb.DashboardLive do
       <div class="section-label">Worker Nodes</div>
       <%= for {name, h} <- missing_workers(@worker_health, @worker_stats) do %>
         <div class="worker-card worker-card-danger">
-          <div class="health-banner health-banner-danger">⛔ NOT CONNECTED — {name} produced rows this session (quality {if h.ratio, do: Float.round(h.ratio * 100, 1)}%) but has left the cluster. Check the node: systemctl status listsignal@worker.</div>
+          <div class="health-banner health-banner-danger">⛔ NOT CONNECTED, {name} produced rows this session (quality {if h.ratio, do: Float.round(h.ratio * 100, 1)}%) but has left the cluster. Check the node: systemctl status listsignal@worker.</div>
         </div>
       <% end %>
       <%= if @worker_stats == [] do %>
@@ -410,7 +410,7 @@ defmodule LSWeb.DashboardLive do
               <div class="health-banner health-banner-danger">⛔ QUARANTINED, this node's rows are being DROPPED ({wh.dropped} so far). Enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (min 90%). Fix the node, then LS.Cluster.Inserter.release_worker("{node_name}").</div>
             <% end %>
             <%= if sev == :warn do %>
-              <div class="health-banner health-banner-warn">⚠ AT RISK — enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (quarantine trips below 90%)</div>
+              <div class="health-banner health-banner-warn">⚠ AT RISK, enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (quarantine trips below 90%)</div>
             <% end %>
             <div class="worker-header">
               <span class="worker-name">{node_name}</span>
@@ -518,7 +518,7 @@ defmodule LSWeb.DashboardLive do
         <% agents = @enrichment_stats.agents %>
 
         <%= if agents == [] do %>
-          <div class="alert-danger">⛔ No enrichment lane running — start one with <b>make dev-enrichment</b> (or LS_LANES=enrichment on a node)</div>
+          <div class="alert-danger">⛔ No enrichment lane running, start one with <b>make dev-enrichment</b> (or LS_LANES=enrichment on a node)</div>
         <% end %>
 
         <%!-- HEALTH SUMMARY --%>
@@ -533,7 +533,7 @@ defmodule LSWeb.DashboardLive do
             <%= cond do %>
               <% agents == [] -> %>No enrichment agent connected
               <% epm > 0 -> %>Enriching {epm} domains/min across {length(agents)} node(s)
-              <% true -> %>Agent connected but idle — queue {(eq && eq.queue_depth) || 0}
+              <% true -> %>Agent connected but idle, queue {(eq && eq.queue_depth) || 0}
             <% end %>
           </span>
           <div class="health-metrics">
@@ -582,7 +582,7 @@ defmodule LSWeb.DashboardLive do
           <div class="rep-chip">Via browser <b class={if(Map.get(o, :via_browser, 0) > 0, do: "rep-ok", else: "rep-warn")}>{fmt(Map.get(o, :via_browser, 0))}</b></div>
         </div>
 
-        <%!-- ENRICHMENT NODES — same card as discovery --%>
+        <%!-- ENRICHMENT NODES, same card as discovery --%>
         <div class="section-label">Enrichment Nodes</div>
         <%= if agents == [] do %>
           <div class="no-workers">No enrichment lane connected</div>
@@ -631,9 +631,9 @@ defmodule LSWeb.DashboardLive do
             end}></span>
             <span class="health-label">
               <%= cond do %>
-                <% is_map(sch) && Map.get(sch, :disabled) -> %>Scheduler paused (LS_VERIFY_DISABLED) — run by hand with LS.Verification.run/1
+                <% is_map(sch) && Map.get(sch, :disabled) -> %>Scheduler paused (LS_VERIFY_DISABLED), run by hand with LS.Verification.run/1
                 <% running && running != false -> %>Ingesting <b>{running}</b> now
-                <% true -> %>Idle — next stale source runs automatically
+                <% true -> %>Idle, next stale source runs automatically
               <% end %>
             </span>
             <div class="health-metrics">
@@ -644,7 +644,7 @@ defmodule LSWeb.DashboardLive do
           </div>
 
           <%!-- PER-SOURCE PIPELINE: fetch → match → facts, with timing --%>
-          <div class="section-label" style="margin-top: 0;">Sources — last run</div>
+          <div class="section-label" style="margin-top: 0;">Sources, last run</div>
           <table class="peek-table" style="min-width:0;width:100%">
             <thead><tr>
               <th>source</th><th>status</th><th>snapshot</th><th style="text-align:right">records</th>
@@ -675,7 +675,7 @@ defmodule LSWeb.DashboardLive do
                 <% end %>
               <% end %>
               <%= if vs.sources == [] do %>
-                <tr><td colspan="9" style="color:#64748b">No runs yet — the scheduler starts the first source ~15 min after boot.</td></tr>
+                <tr><td colspan="9" style="color:#64748b">No runs yet, the scheduler starts the first source ~15 min after boot.</td></tr>
               <% end %>
             </tbody>
           </table>
@@ -704,7 +704,7 @@ defmodule LSWeb.DashboardLive do
       <%= if @peek do %>
         <div class="peek-panel">
           <div class="peek-header">
-            <span class="peek-title">{@peek.stage} samples — {@peek.worker}</span>
+            <span class="peek-title">{@peek.stage} samples, {@peek.worker}</span>
             <button class="peek-close" phx-click="close_peek">✕ close</button>
           </div>
           <%= if @peek_data == nil or @peek_data == [] do %>
@@ -826,7 +826,7 @@ defmodule LSWeb.DashboardLive do
       -- uniq over biz_enrichment, NOT depth_enriched_at on businesses: that
       -- column only the newer depth pass sets, so it is NULL for the ~2-3M
       -- businesses enriched before it existed. It made the admin read
-      -- "11M/14.3M" — a phantom 3M backlog — while real coverage was 98%
+      -- "11M/14.3M", a phantom 3M backlog, while real coverage was 98%
       -- (owner chased it on 2026-08-25). uniq() is approximate (~1% error)
       -- which is fine for a dashboard pair; the data-contract suite holds
       -- this metric to the truth within 5%.

@@ -29,7 +29,7 @@ defmodule LSWeb.UserLive.Settings do
       </header>
 
       <div class="max-w-3xl mx-auto px-5 py-8 space-y-8">
-        <%!-- Plan & Billing — comparison table --%>
+        <%!-- Plan & Billing, comparison table --%>
         <div class="bg-[#0F1628] border border-white/[0.06] rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-2">Plan & Billing</h2>
           <% plan_color = case @plan do
@@ -126,13 +126,13 @@ defmodule LSWeb.UserLive.Settings do
               <form action={~p"/subscription/checkout/starter/monthly"} method="post" class="flex-1">
                 <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
                 <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-blue-500/20 transition">
-                  Start with Starter — $39/mo
+                  Start with Starter, $39/mo
                 </button>
               </form>
               <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="flex-1">
                 <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
                 <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
-                  Upgrade to Pro — $99/mo
+                  Upgrade to Pro, $99/mo
                 </button>
               </form>
             </div>
@@ -176,7 +176,7 @@ defmodule LSWeb.UserLive.Settings do
                 <%!-- id + bound value are LOAD-BEARING (2026-08-25): without them,
                      every validate re-render patches the inputs positionally, and
                      the error <p> tags appearing/disappearing between them made
-                     LiveView recreate the OTHER field mid-typing — wiping what the
+                     LiveView recreate the OTHER field mid-typing, wiping what the
                      user had typed. Debounce keeps errors from flickering per key. --%>
                 <input type="password" id="password_form_password" name={@password_form[:password].name}
                   value={@password_form[:password].value} phx-debounce="500"

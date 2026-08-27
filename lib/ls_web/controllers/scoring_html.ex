@@ -35,7 +35,7 @@ defmodule LSWeb.ScoringHTML do
         </div>
       </div>
       <div class="mt-12 text-center">
-        <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="scoring_page" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover">Start free — no credit card required</a>
+        <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="scoring_page" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover">Start free, no credit card required</a>
       </div>
     </div></main>
     """

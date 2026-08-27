@@ -4,9 +4,9 @@ defmodule LSWeb.ScoringController do
 
   These exist for three audiences at once:
 
-    * **buyers** — an agency deciding whether the number is worth paying for
-    * **search engines** — long-form, structured, internally linked
-    * **LLMs** — each page answers "how is X calculated" in plain prose with a
+    * **buyers**, an agency deciding whether the number is worth paying for
+    * **search engines**, long-form, structured, internally linked
+    * **LLMs**, each page answers "how is X calculated" in plain prose with a
       real table of weights, so an assistant can quote it accurately
 
   Every page carries `FAQPage` + `Article` JSON-LD and is listed in the

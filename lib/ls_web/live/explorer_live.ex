@@ -1,6 +1,6 @@
 defmodule LSWeb.ExplorerLive do
   @moduledoc """
-  The data explorer LiveView — the core paid product. Filterable/searchable
+  The data explorer LiveView, the core paid product. Filterable/searchable
   view over `domains_fast` with server-side pagination and CSV export.
   """
   use LSWeb, :live_view
@@ -733,7 +733,7 @@ defmodule LSWeb.ExplorerLive do
               <% "free" -> %>
                 <button phx-click="show_upgrade" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide uppercase bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/25 hover:ring-amber-500/50 transition cursor-pointer animate-pulse">
                   <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" /></svg>
-                  FREE — Upgrade
+                  FREE, Upgrade
                 </button>
               <% "starter" -> %>
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/20">
@@ -799,7 +799,7 @@ defmodule LSWeb.ExplorerLive do
             </div>
             <%!-- Export lives with the filters because that is what it acts
                  on: whatever is filtered right now. It is an icon with a
-                 tooltip rather than a labelled block — the row is already
+                 tooltip rather than a labelled block, the row is already
                  dense, and the arrow-into-tray is the one download glyph
                  everyone reads without thinking. --%>
             <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
@@ -898,14 +898,14 @@ defmodule LSWeb.ExplorerLive do
                 <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
                   <span class="text-gray-500">Products</span>
                   <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-                  <span class="text-gray-600">–</span>
+                  <span class="text-gray-600">-</span>
                   <input type="number" name="max_products" value={@filters.max_products} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
                 </div>
 
                 <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
                   <span class="text-gray-500">Avg $</span>
                   <input type="number" name="min_price_avg" value={@filters.min_price_avg} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-                  <span class="text-gray-600">–</span>
+                  <span class="text-gray-600">-</span>
                   <input type="number" name="max_price_avg" value={@filters.max_price_avg} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
                 </div>
               <% end %>
@@ -913,7 +913,7 @@ defmodule LSWeb.ExplorerLive do
               <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
                 <span class="text-gray-500">SEO</span>
                 <input type="number" name="min_seo_score" value={@filters.min_seo_score} form="filter_form" phx-debounce="500" placeholder="min" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
-                <span class="text-gray-600">–</span>
+                <span class="text-gray-600">-</span>
                 <input type="number" name="max_seo_score" value={@filters.max_seo_score} form="filter_form" phx-debounce="500" placeholder="max" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
               </div>
             </div>
@@ -955,7 +955,7 @@ defmodule LSWeb.ExplorerLive do
                 <% else %>
                   <%= if @query_error do %>
                     <span class="text-amber-400 font-medium">Search unavailable</span>
-                    <span class="text-gray-500">— the query failed, this is not an empty result</span>
+                    <span class="text-gray-500">- the query failed, this is not an empty result</span>
                   <% else %>
                     <%= if @count_loading do %>
                       <span class="inline-block w-14 h-3.5 rounded bg-white/[0.08] animate-pulse align-middle"></span> results
@@ -1068,7 +1068,7 @@ defmodule LSWeb.ExplorerLive do
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["http_language"] %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_num(row["product_count"]) %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_money(row["price_avg"]) %></td>
-                        <td class="px-3 py-2.5 text-right tabular-nums"><%= if to_int(row["job_count"]) > 0 do %><span class="text-emerald-400"><%= row["job_count"] %></span><% else %><span class="text-gray-600">—</span><% end %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums"><%= if to_int(row["job_count"]) > 0 do %><span class="text-emerald-400"><%= row["job_count"] %></span><% else %><span class="text-gray-600">-</span><% end %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums"><%= seo_cell(row["seo_score"]) %></td>
                         <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= freshness_label(row["enriched_at"]) %></td>
                         <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= format_response_time(row["http_response_time"]) %></td>
@@ -1077,7 +1077,7 @@ defmodule LSWeb.ExplorerLive do
                     <%= if @results == [] && !@loading do %>
                       <%= if @query_error do %>
                         <tr><td colspan="12" class="px-4 py-16 text-center text-amber-400/80">
-                          The search query failed — your filters were not applied. Please retry in a moment.
+                          The search query failed, your filters were not applied. Please retry in a moment.
                         </td></tr>
                       <% else %>
                         <tr><td colspan="12" class="px-4 py-16 text-center text-gray-600">No results found. Try adjusting your filters.</td></tr>
@@ -1155,7 +1155,7 @@ defmodule LSWeb.ExplorerLive do
                     <.detail_card icon="🗣️" label="Language" value={if @detail["http_language"], do: language_name(@detail["http_language"])} />
                   </div>
 
-                  <%!-- Tech stack — purple --%>
+                  <%!-- Tech stack, purple --%>
                   <.detail_section_badge icon="🔧" label="Tech Stack" badge={tech_section_badge(@detail)}>
                     <div class="flex flex-wrap gap-1.5">
                       <%= for tech <- format_tech(@detail["http_tech"]) do %>
@@ -1167,7 +1167,7 @@ defmodule LSWeb.ExplorerLive do
                     </div>
                   </.detail_section_badge>
 
-                  <%!-- Apps — purple --%>
+                  <%!-- Apps, purple --%>
                   <%= if has_value?(@detail["http_apps"]) do %>
                     <.detail_section_badge icon="📦" label="Apps" badge={app_section_badge(@detail)}>
                       <div class="flex flex-wrap gap-1.5">
@@ -1178,7 +1178,7 @@ defmodule LSWeb.ExplorerLive do
                     </.detail_section_badge>
                   <% end %>
 
-                  <%!-- Revenue Evidence — gold/silver/bronze --%>
+                  <%!-- Revenue Evidence, gold/silver/bronze --%>
                   <%= if format_evidence(@detail["revenue_evidence"]) != [] do %>
                     <.detail_section_badge icon="📊" label="Revenue Evidence" badge={nil}>
                       <div class="space-y-1.5">
@@ -1213,7 +1213,7 @@ defmodule LSWeb.ExplorerLive do
                         <p class="text-[12px] text-gray-300"><%= @detail["http_h1"] %></p>
                       </div>
                     <% end %>
-                    <%!-- Pages — blue, clickable --%>
+                    <%!-- Pages, blue, clickable --%>
                     <%= if has_value?(@detail["http_pages"]) do %>
                       <div class="mt-2.5 bg-[#0B1020] rounded-lg p-3">
                         <div class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1">📑 Pages</div>
@@ -1227,7 +1227,7 @@ defmodule LSWeb.ExplorerLive do
                     <% end %>
                   </.detail_section_badge>
 
-                  <%!-- Emails — blue --%>
+                  <%!-- Emails, blue --%>
                   <%= if has_value?(@detail["http_emails"]) do %>
                     <.detail_section_badge icon="📧" label="Emails" badge={nil}>
                       <div class="space-y-1">
@@ -1280,7 +1280,7 @@ defmodule LSWeb.ExplorerLive do
                       <.detail_card icon="📮" label="MX Record" value={format_mx_short(@detail["dns_mx"])} />
                       <.detail_card icon="↪️" label="CNAME" value={@detail["dns_cname"]} />
                     </div>
-                    <%!-- TXT records — expandable --%>
+                    <%!-- TXT records, expandable --%>
                     <%= if has_value?(@detail["dns_txt"]) do %>
                       <details class="mt-2.5 bg-[#0B1020] rounded-lg p-3 group">
                         <summary class="cursor-pointer text-[10px] text-gray-500 uppercase tracking-wider font-semibold hover:text-gray-300 transition flex items-center justify-between">
@@ -1336,7 +1336,7 @@ defmodule LSWeb.ExplorerLive do
                     </div>
                   </.detail_section_badge>
 
-                  <%!-- Subdomain list — purple, clickable --%>
+                  <%!-- Subdomain list, purple, clickable --%>
                   <%= if format_subdomains(@detail["ctl_subdomains"]) != [] do %>
                     <.detail_section_badge icon="🔗" label="Subdomain List" badge={nil}>
                       <div class="flex flex-wrap gap-1.5">
@@ -1408,7 +1408,7 @@ defmodule LSWeb.ExplorerLive do
                             <span class="rounded-md bg-emerald-500/10 px-2 py-0.5 text-[11px] text-emerald-300"><%= p["currency"] %> <%= p["price"] %></span>
                           <% end %>
                         </div>
-                        <p class="mt-2 text-[11px] text-white/30">Every amount printed on the pricing page — indicative, not verified plan tiers.</p>
+                        <p class="mt-2 text-[11px] text-white/30">Every amount printed on the pricing page, indicative, not verified plan tiers.</p>
                       </.detail_section_badge>
                     <% end %>
 
@@ -1662,10 +1662,10 @@ defmodule LSWeb.ExplorerLive do
         <svg class={"w-3.5 h-3.5 transition #{if @is_open, do: "rotate-180"}"} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" /></svg>
       </button>
 
-      <%!-- Dropdown panel — z-50 so it sits above the z-40 backdrop --%>
+      <%!-- Dropdown panel, z-50 so it sits above the z-40 backdrop --%>
       <%= if @is_open do %>
         <div data-dropdown-panel id={"dd-panel-#{@field}"} phx-hook="DropdownFilter" class="absolute top-full left-0 mt-1.5 w-64 bg-[#141C30] border border-white/[0.08] rounded-xl shadow-2xl shadow-black/40 z-50 overflow-hidden">
-          <%!-- Search (filters options client-side via the DropdownFilter JS hook — no backend) --%>
+          <%!-- Search (filters options client-side via the DropdownFilter JS hook, no backend) --%>
           <%= if @searchable do %>
             <div class="p-2 border-b border-white/[0.06]">
               <input type="text" id={"dd-search-#{@field}"} autocomplete="off"
@@ -1856,28 +1856,28 @@ defmodule LSWeb.ExplorerLive do
     end
   end
 
-  defp depth_num(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
-  defp depth_num(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+  defp depth_num(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
+  defp depth_num(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
 
   defp depth_num(v) do
     case to_int(v) do
-      0 -> Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+      0 -> Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
       n -> format_number(n)
     end
   end
 
-  defp depth_money(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
-  defp depth_money(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+  defp depth_money(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
+  defp depth_money(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
 
   defp depth_money(v) do
     case to_float(v) do
       f when f > 0 -> "$" <> :erlang.float_to_binary(f, decimals: 0)
-      _ -> Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+      _ -> Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
     end
   end
 
-  defp seo_cell(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
-  defp seo_cell(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">—</span>))
+  defp seo_cell(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
+  defp seo_cell(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
 
   defp seo_cell(v) do
     score = to_int(v)

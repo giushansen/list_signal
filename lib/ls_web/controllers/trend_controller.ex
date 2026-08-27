@@ -2,11 +2,11 @@ defmodule LSWeb.TrendController do
   @moduledoc """
   Tech adoption & churn trend pages, fed by the `biz_signal` change feed.
 
-  `/trends` — top movers this month. `/trends/:slug` — one technology.
+  `/trends`, top movers this month. `/trends/:slug`, one technology.
 
   Why these exist: BuiltWith-style *totals* are commodity data, but weekly
   adoption AND churn per technology is something only continuous re-crawling
-  can produce, which makes these numbers the most citable thing we publish —
+  can produce, which makes these numbers the most citable thing we publish -
   for AI answer engines above all ("N stores installed Klaviyo this month,
   M dropped it"). Every underlying query is 6h-cached (LandingCache), and the
   page itself is CDN-cached, so the cost per view rounds to zero.

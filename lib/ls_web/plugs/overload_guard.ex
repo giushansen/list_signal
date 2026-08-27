@@ -6,7 +6,7 @@ defmodule LSWeb.Plugs.OverloadGuard do
 
   The first version counted requests in flight and decremented in
   `register_before_send`. That decrement does not run when a request times out
-  or its process dies — so on 2026-08-19 a burst of timeouts leaked the
+  or its process dies, so on 2026-08-19 a burst of timeouts leaked the
   counter above its ceiling and the site returned 503 to **every** visitor
   until it was restarted. A guard that can fail closed permanently is worse
   than no guard: it converts a transient spike into an indefinite outage.
@@ -18,7 +18,7 @@ defmodule LSWeb.Plugs.OverloadGuard do
   ## What it protects against
 
   The BEAM growing past its cgroup limit. With swap forbidden, crossing that
-  limit leaves the kernel only one lever — stall the whole VM — and the
+  limit leaves the kernel only one lever, stall the whole VM, and the
   watchdog then restarts it, dropping every request in flight. Shedding the
   marginal request keeps the rest of the site serving.
   """
@@ -53,7 +53,7 @@ defmodule LSWeb.Plugs.OverloadGuard do
 
   Fails OPEN: if the sampler has not published a reading, or the reading is
   stale, requests are served. A monitoring failure must never take the site
-  down — that is the mistake this module exists to correct.
+  down, that is the mistake this module exists to correct.
   """
   def over_threshold? do
     case :persistent_term.get(@key, nil) do

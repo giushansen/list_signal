@@ -3,7 +3,7 @@ defmodule LSWeb.Teaser do
   Fake-but-plausible placeholder data for blurred teasers on public pages.
 
   The rule these helpers enforce: **real data never reaches the DOM behind a
-  blur** — a blur is one devtools click from removed, so what sits under it
+  blur**, a blur is one devtools click from removed, so what sits under it
   must be worthless. Fakes are deterministic per domain (stable across
   renders, so pages stay cacheable) and drawn from fixed word lists that
   cannot collide with real extracted data by construction: fake emails use

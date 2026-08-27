@@ -45,15 +45,17 @@ defmodule LSWeb.HumanCopyTest do
            "user-facing copy must read as human-written:\n  " <> Enum.join(offenders, "\n  ")
   end
 
-  test "no machine-typography in strings rendered by controllers or LiveViews" do
+  test "no machine-typography anywhere a controller or LiveView renders" do
+    # Line-based, not string-based: the page <title> lives in a ~H sigil in
+    # layouts.ex, so a quoted-string scan missed it and every page kept
+    # serving "Pricing — ListSignal" after the templates were clean.
+    # Comments are excluded: those are for us, not for readers.
     offenders =
       for f <- @web_modules,
-          body = File.read!(f),
-          line <- String.split(body, "\n"),
-          captured <- Regex.scan(~r/"[^"\n]*"/, line),
-          s <- captured,
-          Regex.match?(~r/[—–…\x{201C}\x{201D}]/u, s),
-          do: "#{f}: #{String.slice(s, 0, 70)}"
+          {line, n} <- Enum.with_index(String.split(File.read!(f), "\n"), 1),
+          not String.starts_with?(String.trim_leading(line), "#"),
+          Regex.match?(~r/[—–…\x{201C}\x{201D}]/u, line),
+          do: "#{f}:#{n}: #{String.slice(String.trim(line), 0, 70)}"
 
     assert offenders == [],
            "rendered copy must read as human-written:\n  " <> Enum.join(offenders, "\n  ")
