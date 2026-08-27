@@ -1,5 +1,1 @@
-Also carries an unrelated change that was swept in from a dirty working tree by a concurrent session: lib/ls/clickhouse.ex gained b.inferred_country in businesses_needing_enrichment/2, and the row-mapping arity changed from 6 to 7 accordingly.
-
-That change belongs to the phone-extraction work (clickhouse/migrations/017_biz_phone.sql). Reason it exists: a number printed '030 12345678' cannot be normalised to E.164 without knowing the country. With the country known, every phone found on a 41-domain German sample normalised; without it, 55% did. Guessing a country prefix would mint a valid-looking number that dials a real stranger, so LS.HTTP.PhoneExtractor refuses and keeps only the raw string.
-
-Nothing is wrong with the code. This note exists because the commit message cannot explain a change its author did not make. Two sessions sharing one working tree caused it: 'git add -A' from one session commits whatever the other has in flight.
+Deployed 2026-08-27. Before: 160 calls in 6h at ~100s and 9.75 GiB each for the country variant alone. The tech variant added 2415s. Both now on a 1h TTL. domains_fast is a View, so indexing was not an option. Watch system.query_log over the next day to confirm this pattern drops out of the top-cost list.
