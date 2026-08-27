@@ -27,6 +27,76 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-08-27
 
+**Common Crawl probe: not worth a pipeline for our population.** Sampled 150
+businesses with MX but no email (population 3.55M) against CC-MAIN-2026-34
+plus two older indexes. CC covers only 24% of them: our edge is precisely the
+fresh, small tail CC does not visit. Funnel: 150 sampled, 37 in CC, 13 with a
+contact-like page, 5 yielding an email we lack (3.3%). Careers, team, login
+and pricing pages: 0-2 of 150. First-crawl date as an age substitute for the
+2.85M businesses on registries that publish no creation date: 28% get a bound
+but three quarters of those are 2026 first-crawls we already know from CT, so
+only ~7.6% gain a real age. Better levers: crawl /about ourselves for the
+no-email subset (we reach 100% of them, CC reaches 24%), and use first
+certificate date from CT history for age on .de/.it/.ch/.com.au.
+
+**RDAP: failures were cached as done for 90 days.** 47.9% of businesses had no
+creation date. 3.74M of the 7.34M missing are on TLDs where RDAP answers
+(.com sat at 63.5%) and were frozen by the worker error branch writing to the
+90-day done-cache on ANY failure; recrawls saw a hit and never retried. Fixed;
+the gap now closes with each recrawl wave. The other 2.85M are structural:
+DENIC, .it, .ch, .com.au publish no date via RDAP, and no pipeline change can
+conjure one.
+
+**Country attribution was 62.8% correct and is now 76.7%, with 2.15M
+unsupportable labels withdrawn.** A customer found a Nashville nurse-triage
+service (`intellatriage.com`) in a list of French companies. Three more
+followed: `eapc-us.com`, `geteino.com` and `tryeino.com`, all English-language
+with no legal page, French only because they sit on OVH. And `knowunity.fr`,
+a Berlin company carrying German VAT `DE326705352` on its own site.
+
+Measured on 566 live generic-TLD sites, scored against evidence the businesses
+print about themselves (VAT and registration numbers, schema.org
+`addressCountry`, dialling prefixes):
+
+| signal | fired | correct | precision |
+|---|---:|---:|---:|
+| page evidence (cross-validated) | 35 | 30 | 85.7% |
+| language to country | 19 | 14 | 73.7% |
+| BGP with the old infra filter | 35 | 20 | 57.1% |
+| the whole rule as it stood | 43 | 27 | 62.8% |
+
+Two results overturned the assumptions the module was built on. **Language is
+more accurate than BGP**, so it was not demoted below it, contrary to the
+advice given before measuring. And the BGP failures were nearly all ordinary
+hosting the `@infra_asn_markers` list did not name: Hostinger alone produced
+7 wrong answers, with GoDaddy, Hetzner, dogado and eTOP behind it. GoDaddy
+also failed to match at all, because ASN org strings hyphenate inconsistently
+and `AS-26496-GO-DADDY-COM-LLC` does not contain `godaddy`. Punctuation is now
+stripped before matching, in both implementations.
+
+Also removed: `es`, `pt`, `ar`, `hi`, `bn`, `ta`, `te` and `sco` from the
+language map. Each named ONE country for a language spoken across many, so
+Spanish named Spain for a Mexican business. Scored with page evidence withheld
+so it is never measured against itself, the rules alone went from 62.8% to
+**76.7%** and halved the wrong rows, 16 to 7.
+
+**The RDAP tier had been dead since it was written.** The crawler fetches the
+registrant country (`LS.RDAP.Client.find_registrant_country/1`) and `infer/5`
+accepts it, but it was never given a column, and the compactor recomputes
+`inferred_country` from stored columns on every pass via `sql_expr/4`, which
+had no RDAP argument. So the value was used once at crawl time and discarded
+within minutes. Migration 018 gives it a column, along with
+`http_country_evidence` from the new `LS.HTTP.CountryEvidence`. The contract
+test that keeps the Elixir and SQL paths in lockstep was itself passing
+`_rdap` and dropping it, so the tier was untested on the SQL side too; it now
+passes every input to both.
+
+Fleet-wide projection over 13.0M live businesses: 9.34M labelled before, 7.19M
+after, **2,150,661 withdrawn** and 118,776 reassigned. Coverage falls from
+71.8% to 55.3% and that is the point, the same trade made on 2026-08-06.
+Coverage returns as recrawl fills the two new columns.
+
+
 **Workers hold Tranco as a bloom filter.** `tranco_ranks` was 402MB of a 675MB
 BEAM on nodes with 1,968MB total, and it existed to answer one question:
 `LS.HTTP.DomainFilter` asks whether a domain is ranked and bypasses the
