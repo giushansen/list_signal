@@ -1,1 +1,5 @@
-Deployed 2026-08-27. Before: 160 calls in 6h at ~100s and 9.75 GiB each for the country variant alone. The tech variant added 2415s. Both now on a 1h TTL. domains_fast is a View, so indexing was not an option. Watch system.query_log over the next day to confirm this pattern drops out of the top-cost list.
+Also carries an unrelated change swept in from a dirty working tree by a concurrent session: lib/ls/clickhouse.ex gained b.inferred_country in businesses_needing_enrichment/2, and the row-mapping arity changed from 6 to 7.
+
+It arrived with phone-extraction work that was REVERTED on 2026-08-27 at the owner's request. The phone extractor, its tests and its biz_phone table are gone from the repo and from production. The inferred_country column was deliberately left in place: it is already published and deployed, it is harmless, and reverting a live refill query to remove an unused field is more risk than the tidiness is worth. It is currently read by nothing.
+
+This note exists because a commit message cannot explain a change its author did not make. Two sessions sharing one working tree caused it: 'git add -A' from one commits whatever the other has in flight.
