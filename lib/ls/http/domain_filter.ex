@@ -89,9 +89,12 @@ defmodule LS.HTTP.DomainFilter do
   # them for a missing SPF record). O(1) ETS lookup against the full Tranco
   # list (~4.2M entries, refreshed daily, present on every worker).
   defp tranco_ranked?(domain) do
-    LS.Reputation.Tranco.lookup(domain) != nil
+    # ranked?/1, not lookup/1: workers carry a bloom filter rather than the
+    # ranks (see LS.Reputation.Tranco), so lookup/1 is always nil there and
+    # this bypass would silently stop firing.
+    LS.Reputation.Tranco.ranked?(domain)
   rescue
-    # Tranco's ETS table isn't up yet (boot ordering) — fall through to the
+    # Reference data isn't up yet (boot ordering): fall through to the
     # heuristic filters rather than crashing the batch.
     ArgumentError -> false
   end

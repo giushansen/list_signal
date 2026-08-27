@@ -18,11 +18,11 @@ defmodule LS.ReputationFillTest do
   """
 
   setup do
-    if :ets.info(:majestic_ranks) == :undefined do
-      :ets.new(:majestic_ranks, [:named_table, :set, :public])
+    for t <- [:majestic_ranks, :tranco_ranks] do
+      if :ets.info(t) == :undefined, do: :ets.new(t, [:named_table, :set, :public])
+      :ets.delete_all_objects(t)
     end
 
-    :ets.delete_all_objects(:majestic_ranks)
     :ok
   end
 
@@ -51,14 +51,35 @@ defmodule LS.ReputationFillTest do
       assert row.majestic_rank == 7, "a worker-supplied rank must win over a backfill"
     end
 
-    test "an unloaded master table returns rows UNTOUCHED — blanking would erase good data" do
+    test "unloaded master tables return rows UNTOUCHED, blanking would erase good data" do
       # domains_current is newest-row-wins: writing an empty rank over a real
       # one is the 'writer blanks another writer' failure from CLAUDE.md.
-      :ets.delete_all_objects(:majestic_ranks)
+      for t <- [:majestic_ranks, :tranco_ranks], do: :ets.delete_all_objects(t)
       refute Reputation.loaded?()
 
       rows = [%{domain: "stripe.com", majestic_rank: 412, majestic_ref_subnets: 9_001}]
       assert Reputation.fill(rows) == rows
+    end
+
+    test "the master fills tranco_rank, which workers no longer carry" do
+      :ets.insert(:tranco_ranks, {"stripe.com", 4_521})
+
+      assert [row] = Reputation.fill([%{domain: "stripe.com", tranco_rank: nil}])
+      assert row.tranco_rank == 4_521
+    end
+
+    test "a tranco_rank already on the row is never overwritten" do
+      :ets.insert(:tranco_ranks, {"stripe.com", 4_521})
+
+      assert [row] = Reputation.fill([%{domain: "stripe.com", tranco_rank: 9}])
+      assert row.tranco_rank == 9
+    end
+
+    test "an unranked domain gets no tranco_rank rather than a fabricated one" do
+      :ets.insert(:tranco_ranks, {"stripe.com", 4_521})
+
+      assert [row] = Reputation.fill([%{domain: "nobody.example", tranco_rank: nil}])
+      assert row.tranco_rank == nil
     end
 
     test "www. is normalised the same way the worker would have" do

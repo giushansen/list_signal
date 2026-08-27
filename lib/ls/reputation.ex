@@ -30,12 +30,13 @@ defmodule LS.Reputation do
   real one.
   """
 
-  alias LS.Reputation.Majestic
+  alias LS.Reputation.{Majestic, Tranco}
 
   @doc """
-  Fill `majestic_rank` / `majestic_ref_subnets` on rows arriving from workers.
+  Fill the reputation columns workers no longer carry: `majestic_rank`,
+  `majestic_ref_subnets` and `tranco_rank`.
 
-  A row that already carries a rank (a standalone node, or a replay from
+  A row that already carries a value (a standalone node, or a replay from
   before this change) keeps it.
   """
   @spec fill([map()]) :: [map()]
@@ -45,15 +46,25 @@ defmodule LS.Reputation do
 
   def fill(rows), do: rows
 
-  @doc "True when the master's Majestic table actually holds data."
+  @doc "True when the master's reference tables actually hold data."
   def loaded? do
-    case :ets.info(:majestic_ranks, :size) do
+    table_loaded?(:majestic_ranks) or table_loaded?(:tranco_ranks)
+  end
+
+  defp table_loaded?(t) do
+    case :ets.info(t, :size) do
       n when is_integer(n) and n > 0 -> true
       _ -> false
     end
   end
 
   defp fill_row(%{domain: domain} = row) when is_binary(domain) do
+    row |> fill_majestic(domain) |> fill_tranco(domain)
+  end
+
+  defp fill_row(row), do: row
+
+  defp fill_majestic(row, domain) do
     if is_nil(Map.get(row, :majestic_rank)) do
       case Majestic.lookup(domain) do
         %{rank: rank, ref_subnets: subnets} ->
@@ -69,5 +80,16 @@ defmodule LS.Reputation do
     end
   end
 
-  defp fill_row(row), do: row
+  # Workers run Tranco in :membership mode, so their tranco_rank is always nil
+  # and the master supplies the value here from its full copy.
+  defp fill_tranco(row, domain) do
+    if is_nil(Map.get(row, :tranco_rank)) do
+      case Tranco.lookup(domain) do
+        rank when is_integer(rank) -> Map.put(row, :tranco_rank, rank)
+        _ -> row
+      end
+    else
+      row
+    end
+  end
 end

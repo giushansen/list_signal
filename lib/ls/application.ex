@@ -24,6 +24,19 @@ defmodule LS.Application do
 
     LS.RateLimiter.init()
     pin_vm_resolver()
+
+    # A dedicated worker keeps Tranco as a 4.9 MB bloom filter instead of a
+    # 402 MB ETS table: it only ever asks whether a domain is ranked (the crawl
+    # bypass in LS.HTTP.DomainFilter), never what the rank IS, and the master
+    # fills the tranco_rank column from its own full copy. On a 1,968 MB node
+    # that is a quarter of the machine returned.
+    #
+    # Keyed on the ROLE, not on the worker child list: "standalone" (dev and
+    # test) runs both roles in one BEAM and does need the ranks, so deciding
+    # this inside role_children("worker", _) silently broke rank lookups
+    # locally. See LS.Reputation.Bloom.
+    Application.put_env(:ls, :tranco_mode, if(role == "worker", do: :membership, else: :full))
+
     children = common_children() ++ role_children(role, mode)
     Supervisor.start_link(children, strategy: :one_for_one, name: LS.Supervisor)
   end

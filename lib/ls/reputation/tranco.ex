@@ -2,8 +2,22 @@ defmodule LS.Reputation.Tranco do
   @moduledoc """
   Tranco domain ranking — aggregates CrUX, Cloudflare, Umbrella, Majestic, Farsight.
 
-  Downloads daily, loads into ETS for O(1) lookup. Archives old files.
-  Downloads the full ~7.5M list by default. Set LS_TRANCO_FULL=false to use top 1M only.
+  Downloads daily, archives old files. Downloads the full ~7.5M list by
+  default; set LS_TRANCO_FULL=false to use the top 1M only.
+
+  ## Two storage modes (2026-08-27)
+
+  * `:full` (master) keeps `{domain, rank}` in ETS, because the master answers
+    the rank VALUE when it fills the `tranco_rank` column for rows arriving
+    from workers (`LS.Reputation.fill/1`).
+  * `:membership` (workers) keeps only a bloom filter, because a worker asks
+    exactly one question: is this domain ranked at all?
+    `LS.HTTP.DomainFilter` uses that to bypass the TLD/MX/SPF heuristics.
+
+  The measured difference on a worker is **402 MB of ETS versus 4.9 MB**, on
+  machines with 1,968 MB in total, and the membership test is also faster:
+  0.09 us versus 3.16 us on a miss, which is the common case. See
+  `LS.Reputation.Bloom` for why the false-positive direction is the safe one.
 
   ## Usage
 
@@ -24,20 +38,56 @@ defmodule LS.Reputation.Tranco do
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
-  @doc "Returns integer rank (1 = most popular) or nil."
+  @doc """
+  Integer rank (1 = most popular) or nil.
+
+  Always nil in `:membership` mode: a worker does not carry the ranks, and the
+  master fills the column instead. Use `ranked?/1` for the crawl decision.
+  """
   def lookup(domain) when is_binary(domain) do
-    d = domain |> String.downcase() |> String.trim_leading("www.")
+    d = normalize(domain)
+
     case :ets.lookup(@rank_table, d) do
       [{^d, rank}] -> rank
       [] -> nil
     end
+  rescue
+    # :membership mode never creates the table.
+    ArgumentError -> nil
   end
+
+  @doc """
+  Whether `domain` is Tranco-ranked. This is the crawl-decision question and
+  the only one a worker needs.
+
+  In `:membership` mode this consults the bloom filter, so it may return true
+  for an unranked domain at roughly 1 in 100, and never false for a ranked one.
+  """
+  @spec ranked?(String.t()) :: boolean()
+  def ranked?(domain) when is_binary(domain) do
+    d = normalize(domain)
+
+    case :persistent_term.get({__MODULE__, :bloom}, nil) do
+      nil -> lookup(d) != nil
+      bloom -> LS.Reputation.Bloom.member?(bloom, d)
+    end
+  end
+
+  def ranked?(_), do: false
+
+  defp normalize(domain), do: domain |> String.downcase() |> String.trim_leading("www.")
+
+  @doc "The storage mode this node runs: :full keeps ranks, :membership keeps a bloom filter."
+  def mode, do: Application.get_env(:ls, :tranco_mode, :full)
 
   def stats, do: GenServer.call(__MODULE__, :stats)
 
   @impl true
   def init(_opts) do
-    :ets.new(@rank_table, [:set, :public, :named_table, read_concurrency: true])
+    if mode() == :full do
+      :ets.new(@rank_table, [:set, :public, :named_table, read_concurrency: true])
+    end
+
     File.mkdir_p!(@archive_dir)
     state = %{domains_loaded: 0, last_updated: nil, error: nil, memory_mb: 0.0,
               full: System.get_env("LS_TRANCO_FULL", "true") == "true"}
@@ -116,24 +166,55 @@ defmodule LS.Reputation.Tranco do
   end
 
   defp load_csv(csv) do
-    :ets.delete_all_objects(@rank_table)
+    lines = String.split(csv, "\n", trim: true)
+    store = new_store(length(lines))
     date = Date.utc_today() |> Date.to_string()
-    count = csv
-    |> String.split("\n", trim: true)
-    |> Enum.reduce(0, fn line, acc ->
-      case String.split(line, ",", parts: 2) do
-        [r, d] ->
-          case Integer.parse(String.trim(r)) do
-            {rank, _} ->
-              d = d |> String.trim() |> String.downcase() |> String.trim_leading("www.")
-              if d != "", do: (:ets.insert(@rank_table, {d, rank}); acc + 1), else: acc
-            :error -> acc
-          end
-        _ -> acc
-      end
-    end)
+
+    count =
+      Enum.reduce(lines, 0, fn line, acc ->
+        case parse_line(line) do
+          {:ok, d, rank} -> put(store, d, rank) + acc
+          :skip -> acc
+        end
+      end)
+
+    commit(store)
     {:ok, count, date}
   end
+
+  @doc false
+  # Pure: one CSV line to {:ok, normalized_domain, rank} or :skip.
+  def parse_line(line) do
+    with [r, d] <- String.split(line, ",", parts: 2),
+         {rank, _} <- Integer.parse(String.trim(r)),
+         d when d != "" <- normalize(String.trim(d)) do
+      {:ok, d, rank}
+    else
+      _ -> :skip
+    end
+  end
+
+  # In :full mode rows go straight into the live ETS table (as before). In
+  # :membership mode we build a NEW bloom off to the side and swap it in at the
+  # end, so a refresh never leaves the filter half-populated: a partially built
+  # filter would answer "not ranked" for real domains, which is the one answer
+  # a bloom filter must never give.
+  defp new_store(line_count) do
+    case mode() do
+      :full ->
+        :ets.delete_all_objects(@rank_table)
+        :ets
+
+      :membership ->
+        {:bloom, LS.Reputation.Bloom.new(max(line_count, 1_000), 0.01)}
+    end
+  end
+
+  defp put(:ets, d, rank), do: (:ets.insert(@rank_table, {d, rank}); 1)
+  defp put({:bloom, b}, d, _rank), do: (LS.Reputation.Bloom.put(b, d); 1)
+
+  defp commit(:ets), do: :ok
+  defp commit({:bloom, b}), do: :persistent_term.put({__MODULE__, :bloom}, b)
 
   defp archive_current(date) do
     path = Path.join(@archive_dir, "tranco_#{date}.csv.gz")
@@ -177,5 +258,12 @@ defmodule LS.Reputation.Tranco do
     end
   end
 
-  defp ets_mb, do: Float.round((:ets.info(@rank_table, :memory) || 0) * :erlang.system_info(:wordsize) / 1_048_576, 1)
+  defp ets_mb do
+    case :persistent_term.get({__MODULE__, :bloom}, nil) do
+      nil -> Float.round((:ets.info(@rank_table, :memory) || 0) * :erlang.system_info(:wordsize) / 1_048_576, 1)
+      bloom -> LS.Reputation.Bloom.memory_mb(bloom)
+    end
+  rescue
+    ArgumentError -> 0.0
+  end
 end
