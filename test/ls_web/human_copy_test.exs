@@ -19,6 +19,12 @@ defmodule LSWeb.HumanCopyTest do
   @email_modules Path.wildcard("lib/ls/{alerts,feedback,engagement}.ex") ++
                    Path.wildcard("lib/ls/{ops,report}/*.ex")
 
+  # Controllers and LiveViews carry copy too: meta descriptions, JSON-LD,
+  # flash messages and admin labels. The landing page's own <meta> description
+  # still had an em dash after the templates were clean (2026-08-27), so this
+  # is not optional coverage.
+  @web_modules Path.wildcard("lib/ls_web/**/*.ex")
+
   # Marks a person typing in a text editor does not produce.
   @tells %{
     "em dash (—)" => ~r/—/,
@@ -37,6 +43,20 @@ defmodule LSWeb.HumanCopyTest do
 
     assert offenders == [],
            "user-facing copy must read as human-written:\n  " <> Enum.join(offenders, "\n  ")
+  end
+
+  test "no machine-typography in strings rendered by controllers or LiveViews" do
+    offenders =
+      for f <- @web_modules,
+          body = File.read!(f),
+          line <- String.split(body, "\n"),
+          captured <- Regex.scan(~r/"[^"\n]*"/, line),
+          s <- captured,
+          Regex.match?(~r/[—–…\x{201C}\x{201D}]/u, s),
+          do: "#{f}: #{String.slice(s, 0, 70)}"
+
+    assert offenders == [],
+           "rendered copy must read as human-written:\n  " <> Enum.join(offenders, "\n  ")
   end
 
   test "no machine-typography in strings that go out by email" do

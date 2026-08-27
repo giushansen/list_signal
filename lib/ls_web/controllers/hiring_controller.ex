@@ -19,7 +19,7 @@ defmodule LSWeb.HiringController do
     stats = cached_overview()
 
     conn
-    |> assign(:page_title, "Hiring Signals — Which Online Businesses Are Hiring Right Now")
+    |> assign(:page_title, "Hiring Signals, Which Online Businesses Are Hiring Right Now")
     |> assign(
       :page_description,
       "Live hiring activity across millions of tracked online businesses: open roles by department, growing companies, and hiring as a buying signal."

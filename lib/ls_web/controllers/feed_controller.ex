@@ -16,8 +16,8 @@ defmodule LSWeb.FeedController do
       end)
 
     conn
-    |> assign(:page_title, "Latest Shopify Stores — Detected Today")
-    |> assign(:feed_h1, "Latest Shopify Stores — Detected Today")
+    |> assign(:page_title, "Latest Shopify Stores, Detected Today")
+    |> assign(:feed_h1, "Latest Shopify Stores, Detected Today")
     |> assign(:page_description, "Live feed of newly detected Shopify stores. Updated continuously via SSL Certificate Transparency monitoring.")
     |> assign(:stores, stores)
     |> put_layout(html: {LSWeb.Layouts, :public})

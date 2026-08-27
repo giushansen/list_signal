@@ -9,7 +9,7 @@ defmodule LSWeb.ToolsController do
 
   def shopify_checker(conn, _params) do
     conn
-    |> assign(:page_title, "Free Shopify Store Checker — Is This Site on Shopify?")
+    |> assign(:page_title, "Free Shopify Store Checker, Is This Site on Shopify?")
     |> assign(:page_description, "Enter any URL to instantly check if it runs on Shopify. See detected apps, theme, and tech stack. Free, no signup required.")
     |> assign(:json_ld, tool_json_ld("Shopify Store Checker", "Check if any website runs on Shopify"))
     |> put_layout(html: {LSWeb.Layouts, :public})
@@ -18,7 +18,7 @@ defmodule LSWeb.ToolsController do
 
   def tech_lookup(conn, _params) do
     conn
-    |> assign(:page_title, "Free Tech Stack Lookup — What Technologies Does This Site Use?")
+    |> assign(:page_title, "Free Tech Stack Lookup, What Technologies Does This Site Use?")
     |> assign(:page_description, "Enter any URL to see its full technology stack. Detects 200+ technologies from DNS, HTTP, and network signals. Free, no signup.")
     |> assign(:json_ld, tool_json_ld("Tech Stack Lookup", "Detect technologies used by any website"))
     |> put_layout(html: {LSWeb.Layouts, :public})
@@ -31,7 +31,7 @@ defmodule LSWeb.ToolsController do
     Logger.info("[API] Lookup request for: #{domain}")
     case LS.Tools.Lookup.lookup(domain) do
       {:ok, data} ->
-        Logger.info("[API] Lookup OK for #{domain} — shopify:#{data[:is_shopify]} techs:#{length(data.tech)}")
+        Logger.info("[API] Lookup OK for #{domain}, shopify:#{data[:is_shopify]} techs:#{length(data.tech)}")
         json(conn, %{ok: true, data: data})
       {:error, reason} ->
         Logger.warning("[API] Lookup FAILED for #{domain}: #{inspect(reason)}")

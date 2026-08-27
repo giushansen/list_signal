@@ -300,7 +300,7 @@ defmodule LSWeb.DashboardLive do
       <% quarantined = Enum.filter(@worker_health, fn {_, h} -> h.quarantined end) %>
       <% missing = missing_workers(@worker_health, @worker_stats) %>
       <%= if quarantined != [] do %>
-        <div class="alert-danger">⛔ {length(quarantined)} WORKER(S) QUARANTINED — hollow rows being dropped: {Enum.map_join(quarantined, ", ", &elem(&1, 0))}. Fix the node, then Inserter.release_worker/1.</div>
+        <div class="alert-danger">⛔ {length(quarantined)} WORKER(S) QUARANTINED, hollow rows being dropped: {Enum.map_join(quarantined, ", ", &elem(&1, 0))}. Fix the node, then Inserter.release_worker/1.</div>
       <% end %>
       <%= if missing != [] do %>
         <div class="alert-danger">⛔ {length(missing)} WORKER(S) DISAPPEARED from the cluster: {Enum.map_join(missing, ", ", &elem(&1, 0))}</div>
@@ -361,19 +361,19 @@ defmodule LSWeb.DashboardLive do
           <div class="stage-value">{ctl_per_min(@master_stats)}<span class="stage-unit">/m</span></div>
           <div class="stage-sub">{plc(@master_stats.poller)} logs active<br/>passes filter · incl. duplicate certs</div>
         </div>
-        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">dedup</span></div>
+        <div class="flow-arrow"><span class="arrow-line">---&gt;</span><span class="arrow-rate">dedup</span></div>
         <div class="stage stage-input">
           <div class="stage-name">Enqueued ★ real input</div>
           <div class="stage-value">{rate(@master_stats.queue, :enqueue_rate_per_min)}<span class="stage-unit">/m</span></div>
           <div class="stage-sub">new domains only<br/>queue {fmt(qv(@master_stats.queue, :queue_depth))} · {qv(@master_stats.queue, :queue_pct)}% full</div>
         </div>
-        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{rate(@master_stats.queue, :drain_rate_per_min)}/m</span></div>
+        <div class="flow-arrow"><span class="arrow-line">---&gt;</span><span class="arrow-rate">{rate(@master_stats.queue, :drain_rate_per_min)}/m</span></div>
         <div class="stage">
           <div class="stage-name">Workers</div>
           <div class="stage-value">{rate(@master_stats.queue, :drain_rate_per_min)}<span class="stage-unit">/m</span></div>
           <div class="stage-sub">{length(@worker_stats)} nodes · {qv(@master_stats.queue, :inflight_batches)} in-flight<br/>{fmt(qv(@master_stats.queue, :total_completed))} done · {fmt(qv(@master_stats.queue, :total_requeued))} retry</div>
         </div>
-        <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{iv(@master_stats.inserter, :insert_rate_per_min)}/m</span></div>
+        <div class="flow-arrow"><span class="arrow-line">---&gt;</span><span class="arrow-rate">{iv(@master_stats.inserter, :insert_rate_per_min)}/m</span></div>
         <div class="stage">
           <div class="stage-name">ClickHouse</div>
           <div class="stage-value">{iv(@master_stats.inserter, :insert_rate_per_min)}<span class="stage-unit">/m</span></div>
@@ -404,10 +404,10 @@ defmodule LSWeb.DashboardLive do
           <% sev = if conn_bad, do: :danger, else: health_severity(wh) %>
           <div class={health_card_class(sev)}>
             <%= if conn_bad do %>
-              <div class="health-banner health-banner-danger">⛔ NOT PRODUCING — agent is {if Map.get(ws, :status) == :unreachable, do: "unreachable", else: "stuck reconnecting"}. If this persists, the WorkerAgent is likely crash-looping (a stage overrunning its budget): journalctl -u listsignal@worker on the node.</div>
+              <div class="health-banner health-banner-danger">⛔ NOT PRODUCING, agent is {if Map.get(ws, :status) == :unreachable, do: "unreachable", else: "stuck reconnecting"}. If this persists, the WorkerAgent is likely crash-looping (a stage overrunning its budget): journalctl -u listsignal@worker on the node.</div>
             <% end %>
             <%= if sev == :danger and not conn_bad do %>
-              <div class="health-banner health-banner-danger">⛔ QUARANTINED — this node's rows are being DROPPED ({wh.dropped} so far). Enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (min 90%). Fix the node, then LS.Cluster.Inserter.release_worker("{node_name}").</div>
+              <div class="health-banner health-banner-danger">⛔ QUARANTINED, this node's rows are being DROPPED ({wh.dropped} so far). Enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (min 90%). Fix the node, then LS.Cluster.Inserter.release_worker("{node_name}").</div>
             <% end %>
             <%= if sev == :warn do %>
               <div class="health-banner health-banner-warn">⚠ AT RISK — enrichment-beyond-DNS ratio {if wh.ratio, do: Float.round(wh.ratio * 100, 1)}% (quarantine trips below 90%)</div>
@@ -551,23 +551,23 @@ defmodule LSWeb.DashboardLive do
             <div class="stage-value">{fmt(Map.get(o, :businesses, 0))}</div>
             <div class="stage-sub">businesses table<br/>{fmt(Map.get(o, :businesses_enriched, 0))} already deep-enriched</div>
           </div>
-          <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">stale&gt;30d</span></div>
+          <div class="flow-arrow"><span class="arrow-line">---&gt;</span><span class="arrow-rate">stale&gt;30d</span></div>
           <div class="stage stage-input">
             <div class="stage-name">Queue ★ real input</div>
             <div class="stage-value">{fmt((eq && eq.queue_depth) || 0)}</div>
             <div class="stage-sub">{(eq && eq.refills) || 0} refills · {(eq && eq.inflight_batches) || 0} in-flight<br/>best Tranco first</div>
           </div>
-          <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">{epm}/m</span></div>
+          <div class="flow-arrow"><span class="arrow-line">---&gt;</span><span class="arrow-rate">{epm}/m</span></div>
           <div class="stage">
             <div class="stage-name">Agents</div>
             <div class="stage-value">{epm}<span class="stage-unit">/m</span></div>
             <div class="stage-sub">{length(agents)} node(s) · max 3 browsers<br/>{fmt((eq && eq.completed) || 0)} completed</div>
           </div>
-          <div class="flow-arrow"><span class="arrow-line">———→</span><span class="arrow-rate">biz_*</span></div>
+          <div class="flow-arrow"><span class="arrow-line">---&gt;</span><span class="arrow-rate">biz_*</span></div>
           <div class="stage">
             <div class="stage-name">Compactor</div>
             <div class="stage-value">{(ec && ec.passes) || 0}<span class="stage-unit"> passes</span></div>
-            <div class="stage-sub">{fmt((ec && ec.domains) || 0)} folded<br/>last {(ec && ec.last_ms && "#{ec.last_ms}ms") || "—"} · every 5m</div>
+            <div class="stage-sub">{fmt((ec && ec.domains) || 0)} folded<br/>last {(ec && ec.last_ms && "#{ec.last_ms}ms") || "-"} · every 5m</div>
           </div>
         </div>
 
@@ -595,9 +595,9 @@ defmodule LSWeb.DashboardLive do
                   {if a.browser, do: "browser ready", else: "http only"}
                 </span>
                 <%= if a.browser do %>
-                  <span class="health-chip health-chip-ok" title="camoufox/nodriver sidecar reachable — blocked and JS-only pages can be rendered. Capped at 3 concurrent renders per node.">camoufox · max 3</span>
+                  <span class="health-chip health-chip-ok" title="camoufox/nodriver sidecar reachable, blocked and JS-only pages can be rendered. Capped at 3 concurrent renders per node.">camoufox · max 3</span>
                 <% else %>
-                  <span class="health-chip health-chip-warn" title="No LS_BROWSER_URL — WAF-blocked and JS-only pages will be skipped on this node.">no sidecar</span>
+                  <span class="health-chip health-chip-warn" title="No LS_BROWSER_URL, WAF-blocked and JS-only pages will be skipped on this node.">no sidecar</span>
                 <% end %>
                 <span class="worker-batch-info">
                   {a.batches} batches · {fmt(a.total)} enriched
@@ -664,8 +664,8 @@ defmodule LSWeb.DashboardLive do
                   </td>
                   <td style="color:#64748b">{src.snapshot}</td>
                   <td style="text-align:right">{fmt(src.records)}</td>
-                  <td style="text-align:right">{if src.matched_website > 0, do: fmt(src.matched_website), else: "—"}</td>
-                  <td style="text-align:right">{if src.matched_name_country > 0, do: fmt(src.matched_name_country), else: "—"}</td>
+                  <td style="text-align:right">{if src.matched_website > 0, do: fmt(src.matched_website), else: "-"}</td>
+                  <td style="text-align:right">{if src.matched_name_country > 0, do: fmt(src.matched_name_country), else: "-"}</td>
                   <td style="text-align:right">{fmt(Map.get(vs.facts_by_source, src.source, 0))}</td>
                   <td style="text-align:right;color:#64748b">{fmt_ts(src.finished_at)}</td>
                   <td style="text-align:right">{fmt_dur(src.duration_s)}</td>
@@ -738,7 +738,7 @@ defmodule LSWeb.DashboardLive do
   end
 
   defp fmt_load(%{cpu_load: [l | _]}) when is_number(l), do: :erlang.float_to_binary(l * 1.0, decimals: 2)
-  defp fmt_load(_), do: "—"
+  defp fmt_load(_), do: "-"
 
   # Load is per-core: >1.0x cores means tasks are queueing for CPU.
   defp load_class(%{cpu_load: [l | _], cores: c}) when is_number(l) and is_integer(c) and c > 0 do
@@ -880,7 +880,7 @@ defmodule LSWeb.DashboardLive do
   end
 
   # Linux nodes expose /proc; dev Macs do not. Support both rather than showing
-  # "—" on the machine the developer is actually looking at.
+  # "-" on the machine the developer is actually looking at.
   defp read_loadavg do
     case File.read("/proc/loadavg") do
       {:ok, c} ->
@@ -1129,10 +1129,10 @@ defmodule LSWeb.DashboardLive do
 
     cond do
       wc == 0 -> {"health-red", "No workers connected"}
-      qpct >= 90 -> {"health-red", "Queue nearly full — add workers"}
-      trend[:status] == :insufficient_data -> {"health-green", "Measuring throughput…"}
-      short_staffed?(trend) and growing -> {"health-amber", "Backlog growing — short of workers"}
-      growing and qpct >= 50 -> {"health-amber", "Backlog growing — buffer half used"}
+      qpct >= 90 -> {"health-red", "Queue nearly full, add workers"}
+      trend[:status] == :insufficient_data -> {"health-green", "Measuring throughput..."}
+      short_staffed?(trend) and growing -> {"health-amber", "Backlog growing, short of workers"}
+      growing and qpct >= 50 -> {"health-amber", "Backlog growing, buffer half used"}
       growing -> {"health-green", "Absorbing a burst in the queue"}
       true -> {"health-green", "Workers keeping up"}
     end
@@ -1145,7 +1145,7 @@ defmodule LSWeb.DashboardLive do
 
   defp trend_v(trend, key) do
     case trend[key] do
-      nil -> "—"
+      nil -> "-"
       v when is_integer(v) -> format_int(v)
       v -> to_string(v)
     end
@@ -1157,7 +1157,7 @@ defmodule LSWeb.DashboardLive do
 
   defp trend_slope(trend) do
     case trend[:depth_slope_per_min] do
-      nil -> "—"
+      nil -> "-"
       s when s > 0 -> "+#{format_int(s)}/m"
       s when s < 0 -> "#{format_int(s)}/m"
       _ -> "flat"
@@ -1171,11 +1171,11 @@ defmodule LSWeb.DashboardLive do
       m when is_integer(m) and m >= 1440 -> "#{div(m, 1440)}d"
       m when is_integer(m) and m >= 60 -> "#{div(m, 60)}h"
       m when is_integer(m) -> "#{m} min"
-      _ -> "—"
+      _ -> "-"
     end
   end
 
-  defp staffing_label(%{status: :insufficient_data}), do: "measuring…"
+  defp staffing_label(%{status: :insufficient_data}), do: "measuring..."
   defp staffing_label(%{workers_needed: nil}), do: "capacity unproven"
 
   defp staffing_label(%{workers_needed: n, workers: w}) do
@@ -1186,7 +1186,7 @@ defmodule LSWeb.DashboardLive do
     end
   end
 
-  defp staffing_label(_), do: "—"
+  defp staffing_label(_), do: "-"
 
   defp staffing_class(%{workers_needed: n, workers: w}) when is_integer(n) and n > w, do: "hm-warn"
   defp staffing_class(%{workers_needed: n, workers: w}) when is_integer(n) and w > n, do: "hm-ok"
@@ -1222,13 +1222,13 @@ defmodule LSWeb.DashboardLive do
   # "not finished" renders as a dash.
   defp fmt_ts(ts) when is_binary(ts) do
     cond do
-      ts in ["", "1970-01-01 00:00:00", "0000-00-00 00:00:00"] -> "—"
+      ts in ["", "1970-01-01 00:00:00", "0000-00-00 00:00:00"] -> "-"
       String.length(ts) >= 16 -> String.slice(ts, 5, 11)
       true -> ts
     end
   end
 
-  defp fmt_ts(_), do: "—"
+  defp fmt_ts(_), do: "-"
 
   defp fmt_dur(s) when is_integer(s) and s > 0 do
     cond do
@@ -1238,7 +1238,7 @@ defmodule LSWeb.DashboardLive do
     end
   end
 
-  defp fmt_dur(_), do: "—"
+  defp fmt_dur(_), do: "-"
 
   defp fmt(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
   defp fmt(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"

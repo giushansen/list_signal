@@ -4,7 +4,7 @@ defmodule LSWeb.HiringHTML do
 
   embed_templates "hiring_html/*"
 
-  @doc "1234567 -> \"1,234,567\" — plain numbers read as fake on a marketing page."
+  @doc "1234567 -> \"1,234,567\", plain numbers read as fake on a marketing page."
   def fmt(n) when is_integer(n),
     do: n |> Integer.to_string() |> String.replace(~r/(?<=\d)(?=(\d{3})+$)/, ",")
 

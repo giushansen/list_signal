@@ -61,7 +61,7 @@ defmodule LSWeb.SitemapController do
     {"Cookiebot", "UserWay"}
   ]
 
-  @doc "Curated compare pairs — TrendController links compares per tech from here."
+  @doc "Curated compare pairs, TrendController links compares per tech from here."
   def compare_pairs, do: @compare_pairs
 
   def index(conn, _params) do

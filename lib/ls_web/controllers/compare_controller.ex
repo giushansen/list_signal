@@ -44,7 +44,7 @@ defmodule LSWeb.CompareController do
         |> assign(:switchers_ab, switchers_ab)
         |> assign(:switchers_ba, switchers_ba)
         |> assign(:related, related)
-        |> assign(:page_title, "#{tech_a} vs #{tech_b} — Shopify App Comparison")
+        |> assign(:page_title, "#{tech_a} vs #{tech_b}, Shopify App Comparison")
         |> assign(:page_description, "Compare #{tech_a} (#{data.tech_a.count} stores) vs #{tech_b} (#{data.tech_b.count} stores). See which Shopify stores use each app.")
         |> assign(:data, data)
         |> assign(:slug, slug)
@@ -85,7 +85,7 @@ defmodule LSWeb.CompareController do
     Jason.encode!(%{
       "@context" => "https://schema.org",
       "@type" => "WebPage",
-      "name" => "#{a} vs #{b} — Shopify App Comparison",
+      "name" => "#{a} vs #{b}, Shopify App Comparison",
       "description" => "#{a} is used by #{data.tech_a.count} Shopify stores. #{b} is used by #{data.tech_b.count} stores. #{data.both_count} stores use both."
     })
   end

@@ -220,7 +220,7 @@ defmodule LSWeb.ExplorerLive do
     socket =
       socket
       |> assign(feedback_open: false)
-      |> put_flash(:info, "Thanks — your report is on its way.")
+      |> put_flash(:info, "Thanks, your report is on its way.")
 
     {:noreply, socket}
   end
@@ -522,7 +522,7 @@ defmodule LSWeb.ExplorerLive do
     %{
       id: "shopify_reachable",
       label: "Shopify + contact",
-      hint: "Stores with a catalogue and a published address — the app/agency pitch list",
+      hint: "Stores with a catalogue and a published address, the app/agency pitch list",
       filters: %{business_model: "Shopify", has_email: "true", min_products: "10"}
     },
     %{
@@ -534,25 +534,25 @@ defmodule LSWeb.ExplorerLive do
     %{
       id: "shopify_premium",
       label: "Premium stores",
-      hint: "Average product price over $100 — budget for design and apps",
+      hint: "Average product price over $100, budget for design and apps",
       filters: %{business_model: "Shopify", min_price_avg: "100", has_email: "true"}
     },
     %{
       id: "saas_pricing",
       label: "SaaS with pricing",
-      hint: "Published self-serve prices — competitive intel and partnership targets",
+      hint: "Published self-serve prices, competitive intel and partnership targets",
       filters: %{business_model: "SaaS", has_pricing: "true"}
     },
     %{
       id: "hiring",
       label: "Hiring now",
-      hint: "Open roles on a public board — the cheapest growth signal there is",
+      hint: "Open roles on a public board, the cheapest growth signal there is",
       filters: %{hiring: "true", has_email: "true"}
     },
     %{
       id: "weak_seo",
       label: "Weak SEO",
-      hint: "Scored under 50 with a reachable address — an SEO agency's pitch list",
+      hint: "Scored under 50 with a reachable address, an SEO agency's pitch list",
       filters: %{max_seo_score: "49", has_email: "true"}
     }
   ]
@@ -613,10 +613,10 @@ defmodule LSWeb.ExplorerLive do
   defp format_pipe_list(v) when is_binary(v) and v != "", do: v |> String.split("|") |> Enum.reject(&(&1 == ""))
   defp format_pipe_list(_), do: []
 
-  defp format_response_time(nil), do: "—"
+  defp format_response_time(nil), do: "-"
   defp format_response_time(ms) when is_integer(ms), do: "#{ms}ms"
   defp format_response_time(ms) when is_binary(ms), do: "#{ms}ms"
-  defp format_response_time(_), do: "—"
+  defp format_response_time(_), do: "-"
 
   defp freshness_label(enriched_at) when is_binary(enriched_at) do
     case DateTime.from_iso8601(enriched_at <> "Z") do
@@ -829,10 +829,10 @@ defmodule LSWeb.ExplorerLive do
                   <%!-- Their number, not our copy: "unlock these 1,847" converts
                        where a grey "upgrade required" just reads as a wall. --%>
                   <button phx-click="show_upgrade"
-                    title={if is_integer(@total) and @total > 0, do: "Unlock these #{format_number(@total)} businesses as CSV — Starter is $29/mo, cancel anytime. Or reply to your welcome email and I'll send 25 rows free.", else: "CSV export is available on Starter and Pro"}
+                    title={if is_integer(@total) and @total > 0, do: "Unlock these #{format_number(@total)} businesses as CSV, Starter is $29/mo, cancel anytime. Or reply to your welcome email and I'll send 25 rows free.", else: "CSV export is available on Starter and Pro"}
                     data-umami-event="export_upgrade_prompt"
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition text-[12px] font-semibold"
-                    aria-label="Export CSV — upgrade required">
+                    aria-label="Export CSV, upgrade required">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
                     CSV
                   </button>
@@ -842,16 +842,16 @@ defmodule LSWeb.ExplorerLive do
                        silently would hand the user a file that is not the
                        list they thought they built. --%>
                   <button disabled
-                    title={"Your filter matches #{format_number(@total)} businesses — a CSV caps at #{format_number(export_cap_for(@plan))} rows. Narrow the filter to export."}
+                    title={"Your filter matches #{format_number(@total)} businesses, a CSV caps at #{format_number(export_cap_for(@plan))} rows. Narrow the filter to export."}
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-white/[0.04] text-gray-600 cursor-not-allowed text-[12px] font-semibold"
-                    aria-label="Export disabled — too many results">
+                    aria-label="Export disabled, too many results">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
                     CSV
                   </button>
                 <% true -> %>
                   <a href={~p"/dashboard/export?#{filter_params(@filters)}"}
                     data-umami-event="csv_export"
-                    title={"Export this list as CSV — #{format_number(LS.Accounts.exports_remaining(@current_scope.user))} rows left this month"}
+                    title={"Export this list as CSV, #{format_number(LS.Accounts.exports_remaining(@current_scope.user))} rows left this month"}
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white transition text-[12px] font-semibold"
                     aria-label="Export CSV">
                     <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v10m0 0l-3.5-3.5M12 14l3.5-3.5M5 17v1a2 2 0 002 2h10a2 2 0 002-2v-1" /></svg>
@@ -1117,7 +1117,7 @@ defmodule LSWeb.ExplorerLive do
                   </div>
                   <%= if @feedback_open do %>
                     <form phx-submit="send_feedback" class="mt-3">
-                      <textarea name="text" rows="2" placeholder="What's wrong with this record? (optional — sending with no text still flags it)"
+                      <textarea name="text" rows="2" placeholder="What's wrong with this record? (optional, sending with no text still flags it)"
                         class="w-full bg-[#141C30] border border-white/[0.08] rounded-lg px-3 py-2 text-[13px] text-white placeholder-gray-500 focus:border-amber-500/50 focus:outline-none resize-none"></textarea>
                       <div class="flex justify-end mt-1.5">
                         <button type="submit" class="h-7 px-3 rounded-lg bg-amber-500/90 hover:bg-amber-400 text-black text-[12px] font-semibold transition">Send</button>
@@ -1742,7 +1742,7 @@ defmodule LSWeb.ExplorerLive do
         <span><%= @icon %></span><%= @label %>
       </div>
       <div class="text-[13px] font-medium text-gray-200 truncate" title={to_string(@value || "")}>
-        <%= if has_value?(@value), do: @value, else: "—" %>
+        <%= if has_value?(@value), do: @value, else: "-" %>
       </div>
     </div>
     """
@@ -1846,7 +1846,7 @@ defmodule LSWeb.ExplorerLive do
   defp export_cap_for(_), do: 0
 
   # Depth cells: an un-enriched business shows an em dash, never a zero.
-  # "0 products" reads as "sells nothing"; "—" reads as "not looked at yet",
+  # "0 products" reads as "sells nothing"; "-" reads as "not looked at yet",
   # which is the truth and the difference a buyer cares about.
   # "✓" cells: hover shows which authoritative source verified the value.
   defp verified_title(row, field) do
@@ -2043,16 +2043,16 @@ defmodule LSWeb.ExplorerLive do
   end
   defp parse_dkim(_), do: nil
 
-  # Evidence parsing: "tranco:top_100k:25741->mid_market" -> {:gold, "Tranco #25,741 — Mid Market"}
+  # Evidence parsing: "tranco:top_100k:25741->mid_market" -> {:gold, "Tranco #25,741, Mid Market"}
   defp parse_evidence_item(item) when is_binary(item) do
     case String.split(item, [":", "→", "->"], parts: 4) do
       [signal, tier, val, estimate] ->
         badge = evidence_signal_tier(signal, tier)
-        label = "#{humanize_signal(signal)} #{humanize_val(val)} — #{humanize_estimate(estimate)}"
+        label = "#{humanize_signal(signal)} #{humanize_val(val)}, #{humanize_estimate(estimate)}"
         {badge, label}
       [signal, tier, val_or_est] ->
         badge = evidence_signal_tier(signal, tier)
-        {badge, "#{humanize_signal(signal)} #{humanize_val(tier)} — #{humanize_estimate(val_or_est)}"}
+        {badge, "#{humanize_signal(signal)} #{humanize_val(tier)}, #{humanize_estimate(val_or_est)}"}
       _ -> {:bronze, item}
     end
   end

@@ -45,7 +45,7 @@ defmodule LSWeb.TopController do
     "hr" => "HR & Recruiting", "construction" => "Construction & Manufacturing"
   }
 
-  @doc "slug => display name, both kinds — the sitemap emits from these."
+  @doc "slug => display name, both kinds, the sitemap emits from these."
   def segment_slugs, do: %{model: @model_slugs, industry: @industry_slugs}
 
   def show(conn, %{"slug" => slug}) do
@@ -139,11 +139,11 @@ defmodule LSWeb.TopController do
         total_str = if total, do: LSWeb.StoreHTML.format_number(total), else: "#{length(stores)}+"
 
         conn
-        |> assign(:page_title, "Top #{noun} — Ranked by Traffic")
+        |> assign(:page_title, "Top #{noun}, Ranked by Traffic")
         |> assign(:page_description, "The #{length(stores)} highest-ranked #{name} businesses out of #{total_str} tracked, from live crawls of the whole web. Checked continuously by ListSignal.")
         |> assign(:heading, "Top #{noun}")
-        |> assign(:subtext, "Out of #{total_str} #{name} businesses ListSignal tracks — ranked by traffic estimate, checked continuously.")
-        |> assign(:cta_text, "Get all #{total_str} #{name} businesses as a list — emails included")
+        |> assign(:subtext, "Out of #{total_str} #{name} businesses ListSignal tracks, ranked by traffic estimate, checked continuously.")
+        |> assign(:cta_text, "Get all #{total_str} #{name} businesses as a list, emails included")
         |> assign(:related, segment_related(kind, slug))
         |> assign(:stores, stores) |> assign(:slug, slug)
         |> assign(:json_ld, list_json_ld("Top #{noun}", length(stores)))

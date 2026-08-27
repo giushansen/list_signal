@@ -19,7 +19,7 @@ defmodule LSWeb.TrendController do
     movers = LS.Clickhouse.tech_movers(25)
 
     conn
-    |> assign(:page_title, "Technology Adoption Trends — Live Web Data")
+    |> assign(:page_title, "Technology Adoption Trends, Live Web Data")
     |> assign(:page_description, "Which technologies businesses adopted and dropped in the last 30 days, measured by continuously re-crawling millions of live websites. Updated daily.")
     |> assign(:movers, movers)
     |> assign(:json_ld, dataset_json_ld("Technology adoption trends", "/trends"))
@@ -52,7 +52,7 @@ defmodule LSWeb.TrendController do
             Enum.take(compares, 3) ++ [{"/trends", "All adoption trends"}]
 
         conn
-        |> assign(:page_title, "#{tech} Adoption Trend — Installs & Churn, Live")
+        |> assign(:page_title, "#{tech} Adoption Trend, Installs & Churn, Live")
         |> assign(:page_description, "#{tech}: #{format_number(total)} businesses currently use it; #{format_number(trends.adds_30d)} adopted and #{format_number(trends.drops_30d)} dropped it in the last 30 days, from continuous crawls.")
         |> assign(:tech, tech)
         |> assign(:slug, slug)

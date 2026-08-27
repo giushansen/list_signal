@@ -11,7 +11,7 @@ defmodule LSWeb.StoreController do
   # Column positions derived dynamically from LS.Cluster.Inserter.columns/0 (52-column schema)
 
   # /shopify/:slug — expects a Shopify store. If not Shopify, 301 to /website/:slug
-  @doc "Populate the cache for one domain — see LS.CacheWarmer."
+  @doc "Populate the cache for one domain, see LS.CacheWarmer."
   def warm(domain) do
     load_store(domain, String.replace(domain, ".", "-"))
     :ok
@@ -179,9 +179,9 @@ defmodule LSWeb.StoreController do
   # ── Rendering ──
 
   defp render_store(conn, store) do
-    Logger.info("[STORE] Rendering #{store.domain} — tech:#{length(store.tech)} bgp:#{store.bgp_asn_org} rdap:#{store.rdap_registrar} tranco:#{inspect(store.tranco_rank)} country:#{store.country}")
+    Logger.info("[STORE] Rendering #{store.domain}, tech:#{length(store.tech)} bgp:#{store.bgp_asn_org} rdap:#{store.rdap_registrar} tranco:#{inspect(store.tranco_rank)} country:#{store.country}")
     conn
-    |> assign(:page_title, "#{store.title} — Tech Stack & Analysis")
+    |> assign(:page_title, "#{store.title}, Tech Stack & Analysis")
     |> assign(:page_description, "#{store.title} uses #{store.tech_summary}. See full tech stack.")
     |> assign(:store, store)
     |> assign(:json_ld, store_json_ld(store))
@@ -192,7 +192,7 @@ defmodule LSWeb.StoreController do
   defp render_not_found(conn, domain) do
     conn
     |> put_status(404)
-    |> assign(:page_title, "#{domain} — Not Found")
+    |> assign(:page_title, "#{domain}, Not Found")
     |> assign(:domain, domain)
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:not_found)

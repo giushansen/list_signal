@@ -31,7 +31,7 @@ defmodule LSWeb.AdminAuth do
     end
   end
 
-  @doc "Plug for controller-based admin routes — same allowlist as the LiveView hook."
+  @doc "Plug for controller-based admin routes, same allowlist as the LiveView hook."
   def require_admin(conn, _opts) do
     if admin?(current_user(conn.assigns[:current_scope])) do
       conn

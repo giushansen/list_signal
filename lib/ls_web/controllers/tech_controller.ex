@@ -147,17 +147,17 @@ defmodule LSWeb.TechController do
 
   def build_stats(_unavailable), do: @unknown_stats
 
-  defp tech_page_title(name, nil), do: "#{name} — Shopify Stores Using #{name}"
-  defp tech_page_title(name, total), do: "#{name} — #{format_count(total)} Stores Using #{name}"
+  defp tech_page_title(name, nil), do: "#{name}, Shopify Stores Using #{name}"
+  defp tech_page_title(name, total), do: "#{name}, #{format_count(total)} Stores Using #{name}"
 
   defp tech_page_description(name, nil) do
     "See which Shopify stores use #{name}, plus country distribution, hosting providers, " <>
-      "and technology insights — only on ListSignal."
+      "and technology insights, only on ListSignal."
   end
 
   defp tech_page_description(name, total) do
     "#{format_count(total)} Shopify stores use #{name}. See who uses #{name}, country distribution, " <>
-      "hosting providers, and technology insights — only on ListSignal."
+      "hosting providers, and technology insights, only on ListSignal."
   end
 
   @doc "Thousands-separated integer. Exposed for the template and its tests."

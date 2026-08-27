@@ -17,7 +17,7 @@ defmodule LSWeb.PageController do
 
   def pricing(conn, _params) do
     conn
-    |> assign(:page_title, "Pricing — Plans from $0 to $99/mo")
+    |> assign(:page_title, "Pricing, Plans from $0 to $99/mo")
     |> assign(:page_description, "Three flat-rate plans. No credits, no expiring tokens. Start free, export from $39/mo. Save 20%+ with annual billing.")
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:pricing)
@@ -25,8 +25,8 @@ defmodule LSWeb.PageController do
 
   def features(conn, _params) do
     conn
-    |> assign(:page_title, "Features — What ListSignal Tracks")
-    |> assign(:page_description, "Technology detection, Shopify app tracking, business classification, revenue estimation, and CSV export for millions of domains — updated daily.")
+    |> assign(:page_title, "Features, What ListSignal Tracks")
+    |> assign(:page_description, "Technology detection, Shopify app tracking, business classification, revenue estimation, and CSV export for millions of domains, updated daily.")
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:features)
   end
@@ -41,7 +41,7 @@ defmodule LSWeb.PageController do
     Jason.encode!(%{
       "@context" => "https://schema.org", "@type" => "WebApplication",
       "name" => "ListSignal", "url" => "https://listsignal.com",
-      "description" => "Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data — updated daily.",
+      "description" => "Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data, updated daily.",
       "applicationCategory" => "BusinessApplication", "operatingSystem" => "Web",
       "offers" => [
         %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD", "name" => "Free"},

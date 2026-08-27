@@ -11,19 +11,19 @@ defmodule LSWeb.AlternativesController do
     "builtwith" => %{
       name: "BuiltWith",
       tagline: "Same depth. 1/4 the price. Fresher data.",
-      price: "$295–$995/mo",
-      ls_price: "Free – $99/mo",
+      price: "$295-$995/mo",
+      ls_price: "Free, $99/mo",
       pros: [
         "113,000+ technologies tracked (largest database)",
         "18 years of historical data",
         "Revenue estimates included"
       ],
       cons: [
-        "Data refreshes weekly to quarterly — often stale",
+        "Data refreshes weekly to quarterly, often stale",
         "Exports are messy and hard to import into CRMs",
         "UI requires training to navigate",
         "Minimum $295/mo locks out small teams",
-        "Opaque methodology — no timestamps on data"
+        "Opaque methodology, no timestamps on data"
       ],
       ls_wins: [
         {"⚡", "Real-time detection", "We detect new stores within hours via SSL Certificate Transparency logs. BuiltWith relies on periodic web crawls."},
@@ -37,8 +37,8 @@ defmodule LSWeb.AlternativesController do
     "wappalyzer" => %{
       name: "Wappalyzer",
       tagline: "No credits. No expiration. Just data.",
-      price: "$250–$850/mo",
-      ls_price: "Free – $99/mo",
+      price: "$250-$850/mo",
+      ls_price: "Free, $99/mo",
       pros: [
         "Browser extension with 2M+ daily users",
         "94% React detection accuracy (best in class)",
@@ -52,19 +52,19 @@ defmodule LSWeb.AlternativesController do
         "Minimum $250/mo for meaningful access"
       ],
       ls_wins: [
-        {"🚫", "No credits, ever", "Wappalyzer's credits expire after 60 days. ListSignal has zero credit system — flat monthly price."},
+        {"🚫", "No credits, ever", "Wappalyzer's credits expire after 60 days. ListSignal has zero credit system, flat monthly price."},
         {"⚡", "Server-side detection", "We scan from infrastructure level (DNS, HTTP, BGP), not just browser. Catches backend tech Wappalyzer misses."},
         {"💰", "84% cheaper", "Plans from $39/mo vs Wappalyzer's $250 minimum for useful access."},
         {"📊", "Shopify specialization", "Deep Shopify data: app detection, theme, plan tier, revenue signals."},
-        {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data — data Wappalyzer doesn't have."},
+        {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data, data Wappalyzer doesn't have."},
         {"🕐", "Data freshness timestamps", "Know exactly when each domain was last scanned. Wappalyzer doesn't show this."}
       ]
     },
     "storeleads" => %{
       name: "StoreLeads",
       tagline: "Shopify-first intelligence. Fraction of the cost.",
-      price: "$75–$950/mo",
-      ls_price: "Free – $99/mo",
+      price: "$75-$950/mo",
+      ls_price: "Free, $99/mo",
       pros: [
         "2.8M Shopify stores with deep ecommerce data",
         "6,502 Shopify apps tracked with install dates",
@@ -81,7 +81,7 @@ defmodule LSWeb.AlternativesController do
       ls_wins: [
         {"⚡", "Detected within hours, not days", "New stores appear in ListSignal within hours via CT log monitoring. StoreLeads updates weekly."},
         {"💰", "CSV exports from $39/mo", "StoreLeads charges $250/mo for CSV export. ListSignal includes CSV exports starting at $39/mo."},
-        {"🏗️", "Infrastructure insights competitors don't have", "Hosting provider, email service, server location, and domain age data — data StoreLeads doesn't collect."},
+        {"🏗️", "Infrastructure insights competitors don't have", "Hosting provider, email service, server location, and domain age data, data StoreLeads doesn't collect."},
         {"🔬", "Transparent methodology", "We show exactly when and how each data point was collected. Full audit trail."},
         {"🤝", "Startup-level support", "Direct access to founders. Not a ticket queue."},
         {"🤖", "AI classification", "Automated industry classification and business summary powered by ML."}
@@ -91,8 +91,8 @@ defmodule LSWeb.AlternativesController do
     "myip-ms" => %{
       name: "MyIP.ms",
       tagline: "Live business intelligence, not a static IP directory.",
-      price: "Free – $29/mo",
-      ls_price: "Free – $99/mo",
+      price: "Free, $29/mo",
+      ls_price: "Free, $99/mo",
       pros: [
         "Large historical IP / hosting database",
         "Free tier for basic lookups",
@@ -101,24 +101,24 @@ defmodule LSWeb.AlternativesController do
       cons: [
         "Infrastructure records, not business intelligence",
         "No revenue, employee, or business classification data",
-        "No contact data — you find a server, not a merchant",
+        "No contact data, you find a server, not a merchant",
         "No Shopify app or e-commerce detection",
         "Data freshness is unclear and often stale"
       ],
       ls_wins: [
-        {"🏪", "Business profiles, not IP rows", "Revenue bracket, business model, industry, catalogue size and hiring on every record — MyIP.ms stops at the hosting layer."},
+        {"🏪", "Business profiles, not IP rows", "Revenue bracket, business model, industry, catalogue size and hiring on every record, MyIP.ms stops at the hosting layer."},
         {"📧", "Contact data", "Published business contact addresses, so a lookup ends in an outreach, not a dead end."},
         {"⚡", "Detected within hours", "New stores enter ListSignal within hours of going live. Static IP directories lag by weeks."},
         {"🛍️", "E-commerce depth", "260+ Shopify apps, product counts and price bands across millions of stores."},
-        {"📤", "CRM-ready exports", "Filtered CSV exports designed for import — no scraping, no cleaning."},
+        {"📤", "CRM-ready exports", "Filtered CSV exports designed for import, no scraping, no cleaning."},
         {"🔍", "Transparent timestamps", "Every data point shows when it was collected."}
       ]
     },
     "zoominfo" => %{
       name: "ZoomInfo",
       tagline: "Domain intelligence without the enterprise price tag.",
-      price: "$15,000–$60,000/yr",
-      ls_price: "Free – $99/mo",
+      price: "$15,000-$60,000/yr",
+      ls_price: "Free, $99/mo",
       pros: [
         "Massive B2B contact database (100M+ profiles)",
         "Intent data and buyer signals",
@@ -153,7 +153,7 @@ defmodule LSWeb.AlternativesController do
         store_count = LS.LandingCache.get().store_count
 
         conn
-        |> assign(:page_title, "#{comp.name} Alternative — ListSignal vs #{comp.name}")
+        |> assign(:page_title, "#{comp.name} Alternative, ListSignal vs #{comp.name}")
         |> assign(:page_description, "Compare ListSignal vs #{comp.name}. #{comp.tagline}")
         |> assign(:comp, comp)
         |> assign(:slug, slug)

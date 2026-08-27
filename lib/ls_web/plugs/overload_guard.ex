@@ -38,12 +38,12 @@ defmodule LSWeb.Plugs.OverloadGuard do
     if bypass?(conn) or not over_threshold?() do
       conn
     else
-      Logger.warning("[OVERLOAD] shed #{conn.request_path} — #{div(current_bytes(), 1_048_576)}MB in use")
+      Logger.warning("[OVERLOAD] shed #{conn.request_path}, #{div(current_bytes(), 1_048_576)}MB in use")
 
       conn
       |> put_resp_header("retry-after", "2")
       |> put_resp_content_type("text/plain")
-      |> send_resp(503, "Busy — please retry in a moment.")
+      |> send_resp(503, "Busy, please retry in a moment.")
       |> halt()
     end
   end

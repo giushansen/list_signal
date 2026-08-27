@@ -15,7 +15,7 @@ defmodule LSWeb.DirectoryController do
     end
 
     conn
-    |> assign(:page_title, "Shopify App Directory — All Tracked Technologies")
+    |> assign(:page_title, "Shopify App Directory, All Tracked Technologies")
     |> assign(:page_description, "Browse #{length(techs)} technologies and apps detected across Shopify stores. See adoption data for each.")
     |> assign(:techs, techs)
     |> put_layout(html: {LSWeb.Layouts, :public})
