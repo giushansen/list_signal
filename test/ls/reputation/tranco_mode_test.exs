@@ -62,12 +62,36 @@ defmodule LS.Reputation.TrancoModeTest do
 
   test "a missing ETS table and a missing bloom are both survivable" do
     :persistent_term.erase({Tranco, :bloom})
-    if :ets.info(:tranco_ranks) != :undefined, do: :ets.delete(:tranco_ranks)
+
+    # This test must destroy the shared table, so it saves and restores its
+    # contents: DomainFilterTest seeds fixtures once in setup_all, and wiping
+    # them here made three of its tests fail only when the modules ran in the
+    # same suite (caught 2026-08-27 after the failure slipped through a piped
+    # `mix test | tail` whose exit code was tail's, not mix's).
+    saved =
+      if :ets.info(:tranco_ranks) != :undefined do
+        rows = :ets.tab2list(:tranco_ranks)
+        :ets.delete(:tranco_ranks)
+        rows
+      else
+        []
+      end
 
     assert Tranco.lookup("stripe.com") == nil
     refute Tranco.ranked?("stripe.com")
 
-    :ets.new(:tranco_ranks, [:named_table, :set, :public])
+    :ets.new(:tranco_ranks, [:named_table, :set, :public, read_concurrency: true])
+    Enum.each(saved, &:ets.insert(:tranco_ranks, &1))
+
+    # An ETS table dies with its owner, and this test process is ephemeral:
+    # recreating the table here and walking away left the suite with NO table
+    # after this test exited, which is what actually broke DomainFilterTest
+    # (the row-wipe was only half the story). Hand it to the process that owns
+    # it in a running app.
+    case Process.whereis(LS.Reputation.Tranco) do
+      pid when is_pid(pid) -> :ets.give_away(:tranco_ranks, pid, :restored_by_test)
+      nil -> :ok
+    end
   end
 
   test "parse_line/1 keeps only well-formed CSV rows" do
