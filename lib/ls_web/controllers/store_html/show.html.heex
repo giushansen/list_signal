@@ -285,7 +285,7 @@
               </div>
             <% end %>
             <%= if length(@store.recent_changes) > 2 do %>
-              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="changes_gate" class="inline-block mt-1 text-accent text-xs font-semibold hover:underline">+<%= length(@store.recent_changes) - 2 %> more changes — sign up to follow this domain</a>
+              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="changes_gate" class="inline-block mt-1 text-accent text-xs font-semibold hover:underline">+<%= length(@store.recent_changes) - 2 %> more changes, sign up to follow this domain</a>
             <% end %>
           </div>
         </section>
@@ -301,7 +301,7 @@
             📊 Find more <%= @store.business_model %> businesses like this<%= if @store.country_flag != "", do: " in #{@store.country_flag}" %>
           </h2>
           <p class="text-[13px] text-white/40 mb-3">
-            ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span> of them — closest peers by revenue tier and rank:
+            ListSignal tracks <span class="font-semibold text-accent"><%= LSWeb.StoreHTML.format_number(@store.similar_count) %></span> of them, closest peers by revenue tier and rank:
           </p>
           <%= if @store.similar_stores != [] do %>
             <ul class="divide-y divide-white/[0.05] mb-3">
@@ -329,7 +329,7 @@
             <%= if is_shopify and @store.inferred_country != "" and @store.similar_count >= 10 do %>
               <a href={"/top/shopify-stores-#{String.downcase(@store.inferred_country)}"}
                  class="text-white/50 text-[13px] font-medium hover:text-white transition-colors">
-                Top Shopify stores in <%= @store.country_flag %> — free
+                Top Shopify stores in <%= @store.country_flag %>, free
               </a>
             <% end %>
           </div>
@@ -345,7 +345,7 @@
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Revenue Tier<%= if @store.revenue_verified_source, do: " · verified via #{LSWeb.StoreHTML.source_name(@store.revenue_verified_source)}" %></dt>
               <dd class="text-white font-semibold text-lg"><%= LSWeb.StoreHTML.revenue_tier(@store.revenue) %></dd>
               <dd class="text-white/50 text-sm blur-[5px] select-none pointer-events-none" aria-hidden="true">$<%= :erlang.phash2(@store.domain, 89) + 10 %>M-$<%= :erlang.phash2({@store.domain, 1}, 400) + 100 %>M</dd>
-              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="revenue_gate" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
+              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="revenue_gate" class="text-accent text-xs font-semibold hover:underline">More details, sign up</a>
             </div>
             <div>
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1"><%= if @store.employees_verified_source, do: "Employees · verified via #{LSWeb.StoreHTML.source_name(@store.employees_verified_source)}", else: "Estimated Employees" %></dt>
@@ -390,7 +390,7 @@
             <div>
               <dt class="text-[10px] uppercase tracking-wider text-white/35 font-semibold mb-1">Failed Checks</dt>
               <dd class="text-white/50 text-sm blur-[5px] select-none pointer-events-none" aria-hidden="true">meta-x1 | canonical-x2 | og-x3</dd>
-              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="seo_gate" class="text-accent text-xs font-semibold hover:underline">More details — sign up</a>
+              <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="seo_gate" class="text-accent text-xs font-semibold hover:underline">More details, sign up</a>
             </div>
           </dl>
         </section>
@@ -466,7 +466,7 @@
         </section>
       <% end %>
 
-      <%!-- ═══ FAQ — SEO + AI Crawling ═══ --%>
+      <%!-- ═══ FAQ, SEO + AI Crawling ═══ --%>
       <section class="mb-8" itemscope itemtype="https://schema.org/FAQPage" aria-label={"Frequently asked questions about #{@store.domain}"}>
         <h2 class="font-display text-xl font-semibold mb-4">Frequently Asked Questions</h2>
         <div class="space-y-3">
@@ -557,6 +557,6 @@
       <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-4">Privacy</a>
       <a href="/terms" class="text-white/50 hover:text-white transition-colors mx-4">Terms</a>
     </div>
-    <p>&copy; 2026 ListSignal — Domain Intelligence</p>
+    <p>&copy; 2026 ListSignal, Domain Intelligence</p>
   </div>
 </footer>

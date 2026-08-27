@@ -1,41 +1,41 @@
 <.shell
   title="Reputation signals, and what each one really tells you"
-  lede="Three independent sources — traffic rank, link authority and threat blocklists — that together answer 'is this a real, established, safe business?'">
+  lede="Three independent sources, traffic rank, link authority and threat blocklists, that together answer 'is this a real, established, safe business?'">
 
-  <h2 class="font-display text-2xl font-bold mb-3 mt-2">Tranco — traffic rank</h2>
+  <h2 class="font-display text-2xl font-bold mb-3 mt-2">Tranco, traffic rank</h2>
   <p class="text-white/60 mb-4 leading-relaxed">
-    Tranco is a research-grade popularity ranking that averages several commercial top-lists over a 30-day window. That averaging is the point: single lists are noisy and gameable, while a 30-day average is expensive to manipulate. We load the <span class="text-white/85">full list — 4.2 million domains</span>, not the top 1M, so mid-market companies still get a rank.
+    Tranco is a research-grade popularity ranking that averages several commercial top-lists over a 30-day window. That averaging is the point: single lists are noisy and gameable, while a 30-day average is expensive to manipulate. We load the <span class="text-white/85">full list of 4.2 million domains</span>, not the top 1M, so mid-market companies still get a rank.
   </p>
   <.aside title="How to read it" tone="blue">
-    <span class="text-white/85">Top 10k</span> — a household name in its market.
-    <span class="text-white/85">Top 100k</span> — a serious, well-trafficked business.
-    <span class="text-white/85">Top 1M</span> — a real operating company.
-    <span class="text-white/85">Unranked</span> — small, new, or regional. Not a negative on its own; most legitimate SMBs are unranked.
+    <span class="text-white/85">Top 10k</span>, a household name in its market.
+    <span class="text-white/85">Top 100k</span>, a serious, well-trafficked business.
+    <span class="text-white/85">Top 1M</span>, a real operating company.
+    <span class="text-white/85">Unranked</span>, small, new, or regional. Not a negative on its own; most legitimate SMBs are unranked.
   </.aside>
 
-  <h2 class="font-display text-2xl font-bold mb-3 mt-10">Majestic — link authority</h2>
+  <h2 class="font-display text-2xl font-bold mb-3 mt-10">Majestic, link authority</h2>
   <p class="text-white/60 mb-4 leading-relaxed">
-    Tranco approximates <em>traffic</em>; Majestic approximates <em>earned authority</em>. We record both the rank and <span class="text-white/85">referring subnets</span> — the number of distinct networks linking to the domain. Subnets matter more than raw backlink counts because a thousand links from one network is one endorsement, while a thousand links from a thousand networks is a reputation.
+    Tranco approximates <em>traffic</em>; Majestic approximates <em>earned authority</em>. We record both the rank and <span class="text-white/85">referring subnets</span>, the number of distinct networks linking to the domain. Subnets matter more than raw backlink counts because a thousand links from one network is one endorsement, while a thousand links from a thousand networks is a reputation.
   </p>
 
-  <h2 class="font-display text-2xl font-bold mb-3 mt-10">Blocklists — malware, phishing, disposable email</h2>
+  <h2 class="font-display text-2xl font-bold mb-3 mt-10">Blocklists, malware, phishing, disposable email</h2>
   <p class="text-white/60 mb-4 leading-relaxed">
     Every domain is checked against maintained malware, phishing and disposable-email lists on each enrichment. Flags are <span class="text-white/85">sticky</span>: once a domain has been listed, the flag stays on the record even if it later drops off, so you can permanently exclude it rather than re-discovering it next quarter.
   </p>
   <.aside title="Why sticky flags are the right default" tone="amber">
-    Compromised sites get cleaned and re-compromised. For a prospect list, "has been listed" is more useful than "is listed today" — you almost never want that domain in a campaign either way.
+    Compromised sites get cleaned and re-compromised. For a prospect list, "has been listed" is more useful than "is listed today". You almost never want that domain in a campaign either way.
   </.aside>
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">Reputation in combination</h2>
   <p class="text-white/60 mb-5 leading-relaxed">
-    The signals are most useful together. Ranked <em>and</em> link-authoritative <em>and</em> unflagged is an established business worth a serious pitch. Unranked but with real MX records and a clean history is a small business — often the better lead, because it is reachable. Ranked but flagged is a compromised site: an opportunity for a security vendor, and a liability for everyone else.
+    The signals are most useful together. Ranked <em>and</em> link-authoritative <em>and</em> unflagged is an established business worth a serious pitch. Unranked but with real MX records and a clean history is a small business, often the better lead, because it is reachable. Ranked but flagged is a compromised site: an opportunity for a security vendor, and a liability for everyone else.
   </p>
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">Why this decides who you sell to</h2>
   <.aside title="Qualification before outreach, not after">
-    Reputation is what separates "18,000 domains" from "18,000 companies worth contacting". Filtering to ranked, unflagged domains with live mail routing removes parked pages, abandoned projects and outright fraud <em>before</em> you spend a send on them — which protects your sender reputation as much as your time.
+    Reputation is what separates "18,000 domains" from "18,000 companies worth contacting". Filtering to ranked, unflagged domains with live mail routing removes parked pages, abandoned projects and outright fraud <em>before</em> you spend a send on them, which protects your sender reputation as much as your time.
   </.aside>
   <.aside title="Sizing the pitch" tone="blue">
-    Rank correlates strongly with budget. A top-50k domain justifies a bespoke proposal; an unranked domain with a Shopify store and 40 products justifies a templated offer. Same list, two motions — and the rank is what tells you which.
+    Rank correlates strongly with budget. A top-50k domain justifies a bespoke proposal; an unranked domain with a Shopify store and 40 products justifies a templated offer. Same list, two motions, and the rank is what tells you which.
   </.aside>
 </.shell>

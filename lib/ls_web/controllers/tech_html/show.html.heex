@@ -26,7 +26,7 @@
         Shopify Stores Using <span class="text-accent"><%= @tech_name %></span>
       </h1>
       <p class="text-white/50 text-base max-w-[700px]">
-        Discover which Shopify stores use <%= @tech_name %> — see their hosting, countries, response times, registrars, and complete technology stacks. Data only available on ListSignal.
+        Discover which Shopify stores use <%= @tech_name %>, see their hosting, countries, response times, registrars, and complete technology stacks. Data only available on ListSignal.
       </p>
     </header>
 
@@ -35,7 +35,7 @@
       <%!-- ═══ KEY STATS ═══ --%>
       <section class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8" aria-label="Technology statistics">
         <%!-- Every tile is omitted when its number is unknown (nil). Never render a
-             placeholder 0 — a missing measurement is not a measurement of zero. --%>
+             placeholder 0, a missing measurement is not a measurement of zero. --%>
         <%= if @stats.total do %>
           <div class="rounded-xl border border-accent/20 bg-accent/[0.05] px-4 py-3">
             <div class="text-[10px] uppercase tracking-wider text-accent/60 font-semibold mb-1">📊 Stores Using <%= @tech_name %></div>
@@ -244,7 +244,7 @@
       </nav>
     <% end %>
 
-    <%!-- ═══ FAQ — SEO + AI friendly ═══ --%>
+    <%!-- ═══ FAQ, SEO + AI friendly ═══ --%>
     <section class="mb-10" itemscope itemtype="https://schema.org/FAQPage" aria-label={"Frequently asked questions about #{@tech_name}"}>
       <h2 class="font-display text-xl font-semibold mb-4">Frequently Asked Questions</h2>
       <div class="space-y-3">
@@ -318,6 +318,6 @@
       <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-4">Privacy</a>
       <a href="/terms" class="text-white/50 hover:text-white transition-colors mx-4">Terms</a>
     </div>
-    <p>&copy; 2026 ListSignal — Domain Intelligence</p>
+    <p>&copy; 2026 ListSignal, Domain Intelligence</p>
   </div>
 </footer>

@@ -41,11 +41,11 @@ defmodule LS.Feedback do
     :ok
   end
 
-  @doc "The flag email body (pure) — the four fields the owner asked for, reason optional."
+  @doc "The flag email body (pure): the four fields the owner asked for, reason optional."
   def flag_html(domain, user_email, reason, %DateTime{} = at) do
     reason_row =
       if reason == "" do
-        "<tr><td style=\"padding:6px 12px;color:#667085\">Reason</td><td style=\"padding:6px 12px;color:#999\"><i>none given — flagged without a message</i></td></tr>"
+        "<tr><td style=\"padding:6px 12px;color:#667085\">Reason</td><td style=\"padding:6px 12px;color:#999\"><i>none given, flagged without a message</i></td></tr>"
       else
         "<tr><td style=\"padding:6px 12px;color:#667085;vertical-align:top\">Reason</td><td style=\"padding:6px 12px;white-space:pre-wrap\">#{esc(reason)}</td></tr>"
       end

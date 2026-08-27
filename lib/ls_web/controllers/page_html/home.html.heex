@@ -7,7 +7,7 @@
   <div class="relative mx-auto max-w-[1200px] px-6">
     <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-7 animate-fade-in-down uppercase tracking-wider">
       <span class="h-2 w-2 rounded-full bg-accent animate-pulse"></span>
-      Domain Intelligence — Checked in Real Time
+      Domain Intelligence, Checked in Real Time
     </div>
 
     <h1 class="font-display text-[clamp(38px,5.2vw,62px)] font-extrabold leading-[1.08] tracking-[-2px] mb-5 animate-fade-in-up">
@@ -16,7 +16,7 @@
     </h1>
 
     <p class="mx-auto max-w-[560px] text-lg text-white/60 leading-relaxed mb-10 animate-fade-in-up-delay">
-      ListSignal scans millions of domains daily — Shopify stores, SaaS products, agencies, and every digital business. Fresh tech stack, revenue signals, and contact data. No credits, no expiring tokens.
+      ListSignal scans millions of domains daily: Shopify stores, SaaS products, agencies, and every digital business. Fresh tech stack, revenue signals, and contact data. No credits, no expiring tokens.
     </p>
 
     <div class="mx-auto max-w-[660px] mb-2 animate-fade-in-up-delay-2">
@@ -37,7 +37,7 @@
       <p class="mt-2 text-[13px] italic text-white/45">No credits, no expiring tokens.</p>
     </div>
 
-    <%!-- Progress bar — hidden by default, shown during domain lookup --%>
+    <%!-- Progress bar, hidden by default, shown during domain lookup --%>
     <div id="searchProgress" class="mx-auto max-w-[660px] hidden mb-4">
       <div class="rounded-xl border border-white/[0.07] bg-white/[0.03] px-5 py-3">
         <%!-- Progress bar track --%>
@@ -56,7 +56,7 @@
       </div>
     </div>
 
-    <%!-- Error message — hidden by default --%>
+    <%!-- Error message, hidden by default --%>
     <div id="searchError" class="mx-auto max-w-[660px] hidden mb-4">
       <div class="rounded-xl border border-red-500/20 bg-red-500/[0.05] px-5 py-3 text-sm text-red-400 text-center">
         <span id="errorText"></span>
@@ -139,9 +139,9 @@
                   <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 font-medium text-emerald-300/90"><%= store.revenue %></td>
                   <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= store.products %></td>
                   <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= if store.price_avg, do: "$#{round(store.price_avg * 1.0)}" %></td>
-                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store.jobs && store.jobs > 0 do %><span class="text-emerald-400"><%= store.jobs %> roles</span><% else %><span class="text-white/25">—</span><% end %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store.jobs && store.jobs > 0 do %><span class="text-emerald-400"><%= store.jobs %> roles</span><% else %><span class="text-white/25">-</span><% end %></td>
                   <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= if store.seo, do: "#{store.seo}/100" %></td>
-                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store.has_contact do %><span class="text-emerald-400">&#10003;</span><% else %><span class="text-white/25">—</span><% end %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if store.has_contact do %><span class="text-emerald-400">&#10003;</span><% else %><span class="text-white/25">-</span><% end %></td>
                 </tr>
               <% end %>
             </tbody>
@@ -156,7 +156,7 @@
       </div>
     <% else %>
       <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] p-12 text-center anim">
-        <p class="text-white/50 text-base mb-4">Enter any domain above to see its tech stack — our pipeline analyzes it in seconds</p>
+        <p class="text-white/50 text-base mb-4">Enter any domain above to see its tech stack. Our pipeline analyzes it in seconds.</p>
       </div>
     <% end %>
   </div>
@@ -173,7 +173,7 @@
       <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">1</div>
         <h3 class="font-display text-[17px] font-semibold mb-2">Search</h3>
-        <p class="text-sm text-white/60 leading-relaxed">Search any domain or technology — Shopify apps, SaaS tools, analytics platforms, and 230+ more.</p>
+        <p class="text-sm text-white/60 leading-relaxed">Search any domain or technology: Shopify apps, SaaS tools, analytics platforms, and 230+ more.</p>
       </div>
       <div class="text-center p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-accent to-emerald-300 font-display text-lg font-bold text-white relative z-10">2</div>
@@ -204,12 +204,12 @@
       <div class="p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="text-2xl mb-4">&#128295;</div>
         <h3 class="font-display text-[17px] font-semibold mb-2">230+ Technologies</h3>
-        <p class="text-sm text-white/60 leading-relaxed">From frontend frameworks to backend infrastructure. CDN, hosting, analytics, payments — we see what others miss.</p>
+        <p class="text-sm text-white/60 leading-relaxed">From frontend frameworks to backend infrastructure. CDN, hosting, analytics, payments. We see what others miss.</p>
       </div>
       <div class="p-8 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/25 hover:-translate-y-1 transition-all anim">
         <div class="text-2xl mb-4">&#127758;</div>
         <h3 class="font-display text-[17px] font-semibold mb-2">Every Digital Business</h3>
-        <p class="text-sm text-white/60 leading-relaxed">SaaS, agencies, marketplaces, media, consulting — classified automatically with revenue and employee estimates.</p>
+        <p class="text-sm text-white/60 leading-relaxed">SaaS, agencies, marketplaces, media, consulting, all classified automatically with revenue and employee estimates.</p>
       </div>
     </div>
   </div>
@@ -221,21 +221,21 @@
     <h2 class="font-display text-[clamp(26px,3.2vw,38px)] font-bold tracking-tight mb-3.5 anim">Checked in real time, not monthly.</h2>
     <p class="text-base text-white/60 mb-7 max-w-[560px] mx-auto anim">New domains detected within hours. Backend tech, hosting, DNS, and network data that frontend-only scanners miss entirely. Infrastructure intelligence you won't find anywhere else.</p>
     <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="home_bottom_cta" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all anim">
-      Try it now — it's free
+      Try it now, it's free
       <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
     </a>
   </div>
 </section>
 
 
-<%!-- SCORING METHODOLOGY — every score we publish, explained. Placed low on the
+<%!-- SCORING METHODOLOGY: every score we publish, explained. Placed low on the
      page deliberately: it is for the visitor who has decided the data might be
      useful and now wants to know whether to trust it. --%>
 <section class="py-20 border-t border-white/[0.07]">
   <div class="mx-auto max-w-[1200px] px-6">
     <div class="text-center max-w-[620px] mx-auto mb-12">
       <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight mb-3">How every score is calculated</h2>
-      <p class="text-white/60 leading-relaxed">No black boxes. Each score is a documented, weighted method with its evidence attached to the record — so you can check it, filter on it, and quote it to a prospect.</p>
+      <p class="text-white/60 leading-relaxed">No black boxes. Each score is a documented, weighted method with its evidence attached to the record, so you can check it, filter on it, and quote it to a prospect.</p>
     </div>
     <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5">
       <a href="/scoring/seo-score" class="group p-7 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/30 transition-colors">
@@ -256,7 +256,7 @@
       <a href="/scoring/shopify-store-score" class="group p-7 rounded-[20px] bg-white/[0.03] border border-white/[0.07] hover:border-accent/30 transition-colors">
         <div class="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-5 bg-accent/10">&#128722;</div>
         <h3 class="font-display text-base font-semibold mb-2 group-hover:text-accent transition-colors">Shopify Store Score</h3>
-        <p class="text-sm text-white/60 leading-relaxed">Catalog size, price positioning, growth velocity and stock health — measured, not estimated.</p>
+        <p class="text-sm text-white/60 leading-relaxed">Catalog size, price positioning, growth velocity and stock health, measured rather than estimated.</p>
       </a>
     </div>
   </div>
@@ -264,7 +264,7 @@
 
 <footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
   <div class="mx-auto max-w-[1200px] px-6">
-    <p class="text-white/40 mb-4">ListSignal — Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Domains checked in real time; tech re-scanned weekly.</p>
+    <p class="text-white/40 mb-4">ListSignal. Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Domains checked in real time; tech re-scanned weekly.</p>
     <div class="mb-3">
       <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
       <a href="/scoring/seo-score" class="text-white/50 hover:text-white transition-colors mx-3">How scoring works</a>
@@ -291,7 +291,7 @@ function animCount(el){const t=+el.dataset.target,dec=+(el.dataset.decimals||0),
 (function(){const stores=<%= raw(Jason.encode!(Enum.map(@landing.recent_stores, fn s -> %{n: s.domain, t: s.title, c: s.country, tech: s.tech} end)) |> String.replace("</", "<\\/")) %>;
 function cflag(c){if(!c||c.length!==2)return '';const o=0x1F1A5;return String.fromCodePoint(c.toUpperCase().charCodeAt(0)+o,c.toUpperCase().charCodeAt(1)+o)}
 const html=s=>`<div class="flex items-center gap-2.5 px-7 whitespace-nowrap text-[13px] text-white/60 border-r border-white/[0.07]"><a href="/shopify/${s.n.replace(/\./g,'-')}" class="text-white font-medium hover:text-accent transition-colors">${s.n}</a><span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Shopify</span>${s.c?`<span class="text-sm">${cflag(s.c)}</span>`:''}</div>`;
-const el=document.getElementById('tickerTrack');if(stores.length>0){el.innerHTML=stores.map(html).join('')+stores.map(html).join('')}else{el.innerHTML='<div class="px-7 text-[13px] text-white/40">Pipeline active — new stores detected every minute</div>'}})();
+const el=document.getElementById('tickerTrack');if(stores.length>0){el.innerHTML=stores.map(html).join('')+stores.map(html).join('')}else{el.innerHTML='<div class="px-7 text-[13px] text-white/40">Pipeline active, new stores detected every minute</div>'}})();
 
 // ═══ TECH AUTOCOMPLETE ═══
 (function(){
@@ -382,7 +382,7 @@ const el=document.getElementById('tickerTrack');if(stores.length>0){el.innerHTML
   });
 })();
 
-// ═══ INLINE SEARCH — the main thing ═══
+// INLINE SEARCH: the main thing
 function fillSearch(t){document.getElementById('heroSearch').value=t;document.getElementById('heroSearch').focus();
   // Trigger autocomplete check for tech names
   document.getElementById('heroSearch').dispatchEvent(new Event('input'));
@@ -431,11 +431,11 @@ document.getElementById('heroForm').addEventListener('submit',function(e){
   // If it's not a domain (no dot), let the form submit normally to /search (tech search)
   const normalized=q.toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
   if(!normalized.includes('.')){
-    // Tech search — let form submit to /search which redirects to /tech/:slug
+    // Tech search: let form submit to /search which redirects to /tech/:slug
     return;
   }
 
-  // It's a domain — intercept and do inline lookup
+  // It's a domain: intercept and do inline lookup
   e.preventDefault();
   const domain=normalized;
   const slug=domain.replace(/\./g,'-');
@@ -466,7 +466,7 @@ document.getElementById('heroForm').addEventListener('submit',function(e){
     .then(function(res){
       clearInterval(stepTimer);
       if(res.data.ok){
-        // Success — complete the progress bar
+        // Success: complete the progress bar
         document.getElementById('progressBar').style.width='100%';
         STEPS.forEach(s=>{document.getElementById(s.id).className='text-accent/60 transition-colors'});
         document.getElementById('progressStatus').textContent='Done! Redirecting...';
@@ -488,7 +488,7 @@ document.getElementById('heroForm').addEventListener('submit',function(e){
       clearInterval(stepTimer);
       document.getElementById('searchProgress').classList.add('hidden');
       document.getElementById('searchError').classList.remove('hidden');
-      document.getElementById('errorText').textContent='Network error — check your connection';
+      document.getElementById('errorText').textContent='Network error, check your connection';
       document.getElementById('heroBtn').textContent='Look up';
       document.getElementById('heroBtn').disabled=false;
       document.getElementById('heroSearch').disabled=false;

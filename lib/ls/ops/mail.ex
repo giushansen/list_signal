@@ -24,7 +24,7 @@ defmodule LS.Ops.Mail do
   def send(subject, html, opts \\ []) when is_binary(subject) and is_binary(html) do
     case recipients() do
       [] ->
-        Logger.warning("[OPS MAIL] no LS_ALERT_EMAILS configured — dropping #{inspect(subject)}")
+        Logger.warning("[OPS MAIL] no LS_ALERT_EMAILS configured, dropping #{inspect(subject)}")
         {:error, :no_recipients}
 
       to ->

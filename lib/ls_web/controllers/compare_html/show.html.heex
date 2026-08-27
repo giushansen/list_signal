@@ -30,7 +30,7 @@
     </div>
   </section>
 
-  <%!-- Observed switching — the fact no competitor can publish. Hidden when
+  <%!-- Observed switching, the fact no competitor can publish. Hidden when
        zero in both directions: an empty box would read as "dead category". --%>
   <%= if @switchers_ab.count > 0 or @switchers_ba.count > 0 do %>
     <section class="rounded-xl border border-accent/20 bg-accent/[0.05] p-6 mb-10" aria-label="Switching activity">
@@ -55,7 +55,7 @@
       <div class="mt-4 text-center">
         <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="switchers_gate"
            class="inline-flex items-center gap-2 rounded-xl bg-accent px-6 py-3 font-display text-sm font-semibold text-white hover:bg-accent-hover transition-all">
-          Get the switcher lists — reach them before your competitors do
+          Get the switcher lists, reach them before your competitors do
         </a>
       </div>
     </section>

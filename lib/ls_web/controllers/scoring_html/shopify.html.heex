@@ -1,6 +1,6 @@
 <.shell
   title="Shopify store scoring: measured, not estimated"
-  lede="Every Shopify store publishes its catalog. We read it directly — so catalog size, price positioning and growth are observed facts, not inferences.">
+  lede="Every Shopify store publishes its catalog. We read it directly, so catalog size, price positioning and growth are observed facts, not inferences.">
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-2">What we read, and where it comes from</h2>
   <p class="text-white/60 mb-6 leading-relaxed">
@@ -15,26 +15,26 @@
         <th class="pb-3 text-[11px] uppercase tracking-wider text-white/40 font-semibold">What it tells you</th>
       </tr></thead>
       <tbody>
-        <.check name="Product count" weight="measured" why="Store size. The headline filter — a 12-product store and a 5,000-product store are different businesses with different budgets." />
+        <.check name="Product count" weight="measured" why="Store size. The headline filter, a 12-product store and a 5,000-product store are different businesses with different budgets." />
         <.check name="Price min / avg / max" weight="measured" why="Positioning. A $28 average is volume retail; a $340 average is considered purchase, and a different sales motion." />
         <.check name="New products (30d)" weight="measured" why="The growth signal. Stores adding products weekly are actively investing; a static catalog is coasting." />
         <.check name="Last product added" weight="measured" why="The best liveness test there is. A store that has added nothing in six months is effectively dormant, whatever its homepage says." />
-        <.check name="Vendor count" weight="measured" why="One vendor is a DTC brand. Forty vendors is a multi-brand retailer — completely different buyer." />
+        <.check name="Vendor count" weight="measured" why="One vendor is a DTC brand. Forty vendors is a multi-brand retailer, completely different buyer." />
         <.check name="Out-of-stock ratio" weight="measured" why="Inventory health. A high ratio means supply problems, or a store winding down." />
         <.check name="Discount depth" weight="measured" why="Average markdown against compare-at price. Reveals a discount-led brand versus a full-price one." />
         <.check name="Catalog age" weight="measured" why="Days since the oldest product. Separates a mature store from one launched last quarter." />
-        <.check name="Product types" weight="measured" why="The store's own taxonomy — more accurate than any classifier we could run over its homepage." />
+        <.check name="Product types" weight="measured" why="The store's own taxonomy, more accurate than any classifier we could run over its homepage." />
       </tbody>
     </table>
   </div>
 
   <.aside title="Why we cap the sample" tone="blue">
-    We read up to 500 products per store. That is more than enough for stable price and vendor statistics, and it keeps our request footprint small — a courtesy to the stores we index. For very large catalogs, treat product count as a floor rather than an exact total.
+    We read up to 500 products per store. That is more than enough for stable price and vendor statistics, and it keeps our request footprint small, a courtesy to the stores we index. For very large catalogs, treat product count as a floor rather than an exact total.
   </.aside>
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">Detection on custom domains</h2>
   <p class="text-white/60 mb-5 leading-relaxed">
-    Almost every serious Shopify store runs on its own domain, often behind Cloudflare, so the domain name tells you nothing. Detection uses CDN and markup fingerprints instead. Measured against DNS-level ground truth across our index — every domain whose infrastructure proves it is Shopify — <span class="text-white/85">recall is 100%</span>, and markup detection additionally catches ~25,000 stores whose DNS gives nothing away.
+    Almost every serious Shopify store runs on its own domain, often behind Cloudflare, so the domain name tells you nothing. Detection uses CDN and markup fingerprints instead. Measured against DNS-level ground truth across our index, every domain whose infrastructure proves it is Shopify, <span class="text-white/85">recall is 100%</span>, and markup detection additionally catches ~25,000 stores whose DNS gives nothing away.
   </p>
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">Measured facts versus scored estimates</h2>
@@ -42,7 +42,7 @@
     This is the important distinction, and it is why these signals are kept separate from the revenue model. Catalog data is <em>observed</em>. Revenue brackets are <em>inferred</em>. We publish both, clearly labelled, rather than blending them into a single opaque "store score" whose provenance you cannot check.
   </p>
   <.aside title="Combine them yourself, deliberately" tone="amber">
-    Product count plus average price plus new-products-per-month is a better proxy for GMV than any single number we could invent — and because you can see each input, you can weight them for <em>your</em> market instead of accepting ours.
+    Product count plus average price plus new-products-per-month is a better proxy for GMV than any single number we could invent, and because you can see each input, you can weight them for <em>your</em> market instead of accepting ours.
   </.aside>
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">Who buys this, and what they filter on</h2>
@@ -50,9 +50,9 @@
     Catalog size is your qualification. An inventory or bulk-editing app is irrelevant below 200 products and compelling above 2,000. Add new-products-per-month to find the stores whose pain is growing right now.
   </.aside>
   <.aside title="3PL, fulfilment and packaging" tone="blue">
-    Product count with a low out-of-stock ratio and steady additions is a store actually shipping volume. Vendor count separates own-brand manufacturers from resellers — usually a different conversation entirely.
+    Product count with a low out-of-stock ratio and steady additions is a store actually shipping volume. Vendor count separates own-brand manufacturers from resellers, usually a different conversation entirely.
   </.aside>
   <.aside title="Agencies and consultants" tone="amber">
-    Average price sets your fee ceiling. Pair a high average price with a low SEO score and you have a store with margin to spend and a problem worth fixing — the cleanest prospect there is.
+    Average price sets your fee ceiling. Pair a high average price with a low SEO score and you have a store with margin to spend and a problem worth fixing, the cleanest prospect there is.
   </.aside>
 </.shell>

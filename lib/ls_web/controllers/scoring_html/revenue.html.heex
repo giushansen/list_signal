@@ -11,10 +11,10 @@
         <th class="pb-3 text-[11px] uppercase tracking-wider text-white/40 font-semibold">Employees</th>
       </tr></thead>
       <tbody>
-        <.check name="Micro" weight="&lt;$1M" why="1–10" />
-        <.check name="Small" weight="$1M–$10M" why="11–50" />
-        <.check name="Mid-market" weight="$10M–$100M" why="51–500" />
-        <.check name="Enterprise" weight="$100M–$1B" why="501–5000" />
+        <.check name="Micro" weight="&lt;$1M" why="1-10" />
+        <.check name="Small" weight="$1M to $10M" why="11-50" />
+        <.check name="Mid-market" weight="$10M to $100M" why="51-500" />
+        <.check name="Enterprise" weight="$100M to $1B" why="501-5000" />
         <.check name="Large enterprise" weight="$1B+" why="5001+" />
       </tbody>
     </table>
@@ -22,7 +22,7 @@
 
   <h2 class="font-display text-2xl font-bold mb-3">How it works</h2>
   <p class="text-white/60 mb-5 leading-relaxed">
-    No financial data is used — none is publicly available for most companies. Instead the model reads what a company's <em>infrastructure choices</em> reveal about its budget. Each signal contributes points to one or more brackets; points are summed, normalised, and the leading bracket wins if it clears the confidence threshold.
+    No financial data is used, none is publicly available for most companies. Instead the model reads what a company's <em>infrastructure choices</em> reveal about its budget. Each signal contributes points to one or more brackets; points are summed, normalised, and the leading bracket wins if it clears the confidence threshold.
   </p>
 
   <h3 class="font-display text-lg font-semibold mb-3 mt-8">The strongest signals</h3>
@@ -46,12 +46,12 @@
     </table>
   </div>
 
-  <h2 class="font-display text-2xl font-bold mb-3">Confidence — and when we publish nothing</h2>
+  <h2 class="font-display text-2xl font-bold mb-3">Confidence, and when we publish nothing</h2>
   <p class="text-white/60 mb-5 leading-relaxed">
     Confidence is the normalised margin between the winning bracket and the rest. Two guards apply: the estimate must reach <span class="text-white/85">0.40 confidence</span> and be supported by at least <span class="text-white/85">three independent signals</span>. Below either threshold no estimate is published.
   </p>
   <.aside title="A blank is more honest than a guess">
-    Roughly a third of records carry no revenue estimate. That is intentional. A wrong bracket sends a rep into a call with the wrong pitch and the wrong price — far more expensive than an empty field they can see and route around.
+    Roughly a third of records carry no revenue estimate. That is intentional. A wrong bracket sends a rep into a call with the wrong pitch and the wrong price. That is far more expensive than an empty field they can see and route around.
   </.aside>
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">The evidence trail</h2>
@@ -64,9 +64,9 @@
 
   <h2 class="font-display text-2xl font-bold mb-3 mt-10">Why this decides your pricing and your pitch</h2>
   <.aside title="Territory and quota design">
-    Bracket plus country plus industry is enough to build territories from a raw domain list — no manual research pass. Employee ranges are derived per business model using sector-appropriate revenue-per-employee, so a SaaS and an ecommerce brand at the same revenue get realistically different headcounts.
+    Bracket plus country plus industry is enough to build territories from a raw domain list, no manual research pass. Employee ranges are derived per business model using sector-appropriate revenue-per-employee, so a SaaS and an ecommerce brand at the same revenue get realistically different headcounts.
   </.aside>
   <.aside title="Knowing when to walk away" tone="amber">
-    The most valuable use is negative. If your product needs a $10M+ customer, filtering out micro and small removes most of a list before a human ever reads it — and the confidence value tells you which exclusions to trust.
+    The most valuable use is negative. If your product needs a $10M+ customer, filtering out micro and small removes most of a list before a human ever reads it, and the confidence value tells you which exclusions to trust.
   </.aside>
 </.shell>

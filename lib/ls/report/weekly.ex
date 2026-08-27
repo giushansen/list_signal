@@ -40,7 +40,7 @@ defmodule LS.Report.Weekly do
       #{header(tc)}
       #{chapter("1 · Infrastructure", infra_table(res))}
       #{chapter("2 · Traffic, errors &amp; downloads", crawl_block(crawl) <> ingestion_table(daily, enrich) <> downloads_table(vdl))}
-      #{chapter("3 · Software — pipelines &amp; data quality", pipelines_block(tc, daily, enrich) <> quality_block(clazz, est, tc) <> models_table(models) <> query_cost_block())}
+      #{chapter("3 · Software, pipelines &amp; data quality", pipelines_block(tc, daily, enrich) <> quality_block(clazz, est, tc) <> models_table(models) <> query_cost_block())}
       <p style="color:#9aa4b2;font-size:12px;margin-top:28px">Generated #{now()} UTC · reply to this email or open /admin for live detail.</p>
     </div>
     """
@@ -69,7 +69,7 @@ defmodule LS.Report.Weekly do
       Enum.map(nodes, fn {node, r, rx, tx} ->
         [
           short(node),
-          r[:cores] || "—",
+          r[:cores] || "-",
           fnum(r[:load1]),
           ram(r),
           disk(r),
@@ -88,7 +88,7 @@ defmodule LS.Report.Weekly do
         hot = r[:mem_used_pct] && r.mem_used_pct >= 85
         color(hot, "#{r.mem_used_pct}% · #{gb(r.mem_avail_mb)}G free")
 
-      true -> "—"
+      true -> "-"
     end
   end
 
@@ -96,7 +96,7 @@ defmodule LS.Report.Weekly do
     if is_integer(r[:disk_used_pct]) do
       color(r.disk_used_pct >= 85, "#{r.disk_used_pct}% · #{r[:disk_used_gb]}/#{r[:disk_total_gb]}G")
     else
-      "—"
+      "-"
     end
   end
 
@@ -238,23 +238,23 @@ defmodule LS.Report.Weekly do
   defp avg([]), do: 0
   defp avg(list), do: Enum.sum(list) / length(list)
   defp gb(mb) when is_integer(mb), do: Float.round(mb / 1024, 1)
-  defp gb(_), do: "—"
-  defp mb(nil), do: "—"
+  defp gb(_), do: "-"
+  defp mb(nil), do: "-"
   defp mb(v), do: "#{v}MB"
-  defp fnum(nil), do: "—"
+  defp fnum(nil), do: "-"
   defp fnum(v) when is_float(v), do: :erlang.float_to_binary(v, decimals: 2)
   defp fnum(v), do: "#{v}"
-  defp rate(nil), do: "—"
+  defp rate(nil), do: "-"
   defp rate(bps), do: bytes(round(bps)) <> "/s"
   defp bytes(n) when is_integer(n) and n >= 1_073_741_824, do: "#{Float.round(n / 1_073_741_824, 1)}GB"
   defp bytes(n) when is_integer(n) and n >= 1_048_576, do: "#{Float.round(n / 1_048_576, 1)}MB"
   defp bytes(n) when is_integer(n) and n >= 1024, do: "#{Float.round(n / 1024, 1)}KB"
   defp bytes(n) when is_integer(n), do: "#{n}B"
-  defp bytes(_), do: "—"
+  defp bytes(_), do: "-"
   defp fmt(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
   defp fmt(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
   defp fmt(n), do: "#{n}"
   defp fmt_ts(s) when is_binary(s) and byte_size(s) >= 10, do: String.slice(s, 0, 10)
-  defp fmt_ts(_), do: "—"
+  defp fmt_ts(_), do: "-"
   defp now, do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_string()
 end

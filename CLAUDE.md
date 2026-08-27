@@ -3,6 +3,72 @@
 These rules apply to every session in this repo. They are the owner's standing
 instructions — follow them without being asked again.
 
+## The git history is the memory
+
+The repo is the record. Anyone, in any session, must be able to reconstruct
+*why* a thing is shaped the way it is without asking. That only works if you
+both **read** it before changing things and **write** to it as you go.
+
+**Read it first.** Before you change anything load-bearing, spend the thirty
+seconds:
+
+```bash
+git log --grep='outage'      # incidents, which is why most odd code exists
+git log -S'<value or symbol>' # when a constant or call was introduced/changed
+git log --follow -p <file>    # the whole story of one file
+git notes show <sha>          # what was learned AFTER that commit landed
+git log --notes               # log with those notes inline
+```
+
+`docs/engineering-log.md` is the index, newest first. Skim it at the start of
+a session; it will save you from re-diagnosing something already solved.
+
+**Write to it as you go.**
+
+- **Commit messages carry the reasoning**, not a summary of the diff. State
+  what was believed, what was measured, and what changed as a result. Include
+  the numbers: "105s and 110s per compaction pass, holding 2 of 150
+  connections" is useful forever; "improved pooling" is not. A reader six
+  months later must be able to tell whether your reasoning still applies.
+- **Add an entry to `docs/engineering-log.md`** for anything an outsider would
+  find surprising: an incident, a reversal, a non-obvious constraint, a
+  measured trade-off. Keep it short and link the detail to the commit.
+- **Use `git notes` for what you learn afterwards.** A commit is a claim; the
+  note is the evidence that it held or did not:
+
+  ```bash
+  git notes add -m "24h later: read CPU steady at 0.9 cores, no regressions" <sha>
+  git push origin refs/notes/commits
+  ```
+
+  Notes are how a later session learns that a fix worked, or quietly did not,
+  without you rewriting history.
+- **Never rewrite published history.** Amend only what you have not pushed.
+
+## Writing: sound like a person, not a model
+
+This applies to **everything**: web pages, emails, docs, commit messages, and
+what you say in the terminal. User-facing copy matters most, because it is the
+product's voice.
+
+- **No em dashes or en dashes.** Use a comma, a colon, or two sentences. This
+  is the single clearest tell and the owner will notice it.
+- **No curly quotes, no ellipsis character.** Type `"`, `'`, and `...`.
+- **No "not just X but Y", no "it's not just about X", no triads for rhythm**
+  ("fast, simple, and reliable"), no sentence that exists only to sound
+  balanced.
+- **Drop the vocabulary that signals a model wrote it**: delve, leverage,
+  robust, seamless, elevate, harness, unlock, realm, testament, cutting-edge.
+  Say what the thing does in the words a customer would use.
+- **Do not open with a restatement of the question** or close with a summary
+  of what you just said.
+- Write short declarative sentences. If a sentence needs a comma to survive,
+  it probably wants to be two.
+
+`test/ls_web/human_copy_test.exs` enforces the typography on page templates and
+on strings that go out by email. It will fail the build rather than let the
+product start reading like a model again. The rest of the list is on you.
+
 ## Code
 
 - **Document as you go.** Every module gets a `@moduledoc`; every public

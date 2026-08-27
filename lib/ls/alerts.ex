@@ -123,11 +123,11 @@ defmodule LS.Alerts do
 
     if q == [],
       do: acc,
-      else: [al(:critical, "quarantined", "Worker(s) quarantined", "#{Enum.join(Enum.map(q, &short/1), ", ")} — hollow rows being dropped; fix then Inserter.release_worker/1") | acc]
+      else: [al(:critical, "quarantined", "Worker(s) quarantined", "#{Enum.join(Enum.map(q, &short/1), ", ")}, hollow rows being dropped; fix then Inserter.release_worker/1") | acc]
   end
 
   defp compaction(acc, %{stale_seconds: s}) when is_integer(s) and s > @stale_seconds_ceiling,
-    do: [al(:critical, "compaction_stale", "Product table stale", "businesses last updated #{div(s, 60)} min ago — compactor may be failing") | acc]
+    do: [al(:critical, "compaction_stale", "Product table stale", "businesses last updated #{div(s, 60)} min ago, compactor may be failing") | acc]
 
   defp compaction(acc, _), do: acc
 
@@ -143,7 +143,7 @@ defmodule LS.Alerts do
         :critical,
         "watchdog_restart:#{DateTime.to_unix(at)}",
         "Site auto-restarted #{length(restarts)}x in 24h",
-        "The web watchdog restarted listsignal@master — the site was DOWN until it did. " <>
+        "The web watchdog restarted listsignal@master, the site was DOWN until it did. " <>
           "Most recent: #{DateTime.to_string(at)}. Check /var/log/listsignal_watchdog.log " <>
           "for the memory reading that preceded it."
       )
@@ -165,7 +165,7 @@ defmodule LS.Alerts do
         :warning,
         "unmonitored:#{length(nodes)}",
         "#{length(nodes)} node(s) report no resources",
-        "#{names} answer Erlang distribution but not LS.Ops.NodeResources — " <>
+        "#{names} answer Erlang distribution but not LS.Ops.NodeResources, " <>
           "usually a stale release (restarted, never re-deployed). They are invisible " <>
           "to every RAM/disk/CPU alert until deployed."
       )
@@ -189,7 +189,7 @@ defmodule LS.Alerts do
           # free) starts getting skipped silently — that is how the product DB
           # went unbacked in Aug 2026.
           r.disk_used_pct >= @disk_pct_warn ->
-            [al(:warning, "disk_warn:#{node}", "Disk filling: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB) — backups need headroom") | a]
+            [al(:warning, "disk_warn:#{node}", "Disk filling: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB), backups need headroom") | a]
 
           true -> a
         end
@@ -203,13 +203,13 @@ defmodule LS.Alerts do
   end
 
   defp queue(acc, %{queue: %{queue_pct: p}}) when is_number(p) and p > @queue_pct_ceiling,
-    do: [al(:warning, "queue_full", "Work queue near cap", "queue at #{p}% — discovery inflow being shed; add workers") | acc]
+    do: [al(:warning, "queue_full", "Work queue near cap", "queue at #{p}%, discovery inflow being shed; add workers") | acc]
 
   defp queue(acc, _), do: acc
 
   defp reputation(acc, %{reputation_ages: ages}) do
     for {name, age} <- ages, is_integer(age) and age > @reputation_age_ceiling_h, reduce: acc do
-      a -> [al(:warning, "reputation:#{name}", "#{name} download stale", "#{name} data is #{age}h old — download loop may be failing") | a]
+      a -> [al(:warning, "reputation:#{name}", "#{name} download stale", "#{name} data is #{age}h old, download loop may be failing") | a]
     end
   end
 
@@ -225,9 +225,9 @@ defmodule LS.Alerts do
   defp backups(acc, %{backups: b}) when is_map(b) do
     acc
     |> stale_backup(b[:product_age_h], @product_backup_age_h, :critical, "backup_product", "Product backup stale",
-         "businesses + biz_* — weeks of crawling to rebuild")
+         "businesses + biz_*, weeks of crawling to rebuild")
     |> stale_backup(b[:sqlite_age_h], @sqlite_backup_age_h, :critical, "backup_sqlite", "SQLite backup stale",
-         "users/plans/Stripe — irreplaceable")
+         "users/plans/Stripe, irreplaceable")
     |> stale_backup(b[:ch_age_h], @ch_backup_age_h, :warning, "backup_ch", "ClickHouse backup stale",
          "domains_history weekly dump")
   end
@@ -237,8 +237,8 @@ defmodule LS.Alerts do
   # One shape for all three tiers: missing entirely, or older than its cadence.
   defp stale_backup(acc, age, ceiling, severity, key, subject, what) do
     cond do
-      is_nil(age) -> [al(severity, "#{key}_missing", "No #{subject |> String.downcase() |> String.replace(" stale", "")} exists", "no archive at all — #{what}") | acc]
-      age > ceiling -> [al(severity, key, subject, "newest archive is #{age}h old (expected < #{ceiling}h) — #{what}") | acc]
+      is_nil(age) -> [al(severity, "#{key}_missing", "No #{subject |> String.downcase() |> String.replace(" stale", "")} exists", "no archive at all, #{what}") | acc]
+      age > ceiling -> [al(severity, key, subject, "newest archive is #{age}h old (expected < #{ceiling}h), #{what}") | acc]
       true -> acc
     end
   end
@@ -264,10 +264,10 @@ defmodule LS.Alerts do
   defp ctl_sources(acc, %{ctl_diff: %{new: new, retired: retired}}) do
     acc
     |> then(fn a ->
-      if new == [], do: a, else: [al(:warning, "ctl_new:#{keyify(new)}", "New CT log source(s) available", "Chrome lists ingestible CT logs we don't poll: #{Enum.join(new, ", ")}. The poller reconciles every 6h — if this alert persists, the reconcile loop is broken (check [CTL] lines in the master journal).") | a]
+      if new == [], do: a, else: [al(:warning, "ctl_new:#{keyify(new)}", "New CT log source(s) available", "Chrome lists ingestible CT logs we don't poll: #{Enum.join(new, ", ")}. The poller reconciles every 6h, if this alert persists, the reconcile loop is broken (check [CTL] lines in the master journal).") | a]
     end)
     |> then(fn a ->
-      if retired == [], do: a, else: [al(:warning, "ctl_retired:#{keyify(retired)}", "CT log source(s) retiring", "Logs we poll are no longer ingestible in Chrome's list: #{Enum.join(retired, ", ")}. The poller retires them itself within 6h — if this alert persists, the reconcile loop is broken.") | a]
+      if retired == [], do: a, else: [al(:warning, "ctl_retired:#{keyify(retired)}", "CT log source(s) retiring", "Logs we poll are no longer ingestible in Chrome's list: #{Enum.join(retired, ", ")}. The poller retires them itself within 6h, if this alert persists, the reconcile loop is broken.") | a]
     end)
   end
 
