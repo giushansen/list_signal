@@ -25,12 +25,17 @@ defmodule LSWeb.HumanCopyTest do
   # is not optional coverage.
   @web_modules Path.wildcard("lib/ls_web/**/*.ex")
 
-  # Marks a person typing in a text editor does not produce.
+  # Marks a person typing in a text editor does not produce. Both the literal
+  # character AND the HTML entity: the landing page kept serving an em dash
+  # after every character scan came back clean, because it was written
+  # `&mdash;` (2026-08-27).
   @tells %{
     "em dash (—)" => ~r/—/,
     "en dash (–)" => ~r/–/,
     "curly double quote" => ~r/[\x{201C}\x{201D}]/u,
-    "ellipsis character (…)" => ~r/…/
+    "ellipsis character (…)" => ~r/…/,
+    "dash/quote HTML entity" => ~r/&(mdash|ndash|hellip|ldquo|rdquo|lsquo|rsquo);/,
+    "dash/quote numeric entity" => ~r/&#(8211|8212|8216|8217|8220|8221);/
   }
 
   test "no machine-typography in any page template" do
@@ -54,7 +59,7 @@ defmodule LSWeb.HumanCopyTest do
       for f <- @web_modules,
           {line, n} <- Enum.with_index(String.split(File.read!(f), "\n"), 1),
           not String.starts_with?(String.trim_leading(line), "#"),
-          Regex.match?(~r/[—–…\x{201C}\x{201D}]/u, line),
+          Enum.any?(Map.values(@tells), &Regex.match?(&1, line)),
           do: "#{f}:#{n}: #{String.slice(String.trim(line), 0, 70)}"
 
     assert offenders == [],
@@ -69,7 +74,7 @@ defmodule LSWeb.HumanCopyTest do
           # only quoted strings: code comments are for us, not for readers
           captured <- Regex.scan(~r/"[^"\n]*"/, line),
           s <- captured,
-          Regex.match?(~r/[—–…\x{201C}\x{201D}]/u, s),
+          Enum.any?(Map.values(@tells), &Regex.match?(&1, s)),
           do: "#{f}: #{String.slice(s, 0, 70)}"
 
     assert offenders == [],
@@ -80,5 +85,7 @@ defmodule LSWeb.HumanCopyTest do
     # Proof the regexes work, so a green run means something.
     assert Regex.match?(@tells["em dash (—)"], "we scan domains — and rank them")
     refute Regex.match?(@tells["em dash (—)"], "we scan domains, and rank them")
+    assert Regex.match?(@tells["dash/quote HTML entity"], "every store &mdash; not just the stack")
+    refute Regex.match?(@tells["dash/quote HTML entity"], "every store. Not just the stack")
   end
 end

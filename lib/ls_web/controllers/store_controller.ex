@@ -408,8 +408,8 @@ defmodule LSWeb.StoreController do
     |> String.replace("&amp;", "&") |> String.replace("&lt;", "<")
     |> String.replace("&gt;", ">") |> String.replace("&quot;", "\"")
     |> String.replace("&#39;", "'") |> String.replace("&apos;", "'")
-    |> String.replace("&nbsp;", " ") |> String.replace("&ndash;", "\u2013")
-    |> String.replace("&mdash;", "\u2014") |> String.replace("&trade;", "\u2122")
+    |> String.replace("&nbsp;", " ") |> String.replace("-", "\u2013")
+    |> String.replace("-", "\u2014") |> String.replace("&trade;", "\u2122")
     |> String.replace("&reg;", "\u00AE") |> String.replace("&copy;", "\u00A9")
     |> decode_numeric_entities()
   end
