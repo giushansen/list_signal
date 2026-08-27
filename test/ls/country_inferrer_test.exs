@@ -15,8 +15,19 @@ defmodule LS.CountryInferrerTest do
     # {tld, lang, rdap, bgp_cc, asn_org, expected}
     {"in", "en", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", "IN"},
     {"co.in", "en", "", "US", "", "IN"},
-    {"com", "hi", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", "IN"},
+    # Changed 2026-08-27: Hindi is spoken by a diaspora, so `hi` on a .com
+    # named India for businesses that were not Indian. A language spoken
+    # across many countries now names none of them.
+    {"com", "hi", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", ""},
     {"com", "fr", "", "US", "", "FR"},
+    # Reordered 2026-08-27: a registry record outranks a language guess.
+    # intellatriage.com, a Nashville business, was labelled French purely
+    # because its English page was detected as `fr`.
+    {"com", "fr", "US", "", "", "US"},
+    # Page evidence outranks everything: a VAT or registration number
+    # carries its own country. knowunity.fr is .fr, French-language, and a
+    # Berlin company carrying German VAT DE326705352 on its own site.
+    {"fr", "fr", "", "US", "", "FR"},
     # The incident cases: English .com on infrastructure ASNs says NOTHING.
     {"com", "en", "", "US", "CLOUDFLARENET - Cloudflare, Inc., US", ""},
     {"com", "en-CA", "", "CA", "SHOPIFY - Shopify, Inc., CA", ""},
@@ -41,19 +52,23 @@ defmodule LS.CountryInferrerTest do
     # implementations drift, `businesses` silently disagrees with the app.
     case LS.Clickhouse.query_raw("SELECT 1") do
       {:ok, _} ->
-        expr = CountryInferrer.sql_expr("tld", "lang", "bgp_cc", "asn_org")
+        # Every input the Elixir path takes must reach the SQL path too. The
+        # RDAP field used to be dropped here (`_rdap`), so the tier was
+        # untested on the SQL side and could have drifted unnoticed.
+        expr = CountryInferrer.sql_expr("tld", "lang", "bgp_cc", "asn_org", "evidence", "rdap_cc")
 
-        for {tld, lang, _rdap, bgp, org, expected} <- @fixtures do
+        for {tld, lang, rdap, bgp, org, expected} <- @fixtures do
           sql = """
           SELECT #{expr} FROM (
-            SELECT '#{tld}' AS tld, '#{lang}' AS lang, '#{bgp}' AS bgp_cc, '#{org}' AS asn_org
+            SELECT '#{tld}' AS tld, '#{lang}' AS lang, '#{bgp}' AS bgp_cc,
+                   '#{org}' AS asn_org, '' AS evidence, '#{rdap}' AS rdap_cc
           )
           """
 
           {:ok, [[got]]} = LS.Clickhouse.query_raw(sql)
 
           assert got == expected,
-                 "SQL disagrees with Elixir for #{inspect({tld, lang, bgp, org})}: SQL=#{inspect(got)} Elixir=#{inspect(expected)}"
+                 "SQL disagrees with Elixir for #{inspect({tld, lang, rdap, bgp, org})}: SQL=#{inspect(got)} Elixir=#{inspect(expected)}"
         end
 
       _ ->
@@ -114,10 +129,18 @@ defmodule LS.CountryInferrerTest do
       assert CountryInferrer.infer("com", "ko", nil, "") == "KR"
       assert CountryInferrer.infer("com", "zh", nil, "") == "CN"
       assert CountryInferrer.infer("com", "ru", nil, "") == "RU"
-      assert CountryInferrer.infer("com", "pt", nil, "") == "BR"
-      assert CountryInferrer.infer("com", "es", nil, "") == "ES"
       assert CountryInferrer.infer("com", "sv", nil, "") == "SE"
-      assert CountryInferrer.infer("com", "sco", nil, "") == "GB"
+    end
+
+    test "a language spoken across many countries names none of them" do
+      # 2026-08-27. es -> ES labelled rbj-media.com, a Mexican business,
+      # as Spanish. The same shape applied to pt -> BR over Portugal,
+      # ar -> SA for twenty countries, and hi/bn/ta/te -> IN for diasporas.
+      # For a country-targeted list a wrong country is worse than none.
+      assert CountryInferrer.infer("com", "es", nil, "") == ""
+      assert CountryInferrer.infer("com", "pt", nil, "") == ""
+      assert CountryInferrer.infer("com", "ar", nil, "") == ""
+      assert CountryInferrer.infer("com", "hi", nil, "") == ""
     end
 
     test "English alone attributes nothing" do
@@ -142,8 +165,14 @@ defmodule LS.CountryInferrerTest do
       assert CountryInferrer.infer("fr", "", "US", "") == "FR"
     end
 
-    test "RDAP does not override language" do
-      assert CountryInferrer.infer("com", "de", "US", "") == "DE"
+    test "RDAP now OUTRANKS language" do
+      # Reordered 2026-08-27. RDAP registrant country is a registry fact;
+      # language is a guess about who the page is written for. Measured on
+      # 566 live sites, language scored 73.7% and was still ranked above a
+      # registry record, which is how intellatriage.com (Nashville) became
+      # French off a bad `fr` detection.
+      assert CountryInferrer.infer("com", "de", "US", "") == "US"
+      assert CountryInferrer.infer("com", "fr", "US", "") == "US"
     end
   end
 

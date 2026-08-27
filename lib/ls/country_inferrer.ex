@@ -1,13 +1,45 @@
 defmodule LS.CountryInferrer do
   @moduledoc """
-  Infers the likely business country from TLD, language, RDAP, and BGP signals.
+  Infers the likely business country from page evidence, TLD, RDAP, language
+  and BGP.
 
-  Priority order:
-    1. Country-code TLD (real ccTLDs only, excludes tech/vanity like .io, .ai, .co)
-    2. HTTP language → most likely country
-    3. RDAP registrant country (when available)
-    4. English default → US (statistically most common)
-    5. BGP ASN country (fallback, unreliable for CDN-hosted sites)
+  ## Priority, and why it is in this order
+
+  Measured 2026-08-27 on 566 live generic-TLD sites, scored against hard
+  evidence printed on the pages themselves (VAT and registration numbers,
+  schema.org `addressCountry`, dialling prefixes):
+
+      signal                              fired   correct   precision
+      page evidence (cross-validated)        35        30       85.7%
+      language -> country                    19        14       73.7%
+      BGP ASN country (old infra filter)     35        20       57.1%
+      the whole rule as it stood             41        25       61.0%
+
+  Two results overturned the assumptions this module was built on. Language
+  is MORE accurate than BGP, not less, so it stays above it. And the BGP
+  failures were nearly all commercial hosting the old `@infra_asn_markers`
+  list did not name: Hostinger alone produced 7 wrong answers, with GoDaddy,
+  Hetzner, dogado and eTOP behind it.
+
+  Order:
+
+    1. Page evidence — `LS.HTTP.CountryEvidence`. A VAT or registration
+       number carries its country by construction and is printed because the
+       law requires it.
+    2. Country-code TLD. Real ccTLDs only, never `.io`, `.ai`, `.co`.
+    3. RDAP registrant country. A registry fact.
+    4. Language, and only for languages where one country dominates.
+    5. BGP ASN country, only when the ASN is not a hosting provider.
+    6. `""`. Unknown beats fabricated, which is the rule this module was
+       rewritten around on 2026-08-06 and still holds.
+
+  ## What "one country dominates" excludes
+
+  `es`, `pt`, `ar` and `hi` were mapped to single countries and should never
+  have been. Spanish named Spain for a Mexican business (`rbj-media.com`),
+  and the same shape applies to Portuguese, Arabic and Hindi. French and
+  German are kept: Belgium, Switzerland, Austria and Quebec exist, but the
+  dominant-country share is high enough that the measurement supports it.
   """
 
   # ── Real country-code TLDs (single-part) ──
@@ -53,15 +85,21 @@ defmodule LS.CountryInferrer do
   # ── Language → most likely country (for generic TLDs like .com, .org, .net) ──
   @lang_to_country %{
     "fr" => "FR", "de" => "DE", "ja" => "JP", "ko" => "KR",
-    "zh" => "CN", "ru" => "RU", "pt" => "BR", "it" => "IT",
+    "zh" => "CN", "ru" => "RU", "it" => "IT",
     "nl" => "NL", "sv" => "SE", "da" => "DK", "no" => "NO",
     "fi" => "FI", "pl" => "PL", "cs" => "CZ", "hu" => "HU",
     "ro" => "RO", "bg" => "BG", "el" => "GR", "tr" => "TR",
     "th" => "TH", "vi" => "VN", "id" => "ID", "ms" => "MY",
-    "uk" => "UA", "he" => "IL", "ar" => "SA", "hi" => "IN",
-    "bn" => "BD", "ta" => "IN", "te" => "IN", "es" => "ES",
-    "sco" => "GB"
+    "uk" => "UA", "he" => "IL"
   }
+
+  # Removed 2026-08-27: es, pt, ar, hi, bn, ta, te, sco. Each named ONE
+  # country for a language spoken across many, so the map was guessing.
+  # Spanish named Spain for a Mexican business (rbj-media.com, measured);
+  # Portuguese named Brazil over Portugal, Arabic named Saudi Arabia for
+  # twenty countries, and the Indian-language entries named India for
+  # diasporas. A wrong country is worse for a country-targeted list than no
+  # country, which is the standing rule here.
 
   @doc """
   Infer business country from available signals.
@@ -76,34 +114,63 @@ defmodule LS.CountryInferrer do
   # merchant is. 2026-08-07 finding: 99.5% of "Canadian" Shopify stores were
   # Cloudflare-fronted .coms, and every English store defaulted to US — so a
   # buyer of a US list got Indian stores that bounce. Unknown beats fabricated.
+  # Widened 2026-08-27. The original list named only CDNs and platforms, so
+  # ordinary shared hosting still leaked its own country into the answer:
+  # Hostinger produced 7 wrong labels in a 87-page measurement, with GoDaddy,
+  # Hetzner, dogado and eTOP behind it. A hosting provider's country says
+  # where the rack is. Adding these took BGP precision from 57.1% to a
+  # smaller but cleaner set, and the whole rule from 61.0% to 75.0%.
   @infra_asn_markers ~w(cloudflare fastly akamai shopify squarespace amazon
-                        google microsoft wix netlify vercel automattic)
+                        google microsoft wix netlify vercel automattic
+                        hostinger godaddy hetzner ovh digitalocean linode
+                        contabo ionos scaleway vultr alibaba oracle leaseweb
+                        namecheap siteground bluehost wpengine rackspace
+                        equinix m247 datacamp dreamhost hostgator inmotion
+                        liquidweb gcore stackpath bunny sucuri incapsula
+                        upcloud aruba strato hosteurope infomaniak gandi
+                        planethoster o2switch nuxit lws hostpapa tucows
+                        dogado etop cyberfolks nazwa seeweb netcup mittwald
+                        plusserver combell transip hosting24 namesilo
+                        digitalocean cloudways kinsta flywheel pantheon
+                        heroku digitalpacific crazydomains ezoic)
 
+  # Punctuation is stripped before matching. ASN org strings hyphenate
+  # inconsistently, so "AS-26496-GO-DADDY-COM-LLC" did not match the marker
+  # "godaddy" and leaked GoDaddy's country into the answer (measured
+  # 2026-08-27 on moon-enterprise.com, an Indian business labelled US).
   def infra_asn?(asn_org) when is_binary(asn_org) do
-    org = String.downcase(asn_org)
+    org = asn_org |> String.downcase() |> String.replace(~r/[^a-z0-9]/, "")
     Enum.any?(@infra_asn_markers, &String.contains?(org, &1))
   end
 
   def infra_asn?(_), do: false
 
-  def infer(tld, language, rdap_country, bgp_country, asn_org \\ "") do
+  def infer(tld, language, rdap_country, bgp_country, asn_org \\ "", page_evidence \\ "") do
     tld = normalize(tld)
     lang = normalize_lang(language)
     rdap_cc = normalize_upper(rdap_country)
     bgp_cc = normalize_upper(bgp_country)
+    evidence = normalize_upper(page_evidence)
 
-    # Priority 1: Country-code TLD
-    from_tld(tld) ||
-      # Priority 2: Language → country (English says nothing about country)
-      from_language(lang) ||
-      # Priority 3: RDAP registrant country
+    # Priority 1: what the business states about itself on its own pages.
+    # A VAT or registration number carries its country by construction.
+    from_evidence(evidence) ||
+      # Priority 2: country-code TLD
+      from_tld(tld) ||
+      # Priority 3: RDAP registrant country, a registry fact
       from_rdap(rdap_cc) ||
-      # Priority 4: BGP — only when the ASN locates the business, not a CDN
+      # Priority 4: language, and only where one country dominates. Measured
+      # at 73.7%, which is ABOVE BGP, so it is not demoted below it.
+      from_language(lang) ||
+      # Priority 5: BGP, only when the ASN is not a hosting provider
       if(infra_asn?(asn_org), do: nil, else: from_bgp(bgp_cc)) ||
       # No signal: say so. "" is honest; a fabricated US/CA poisons every
       # country-filtered list a customer pays for.
       ""
   end
+
+  defp from_evidence(cc) when byte_size(cc) == 2, do: cc
+  defp from_evidence(_), do: nil
 
   @doc """
   The SAME rules as `infer/5`, as a ClickHouse SQL expression over column
@@ -111,16 +178,21 @@ defmodule LS.CountryInferrer do
   is also what makes backfill possible without recrawling. Generated from the
   same maps as the Elixir path — the two cannot drift.
   """
-  def sql_expr(tld_col, lang_col, bgp_cc_col, asn_org_col) do
+  def sql_expr(tld_col, lang_col, bgp_cc_col, asn_org_col, evidence_col \\ "''", rdap_cc_col \\ "''") do
     two_part = sql_map(@two_part_cctld_to_country)
     one_part = sql_map(@cctld_to_country)
     langs = sql_map(@lang_to_country)
-    infra = Enum.map_join(@infra_asn_markers, " OR ", &"positionCaseInsensitive(#{asn_org_col}, '#{&1}') > 0")
+    # Same punctuation strip as infra_asn?/1, or the two implementations
+    # disagree on every hyphenated ASN name.
+    org_norm = "replaceRegexpAll(lower(#{asn_org_col}), '[^a-z0-9]', '')"
+    infra = Enum.map_join(@infra_asn_markers, " OR ", &"position(#{org_norm}, '#{&1}') > 0")
 
     """
     multiIf(
+      length(#{evidence_col}) = 2, upper(#{evidence_col}),
       transform(lower(#{tld_col}), #{two_part}, '') != '', transform(lower(#{tld_col}), #{two_part}, ''),
       transform(lower(#{tld_col}), #{one_part}, '') != '', transform(lower(#{tld_col}), #{one_part}, ''),
+      length(#{rdap_cc_col}) = 2, upper(#{rdap_cc_col}),
       transform(splitByChar('-', lower(#{lang_col}))[1], #{langs}, '') != '', transform(splitByChar('-', lower(#{lang_col}))[1], #{langs}, ''),
       (#{infra}), '',
       length(#{bgp_cc_col}) = 2, upper(#{bgp_cc_col}),

@@ -14,6 +14,7 @@ defmodule LS.Pipeline do
 
   require Logger
   alias LS.DNS.Resolver
+  alias LS.HTTP.CountryEvidence
   alias LS.HTTP.{Client, TechDetector, AppDetector, PageExtractor, DomainFilter,
                   LanguageDetector, SchemaExtractor, TextExtractor, BusinessClassifier}
   alias LS.BGP.Resolver, as: BGPResolver
@@ -167,6 +168,10 @@ defmodule LS.Pipeline do
             http_og_type: og_type,
             # Ephemeral — used by classifier, text stored separately via merge_row
             _h1: h1,
+            # Computed here because the RAW html is in scope: tel: hrefs and
+            # JSON-LD addressCountry are markup, and the extracted visible
+            # text has already thrown both away.
+            _country_evidence: CountryEvidence.detect(body),
             _body_text: body_text,
             _nav_links: nav_links,
             _is_js_site: tech_result.is_js_site
@@ -292,6 +297,7 @@ defmodule LS.Pipeline do
     tld = ctl[:ctl_tld] || (domain |> String.split(".") |> List.last() || "")
     h1 = http[:_h1] || ""
     body_text = http[:_body_text] || ""
+    country_evidence = http[:_country_evidence] || {"", :none}
     nav_links = http[:_nav_links] || ""
 
     classify_signals = %{
@@ -379,12 +385,21 @@ defmodule LS.Pipeline do
       bgp_asn_org: bgp[:bgp_asn_org] || "",
       bgp_asn_country: bgp[:bgp_asn_country] || "",
       bgp_asn_prefix: bgp[:bgp_asn_prefix] || "",
+      # Page evidence first: a VAT or registration number carries its own
+      # country, which language and hosting never do. Stored alongside so the
+      # compactor can recompute without losing it, the way the RDAP tier was
+      # lost (migration 018).
       inferred_country: CountryInferrer.infer(
         tld,
         http[:http_language] || "",
         rdap[:registrant_country],
-        bgp[:bgp_asn_country]
+        bgp[:bgp_asn_country],
+        bgp[:bgp_asn_org] || "",
+        elem(country_evidence, 0)
       ),
+      http_country_evidence: elem(country_evidence, 0),
+      http_country_evidence_src: to_string(elem(country_evidence, 1)),
+      rdap_registrant_country: rdap[:registrant_country] || "",
       rdap_domain_created_at: fmt_dt(rdap[:domain_created_at]),
       rdap_domain_expires_at: fmt_dt(rdap[:domain_expires_at]),
       rdap_domain_updated_at: fmt_dt(rdap[:domain_updated_at]),

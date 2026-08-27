@@ -46,18 +46,36 @@ defmodule LS.PipelineTest do
       assert is_binary(result.is_disposable_email)
     end
 
-    test "inferred_country is populated" do
+    test "inferred_country is either empty or a real 2-letter code, never junk" do
+      # Changed 2026-08-27. This used to assert a country was ALWAYS produced,
+      # which is the opposite of the rule this module is built on: unknown
+      # beats fabricated. example.com is a .com on a Cloudflare address with
+      # no ASN org and no ccTLD, so "" is the correct answer, and the old
+      # assertion only passed while BGP was willing to invent one.
+      #
+      # The invariant is what matters and it survives every rules change:
+      # whatever comes out is either empty or a well-formed code. A malformed
+      # value here reaches every country filter and every list we sell.
       result = LS.Pipeline.run("example.com")
-      assert is_binary(result.inferred_country)
-      # example.com is a .com domain, should get a country
-      assert result.inferred_country != ""
+      cc = result.inferred_country
+      assert is_binary(cc)
+
+      assert cc == "" or (byte_size(cc) == 2 and cc == String.upcase(cc)),
+             "inferred_country must be \"\" or a 2-letter uppercase code, got #{inspect(cc)}"
     end
   end
 
   describe "column count" do
-    test "inserter has 56 columns matching schema" do
-      # 55 + is_junk (clickhouse/migrations/004_is_junk.sql)
-      assert length(LS.Cluster.Inserter.columns()) == 56
+    test "inserter has 59 columns matching schema" do
+      # 55 + is_junk (004_is_junk.sql)
+      #    + http_country_evidence, http_country_evidence_src,
+      #      rdap_registrant_country (018_country_evidence.sql)
+      #
+      # This count is the seam between the Elixir insert and the ClickHouse
+      # table. A mismatch shifts every value one column to the left and
+      # writes a whole batch of garbage, so the number is asserted rather
+      # than trusted.
+      assert length(LS.Cluster.Inserter.columns()) == 59
     end
   end
 end
