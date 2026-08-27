@@ -145,6 +145,30 @@ Phoenix (`LSWeb`) on the master serves the public directory
 (`/shopify/:slug`, `/website/:slug`, `/top/*`, `/compare/*`), SEO pages from
 `domains_fast`, and the account/billing area backed by SQLite + Stripe.
 
+### Reference data lives once, not on every worker
+
+Workers loaded the full reputation reference data into ETS: Tranco (403 MB /
+4.31M rows) and Majestic (101 MB / 1M rows). On a 1,968 MB node that is
+504 MB — a quarter of the machine — replicated across the fleet, and it was
+the main reason the small workers hovered near their low-memory alert floor.
+
+The split follows what the data is *used for*:
+
+* **Tranco stays on every worker.** `LS.HTTP.DomainFilter` uses it as a
+  crawl-decision bypass — a Tranco-ranked domain is crawled regardless of the
+  TLD/MX/SPF heuristics, measured at ~150K legitimate domains per 1.5 days.
+  Removing it would silently narrow discovery, so its cost is accepted.
+* **Majestic is backfilled by the master.** It is only ever two output columns
+  (`majestic_rank`, `majestic_ref_subnets`), never a decision, so workers no
+  longer supervise it and `LS.Reputation.fill/1` fills those fields in
+  `LS.Cluster.Inserter` on the way into ClickHouse — on the one 16 GB box that
+  already held the table.
+
+`fill/1` returns rows untouched when the master's own table is not loaded, so
+it can never blank a rank a worker did supply (`domains_current` is
+newest-row-wins). The worker/master split is pinned structurally by
+`test/ls/application_boot_order_test.exs`.
+
 ### Crawler caches are bounded by size, not only by TTL
 
 `LS.Cache` holds the CT dedup, HTTP politeness, BGP IP→ASN and RDAP caches on

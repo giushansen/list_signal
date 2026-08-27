@@ -176,8 +176,12 @@ defmodule LS.Application do
       LS.DNS.Resolver,
       LS.BGP.Resolver,
       LS.RDAP.Client,
+      # Tranco STAYS on workers: LS.HTTP.DomainFilter uses it as a crawl
+      # bypass, so dropping it would silently narrow discovery.
       LS.Reputation.Tranco,
-      LS.Reputation.Majestic,
+      # Majestic deliberately absent — it is only a data column, and the
+      # master backfills it in LS.Reputation.fill/1. That is 101 MB of ETS
+      # (plus a daily reload spike) returned to every worker.
       LS.Reputation.Blocklist,
       LS.ML.Classifier,
       LS.HTTP.PerformanceTracker

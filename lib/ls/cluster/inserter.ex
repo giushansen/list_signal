@@ -90,6 +90,9 @@ defmodule LS.Cluster.Inserter do
 
   @impl true
   def handle_cast({:insert, rows}, state) do
+    # Workers no longer carry the Majestic table; the master owns it and fills
+    # those columns here. Never blanks: see LS.Reputation.fill/1.
+    rows = LS.Reputation.fill(rows)
     {rows, state} = guard_batch(rows, state)
     state = %{state | buffer: rows ++ state.buffer, buffer_size: state.buffer_size + length(rows)}
     if state.buffer_size >= @flush_size, do: {:noreply, do_flush(state)}, else: {:noreply, state}

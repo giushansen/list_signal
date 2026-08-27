@@ -42,6 +42,26 @@ defmodule LS.ApplicationBootOrderTest do
            "LS.LandingCache creates :landing_cache; restoring before it exists is a no-op."
   end
 
+  test "workers keep Tranco but not Majestic — Tranco is a crawl decision, Majestic is a column" do
+    # 2026-08-26: workers loaded 504MB of reference data (Tranco 403 + Majestic
+    # 101) on nodes with 1,968MB total. Majestic moved to a master-side
+    # backfill; Tranco MUST stay because LS.HTTP.DomainFilter uses it as a
+    # crawl bypass worth ~150K domains per 1.5 days. Re-adding Majestic to the
+    # worker list silently costs every small node 101MB again.
+    worker_block =
+      @source
+      |> String.split("defp role_children(\"worker\"")
+      |> Enum.at(1)
+      |> String.split("defp role_children(\"standalone\"")
+      |> List.first()
+
+    assert worker_block =~ "LS.Reputation.Tranco",
+           "Tranco is the crawl-bypass source; workers need it"
+
+    refute worker_block =~ "LS.Reputation.Majestic,",
+           "Majestic is backfilled by the master (LS.Reputation.fill/1) — 101MB per worker"
+  end
+
   test "the queue trend sampler starts after the queue it samples" do
     assert position("LS.Cluster.WorkQueue,") < position("LS.Cluster.QueueTrend"),
            "QueueTrend samples WorkQueue.stats/0 on start."

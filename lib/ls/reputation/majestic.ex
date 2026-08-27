@@ -28,10 +28,16 @@ defmodule LS.Reputation.Majestic do
   @doc "Returns %{rank: int, ref_subnets: int} or nil."
   def lookup(domain) when is_binary(domain) do
     d = domain |> String.downcase() |> String.trim_leading("www.")
+
     case :ets.lookup(@table, d) do
       [{^d, rank, ref_subnets}] -> %{rank: rank, ref_subnets: ref_subnets}
       [] -> nil
     end
+  rescue
+    # Workers no longer load Majestic (see LS.Reputation): 101 MB of reference
+    # data for a column the master can fill. A missing table is expected there,
+    # not an error.
+    ArgumentError -> nil
   end
 
   def stats, do: GenServer.call(__MODULE__, :stats)
