@@ -65,6 +65,11 @@ defmodule LS.UICache do
     # load (2026-08-25) — Googlebot times out around 30s, so an uncached
     # sitemap risks the crawl itself.
     sitemap_page: {21_600, "the fully rendered /sitemap.xml document"},
+    # /top/* ranking rows. Measured 2026-08-27: the country variant alone was
+    # the most expensive query on the box, ~100s and 9.75 GiB per call against
+    # a VIEW with no sorting key. One hour, because these pages carry a
+    # "latest" feel and the underlying ranking barely moves within a day.
+    top_page: {3_600, "/top/* ranking rows per country, tech or segment"},
     # Quoted in the welcome email. Cached because every new signup would
     # otherwise pay a full scan of `businesses` at the worst possible moment.
     welcome_stat: {21_600, "fresh contactable Shopify stores, last 7 days"}

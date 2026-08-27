@@ -346,16 +346,28 @@ defmodule LS.Clickhouse do
 
   # ── Top / Ranking pages ──
 
+  # Cached: measured 2026-08-27 as the single most expensive query on the box,
+  # 160 calls in 6 hours at ~100s and 9.75 GiB each, about 0.75 of a core
+  # continuously. `domains_fast` is a VIEW with no sorting key, so every call
+  # re-scans the base table; there is nothing to index away. These are public
+  # ranking pages whose contents move far slower than the TTL, so the answer is
+  # to compute them once an hour instead of once a request.
   def top_stores_by_country(country_code, limit \\ 50) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank
-    FROM domains_fast
-    WHERE is_shopify = 1 AND country = '#{escape(country_code)}' AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
-    """)
+    LS.UICache.fetch(:top_page, {:country, country_code, limit}, fn ->
+      query("""
+      SELECT domain, http_title, http_tech, country, tranco_rank
+      FROM domains_fast
+      WHERE is_shopify = 1 AND country = '#{escape(country_code)}' AND http_title != ''
+      ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
+      """)
+    end)
   end
 
   def top_stores_using_tech(tech_name, limit \\ 50) do
+    LS.UICache.fetch(:top_page, {:tech, tech_name, limit}, fn -> top_stores_using_tech_uncached(tech_name, limit) end)
+  end
+
+  defp top_stores_using_tech_uncached(tech_name, limit) do
     query("""
     SELECT domain, http_title, http_tech, country, tranco_rank
     FROM domains_fast
@@ -1035,6 +1047,12 @@ defmodule LS.Clickhouse do
 
     sql = """
     SELECT b.domain, b.http_pages, b.http_tech, b.last_http_blocked, b.last_http_status,
+      -- inferred_country is load-bearing for phone extraction, not decoration:
+      -- a number printed "030 12345678" cannot be normalised to E.164 without
+      -- it, and guessing a country prefix mints a number that dials a real
+      -- stranger. With the country known every phone found on the German
+      -- sample normalised; without it, 55% did (2026-08-27).
+      b.inferred_country,
       -- Depth tier from signals we already hold. FULL treatment for businesses
       -- worth the extra pages: any rank, any email, a mail server plus solid
       -- classification, or a commerce fingerprint (catalog data pays). The
@@ -1086,9 +1104,10 @@ defmodule LS.Clickhouse do
     case query_raw(sql, 90_000) do
       {:ok, rows} ->
         {:ok,
-         Enum.map(rows, fn [d, pages, tech, blocked, status, tier] ->
+         Enum.map(rows, fn [d, pages, tech, blocked, status, country, tier] ->
            %{domain: d, http_pages: pages, http_tech: tech,
-             http_blocked: blocked, last_http_status: status, tier: tier}
+             http_blocked: blocked, last_http_status: status,
+             inferred_country: country, tier: tier}
          end)}
 
       err ->
