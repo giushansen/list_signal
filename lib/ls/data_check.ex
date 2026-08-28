@@ -132,7 +132,11 @@ defmodule LS.DataCheck do
             band: quality_band(kind, recent, base, sample)}
         end)
 
-      _ ->
+      other ->
+        # A monitoring module that fails SILENTLY is the exact failure mode it
+        # exists to catch. First deploy shipped with a bare `_ -> []` here and
+        # the quality section was empty for an hour with nothing in the logs.
+        Logger.warning("[DATACHECK] quality query failed: #{String.slice(inspect(other), 0, 300)}")
         []
     end
   end
