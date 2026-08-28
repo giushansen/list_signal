@@ -27,6 +27,11 @@ defmodule LS.Cluster.WorkQueue do
 
   @queue_table :work_queue
   @inflight_table :work_inflight
+  # Domains whose results were inserted recently. The requeue path consults it
+  # so a timed-out batch never re-crawls what already succeeded, see
+  # requeue_timed_out/1 and the 2026-08-28 Vultr abuse report.
+  @recent_table :recently_crawled
+  @recent_ttl_ms :timer.hours(6)
   @counter_table :work_queue_counters
   # Default cap; override with LS_QUEUE_MAX (read once at init). Measured cost
   # ~287 B/item (273 MB at 1M), so 3M on the 16 GB master is ~800 MB.
@@ -108,6 +113,7 @@ defmodule LS.Cluster.WorkQueue do
     :ets.new(@queue_table, [:ordered_set, :public, :named_table,
       read_concurrency: true, write_concurrency: true])
     :ets.new(@inflight_table, [:set, :public, :named_table])
+    :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
     ref = :counters.new(2, [:write_concurrency])
@@ -202,6 +208,7 @@ defmodule LS.Cluster.WorkQueue do
   @impl true
   def handle_cast({:complete, batch_id, results}, state) do
     :ets.delete(@inflight_table, batch_id)
+    mark_recently_crawled(results)
 
     # Forward to inserter
     LS.Cluster.Inserter.insert(results)
@@ -250,6 +257,7 @@ defmodule LS.Cluster.WorkQueue do
 
   @impl true
   def handle_info(:cleanup_ttl, state) do
+    sweep_recently_crawled()
     cutoff = System.system_time(:millisecond) - @ttl_ms
     dropped = cleanup_expired(cutoff)
 
@@ -318,14 +326,70 @@ defmodule LS.Cluster.WorkQueue do
 
     Enum.reduce(timed_out, 0, fn {batch_id, items}, count ->
       :ets.delete(@inflight_table, batch_id)
-      Enum.each(items, fn {_old_id, data, _old_ts} ->
+
+      # Only re-crawl what did NOT complete. A batch can time out AFTER its
+      # results were inserted (slow cycle, or the :complete cast lost to a
+      # master restart or disconnect), and requeuing it wholesale sent a
+      # second node to hit the same 1,000 sites again. Measured 2026-08-28:
+      # 29 such requeues in 48h, ~29,000 domains crawled twice, and one of
+      # those pairs became a Vultr abuse report (two visits to one homepage
+      # from two of our IPs, 31 minutes apart). Politeness must hold across
+      # the FLEET, not just within one node.
+      {done, needed} = Enum.split_with(items, fn {_id, data, _ts} ->
+        recently_crawled?(data[:ctl_domain] || data[:domain])
+      end)
+
+      if done != [] do
+        Logger.info("⏱️  Requeue skipped #{length(done)} already-crawled domains")
+      end
+
+      Enum.each(needed, fn {_old_id, data, _old_ts} ->
         new_id = :erlang.unique_integer([:monotonic, :positive])
         :ets.insert(@queue_table, {new_id, data, now})
       end)
-      count + length(items)
+
+      count + length(needed)
     end)
   rescue
     _ -> 0
+  end
+
+  @doc false
+  # Record each completed result's domain so a late timeout cannot re-crawl it.
+  def mark_recently_crawled(results) when is_list(results) do
+    now = System.system_time(:millisecond)
+
+    Enum.each(results, fn r ->
+      case r[:domain] || r[:ctl_domain] do
+        d when is_binary(d) and d != "" -> :ets.insert(@recent_table, {d, now})
+        _ -> :ok
+      end
+    end)
+  rescue
+    ArgumentError -> :ok
+  end
+
+  def mark_recently_crawled(_), do: :ok
+
+  @doc false
+  def recently_crawled?(domain) when is_binary(domain) do
+    case :ets.lookup(@recent_table, domain) do
+      [{^domain, ts}] -> System.system_time(:millisecond) - ts < @recent_ttl_ms
+      [] -> false
+    end
+  rescue
+    ArgumentError -> false
+  end
+
+  def recently_crawled?(_), do: false
+
+  @doc false
+  # Drop expired entries, called from the existing TTL sweep.
+  def sweep_recently_crawled do
+    cutoff = System.system_time(:millisecond) - @recent_ttl_ms
+    :ets.select_delete(@recent_table, [{{:"$1", :"$2"}, [{:<, :"$2", cutoff}], [true]}])
+  rescue
+    ArgumentError -> 0
   end
 
   defp schedule_cleanup do
