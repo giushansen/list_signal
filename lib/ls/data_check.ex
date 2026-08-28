@@ -104,9 +104,14 @@ defmodule LS.DataCheck do
           "round(countIf((#{cond_sql}) AND NOT recent)/greatest(countIf(NOT recent),1)*100,1)"
       end)
 
+    # Project ONLY the referenced columns: `SELECT *` here materialised every
+    # column of ~10M wide rows and the query died on the box's memory cap,
+    # which surfaced as a silently empty quality section on first deploy.
     sql = """
     SELECT countIf(recent), #{fills}, #{errs}
-    FROM (SELECT *, enriched_at >= now() - INTERVAL 1 HOUR AS recent
+    FROM (SELECT http_title, http_status, inferred_country, http_tech, dns_mx,
+                 bgp_asn_org, http_error, is_junk,
+                 enriched_at >= now() - INTERVAL 1 HOUR AS recent
           FROM domains_current WHERE enriched_at >= now() - INTERVAL 25 HOUR)
     """
 
