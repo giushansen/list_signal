@@ -52,6 +52,11 @@ defmodule LS.Ops.Sentinel do
     Task.start(fn ->
       safe(&LS.Alerts.run/0, "alerts")
       if weekly_due?(), do: safe(fn -> send_weekly(parent) end, "weekly")
+
+      # Monday 07:xx, one hour before the weekly report: if not a single alert
+      # went out all week, prove the silence was health. A quiet week and a
+      # dead alerting pipeline must not read the same.
+      if quiet_week_due?(), do: safe(&LS.Alerts.send_quiet_week_email/0, "quiet-week")
     end)
 
     {:noreply, s}
@@ -60,6 +65,13 @@ defmodule LS.Ops.Sentinel do
   def handle_info(_, s), do: {:noreply, s}
 
   # ── weekly ──
+
+  defp quiet_week_due? do
+    now = DateTime.utc_now()
+
+    Date.day_of_week(DateTime.to_date(now)) == @weekly_dow and now.hour == @weekly_hour - 1 and
+      not sent_recently?("data_quiet_week", @weekly_min_gap_days) and LS.Alerts.quiet_week?()
+  end
 
   defp weekly_due? do
     now = DateTime.utc_now()

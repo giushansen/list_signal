@@ -64,6 +64,7 @@ defmodule LS.Alerts do
       node_resources: Metrics.node_resources(),
       unmonitored_nodes: Metrics.unmonitored_nodes(),
       watchdog_restarts: Metrics.watchdog_restarts(24),
+      data_check: LS.DataCheck.snapshot(),
       reputation_ages: Metrics.reputation_ages(),
       backups: Metrics.backup_status(),
       verification: Metrics.verification(),
@@ -89,6 +90,7 @@ defmodule LS.Alerts do
     |> ctl_sources(m)
     |> unmonitored(m)
     |> watchdog(m)
+    |> data_check(m)
     |> Enum.sort_by(&(&1.severity == :critical), :desc)
   end
 
@@ -130,6 +132,13 @@ defmodule LS.Alerts do
     do: [al(:critical, "compaction_stale", "Product table stale", "businesses last updated #{div(s, 60)} min ago, compactor may be failing") | acc]
 
   defp compaction(acc, _), do: acc
+
+  # Quality, quantity and speed of the data itself, from LS.DataCheck. The
+  # infra checks above say the machines are fine; these say the ROWS are fine,
+  # which machines cannot know (the h1 incident wrote 45M hollow rows while
+  # every process was green).
+  defp data_check(acc, %{data_check: snap}), do: LS.DataCheck.alerts(snap) ++ acc
+  defp data_check(acc, _), do: acc
 
   # The watchdog restarting the web means the site WAS down. Alerting runs
   # inside the process that died, so nothing else can report it — and a silent
@@ -282,7 +291,12 @@ defmodule LS.Alerts do
 
     if fresh != [] do
       subject = digest_subject(fresh)
-      case LS.Ops.Mail.send(subject, digest_html(fresh)) do
+      # The data-health section rides at the bottom of EVERY alert email, so
+      # the owner sees the full quality/quantity/speed picture in the same
+      # message that raised the alarm.
+      body = digest_html(fresh) <> LS.DataCheck.html_section(LS.DataCheck.snapshot())
+
+      case LS.Ops.Mail.send(subject, body) do
         :ok -> Enum.each(fresh, &record_sent/1)
         _ -> :noop
       end
@@ -290,6 +304,48 @@ defmodule LS.Alerts do
 
     fresh
   end
+
+  @doc """
+  The quiet-week data email: every Monday morning, if not one alert went out
+  in the past 7 days, send the data-health section alone. Silence for a week
+  is either health or a dead alerting pipeline, and those must not read the
+  same (the watchdog restarts stayed invisible for exactly that reason).
+  """
+  def send_quiet_week_email do
+    body =
+      """
+      <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;max-width:640px">
+        <h2 style="margin:0 0 4px">ListSignal data health</h2>
+        <p style="color:#666;margin:0 0 12px;font-size:13px">No alerts this week. Here is the proof the data is healthy, not just quiet.</p>
+      #{LS.DataCheck.html_section(LS.DataCheck.snapshot())}
+      </div>
+      """
+
+    case LS.Ops.Mail.send("\u{1F7E2} ListSignal data health: quiet week", body) do
+      :ok ->
+        record_sent(%{key: "data_quiet_week", subject: "data health quiet week"})
+        :ok
+
+      other ->
+        other
+    end
+  end
+
+  @doc "True when zero alert emails went out in the past 7 days (weekly digests excluded)."
+  def quiet_week? do
+    sql =
+      "SELECT count() FROM ops_email_log WHERE sent_at > now() - INTERVAL 7 DAY " <>
+        "AND key NOT IN ('weekly_report', 'data_quiet_week')"
+
+    case Clickhouse.query_raw(sql, 5_000) do
+      {:ok, [[n]]} -> to_i(n) == 0
+      _ -> false
+    end
+  end
+
+  defp to_i(v) when is_integer(v), do: v
+  defp to_i(v) when is_binary(v), do: String.to_integer(String.trim(v))
+  defp to_i(_), do: 1
 
   # ── cooldown via ops_email_log ──
 

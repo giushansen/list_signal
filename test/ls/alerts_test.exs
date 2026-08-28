@@ -19,7 +19,8 @@ defmodule LS.AlertsTest do
       poller: nil,
       ctl_diff: %{new: [], retired: []},
       unmonitored_nodes: [],
-      watchdog_restarts: []
+      watchdog_restarts: [],
+      data_check: %{quality: [], quantity: [], speed: []}
     }
   end
 
@@ -155,6 +156,27 @@ defmodule LS.AlertsTest do
     a = Alerts.evaluate(m)
     assert hd(a).severity == :critical
   end
+  describe "data checks flow into the same digest (2026-08-28)" do
+    test "a broken data metric raises through evaluate/1 like any infra alert" do
+      snap = %{
+        quality: [%{label: "country", kind: :fill, recent: 40.0, base: 85.0, band: :error}],
+        quantity: [],
+        speed: []
+      }
+
+      a = Alerts.evaluate(%{healthy() | data_check: snap})
+      found = Enum.find(a, &(&1.key == "data_quality:country"))
+
+      assert found
+      assert found.severity == :critical
+      assert found.line =~ "85.0%"
+    end
+
+    test "a green data snapshot adds nothing" do
+      assert Alerts.evaluate(healthy()) |> Enum.filter(&String.starts_with?(&1.key, "data_")) == []
+    end
+  end
+
   describe "a silent auto-recovery is still an outage (2026-08-27)" do
     # The site was down 07:30-07:46 local; the watchdog restarted it and NOTHING
     # told the owner, because alerting runs inside the process that died. The
