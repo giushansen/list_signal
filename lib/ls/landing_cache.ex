@@ -92,6 +92,7 @@ defmodule LS.LandingCache do
       # and rightly asked why the homepage said 4M. Sell the number a customer
       # can actually reach. (2026-08-24)
       store_count: fetch_count("SELECT count() FROM businesses WHERE is_shopify = 1"),
+      business_count: fetch_count("SELECT count() FROM businesses"),
       total_domains: fetch_count("SELECT count() FROM domains_current"),
       tech_count: fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains_current WHERE http_tech != ''"),
       app_count: fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains_current WHERE http_apps != ''"),
@@ -185,7 +186,7 @@ defmodule LS.LandingCache do
   end
 
   defp defaults do
-    %{store_count: 0, total_domains: 0, tech_count: 0, app_count: 0,
+    %{store_count: 0, business_count: 0, total_domains: 0, tech_count: 0, app_count: 0,
       scan_rate: 0, ch_insert_rate: 0, ctl_rate_per_sec: 0.0,
       stores_last_hour: 0,
       recent_stores: [], top_stores: [], top_businesses: [], refreshed_at: nil}

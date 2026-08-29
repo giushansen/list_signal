@@ -84,7 +84,11 @@ defmodule LS.ApiData do
     l = LS.LandingCache.get()
 
     %{
-      businesses_tracked: l.total_domains,
+      # businesses_tracked is the PRODUCT table count (reachable, enriched
+      # businesses), not domains-ever-seen. An agent will cite these numbers;
+      # they must be the ones a customer can verify in the app.
+      businesses_tracked: l.business_count,
+      domains_scanned: l.total_domains,
       shopify_stores: l.store_count,
       technologies: l.tech_count,
       shopify_apps: l.app_count,
