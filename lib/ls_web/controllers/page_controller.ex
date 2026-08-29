@@ -17,8 +17,8 @@ defmodule LSWeb.PageController do
 
   def pricing(conn, _params) do
     conn
-    |> assign(:page_title, "Pricing, Plans from $0 to $99/mo")
-    |> assign(:page_description, "Three flat-rate plans. No credits, no expiring tokens. Start free, export from $39/mo. Save 20%+ with annual billing.")
+    |> assign(:page_title, "Pricing, Plans from $0 to $149/mo")
+    |> assign(:page_description, "Flat plans from free to $149/mo plus a $499 custom prospect list. API included on every plan. No credits, no expiring tokens.")
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:pricing)
   end

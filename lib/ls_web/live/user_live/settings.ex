@@ -96,7 +96,7 @@ defmodule LSWeb.UserLive.Settings do
                 <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 50 results per page</li>
                 <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 30 searches/min</li>
                 <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> All filters</li>
-                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 500 rows/mo</li>
+                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 5,000 rows/mo</li>
                 <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Contact email access</li>
               </ul>
             </div>
@@ -109,12 +109,12 @@ defmodule LSWeb.UserLive.Settings do
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400">Current</span>
                 <% end %>
               </div>
-              <p class="text-2xl font-bold text-white mb-4">$99<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+              <p class="text-2xl font-bold text-white mb-4">$149<span class="text-sm text-gray-500 font-normal">/mo</span></p>
               <ul class="text-sm text-gray-300 space-y-2.5">
                 <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>100</strong> results per page</li>
                 <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>120</strong> searches/min</li>
                 <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> All filters</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>5,000</strong> rows/mo</li>
+                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>50,000</strong> rows/mo</li>
                 <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Priority support</li>
               </ul>
             </div>
