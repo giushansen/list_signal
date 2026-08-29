@@ -30,8 +30,22 @@ defmodule LS.Cluster.WorkQueue do
   # Domains whose results were inserted recently. The requeue path consults it
   # so a timed-out batch never re-crawls what already succeeded, see
   # requeue_timed_out/1 and the 2026-08-28 Vultr abuse report.
+  #
+  # TTL is 3x @batch_timeout_ms, NOT hours: the only question this table ever
+  # answers is "did this batch complete before its 10-minute in-flight timeout
+  # fired", so nothing outside that window is ever consulted. Shipped at 6
+  # hours by mistake — 36x more retention than the 10-minute question needs —
+  # and at ~7,000 domains/min steady throughput that grew to ~1.2M rows within
+  # 3 hours of a fresh boot, heading toward a ~2.3M-row plateau. Found
+  # 2026-08-29 chasing a recurrence of the memory-limit stall this same
+  # commit was supposed to prevent: the fix for one outage became a
+  # contributor to the next.
   @recent_table :recently_crawled
-  @recent_ttl_ms :timer.hours(6)
+  @recent_ttl_ms :timer.minutes(30)
+  # Hard backstop independent of the TTL sweep, same philosophy as the
+  # 2026-08-26 cache bounds: a burst that outruns the hourly sweep must not
+  # be allowed to grow this without limit.
+  @recent_max_entries 500_000
   @counter_table :work_queue_counters
   # Default cap; override with LS_QUEUE_MAX (read once at init). Measured cost
   # ~287 B/item (273 MB at 1M), so 3M on the 16 GB master is ~800 MB.
@@ -384,10 +398,22 @@ defmodule LS.Cluster.WorkQueue do
   def recently_crawled?(_), do: false
 
   @doc false
-  # Drop expired entries, called from the existing TTL sweep.
+  # Drop expired entries, called from the existing TTL sweep. Logs what it
+  # does: the earlier version discarded its own return value, so a sweep that
+  # silently stopped working (a bad match spec, a crash swallowed by rescue)
+  # would have looked identical to a healthy one in every log there is.
   def sweep_recently_crawled do
     cutoff = System.system_time(:millisecond) - @recent_ttl_ms
-    :ets.select_delete(@recent_table, [{{:"$1", :"$2"}, [{:<, :"$2", cutoff}], [true]}])
+    expired = :ets.select_delete(@recent_table, [{{:"$1", :"$2"}, [{:<, :"$2", cutoff}], [true]}])
+
+    over = :ets.info(@recent_table, :size) - @recent_max_entries
+    trimmed = if is_integer(over) and over > 0, do: LS.Cache.evict_to(@recent_table, @recent_max_entries, &elem(&1, 1)), else: 0
+
+    if expired + trimmed > 0 do
+      Logger.info("🧹 recently_crawled: dropped #{expired} expired, trimmed #{trimmed} over cap")
+    end
+
+    expired + trimmed
   rescue
     ArgumentError -> 0
   end
