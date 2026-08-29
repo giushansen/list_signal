@@ -130,6 +130,17 @@ LS.Accounts.User.effective_plan(u)  # => "pro"
 
 ---
 
+## Developer API + MCP (public surface)
+
+Read-only API at `/api/v1` (company lookup, filtered search, technologies,
+stats) with OpenAPI 3.1 at `/openapi.json`, plus a stateless MCP server at
+`/mcp` for AI agents (Claude, Cursor). One API-key auth stack: SHA-256-
+stored keys, per-plan monthly quotas in SQLite, per-minute ETS rate
+limits, RFC 9457 errors, success-only async usage tracking (SQLite +
+server-side Umami). Free tier 1,000 calls/month; contact emails gated to
+paid plans. Design + registry submission playbook: `docs/api-and-mcp.md`;
+public docs: https://listsignal.com/developers.
+
 ## Quick Start — Starting & Restarting Nodes
 
 ### Prerequisites

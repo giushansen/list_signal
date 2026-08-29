@@ -29,6 +29,31 @@ defmodule LSWeb.UserLive.Settings do
       </header>
 
       <div class="max-w-3xl mx-auto px-5 py-8 space-y-8">
+        <%!-- API key --%>
+        <div class="bg-[#0F1628] border border-white/[0.06] rounded-xl p-6">
+          <h2 class="text-lg font-semibold text-white mb-2">API Key</h2>
+          <p class="text-sm text-white/50 mb-4">
+            For the <a href="/developers" class="text-emerald-400 hover:underline">REST API and MCP server</a>.
+            Used <span class="text-white font-medium"><%= @api_usage %></span> of <span class="text-white font-medium"><%= @api_quota %></span> calls this month.
+          </p>
+
+          <%= if @new_api_key do %>
+            <div class="rounded-lg border border-emerald-500/30 bg-emerald-500/[0.06] p-4 mb-4">
+              <p class="text-[13px] text-emerald-300 font-medium mb-2">Copy this key now. It will not be shown again.</p>
+              <code class="block text-[13px] text-white bg-black/30 rounded px-3 py-2 select-all break-all"><%= @new_api_key %></code>
+            </div>
+          <% end %>
+
+          <%= if @api_key do %>
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <code class="text-[13px] text-white/70"><%= @api_key.prefix %>... <span class="text-white/35">created <%= Calendar.strftime(@api_key.inserted_at, "%b %d, %Y") %></span></code>
+              <button phx-click="revoke_api_key" data-confirm="Revoke this key? Anything using it stops working immediately." class="text-[13px] text-red-400 hover:text-red-300 font-medium">Revoke</button>
+            </div>
+          <% else %>
+            <button phx-click="create_api_key" class="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400 transition">Generate API key</button>
+          <% end %>
+        </div>
+
         <%!-- Plan & Billing, comparison table --%>
         <div class="bg-[#0F1628] border border-white/[0.06] rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-2">Plan & Billing</h2>
@@ -262,11 +287,56 @@ defmodule LSWeb.UserLive.Settings do
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:trigger_submit, false)
+      |> assign_api_key(user)
 
     {:ok, socket}
   end
 
+  defp assign_api_key(socket, user) do
+    key = LS.ApiKeys.active_key_for_user(user.id)
+
+    socket
+    |> assign(:api_key, key)
+    |> assign(:api_usage, if(key, do: LS.ApiKeys.usage_this_month(key.id), else: 0))
+    |> assign(:api_quota, LS.ApiKeys.monthly_quota(User.effective_plan(user)))
+    |> assign(:new_api_key, nil)
+  end
+
   @impl true
+  def handle_event("create_api_key", _params, socket) do
+    user = socket.assigns.current_scope.user
+
+    case LS.ApiKeys.create_key(user) do
+      {:ok, plaintext, key} ->
+        {:noreply,
+         socket
+         |> assign(:api_key, key)
+         |> assign(:new_api_key, plaintext)
+         |> put_flash(:info, "API key created. Copy it now, it will not be shown again.")}
+
+      {:error, :already_has_key} ->
+        {:noreply, put_flash(socket, :error, "You already have an active key. Revoke it first to rotate.")}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not create the key. Please try again.")}
+    end
+  end
+
+  def handle_event("revoke_api_key", _params, socket) do
+    case socket.assigns.api_key do
+      nil ->
+        {:noreply, socket}
+
+      key ->
+        LS.ApiKeys.revoke_key(key)
+
+        {:noreply,
+         socket
+         |> assign_api_key(socket.assigns.current_scope.user)
+         |> put_flash(:info, "API key revoked.")}
+    end
+  end
+
   def handle_event("validate_email", params, socket) do
     %{"user" => user_params} = params
 

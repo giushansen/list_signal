@@ -171,6 +171,10 @@ defmodule LS.Application do
       # Runs on the master only — bulk downloads against official endpoints
       # from one polite client, never spread across the fleet.
       {Task.Supervisor, name: LS.Verification.TaskSupervisor},
+      # Fire-and-forget work (API usage counters, server-side analytics).
+      {Task.Supervisor, name: LS.TaskSupervisor},
+      # Per-key per-minute API rate limiting (ETS owner).
+      LSWeb.ApiRateLimiter,
       LS.Verification.Scheduler,
       # Ops: infra/quality alerts (email) + the weekly report. Master-only.
       LS.Ops.Sentinel,

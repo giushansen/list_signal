@@ -31,6 +31,14 @@ defmodule LSWeb.PageController do
     |> render(:features)
   end
 
+  def developers(conn, _params) do
+    conn
+    |> assign(:page_title, "Developer API and MCP Server")
+    |> assign(:page_description, "Query 14M+ online businesses by tech stack, revenue, and hiring signals. REST API + MCP server for AI agents. Free tier: 1,000 lookups/month, no card required.")
+    |> put_layout(html: {LSWeb.Layouts, :public})
+    |> render(:developers)
+  end
+
   defp cache_headers(conn, _opts) do
     conn
     |> put_resp_header("cache-control", "public, s-maxage=86400, max-age=3600, stale-while-revalidate=3600")

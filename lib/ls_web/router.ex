@@ -28,6 +28,12 @@ defmodule LSWeb.Router do
     plug :accepts, ["json"]
   end
 
+  # The public developer API + MCP surface: key-authed, quota'd, rate-limited.
+  pipeline :api_v1 do
+    plug :accepts, ["json"]
+    plug LSWeb.Plugs.ApiAuth
+  end
+
   # Stripe webhook — BEFORE browser pipeline (no CSRF)
   scope "/webhooks", LSWeb do
     pipe_through :api
@@ -90,7 +96,32 @@ defmodule LSWeb.Router do
     get "/privacy", LegalController, :privacy
     get "/terms", LegalController, :terms
 
+    get "/developers", PageController, :developers
     get "/sitemap.xml", SitemapController, :index
+  end
+
+  # Machine-readable API contract, unauthenticated by design: agents read it
+  # before they have a key.
+  scope "/", LSWeb do
+    pipe_through :api
+    get "/openapi.json", OpenapiController, :show
+  end
+
+  # Developer API v1 (read-only) + MCP, same key auth.
+  scope "/api/v1", LSWeb do
+    pipe_through :api_v1
+
+    get "/company/:domain", ApiV1Controller, :company
+    get "/search", ApiV1Controller, :search
+    get "/technologies", ApiV1Controller, :technologies
+    get "/stats", ApiV1Controller, :stats
+  end
+
+  scope "/mcp", LSWeb do
+    pipe_through :api_v1
+
+    post "/", McpController, :handle
+    get "/", McpController, :reject_get
   end
 
   # Admin dashboard (internal) — owner-only, gated by LS_ADMIN_EMAILS

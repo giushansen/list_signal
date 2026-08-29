@@ -1,31 +1,51 @@
 # ListSignal
 
-> Domain intelligence platform for digital businesses. Discover tech stacks, installed apps, revenue signals and contact data for Shopify stores, SaaS products, and every digital business. Updated daily.
+> Live business intelligence for 14M+ online businesses: tech stacks, Shopify apps, revenue and employee estimates, hiring signals with posting dates, SEO scores, and contact data for Shopify stores, SaaS products, agencies, and every digital business. New domains are discovered within hours of getting a TLS certificate. Data is queryable by REST API and by MCP.
 
-## Store Profiles
-Individual store analysis pages with tech stack, apps, scoring, and contact data.
-- [Store Directory](/store)
+## Developer API
+The fastest way for an agent to use ListSignal. Free tier: 1,000 lookups/month, no card.
+- [Developer docs](/developers): quickstart, endpoints, plans, error format
+- [OpenAPI 3.1 spec](/openapi.json): the machine-readable contract
+- MCP server: POST https://listsignal.com/mcp (Streamable HTTP, JSON-RPC 2.0, API-key auth). Tools: listsignal_get_company, listsignal_search_companies, listsignal_dataset_stats.
+- Errors are RFC 9457 application/problem+json with actionable detail.
+
+## Key Endpoints
+- GET /api/v1/company/{domain}: one company's full record
+- GET /api/v1/search?tech=&country=&business_model=&hiring=: filtered company search
+- GET /api/v1/technologies: tracked technologies with live counts
+- GET /api/v1/stats: live dataset statistics, refreshed every 60 seconds
+
+## Business Profiles
+Individual analysis pages with tech stack, apps, scoring, hiring, and contact data.
+- [Search](/search)
+- [Latest Shopify stores](/latest-shopify-stores)
+- [Latest SaaS businesses](/latest-saas-businesses)
 
 ## Technology Pages
-Pages for each tracked technology showing all stores using it.
+Pages for each tracked technology showing the businesses using it.
 - [App Directory](/apps)
 
-## Comparison Pages
-Side-by-side comparisons of Shopify apps and technologies.
-- [Example: Klaviyo vs Mailchimp](/compare/klaviyo-vs-mailchimp)
-- [Example: ReCharge vs Bold Subscriptions](/compare/recharge-vs-bold-subscriptions)
+## Scoring Methodology
+Every published score, documented.
+- [SEO score](/scoring/seo-score)
+- [Revenue estimation](/scoring/revenue-estimation)
+- [Reputation signals](/scoring/reputation)
+- [Shopify store score](/scoring/shopify-store-score)
 
-## Top Store Rankings
-Ranked lists of Shopify stores by country and technology.
-- [Top Shopify Stores US](/top/shopify-stores-us)
-- [Top Shopify Stores UK](/top/shopify-stores-gb)
-- [Top Stores Using Klaviyo](/top/shopify-stores-using-klaviyo)
+## Comparison Pages
+- [ListSignal vs BuiltWith](/alternatives/builtwith)
+- [ListSignal vs Wappalyzer](/alternatives/wappalyzer)
+- [ListSignal vs Store Leads](/alternatives/storeleads)
+- [Example: Klaviyo vs Mailchimp](/compare/klaviyo-vs-mailchimp)
 
 ## Directories
 - [All Tracked Apps](/apps)
 - [All Countries](/countries)
+- [Hiring trends](/hiring)
 
 ## Pricing
-- Free: 10 searches/min, 15 results/page, tech + country filters, no CSV export
-- Starter ($39/month): 30 searches/min, 50 results/page, all filters, 500 rows/month, contact emails
-- Pro ($99/month): 120 searches/min, 100 results/page, all filters, 5,000 rows/month, priority support
+- Free: browse + API key with 1,000 calls/month, contactability without addresses
+- Starter ($39/month): all filters, CSV export, contact emails, 5,000 API calls/month
+- Pro ($149/month): 50,000 rows/month, saved searches, alerts, 25,000 API calls/month
+- Custom list ($499 one-time): 250 qualified companies matching your ICP, delivered in 48h
+- [Pricing](/pricing)

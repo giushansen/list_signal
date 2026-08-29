@@ -1,0 +1,92 @@
+<main class="pt-[140px] pb-20"><div class="mx-auto max-w-[860px] px-6">
+  <div class="text-center mb-12">
+    <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-6 uppercase tracking-wider">
+      <span class="h-2 w-2 rounded-full bg-accent animate-pulse"></span>
+      Built for developers and AI agents
+    </div>
+    <h1 class="font-display text-[clamp(32px,4vw,48px)] font-bold tracking-tight leading-[1.1] mb-4">One API for 14M+ online businesses</h1>
+    <p class="text-lg text-white/60 max-w-[620px] mx-auto">Tech stacks, revenue estimates, hiring signals with dates, and contact data, queryable by REST or by any MCP-capable AI agent. Free tier, no card, no sales call.</p>
+  </div>
+
+  <%!-- Quickstart --%>
+  <section class="mb-12">
+    <h2 class="font-display text-2xl font-bold mb-4">Quickstart</h2>
+    <ol class="space-y-2 text-white/70 text-[15px] mb-6 list-decimal list-inside">
+      <li><a href="/signup" data-umami-event="signup_cta" data-umami-event-source="developers_page" class="text-accent hover:underline">Create a free account</a> and generate an API key in Settings. 1,000 lookups/month included.</li>
+      <li>Call the API with your key:</li>
+    </ol>
+    <pre class="rounded-xl bg-[#0C1429] border border-white/[0.07] p-5 text-[13px] text-emerald-200/90 overflow-x-auto"><code>curl https://listsignal.com/api/v1/company/gymshark.com \
+  -H "Authorization: Bearer ls_YOUR_KEY"
+
+curl "https://listsignal.com/api/v1/search?tech=Shopify&country=FR&hiring=true&limit=25" \
+  -H "Authorization: Bearer ls_YOUR_KEY"</code></pre>
+  </section>
+
+  <%!-- Endpoints --%>
+  <section class="mb-12">
+    <h2 class="font-display text-2xl font-bold mb-4">Endpoints</h2>
+    <div class="space-y-3">
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <code class="text-accent text-sm font-semibold">GET /api/v1/company/:domain</code>
+        <p class="text-sm text-white/60 mt-1.5">One company's full record: technologies, Shopify apps, revenue and employee estimates, open jobs and hiring overview, SEO score, traffic rank, contact emails (paid plans).</p>
+      </div>
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <code class="text-accent text-sm font-semibold">GET /api/v1/search</code>
+        <p class="text-sm text-white/60 mt-1.5">Filter companies by <code class="text-white/80">tech</code>, <code class="text-white/80">app</code>, <code class="text-white/80">country</code>, <code class="text-white/80">business_model</code>, <code class="text-white/80">revenue</code>, <code class="text-white/80">hiring</code>. Ranked by traffic, up to 100 per page.</p>
+      </div>
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <code class="text-accent text-sm font-semibold">GET /api/v1/technologies</code>
+        <p class="text-sm text-white/60 mt-1.5">Every tracked technology with live company counts.</p>
+      </div>
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <code class="text-accent text-sm font-semibold">GET /api/v1/stats</code>
+        <p class="text-sm text-white/60 mt-1.5">Live dataset statistics, refreshed every 60 seconds. Citable.</p>
+      </div>
+    </div>
+    <p class="text-sm text-white/50 mt-4">Full machine-readable contract: <a href="/openapi.json" class="text-accent hover:underline">/openapi.json</a> (OpenAPI 3.1). Errors are RFC 9457 <code class="text-white/70">application/problem+json</code> with actionable detail, so agents self-correct in one retry.</p>
+  </section>
+
+  <%!-- MCP --%>
+  <section class="mb-12" id="mcp">
+    <h2 class="font-display text-2xl font-bold mb-4">MCP server, for AI agents</h2>
+    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">ListSignal speaks the Model Context Protocol natively. Point Claude, Cursor, or any MCP client at the endpoint and it gets three tools: <code class="text-white/80">listsignal_get_company</code>, <code class="text-white/80">listsignal_search_companies</code>, and <code class="text-white/80">listsignal_dataset_stats</code>.</p>
+    <pre phx-no-curly-interpolation class="rounded-xl bg-[#0C1429] border border-white/[0.07] p-5 text-[13px] text-emerald-200/90 overflow-x-auto"><code>{
+  "mcpServers": {
+    "listsignal": {
+      "type": "http",
+      "url": "https://listsignal.com/mcp",
+      "headers": { "Authorization": "Bearer ls_YOUR_KEY" }
+    }
+  }
+}</code></pre>
+    <p class="text-sm text-white/50 mt-3">Streamable HTTP transport, stateless, JSON-RPC 2.0. The same key and quota as the REST API.</p>
+  </section>
+
+  <%!-- Limits & errors --%>
+  <section class="mb-12" id="errors">
+    <h2 class="font-display text-2xl font-bold mb-4">Plans and limits</h2>
+    <div class="overflow-x-auto rounded-xl border border-white/[0.07]">
+      <table class="w-full text-sm">
+        <thead><tr class="bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-white/35">
+          <th class="px-5 py-3 font-semibold">Plan</th>
+          <th class="px-5 py-3 font-semibold">Calls / month</th>
+          <th class="px-5 py-3 font-semibold">Rate</th>
+          <th class="px-5 py-3 font-semibold">Contact emails</th>
+        </tr></thead>
+        <tbody class="text-white/70">
+          <tr class="border-t border-white/[0.05]"><td class="px-5 py-3">Free</td><td class="px-5 py-3">1,000</td><td class="px-5 py-3">30 / min</td><td class="px-5 py-3 text-white/40">Contactability only</td></tr>
+          <tr class="border-t border-white/[0.05]"><td class="px-5 py-3">Starter</td><td class="px-5 py-3">5,000</td><td class="px-5 py-3">60 / min</td><td class="px-5 py-3 text-emerald-400">Included</td></tr>
+          <tr class="border-t border-white/[0.05]"><td class="px-5 py-3">Pro</td><td class="px-5 py-3">25,000</td><td class="px-5 py-3">120 / min</td><td class="px-5 py-3 text-emerald-400">Included</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="text-sm text-white/50 mt-4">Only successful calls count against the quota. You never pay for a miss. Need more volume, webhooks, or bulk delivery? <a href="mailto:will@listsignal.com" class="text-accent hover:underline">Email us</a>.</p>
+  </section>
+
+  <div class="text-center">
+    <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="developers_bottom" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+      Get your free API key
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</div></main>
