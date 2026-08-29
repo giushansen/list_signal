@@ -90,7 +90,10 @@ defmodule LS.ApiData do
       businesses_tracked: l.business_count,
       domains_scanned: l.total_domains,
       shopify_stores: l.store_count,
-      technologies: l.tech_count,
+      # tech_count's uniq-over-171M-rows query can time out right after boot
+      # and report 0, which would contradict /technologies; the directory
+      # list is the same universe and always warm.
+      technologies: max(l.tech_count, length(LS.LandingCache.tech_names())),
       shopify_apps: l.app_count,
       domains_checked_past_hour: l.stores_last_hour,
       refreshed_at: l.refreshed_at
