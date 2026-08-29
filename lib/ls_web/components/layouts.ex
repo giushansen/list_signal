@@ -206,7 +206,8 @@ defmodule LSWeb.Layouts do
               <li><a href="/alternatives/builtwith" class="hover:text-white transition">vs BuiltWith</a></li>
               <li><a href="/alternatives/wappalyzer" class="hover:text-white transition">vs Wappalyzer</a></li>
               <li><a href="/alternatives/storeleads" class="hover:text-white transition">vs Store Leads</a></li>
-              <li><a href="/alternatives/myip-ms" class="hover:text-white transition">vs MyIP.ms</a></li>
+              <li><a href="/alternatives/apollo" class="hover:text-white transition">vs Apollo</a></li>
+              <li><a href="/alternatives/zoominfo" class="hover:text-white transition">vs ZoomInfo</a></li>
               <li><a href="/compare/shopify-vs-woocommerce" class="hover:text-white transition">Shopify vs Woo</a></li>
               <li><a href="/compare/klaviyo-vs-mailchimp" class="hover:text-white transition">Klaviyo vs MC</a></li>
             </ul>
