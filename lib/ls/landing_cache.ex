@@ -101,6 +101,7 @@ defmodule LS.LandingCache do
       stores_last_hour: fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR"),
       recent_stores: fetch_recent_stores(),
       top_stores: fetch_top_stores(),
+      top_businesses: fetch_top_businesses(),
       refreshed_at: DateTime.utc_now()
     }
   end
@@ -158,6 +159,23 @@ defmodule LS.LandingCache do
     end
   end
 
+  defp fetch_top_businesses do
+    case LS.Clickhouse.sample_online_businesses(10) do
+      {:ok, rows} ->
+        Enum.map(rows, fn row ->
+          %{domain: Enum.at(row, 0) || "", title: Enum.at(row, 1) || "",
+            country: Enum.at(row, 2) || "", rank: Enum.at(row, 3),
+            revenue: Enum.at(row, 4) || "", model: Enum.at(row, 5) || "",
+            industry: Enum.at(row, 6) || "", jobs: Enum.at(row, 7),
+            seo: Enum.at(row, 8), has_contact: Enum.at(row, 9) in [1, "1", true],
+            tech: Enum.at(row, 10) || ""}
+        end)
+
+      _ ->
+        []
+    end
+  end
+
   defp fetch_tech_names do
     case LS.Clickhouse.tech_directory() do
       {:ok, rows} ->
@@ -170,6 +188,6 @@ defmodule LS.LandingCache do
     %{store_count: 0, total_domains: 0, tech_count: 0, app_count: 0,
       scan_rate: 0, ch_insert_rate: 0, ctl_rate_per_sec: 0.0,
       stores_last_hour: 0,
-      recent_stores: [], top_stores: [], refreshed_at: nil}
+      recent_stores: [], top_stores: [], top_businesses: [], refreshed_at: nil}
   end
 end

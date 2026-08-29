@@ -89,7 +89,10 @@
         <div class="anim min-w-0"><div class="font-display text-[22px] sm:text-[28px] md:text-[34px] font-bold tracking-tight whitespace-nowrap"><span class="count" data-target={@landing.total_domains || @landing.store_count * 10}>0</span></div><div class="text-[10px] sm:text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Domains Tracked</div></div>
         <div class="anim min-w-0"><div class="font-display text-[22px] sm:text-[28px] md:text-[34px] font-bold tracking-tight whitespace-nowrap"><span class="count" data-target={@landing.store_count}>0</span></div><div class="text-[10px] sm:text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Shopify Stores</div></div>
         <div class="anim min-w-0"><div class="font-display text-[22px] sm:text-[28px] md:text-[34px] font-bold tracking-tight">230+</div><div class="text-[10px] sm:text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Technologies</div></div>
-        <div class="anim min-w-0"><div class="font-display text-[22px] sm:text-[28px] md:text-[34px] font-bold tracking-tight">Hourly</div><div class="text-[10px] sm:text-xs text-white/35 uppercase tracking-[1.2px] font-medium">Data Refresh</div></div>
+        <%!-- A live number beats a cadence claim: this is real ETS-cached
+             pipeline output, refreshed every 60s, and it is usually six
+             figures. Nothing says "live data" like watching it count up. --%>
+        <div class="anim min-w-0"><div class="font-display text-[22px] sm:text-[28px] md:text-[34px] font-bold tracking-tight whitespace-nowrap text-accent"><span class="count" data-target={@landing.stores_last_hour}>0</span></div><div class="text-[10px] sm:text-xs text-white/35 uppercase tracking-[1.2px] font-medium"><span class="inline-block h-1.5 w-1.5 rounded-full bg-accent animate-pulse mr-1"></span>Live Checks, Past Hour</div></div>
       </div>
     </div>
   </section>
@@ -161,6 +164,63 @@
     <% end %>
   </div>
 </section>
+
+<%!-- Same treatment for the rest of the internet: SaaS, agencies,
+     marketplaces. One ICP must never look like the whole product. --%>
+<%= if @landing.top_businesses != [] do %>
+  <section class="pb-20">
+    <div class="mx-auto max-w-[1200px] px-6">
+      <div class="text-center max-w-[600px] mx-auto mb-12 anim">
+        <div class="text-xs uppercase tracking-[2px] font-semibold text-blue-400 mb-3.5">Latest Online Businesses</div>
+        <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15] mb-3.5">SaaS, agencies, marketplaces,<br/>classified and scored automatically.</h2>
+        <p class="text-base text-white/60 leading-relaxed">Every digital business gets the same treatment: business model, industry, revenue estimate, hiring signals, and contactability.</p>
+      </div>
+
+      <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden relative anim">
+        <div class="flex items-center justify-between px-6 py-3.5 bg-white/[0.02] border-b border-white/[0.07] flex-wrap gap-3">
+          <div class="text-sm text-white/60">Beyond ecommerce: the same intelligence for <strong class="text-white font-semibold">every online business</strong></div>
+          <div class="text-[12px] text-white/40">Business model &middot; revenue estimate &middot; hiring &middot; SEO &middot; contactability</div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm border-collapse min-w-[620px]">
+            <thead><tr>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Domain</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Model</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Est. Revenue</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Hiring</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">SEO</th>
+              <th class="px-5 py-2.5 text-left text-[11px] uppercase tracking-wider text-white/35 font-semibold border-b border-white/[0.07]">Contact</th>
+            </tr></thead>
+            <tbody>
+              <%= for {biz, idx} <- Enum.with_index(@landing.top_businesses) do %>
+                <tr class={if idx < 3, do: "hover:bg-white/[0.015]", else: "[&>td]:blur-[5px] [&>td]:select-none [&>td]:pointer-events-none"}>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white font-medium">
+                    <%= if idx < 3 do %>
+                      <a href={"/website/#{String.replace(biz.domain, ".", "-")}"} class="hover:text-blue-400"><%= biz.domain %></a>
+                    <% else %>
+                      <%= biz.domain %>
+                    <% end %>
+                  </td>
+                  <td class="px-5 py-3 border-b border-white/[0.07]"><span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-500/12 text-blue-400"><%= biz.model %></span></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] font-medium text-emerald-300/90"><%= biz.revenue %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if biz.jobs && biz.jobs > 0 do %><span class="text-emerald-400"><%= biz.jobs %> roles</span><% else %><span class="text-white/25">-</span><% end %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60 tabular-nums"><%= if biz.seo, do: "#{biz.seo}/100" %></td>
+                  <td class="px-5 py-3 border-b border-white/[0.07] text-white/60"><%= if biz.has_contact do %><span class="text-emerald-400">&#10003;</span><% else %><span class="text-white/25">-</span><% end %></td>
+                </tr>
+              <% end %>
+            </tbody>
+          </table>
+        </div>
+        <div class="absolute bottom-0 left-0 right-0 h-[200px] bg-gradient-to-b from-transparent to-[#111B33]/95 flex items-end justify-center pb-8 z-10">
+          <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="home_biz_table_gate" class="flex items-center gap-2 rounded-xl bg-blue-500 px-7 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_30px_rgba(59,130,246,0.25)] hover:bg-blue-400 hover:-translate-y-0.5 transition-all">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="3" y="11" width="10" height="5" rx="1.5"/><path d="M6 11V7a3 3 0 016 0v4"/></svg>
+            Sign up free to see all businesses
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+<% end %>
 
 <section class="py-20 bg-[#0C1429]">
   <div class="mx-auto max-w-[1200px] px-6">
@@ -264,13 +324,14 @@
 
 <footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">
   <div class="mx-auto max-w-[1200px] px-6">
-    <p class="text-white/40 mb-4">ListSignal. Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data. Domains checked in real time; tech re-scanned weekly.</p>
+    <p class="text-white/40 mb-4">ListSignal. Live business intelligence for every online business: SaaS, ecommerce, agencies and beyond. Technology detection, revenue estimates, hiring signals, and lead data, checked in real time.</p>
     <div class="mb-3">
       <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
       <a href="/scoring/seo-score" class="text-white/50 hover:text-white transition-colors mx-3">How scoring works</a>
       <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-3">Pricing</a>
-      <a href="/store" class="text-white/50 hover:text-white transition-colors mx-3">Search Stores</a>
-      <a href="/new-stores" class="text-white/50 hover:text-white transition-colors mx-3">New Stores</a>
+      <a href="/search" class="text-white/50 hover:text-white transition-colors mx-3">Search</a>
+      <a href="/latest-shopify-stores" class="text-white/50 hover:text-white transition-colors mx-3">New Stores</a>
+      <a href="/latest-saas-businesses" class="text-white/50 hover:text-white transition-colors mx-3">New SaaS</a>
       <a href="/apps" class="text-white/50 hover:text-white transition-colors mx-3">Apps</a>
       <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="home_footer" class="text-white/50 hover:text-white transition-colors mx-3">Sign Up</a>
       <a href="/users/log-in" class="text-white/50 hover:text-white transition-colors mx-3">Log In</a>
@@ -287,11 +348,17 @@ const obs=new IntersectionObserver(e=>{e.forEach(e=>{if(e.isIntersecting){e.targ
 document.querySelectorAll('.anim').forEach(el=>obs.observe(el));
 function animCount(el){const t=+el.dataset.target,dec=+(el.dataset.decimals||0),dur=1800,s=performance.now();(function u(now){const p=Math.min((now-s)/dur,1),v=(1-Math.pow(1-p,3))*t;el.textContent=dec?v.toFixed(dec):Math.floor(v).toLocaleString();if(p<1)requestAnimationFrame(u);else el.textContent=dec?t.toFixed(dec):t.toLocaleString()})(s)}
 
-// Ticker
-(function(){const stores=<%= raw(Jason.encode!(Enum.map(@landing.recent_stores, fn s -> %{n: s.domain, t: s.title, c: s.country, tech: s.tech} end)) |> String.replace("</", "<\\/")) %>;
+// Ticker: interleave new Shopify stores with newly classified online
+// businesses so the live feed reads as "every digital business", not a
+// Shopify-only stream.
+(function(){const stores=<%= raw(Jason.encode!(Enum.map(@landing.recent_stores, fn s -> %{n: s.domain, c: s.country, b: "Shopify", p: "/shopify/"} end) ++ Enum.map(Enum.take(@landing.top_businesses, 10), fn b -> %{n: b.domain, c: b.country, b: b.model, p: "/website/"} end)) |> String.replace("</", "<\\/")) %>;
 function cflag(c){if(!c||c.length!==2)return '';const o=0x1F1A5;return String.fromCodePoint(c.toUpperCase().charCodeAt(0)+o,c.toUpperCase().charCodeAt(1)+o)}
-const html=s=>`<div class="flex items-center gap-2.5 px-7 whitespace-nowrap text-[13px] text-white/60 border-r border-white/[0.07]"><a href="/shopify/${s.n.replace(/\./g,'-')}" class="text-white font-medium hover:text-accent transition-colors">${s.n}</a><span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-[#96BF48]/12 text-[#96BF48]">Shopify</span>${s.c?`<span class="text-sm">${cflag(s.c)}</span>`:''}</div>`;
-const el=document.getElementById('tickerTrack');if(stores.length>0){el.innerHTML=stores.map(html).join('')+stores.map(html).join('')}else{el.innerHTML='<div class="px-7 text-[13px] text-white/40">Pipeline active, new stores detected every minute</div>'}})();
+// Interleave the two sources so badges alternate instead of clustering.
+const shop=stores.filter(s=>s.b==='Shopify'),biz=stores.filter(s=>s.b!=='Shopify'),mixed=[];
+for(let i=0;i<Math.max(shop.length,biz.length);i++){if(shop[i])mixed.push(shop[i]);if(biz[i])mixed.push(biz[i]);}
+const badge=s=>s.b==='Shopify'?'bg-[#96BF48]/12 text-[#96BF48]':'bg-blue-500/12 text-blue-400';
+const html=s=>`<div class="flex items-center gap-2.5 px-7 whitespace-nowrap text-[13px] text-white/60 border-r border-white/[0.07]"><a href="${s.p}${s.n.replace(/\./g,'-')}" class="text-white font-medium hover:text-accent transition-colors">${s.n}</a><span class="px-2 py-0.5 rounded text-[11px] font-semibold ${badge(s)}">${s.b}</span>${s.c?`<span class="text-sm">${cflag(s.c)}</span>`:''}</div>`;
+const el=document.getElementById('tickerTrack');if(mixed.length>0){el.innerHTML=mixed.map(html).join('')+mixed.map(html).join('')}else{el.innerHTML='<div class="px-7 text-[13px] text-white/40">Pipeline active, new businesses detected every minute</div>'}})();
 
 // ═══ TECH AUTOCOMPLETE ═══
 (function(){

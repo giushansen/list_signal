@@ -138,7 +138,7 @@ defmodule LSWeb.Layouts do
             <span class="text-xl font-semibold text-white" itemprop="name">ListSignal</span>
           </a>
           <p class="text-sm text-white/50 max-w-xl mx-auto" itemprop="description">
-            Real-time Shopify store intelligence and tech-stack discovery for sales teams, founders, and researchers.
+            Live business intelligence for every online business: Shopify stores, SaaS, agencies and beyond. Tech stacks, revenue estimates, hiring signals, and contact data for sales teams, founders, and researchers.
           </p>
         </div>
 
@@ -192,8 +192,8 @@ defmodule LSWeb.Layouts do
             <ul class="space-y-2.5 text-sm">
               <li><a href="/tools/shopify-checker" class="hover:text-white transition">Shopify Checker</a></li>
               <li><a href="/tools/tech-lookup" class="hover:text-white transition">Tech Stack Lookup</a></li>
-              <li><a href="/api/tools/lookup" class="hover:text-white transition">Lookup API</a></li>
-              <li><a href="/api/tech/suggest" class="hover:text-white transition">Tech Suggest API</a></li>
+              <li><a href="/developers" class="hover:text-white transition">Developer API</a></li>
+              <li><a href="/openapi.json" class="hover:text-white transition">OpenAPI Spec</a></li>
               <li><a href="/sitemap.xml" class="hover:text-white transition">Sitemap</a></li>
               <li><a href="/llms.txt" class="hover:text-white transition">llms.txt</a></li>
             </ul>

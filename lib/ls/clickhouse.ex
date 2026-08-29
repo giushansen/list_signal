@@ -39,6 +39,26 @@ defmodule LS.Clickhouse do
   end
 
   @doc """
+  A ranked sample of non-ecommerce online businesses (SaaS, agencies,
+  marketplaces...) for the landing page. Mirrors `sample_shopify_stores/1`
+  so the two tables read the same: the homepage must show that the dataset
+  is every digital business, not a Shopify directory.
+  """
+  def sample_online_businesses(limit \\ 6) do
+    query("""
+    SELECT domain, http_title, inferred_country, tranco_rank,
+           estimated_revenue, business_model, industry,
+           job_count, seo_score, http_emails != '' AS has_contact, http_tech
+    FROM businesses FINAL
+    WHERE business_model IN ('SaaS', 'Agency', 'Marketplace', 'Tool', 'Media')
+      AND http_title != '' AND depth_enriched_at IS NOT NULL
+      AND estimated_revenue != ''
+    ORDER BY tranco_rank ASC NULLS LAST
+    LIMIT #{limit}
+    """)
+  end
+
+  @doc """
   Aggregate hiring stats for the public /hiring page. Deliberately coarse:
   department-level counts sell the depth of the dataset without exposing
   which boards we read or any per-company detail a competitor could replay.

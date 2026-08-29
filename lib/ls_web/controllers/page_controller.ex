@@ -7,8 +7,8 @@ defmodule LSWeb.PageController do
     data = LS.LandingCache.get()
 
     conn
-    |> assign(:page_title, "Domain Intelligence, Updated Daily")
-    |> assign(:page_description, "Fresh tech stack, app detection, revenue signals and contact data for Shopify stores, SaaS products, and every digital business. No credits, no stale data.")
+    |> assign(:page_title, "Live Business Intelligence for Every Online Business")
+    |> assign(:page_description, "Live tech stacks, revenue estimates, hiring signals and contact data for Shopify stores, SaaS products, agencies, and every digital business. No credits, no stale data.")
     |> assign(:landing, data)
     |> assign(:json_ld, home_json_ld())
     |> put_layout(html: {LSWeb.Layouts, :public})
@@ -26,7 +26,7 @@ defmodule LSWeb.PageController do
   def features(conn, _params) do
     conn
     |> assign(:page_title, "Features, What ListSignal Tracks")
-    |> assign(:page_description, "Technology detection, Shopify app tracking, business classification, revenue estimation, and CSV export for millions of domains, updated daily.")
+    |> assign(:page_description, "Technology detection, Shopify app tracking, business classification, revenue estimation, hiring signals, and CSV export for millions of online businesses, checked live.")
     |> put_layout(html: {LSWeb.Layouts, :public})
     |> render(:features)
   end
@@ -41,7 +41,7 @@ defmodule LSWeb.PageController do
     Jason.encode!(%{
       "@context" => "https://schema.org", "@type" => "WebApplication",
       "name" => "ListSignal", "url" => "https://listsignal.com",
-      "description" => "Domain intelligence for digital businesses. Technology detection, Shopify app tracking, and lead data, updated daily.",
+      "description" => "Live business intelligence for every online business. Technology detection, revenue estimates, hiring signals, and lead data, checked in real time.",
       "applicationCategory" => "BusinessApplication", "operatingSystem" => "Web",
       "offers" => [
         %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD", "name" => "Free"},

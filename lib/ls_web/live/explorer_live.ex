@@ -1506,7 +1506,7 @@ defmodule LSWeb.ExplorerLive do
             <div class="flex items-center gap-4">
               <a href="/features" class="hover:text-gray-400 transition">Features</a>
               <a href="/pricing" class="hover:text-gray-400 transition">Pricing</a>
-              <a href="/api/tools/lookup" class="hover:text-gray-400 transition">API</a>
+              <a href="/developers" class="hover:text-gray-400 transition">API</a>
               <a href="/privacy" class="hover:text-gray-400 transition">Privacy</a>
               <a href="/terms" class="hover:text-gray-400 transition">Terms</a>
             </div>
