@@ -21,15 +21,24 @@ defmodule LS.Alerts do
   alias LS.{Metrics, Clickhouse}
 
   # Thresholds (measured 2026-08-23). Wide margins on purpose.
-  @ingestion_3h_floor 150_000        # normal ~500-800k/3h
-  @worker_6h_floor 20_000            # normal ~170-230k/6h; below this a node is effectively dead
-  @resolved_fail_ceiling 30.0        # normal 5-9%; ~100% is the h1 split-brain
-  @stale_seconds_ceiling 5_400       # businesses should be < ~90 min old (compactor)
-  @disk_pct_warn 80                  # early runway: the CH backup needs ~1.5x the DB free
-  @disk_pct_ceiling 88               # 240G disk-full caused a 521 outage before
-  @sqlite_backup_age_h 6             # hourly job; 6h means it has missed several
-  @product_backup_age_h 14           # runs every 6h; businesses+biz_* = weeks of crawling
-  @ch_backup_age_h 216               # weekly job (domains_history); >9d = it has skipped a run
+  # normal ~500-800k/3h
+  @ingestion_3h_floor 150_000
+  # normal ~170-230k/6h; below this a node is effectively dead
+  @worker_6h_floor 20_000
+  # normal 5-9%; ~100% is the h1 split-brain
+  @resolved_fail_ceiling 30.0
+  # businesses should be < ~90 min old (compactor)
+  @stale_seconds_ceiling 5_400
+  # early runway: the CH backup needs ~1.5x the DB free
+  @disk_pct_warn 80
+  # 240G disk-full caused a 521 outage before
+  @disk_pct_ceiling 88
+  # hourly job; 6h means it has missed several
+  @sqlite_backup_age_h 6
+  # runs every 6h; businesses+biz_* = weeks of crawling
+  @product_backup_age_h 14
+  # weekly job (domains_history); >9d = it has skipped a run
+  @ch_backup_age_h 216
   # Low-memory floor, twice recalibrated (2026-08-25/26).
   #
   # 900MB was written for the 16G master and applied to EVERY node. Then 10%
@@ -43,13 +52,34 @@ defmodule LS.Alerts do
   # alerts under 100MB (swap engaged, OOM killer near) and a 4G worker under
   # 195MB (which is where the real thrashing showed up). Cheap, honest, and
   # it fires on distress rather than on "busy".
+  #
+  # SUPERSEDED 2026-08-30 by PSI (see mem_pressure_band/2) wherever a node
+  # reports it — which is every current node, since PSI needs only kernel
+  # 4.20+. This raw-% floor stays ONLY as the fallback for a node too old to
+  # expose /proc/pressure/memory, because "no PSI" must never mean "no check
+  # at all". Workers were found to run with NO cgroup memory limit and swap
+  # freely available (up to 13.7GB observed in use on one node) — running
+  # near-full-with-swap is normal there, not dangerous, which is exactly the
+  # distinction raw-% cannot make and PSI can: it measures whether tasks were
+  # actually STALLED waiting on memory, not how much is merely occupied.
   @mem_avail_pct_floor 5
   @mem_avail_mb_min 100
   # Used only when a node does not report its total RAM at all.
   @mem_avail_mb_floor 900
+  # PSI `full` = ALL runnable tasks stalled on memory reclaim, i.e. genuine
+  # thrashing, not "memory is full" (which alone is fine — that is what RAM
+  # is for). avg60 >= 5.0 means at least 5% of the last minute was spent with
+  # nothing able to make progress; avg10 >= 15.0 is acute, last-breath-before-
+  # OOM territory. Thresholds follow the common oomd/PSI convention, not a
+  # measurement specific to this fleet — recalibrate once real fleet data
+  # exists to compare against.
+  @mem_pressure_warn_pct 5.0
+  @mem_pressure_crit_pct 15.0
   @queue_pct_ceiling 92.0
-  @reputation_age_ceiling_h 50       # 24h/12h download loops; >2 days = downloads failing
-  @verification_running_ceiling_h 8  # a source stuck 'running' this long is wedged
+  # 24h/12h download loops; >2 days = downloads failing
+  @reputation_age_ceiling_h 50
+  # a source stuck 'running' this long is wedged
+  @verification_running_ceiling_h 8
   @cooldown_hours 6
 
   @doc "Gather everything `evaluate/1` needs. Master-only; each field is independently safe."
@@ -74,7 +104,14 @@ defmodule LS.Alerts do
   end
 
   @doc "Pure: metrics map → firing alerts, most severe first."
-  @spec evaluate(map()) :: [%{key: String.t(), severity: :critical | :warning, subject: String.t(), line: String.t()}]
+  @spec evaluate(map()) :: [
+          %{
+            key: String.t(),
+            severity: :critical | :warning,
+            subject: String.t(),
+            line: String.t()
+          }
+        ]
   def evaluate(m) do
     []
     |> ingestion(m)
@@ -97,7 +134,15 @@ defmodule LS.Alerts do
   # ── checks (each prepends firing alerts) ──
 
   defp ingestion(acc, %{ingestion_3h: n}) when is_integer(n) and n < @ingestion_3h_floor,
-    do: [al(:critical, "ingestion_low", "Ingestion stalled", "only #{fmt(n)} domains crawled in the last 3h (floor #{fmt(@ingestion_3h_floor)})") | acc]
+    do: [
+      al(
+        :critical,
+        "ingestion_low",
+        "Ingestion stalled",
+        "only #{fmt(n)} domains crawled in the last 3h (floor #{fmt(@ingestion_3h_floor)})"
+      )
+      | acc
+    ]
 
   defp ingestion(acc, _), do: acc
 
@@ -106,8 +151,17 @@ defmodule LS.Alerts do
 
     Enum.reduce(known, acc, fn w, a ->
       rows = Map.get(live, w, 0)
+
       if rows < @worker_6h_floor,
-        do: [al(:critical, "worker_dead:#{w}", "Worker down: #{short(w)}", "#{short(w)} produced #{fmt(rows)} rows in 6h (floor #{fmt(@worker_6h_floor)})") | a],
+        do: [
+          al(
+            :critical,
+            "worker_dead:#{w}",
+            "Worker down: #{short(w)}",
+            "#{short(w)} produced #{fmt(rows)} rows in 6h (floor #{fmt(@worker_6h_floor)})"
+          )
+          | a
+        ],
         else: a
     end)
   end
@@ -115,7 +169,15 @@ defmodule LS.Alerts do
   defp workers_quality(acc, %{per_worker: pw}) do
     Enum.reduce(pw, acc, fn w, a ->
       if w.rows > 5_000 and w.resolved_fail_pct > @resolved_fail_ceiling,
-        do: [al(:critical, "worker_quality:#{w.worker}", "Worker degraded: #{short(w.worker)}", "#{short(w.worker)} resolves DNS but #{w.resolved_fail_pct}% of those fail HTTP (split-brain resolver?)") | a],
+        do: [
+          al(
+            :critical,
+            "worker_quality:#{w.worker}",
+            "Worker degraded: #{short(w.worker)}",
+            "#{short(w.worker)} resolves DNS but #{w.resolved_fail_pct}% of those fail HTTP (split-brain resolver?)"
+          )
+          | a
+        ],
         else: a
     end)
   end
@@ -125,11 +187,27 @@ defmodule LS.Alerts do
 
     if q == [],
       do: acc,
-      else: [al(:critical, "quarantined", "Worker(s) quarantined", "#{Enum.join(Enum.map(q, &short/1), ", ")}, hollow rows being dropped; fix then Inserter.release_worker/1") | acc]
+      else: [
+        al(
+          :critical,
+          "quarantined",
+          "Worker(s) quarantined",
+          "#{Enum.join(Enum.map(q, &short/1), ", ")}, hollow rows being dropped; fix then Inserter.release_worker/1"
+        )
+        | acc
+      ]
   end
 
   defp compaction(acc, %{stale_seconds: s}) when is_integer(s) and s > @stale_seconds_ceiling,
-    do: [al(:critical, "compaction_stale", "Product table stale", "businesses last updated #{div(s, 60)} min ago, compactor may be failing") | acc]
+    do: [
+      al(
+        :critical,
+        "compaction_stale",
+        "Product table stale",
+        "businesses last updated #{div(s, 60)} min ago, compactor may be failing"
+      )
+      | acc
+    ]
 
   defp compaction(acc, _), do: acc
 
@@ -189,36 +267,157 @@ defmodule LS.Alerts do
       a
       |> then(fn a ->
         cond do
-          not is_integer(r[:disk_used_pct]) -> a
+          not is_integer(r[:disk_used_pct]) ->
+            a
 
           r.disk_used_pct >= @disk_pct_ceiling ->
-            [al(:critical, "disk:#{node}", "Disk almost full: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB)") | a]
+            [
+              al(
+                :critical,
+                "disk:#{node}",
+                "Disk almost full: #{short(node)}",
+                "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB)"
+              )
+              | a
+            ]
 
           # Early warning: below this the ClickHouse dump (needs ~1.5x the DB
           # free) starts getting skipped silently — that is how the product DB
           # went unbacked in Aug 2026.
           r.disk_used_pct >= @disk_pct_warn ->
-            [al(:warning, "disk_warn:#{node}", "Disk filling: #{short(node)}", "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB), backups need headroom") | a]
+            [
+              al(
+                :warning,
+                "disk_warn:#{node}",
+                "Disk filling: #{short(node)}",
+                "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB), backups need headroom"
+              )
+              | a
+            ]
 
-          true -> a
+          true ->
+            a
         end
       end)
-      |> then(fn a ->
-        if is_integer(r[:mem_avail_mb]) and r.mem_avail_mb < mem_floor_mb(r[:mem_total_mb]),
-          do: [al(:warning, "mem:#{node}", "Low memory: #{short(node)}", "#{short(node)} only #{r.mem_avail_mb}MB RAM available (floor #{mem_floor_mb(r[:mem_total_mb])}MB for a #{r[:mem_total_mb] || "?"}MB node)") | a],
-          else: a
-      end)
+      |> then(fn a -> mem_alert(a, node, r) end)
+      |> then(fn a -> restart_alert(a, node, r) end)
     end)
   end
 
+  # PSI when the node reports it (every current node); the raw-% floor is the
+  # fallback for one that cannot. Never both at once — PSI already IS the
+  # "is this dangerous" answer, so falling back on top of it would just be
+  # the noise this replaced.
+  defp mem_alert(a, node, r) do
+    case mem_pressure_band(r[:mem_pressure_full_avg10], r[:mem_pressure_full_avg60]) do
+      :critical ->
+        [
+          al(
+            :critical,
+            "mem_pressure:#{node}",
+            "Memory thrashing: #{short(node)}",
+            "#{short(node)} spent #{r.mem_pressure_full_avg10}% of the last 10s with EVERY task " <>
+              "stalled on memory reclaim (60s avg #{r.mem_pressure_full_avg60}%). This is genuine " <>
+              "distress, not just high usage."
+          )
+          | a
+        ]
+
+      :warning ->
+        [
+          al(
+            :warning,
+            "mem_pressure:#{node}",
+            "Memory pressure: #{short(node)}",
+            "#{short(node)} 60s memory-stall average #{r.mem_pressure_full_avg60}%. Tasks are " <>
+              "regularly waiting on memory. Not yet critical, worth watching."
+          )
+          | a
+        ]
+
+      :unknown ->
+        if is_integer(r[:mem_avail_mb]) and r.mem_avail_mb < mem_floor_mb(r[:mem_total_mb]) do
+          [
+            al(
+              :warning,
+              "mem:#{node}",
+              "Low memory: #{short(node)}",
+              "#{short(node)} only #{r.mem_avail_mb}MB RAM available (floor #{mem_floor_mb(r[:mem_total_mb])}MB for a " <>
+                "#{r[:mem_total_mb] || "?"}MB node), PSI unavailable on this kernel, falling back to raw %."
+            )
+            | a
+          ]
+        else
+          a
+        end
+
+      :ok ->
+        a
+    end
+  end
+
+  # "Down or restarted, and why" (2026-08-30). Keyed on restart_count so the
+  # SAME restart is reported once — a node that stays up afterward must not
+  # re-alert on every 15-minute tick forever. A fresh restart_count is a
+  # fresh key with no cooldown history, so a genuinely new event always fires
+  # immediately regardless of the 6h cooldown window.
+  defp restart_alert(a, node, %{restart_result: res, restart_count: n})
+       when is_binary(res) and res != "success" and is_integer(n) do
+    [
+      al(
+        :critical,
+        "restart_reason:#{node}:#{n}",
+        "#{short(node)} restarted: #{res}",
+        "#{short(node)}'s service exited with result \"#{res}\" (restart ##{n} since boot). " <>
+          "this was not a clean stop, so it was not a deploy."
+      )
+      | a
+    ]
+  end
+
+  defp restart_alert(a, _node, _r), do: a
+
+  @doc """
+  PSI severity band. `:unknown` when the node has no PSI to report (old
+  kernel), so the caller can fall back rather than silently skip the check.
+  """
+  @spec mem_pressure_band(number() | nil, number() | nil) :: :ok | :warning | :critical | :unknown
+  def mem_pressure_band(a10, a60)
+  def mem_pressure_band(nil, nil), do: :unknown
+
+  def mem_pressure_band(a10, _a60) when is_number(a10) and a10 >= @mem_pressure_crit_pct,
+    do: :critical
+
+  def mem_pressure_band(_a10, a60) when is_number(a60) and a60 >= @mem_pressure_warn_pct,
+    do: :warning
+
+  def mem_pressure_band(_, _), do: :ok
+
   defp queue(acc, %{queue: %{queue_pct: p}}) when is_number(p) and p > @queue_pct_ceiling,
-    do: [al(:warning, "queue_full", "Work queue near cap", "queue at #{p}%, discovery inflow being shed; add workers") | acc]
+    do: [
+      al(
+        :warning,
+        "queue_full",
+        "Work queue near cap",
+        "queue at #{p}%, discovery inflow being shed; add workers"
+      )
+      | acc
+    ]
 
   defp queue(acc, _), do: acc
 
   defp reputation(acc, %{reputation_ages: ages}) do
     for {name, age} <- ages, is_integer(age) and age > @reputation_age_ceiling_h, reduce: acc do
-      a -> [al(:warning, "reputation:#{name}", "#{name} download stale", "#{name} data is #{age}h old, download loop may be failing") | a]
+      a ->
+        [
+          al(
+            :warning,
+            "reputation:#{name}",
+            "#{name} download stale",
+            "#{name} data is #{age}h old, download loop may be failing"
+          )
+          | a
+        ]
     end
   end
 
@@ -233,12 +432,30 @@ defmodule LS.Alerts do
 
   defp backups(acc, %{backups: b}) when is_map(b) do
     acc
-    |> stale_backup(b[:product_age_h], @product_backup_age_h, :critical, "backup_product", "Product backup stale",
-         "businesses + biz_*, weeks of crawling to rebuild")
-    |> stale_backup(b[:sqlite_age_h], @sqlite_backup_age_h, :critical, "backup_sqlite", "SQLite backup stale",
-         "users/plans/Stripe, irreplaceable")
-    |> stale_backup(b[:ch_age_h], @ch_backup_age_h, :warning, "backup_ch", "ClickHouse backup stale",
-         "domains_history weekly dump")
+    |> stale_backup(
+      b[:product_age_h],
+      @product_backup_age_h,
+      :critical,
+      "backup_product",
+      "Product backup stale",
+      "businesses + biz_*, weeks of crawling to rebuild"
+    )
+    |> stale_backup(
+      b[:sqlite_age_h],
+      @sqlite_backup_age_h,
+      :critical,
+      "backup_sqlite",
+      "SQLite backup stale",
+      "users/plans/Stripe, irreplaceable"
+    )
+    |> stale_backup(
+      b[:ch_age_h],
+      @ch_backup_age_h,
+      :warning,
+      "backup_ch",
+      "ClickHouse backup stale",
+      "domains_history weekly dump"
+    )
   end
 
   defp backups(acc, _), do: acc
@@ -246,24 +463,63 @@ defmodule LS.Alerts do
   # One shape for all three tiers: missing entirely, or older than its cadence.
   defp stale_backup(acc, age, ceiling, severity, key, subject, what) do
     cond do
-      is_nil(age) -> [al(severity, "#{key}_missing", "No #{subject |> String.downcase() |> String.replace(" stale", "")} exists", "no archive at all, #{what}") | acc]
-      age > ceiling -> [al(severity, key, subject, "newest archive is #{age}h old (expected < #{ceiling}h), #{what}") | acc]
-      true -> acc
+      is_nil(age) ->
+        [
+          al(
+            severity,
+            "#{key}_missing",
+            "No #{subject |> String.downcase() |> String.replace(" stale", "")} exists",
+            "no archive at all, #{what}"
+          )
+          | acc
+        ]
+
+      age > ceiling ->
+        [
+          al(
+            severity,
+            key,
+            subject,
+            "newest archive is #{age}h old (expected < #{ceiling}h), #{what}"
+          )
+          | acc
+        ]
+
+      true ->
+        acc
     end
   end
 
-  defp verification(acc, %{verification: %{sources: sources, scheduler: sched}}) when is_list(sources) do
+  defp verification(acc, %{verification: %{sources: sources, scheduler: sched}})
+       when is_list(sources) do
     running = sched && Map.get(sched, :running)
 
     Enum.reduce(sources, acc, fn s, a ->
       cond do
         running && to_string(running) == s.source && s.duration_s == 0 && stale_run?(s) ->
-          [al(:warning, "verify_stuck:#{s.source}", "Verification wedged: #{s.source}", "#{s.source} has been running > #{@verification_running_ceiling_h}h") | a]
+          [
+            al(
+              :warning,
+              "verify_stuck:#{s.source}",
+              "Verification wedged: #{s.source}",
+              "#{s.source} has been running > #{@verification_running_ceiling_h}h"
+            )
+            | a
+          ]
 
         s.status == "error" ->
-          [al(:warning, "verify_error:#{s.source}", "Verification failed: #{s.source}", "last #{s.source} run errored: #{String.slice(s.error || "", 0, 100)}") | a]
+          [
+            al(
+              :warning,
+              "verify_error:#{s.source}",
+              "Verification failed: #{s.source}",
+              "last #{s.source} run errored: #{String.slice(s.error || "", 0, 100)}"
+            )
+            | a
+          ]
 
-        true -> a
+        true ->
+          a
       end
     end)
   end
@@ -273,10 +529,30 @@ defmodule LS.Alerts do
   defp ctl_sources(acc, %{ctl_diff: %{new: new, retired: retired}}) do
     acc
     |> then(fn a ->
-      if new == [], do: a, else: [al(:warning, "ctl_new:#{keyify(new)}", "New CT log source(s) available", "Chrome lists ingestible CT logs we don't poll: #{Enum.join(new, ", ")}. The poller reconciles every 6h, if this alert persists, the reconcile loop is broken (check [CTL] lines in the master journal).") | a]
+      if new == [],
+        do: a,
+        else: [
+          al(
+            :warning,
+            "ctl_new:#{keyify(new)}",
+            "New CT log source(s) available",
+            "Chrome lists ingestible CT logs we don't poll: #{Enum.join(new, ", ")}. The poller reconciles every 6h, if this alert persists, the reconcile loop is broken (check [CTL] lines in the master journal)."
+          )
+          | a
+        ]
     end)
     |> then(fn a ->
-      if retired == [], do: a, else: [al(:warning, "ctl_retired:#{keyify(retired)}", "CT log source(s) retiring", "Logs we poll are no longer ingestible in Chrome's list: #{Enum.join(retired, ", ")}. The poller retires them itself within 6h, if this alert persists, the reconcile loop is broken.") | a]
+      if retired == [],
+        do: a,
+        else: [
+          al(
+            :warning,
+            "ctl_retired:#{keyify(retired)}",
+            "CT log source(s) retiring",
+            "Logs we poll are no longer ingestible in Chrome's list: #{Enum.join(retired, ", ")}. The poller retires them itself within 6h, if this alert persists, the reconcile loop is broken."
+          )
+          | a
+        ]
     end)
   end
 
@@ -350,7 +626,10 @@ defmodule LS.Alerts do
   # ── cooldown via ops_email_log ──
 
   defp cooling_down?(%{key: key}) do
-    case Clickhouse.query_raw("SELECT max(sent_at) FROM ops_email_log WHERE key = '#{Clickhouse.escape_public(key)}' AND sent_at > now() - INTERVAL #{@cooldown_hours} HOUR", 5_000) do
+    case Clickhouse.query_raw(
+           "SELECT max(sent_at) FROM ops_email_log WHERE key = '#{Clickhouse.escape_public(key)}' AND sent_at > now() - INTERVAL #{@cooldown_hours} HOUR",
+           5_000
+         ) do
       {:ok, [[t]]} when is_binary(t) and t not in ["", "1970-01-01 00:00:00"] -> true
       _ -> false
     end
@@ -363,7 +642,9 @@ defmodule LS.Alerts do
 
   # ── formatting ──
 
-  defp digest_subject([%{severity: :critical} | _] = a), do: "🔴 ListSignal alert: #{hd(a).subject}" <> more(a)
+  defp digest_subject([%{severity: :critical} | _] = a),
+    do: "🔴 ListSignal alert: #{hd(a).subject}" <> more(a)
+
   defp digest_subject(a), do: "🟡 ListSignal alert: #{hd(a).subject}" <> more(a)
   defp more([_]), do: ""
   defp more(a), do: " (+#{length(a) - 1} more)"
@@ -373,6 +654,7 @@ defmodule LS.Alerts do
       Enum.map_join(alerts, "", fn a ->
         color = if a.severity == :critical, do: "#dc2626", else: "#d97706"
         dot = if a.severity == :critical, do: "🔴", else: "🟡"
+
         "<tr><td style=\"padding:8px 12px;border-bottom:1px solid #eee;vertical-align:top\">#{dot}</td>" <>
           "<td style=\"padding:8px 12px;border-bottom:1px solid #eee\"><b style=\"color:#{color}\">#{esc(a.subject)}</b><br><span style=\"color:#555;font-size:13px\">#{esc(a.line)}</span></td></tr>"
       end)
@@ -392,17 +674,36 @@ defmodule LS.Alerts do
   # Size-aware low-memory floor: 5% of total RAM, never below 100MB;
   # @mem_avail_mb_floor when the node did not report its total.
   def mem_floor_mb(nil), do: @mem_avail_mb_floor
+
   def mem_floor_mb(total_mb) when is_integer(total_mb) and total_mb > 0,
     do: max(@mem_avail_mb_min, div(total_mb * @mem_avail_pct_floor, 100))
 
   def mem_floor_mb(_), do: @mem_avail_mb_floor
 
-  defp short(w), do: w |> to_string() |> String.split("@") |> hd() |> String.replace("worker_", "")
-  defp keyify(list), do: list |> Enum.join(",") |> then(&:crypto.hash(:md5, &1)) |> Base.encode16() |> binary_part(0, 8)
+  defp short(w),
+    do: w |> to_string() |> String.split("@") |> hd() |> String.replace("worker_", "")
+
+  defp keyify(list),
+    do:
+      list
+      |> Enum.join(",")
+      |> then(&:crypto.hash(:md5, &1))
+      |> Base.encode16()
+      |> binary_part(0, 8)
+
   defp stale_run?(_s), do: true
   defp fmt(n) when is_integer(n) and n >= 1_000_000, do: "#{Float.round(n / 1_000_000, 1)}M"
   defp fmt(n) when is_integer(n) and n >= 1_000, do: "#{Float.round(n / 1_000, 1)}K"
   defp fmt(n), do: "#{n}"
-  defp esc(s), do: s |> to_string() |> String.replace("&", "&amp;") |> String.replace("<", "&lt;") |> String.replace(">", "&gt;")
-  defp now_str, do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_string()
+
+  defp esc(s),
+    do:
+      s
+      |> to_string()
+      |> String.replace("&", "&amp;")
+      |> String.replace("<", "&lt;")
+      |> String.replace(">", "&gt;")
+
+  defp now_str,
+    do: NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second) |> NaiveDateTime.to_string()
 end

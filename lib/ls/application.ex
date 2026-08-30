@@ -178,6 +178,9 @@ defmodule LS.Application do
       LS.Verification.Scheduler,
       # Ops: infra/quality alerts (email) + the weekly report. Master-only.
       LS.Ops.Sentinel,
+      # Black-box recorder for the recurring memory-limit stalls — see
+      # LS.Ops.MemoryForensics for why. Master only: workers do not run EXLA.
+      LS.Ops.MemoryForensics,
       LSWeb.Endpoint
     ]
     if mode == "ctl_live", do: master ++ [LS.CTL.PlatformRegistry, LS.CTL.Poller],

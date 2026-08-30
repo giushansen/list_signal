@@ -46,9 +46,17 @@ defmodule LS.Reputation do
 
   def fill(rows), do: rows
 
-  @doc "True when the master's reference tables actually hold data."
-  def loaded? do
-    table_loaded?(:majestic_ranks) or table_loaded?(:tranco_ranks)
+  @doc """
+  True when the master's reference tables actually hold data.
+
+  Table names are overridable so a test can prove the empty-table behavior
+  against throwaway tables instead of clearing the real, live ones — which a
+  test in `standalone` mode used to do, racing the real Tranco/Majestic
+  GenServers' own background loaders that can refill them at any moment
+  (found 2026-08-30 as an intermittent failure only a fixed seed reproduced).
+  """
+  def loaded?(majestic \\ :majestic_ranks, tranco \\ :tranco_ranks) do
+    table_loaded?(majestic) or table_loaded?(tranco)
   end
 
   defp table_loaded?(t) do

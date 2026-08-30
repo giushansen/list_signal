@@ -44,11 +44,20 @@ defmodule LS.Reputation.TrancoModeTest do
     assert Tranco.ranked?("www.stripe.com")
   end
 
-  test "lookup/1 returns nil in membership mode, so a worker never invents a rank" do
-    :persistent_term.put({Tranco, :bloom}, Bloom.new(10, 0.01))
-    if :ets.info(:tranco_ranks) != :undefined, do: :ets.delete_all_objects(:tranco_ranks)
-
-    assert Tranco.lookup("stripe.com") == nil
+  test "lookup/1 returns nil for a domain no snapshot could ever carry a rank for" do
+    # lookup/1 is a plain ETS read (see LS.Reputation.Tranco) — it does not
+    # consult the bloom filter or check the mode at all. A real worker in
+    # :membership mode never creates :tranco_ranks (see init/1), so lookup/1
+    # there hits the `rescue ArgumentError -> nil` branch on ANY domain. This
+    # is what that actually looks like, without touching the table: a domain
+    # that is not, and cannot be, a real Tranco entry.
+    #
+    # This test used to call :ets.delete_all_objects(:tranco_ranks) to force
+    # the "not found" case and never restored the rows — DomainFilterTest's
+    # fixtures (seeded once in setup_all) were silently empty for the rest of
+    # the suite whenever this test ran first, an intermittent 3-test failure
+    # elsewhere that took a fixed seed to reproduce (2026-08-30).
+    refute Tranco.lookup("definitely-not-a-real-tranco-domain-#{System.unique_integer()}.invalid")
   end
 
   test "with no bloom loaded it falls back to ETS, so the master is unaffected" do

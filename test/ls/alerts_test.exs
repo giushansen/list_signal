@@ -238,6 +238,102 @@ defmodule LS.AlertsTest do
     end
   end
 
+  describe "PSI memory-pressure danger signal (2026-08-30)" do
+    # The old check fired on raw % available, which could not tell "swap in
+    # use, running fine" from "system is thrashing" — workers were found to
+    # run with no memory limit and swap freely, so raw-% alone was noise.
+    # PSI's `full` line measures actual stall time, the real danger signal.
+    test "high memory usage with low PSI stays silent — this is the noise the redesign removes" do
+      r = %{mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.1, mem_avail_mb: 50, mem_total_mb: 2_000}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      refute Enum.any?(a, &String.starts_with?(&1.key, "mem"))
+    end
+
+    test "sustained stall over 60s is a warning" do
+      assert Alerts.mem_pressure_band(0.5, 6.0) == :warning
+    end
+
+    test "an acute 10s stall is critical even if the 60s average looks fine" do
+      assert Alerts.mem_pressure_band(20.0, 1.0) == :critical
+    end
+
+    test "below both thresholds is quiet" do
+      assert Alerts.mem_pressure_band(2.0, 1.0) == :ok
+    end
+
+    test "no PSI at all reports :unknown so the caller can fall back, not silently skip" do
+      assert Alerts.mem_pressure_band(nil, nil) == :unknown
+    end
+
+    test "a warning fires through evaluate/1 with the real numbers in the line" do
+      r = %{mem_pressure_full_avg10: 1.0, mem_pressure_full_avg60: 7.5, mem_avail_mb: 500, mem_total_mb: 4_000}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      found = Enum.find(a, &(&1.key == "mem_pressure:worker_n1@10.0.0.1"))
+      assert found.severity == :warning
+      assert found.line =~ "7.5%"
+    end
+
+    test "critical fires as :critical, not :warning" do
+      r = %{mem_pressure_full_avg10: 18.0, mem_pressure_full_avg60: 12.0, mem_avail_mb: 100, mem_total_mb: 2_000}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      found = Enum.find(a, &(&1.key == "mem_pressure:worker_n1@10.0.0.1"))
+      assert found.severity == :critical
+    end
+
+    test "a node with no PSI falls back to the old raw-% check, not silence" do
+      r = %{mem_pressure_full_avg10: nil, mem_pressure_full_avg60: nil, mem_avail_mb: 50, mem_total_mb: 2_000}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      assert Enum.any?(a, &(&1.key == "mem:worker_n1@10.0.0.1"))
+    end
+
+    test "a node with no PSI and healthy raw-% stays fully silent" do
+      r = %{mem_pressure_full_avg10: nil, mem_pressure_full_avg60: nil, mem_avail_mb: 1_500, mem_total_mb: 2_000}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      assert a == []
+    end
+  end
+
+  describe "restart-reason alert (2026-08-30)" do
+    test "a clean 'success' restart is silent — this is what a deploy looks like" do
+      r = %{restart_result: "success", restart_count: 5, mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.0}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      refute Enum.any?(a, &String.starts_with?(&1.key, "restart_reason"))
+    end
+
+    test "an oom-kill fires critical, naming the node and the reason" do
+      r = %{restart_result: "oom-kill", restart_count: 3, mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.0}
+      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      found = Enum.find(a, &String.starts_with?(&1.key, "restart_reason"))
+
+      assert found
+      assert found.severity == :critical
+      assert found.line =~ "oom-kill"
+    end
+
+    test "the SAME restart is reported once — no re-alert on every 15-minute tick" do
+      r = %{restart_result: "oom-kill", restart_count: 3, mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.0}
+      key1 = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}) |> hd() |> Map.get(:key)
+      key2 = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}) |> hd() |> Map.get(:key)
+      assert key1 == key2, "identical restart_count must produce the identical alert key so cooldown dedups it"
+    end
+
+    test "a NEW restart (incremented count) is a fresh, distinct key" do
+      r1 = %{restart_result: "oom-kill", restart_count: 3, mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.0}
+      r2 = %{r1 | restart_count: 4}
+      k1 = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r1}]}) |> hd() |> Map.get(:key)
+      k2 = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r2}]}) |> hd() |> Map.get(:key)
+      refute k1 == k2
+    end
+
+    test "missing or nil restart info never raises" do
+      r = %{mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.0}
+      assert is_list(Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}))
+
+      r2 = %{restart_result: nil, restart_count: nil, mem_pressure_full_avg10: 0.0, mem_pressure_full_avg60: 0.0}
+      assert Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r2}]}) == []
+    end
+  end
+
   describe "size-aware low-memory floor (2026-08-25)" do
     # The 900MB floor was written for the 16G master but applied to every
     # node. 250-350MB available is the healthy STEADY STATE of a busy 2G

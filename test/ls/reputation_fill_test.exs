@@ -51,12 +51,25 @@ defmodule LS.ReputationFillTest do
       assert row.majestic_rank == 7, "a worker-supplied rank must win over a backfill"
     end
 
+    test "loaded?/2 with genuinely empty tables reports unloaded" do
+      # Throwaway tables the real app never touches, so this proves loaded?/2's
+      # logic without racing the real Tranco/Majestic GenServers' own
+      # background loaders — in standalone/test mode those run for real and
+      # can refill :majestic_ranks/:tranco_ranks at any moment, which is what
+      # made `refute Reputation.loaded?()` against the LIVE tables an
+      # intermittent failure only a fixed seed reproduced (2026-08-30).
+      :ets.new(:reputation_fill_test_empty_majestic, [:set, :public])
+      :ets.new(:reputation_fill_test_empty_tranco, [:set, :public])
+
+      refute Reputation.loaded?(:reputation_fill_test_empty_majestic, :reputation_fill_test_empty_tranco)
+    end
+
     test "unloaded master tables return rows UNTOUCHED, blanking would erase good data" do
       # domains_current is newest-row-wins: writing an empty rank over a real
       # one is the 'writer blanks another writer' failure from CLAUDE.md.
-      for t <- [:majestic_ranks, :tranco_ranks], do: :ets.delete_all_objects(t)
-      refute Reputation.loaded?()
-
+      # fill/1 is not parameterized (it calls Majestic/Tranco directly), so
+      # this exercises the real tables, which this file's setup already
+      # clears before every test.
       rows = [%{domain: "stripe.com", majestic_rank: 412, majestic_ref_subnets: 9_001}]
       assert Reputation.fill(rows) == rows
     end
