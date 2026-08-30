@@ -265,19 +265,23 @@ defmodule LS.AlertsTest do
       assert Alerts.mem_pressure_band(nil, nil) == :unknown
     end
 
-    test "a warning fires through evaluate/1 with the real numbers in the line" do
+    test "a warning-level stall does NOT email — 2026-08-30 owner instruction" do
+      # par2 and sg2 both sat under 2% (well below even this 7.5% test value)
+      # when a :warning fired in production and neither node was in any real
+      # trouble. "If it is not about to crash don't send me email for these
+      # nodes." Only :critical emails now; :warning is logged, not alerted.
       r = %{mem_pressure_full_avg10: 1.0, mem_pressure_full_avg60: 7.5, mem_avail_mb: 500, mem_total_mb: 4_000}
       a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
-      found = Enum.find(a, &(&1.key == "mem_pressure:worker_n1@10.0.0.1"))
-      assert found.severity == :warning
-      assert found.line =~ "7.5%"
+      refute Enum.any?(a, &String.starts_with?(&1.key, "mem_pressure"))
     end
 
-    test "critical fires as :critical, not :warning" do
+    test "critical fires as :critical, not :warning, and names the real cost" do
       r = %{mem_pressure_full_avg10: 18.0, mem_pressure_full_avg60: 12.0, mem_avail_mb: 100, mem_total_mb: 2_000}
       a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
       found = Enum.find(a, &(&1.key == "mem_pressure:worker_n1@10.0.0.1"))
       assert found.severity == :critical
+      assert found.line =~ "18.0%"
+      assert found.line =~ "not crashing", "must be honest that this is throughput loss, not a crash"
     end
 
     test "a node with no PSI falls back to the old raw-% check, not silence" do
@@ -323,6 +327,22 @@ defmodule LS.AlertsTest do
       k1 = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r1}]}) |> hd() |> Map.get(:key)
       k2 = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r2}]}) |> hd() |> Map.get(:key)
       refute k1 == k2
+    end
+
+    test "permanent_dedup?/1 marks watchdog restarts and restart reasons as forever-dedup" do
+      # A restart's own key stays identical for as long as no NEW restart
+      # happens, so it must never re-fire on the ordinary 6h cooldown: found
+      # 2026-08-30 as one real master restart producing two identical emails
+      # 6h9m apart, because the 6h window had simply lapsed on the SAME key.
+      assert Alerts.permanent_dedup?("watchdog_restart:1788067089")
+      assert Alerts.permanent_dedup?("restart_reason:worker_n1@10.0.0.1:3")
+    end
+
+    test "permanent_dedup?/1 leaves every other alert on the ordinary rolling cooldown" do
+      refute Alerts.permanent_dedup?("mem_pressure:worker_n1@10.0.0.1")
+      refute Alerts.permanent_dedup?("disk:master@10.0.0.1")
+      refute Alerts.permanent_dedup?("ingestion_low")
+      refute Alerts.permanent_dedup?("")
     end
 
     test "missing or nil restart info never raises" do

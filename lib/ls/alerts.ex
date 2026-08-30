@@ -308,6 +308,18 @@ defmodule LS.Alerts do
   # fallback for one that cannot. Never both at once — PSI already IS the
   # "is this dangerous" answer, so falling back on top of it would just be
   # the noise this replaced.
+  #
+  # :warning does NOT email (2026-08-30, owner instruction): "if it is not
+  # about to crash don't send me email for these nodes." A moderate 60s
+  # stall average alone did not correlate with the node being in trouble
+  # (par2/sg2 both sat under 2% — comfortably below even the 5% warn line —
+  # when this fired) and the process never crashed or restarted from it.
+  # :critical stays, because it demonstrably does mean something: the one
+  # time it fired (ny1, avg10=18%), the node's own batch log showed the
+  # SAME symptom in parallel — batch sizes collapsed from the normal ~1,000
+  # to 105-551 and cycle times stretched to 37-140s. That is real crawl
+  # throughput lost, which is worth an email even though the process itself
+  # never went down.
   defp mem_alert(a, node, r) do
     case mem_pressure_band(r[:mem_pressure_full_avg10], r[:mem_pressure_full_avg60]) do
       :critical ->
@@ -317,23 +329,20 @@ defmodule LS.Alerts do
             "mem_pressure:#{node}",
             "Memory thrashing: #{short(node)}",
             "#{short(node)} spent #{r.mem_pressure_full_avg10}% of the last 10s with EVERY task " <>
-              "stalled on memory reclaim (60s avg #{r.mem_pressure_full_avg60}%). This is genuine " <>
-              "distress, not just high usage."
+              "stalled on memory reclaim (60s avg #{r.mem_pressure_full_avg60}%). The process is not " <>
+              "crashing, but this level of stall reliably costs real crawl throughput. Check its " <>
+              "batch log for shrunk batch sizes and inflated cycle times."
           )
           | a
         ]
 
       :warning ->
-        [
-          al(
-            :warning,
-            "mem_pressure:#{node}",
-            "Memory pressure: #{short(node)}",
-            "#{short(node)} 60s memory-stall average #{r.mem_pressure_full_avg60}%. Tasks are " <>
-              "regularly waiting on memory. Not yet critical, worth watching."
-          )
-          | a
-        ]
+        Logger.info(
+          "[ALERTS] #{short(node)} memory pressure #{r[:mem_pressure_full_avg60]}% (60s avg), " <>
+            "below the email threshold, logged not sent"
+        )
+
+        a
 
       :unknown ->
         if is_integer(r[:mem_avail_mb]) and r.mem_avail_mb < mem_floor_mb(r[:mem_total_mb]) do
@@ -625,9 +634,29 @@ defmodule LS.Alerts do
 
   # ── cooldown via ops_email_log ──
 
+  # Keys that already embed the identity of a single, unrepeatable event
+  # (which restart, which count) must be sent ONCE, ever — not once per
+  # cooldown window. watchdog_restart:<node>:<unix-timestamp-of-that-restart>
+  # and restart_reason:<node>:<restart-count> stay identical for as long as no
+  # NEW event happens, so the ordinary 6h cooldown quietly re-sent the SAME
+  # notification about the SAME single restart every 6 hours for up to 24h
+  # after it happened (found 2026-08-30: one real restart, two identical
+  # emails 6h9m apart). A genuinely new restart always gets a genuinely new
+  # key, so "forever" costs nothing here.
+  @permanent_dedup_prefixes ["watchdog_restart:", "restart_reason:"]
+
+  @doc false
+  # Pure: is this alert key a single unrepeatable event that should dedup
+  # forever, rather than every @cooldown_hours? Split out from cooling_down?/1
+  # so the decision is testable without ClickHouse — CLAUDE.md: "make the
+  # rule testable rather than testing around it."
+  def permanent_dedup?(key), do: Enum.any?(@permanent_dedup_prefixes, &String.starts_with?(key, &1))
+
   defp cooling_down?(%{key: key}) do
+    window = if permanent_dedup?(key), do: "1970-01-01", else: "now() - INTERVAL #{@cooldown_hours} HOUR"
+
     case Clickhouse.query_raw(
-           "SELECT max(sent_at) FROM ops_email_log WHERE key = '#{Clickhouse.escape_public(key)}' AND sent_at > now() - INTERVAL #{@cooldown_hours} HOUR",
+           "SELECT max(sent_at) FROM ops_email_log WHERE key = '#{Clickhouse.escape_public(key)}' AND sent_at > #{window}",
            5_000
          ) do
       {:ok, [[t]]} when is_binary(t) and t not in ["", "1970-01-01 00:00:00"] -> true
