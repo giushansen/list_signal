@@ -25,6 +25,47 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-08-31
+
+**`NodeResources.local/0` forked `systemctl` twice per erpc poll, tipping
+already-thrashing workers into false "unmonitored" alerts.** `restart_info`
+was called once per field (`:result`, `:count`), each shelling out to
+`systemctl show` separately, even though one call returns both. Forking is
+the slow path under real memory pressure (swap-in page faults), so the
+redundant fork made the master's 3s `erpc` timeout more likely to trip on a
+node that was already thrashing — turning one real `mem_pressure` event
+into a second, confusing "node unmonitored" alert. `unmonitored` and
+`mem_pressure` alerts clustered in the same windows all day (13:34-19:05,
+22:20-01:50). Fixed to one `systemctl` call
+(`lib/ls/ops/node_resources.ex`); deployed fleet-wide.
+
+**Real thrashing, not a leak: dual-profile enrichment concurrency was tuned
+against CPU, never against memory.** chi1 measured 4.5GB in swap on a 3.8GB
+box (more swapped than the box physically has). No single runaway process —
+BEAM 752MB, camoufox sidecar 220MB, unbound 268MB — the swap comes from
+bursty `LS_ENRICH_CONCURRENCY=10` (2026-08 tuning was against load: 12
+caused load 13-15, never re-measured against RAM after the camoufox sidecar
+landed, exactly as flagged in `fleet.conf`'s own comment). Cut to 6.
+Post-cut throughput held at 20,650/h, above the prior 24h average of
+19,895/h — free win, no backlog cost.
+
+**`apply_profile.sh` silently skipped 4 of 9 dual nodes for weeks.**
+sg2/par2/dal1/dal2 carry inline `# 2026-08-25: ...` history notes in
+`fleet.conf` after their profile field. The fd3 read never stripped
+trailing comments, so `$profile` picked up the whole comment text,
+`profile_env` hit its `unknown profile` branch, and `|| continue` skipped
+the node — with no error surfaced anywhere. Those 4 had been stuck at
+`LS_ENRICH_CONCURRENCY=12` (the value already known to cause CPU load
+13-15) through every prior "tuned to 10" change. Found via a dry run.
+Fixed by stripping `#.*` before the read (devops repo,
+`listsignal/apply_profile.sh`).
+
+**Backfilled the cut capacity: chi3/ny3 resized 1c/2G -> 2c/4G, moved to
+the dual profile.** syd1 and sg1 held back — syd1 has a documented chronic
+outbound TLS/RDAP degradation unrelated to compute, a weak multiplier for
+enrichment specifically; sg1 is healthy but held pending a longer post-cut
+throughput read before spending more.
+
 ## 2026-08-27
 
 **Common Crawl probe: not worth a pipeline for our population.** Sampled 150
