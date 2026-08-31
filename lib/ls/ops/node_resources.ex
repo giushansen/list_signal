@@ -30,6 +30,7 @@ defmodule LS.Ops.NodeResources do
     {p10, p60} = mem_pressure()
     {dt, du, dp} = disk()
     {rx, tx} = netdev()
+    {restart_result, restart_count} = restart_info()
 
     %{
       cores: System.schedulers_online(),
@@ -47,8 +48,8 @@ defmodule LS.Ops.NodeResources do
       net_rx_bytes: rx,
       net_tx_bytes: tx,
       beam_mb: div(:erlang.memory(:total), 1_048_576),
-      restart_result: restart_info(:result),
-      restart_count: restart_info(:count)
+      restart_result: restart_result,
+      restart_count: restart_count
     }
   end
 
@@ -64,18 +65,27 @@ defmodule LS.Ops.NodeResources do
   — "oom-kill", "signal", "exit-code", "timeout", "watchdog" — only when the
   PREVIOUS instance died for a real reason. Alerts key on `restart_count`, so
   the same restart is reported once, not on every 15-minute tick.
+
+  One `System.cmd` for both fields, not two: `local/0` used to call this
+  once per field, forking `systemctl` twice on every `erpc`-polled
+  collection. Forking a process is exactly the slow path on a node under
+  real memory pressure (swap-in page faults on the new process's pages), so
+  the extra fork made `local/0` itself more likely to blow the master's 3s
+  erpc timeout right when a node was already thrashing — turning one real
+  memory-pressure event into a second, confusing "node unmonitored" alert
+  (2026-08-31).
   """
-  def restart_info(field) do
+  def restart_info do
     unit = "listsignal@#{System.get_env("LS_ROLE", "worker")}"
 
     case System.cmd("systemctl", ["show", unit, "-p", "Result", "-p", "NRestarts"],
            stderr_to_stdout: true
          ) do
-      {out, 0} -> parse_restart_info(out, field)
-      _ -> nil
+      {out, 0} -> {parse_restart_info(out, :result), parse_restart_info(out, :count)}
+      _ -> {nil, nil}
     end
   rescue
-    _ -> nil
+    _ -> {nil, nil}
   end
 
   @doc false

@@ -58,4 +58,30 @@ defmodule LS.Ops.NodeResourcesTest do
       assert is_integer(r.beam_mb)
     end
   end
+
+  describe "local/0 shells out once for restart info, not twice" do
+    test "restart_result and restart_count share a single systemctl call" do
+      # 2026-08-31: local/0 used to call restart_info(:result) and
+      # restart_info(:count) separately, each forking a fresh `systemctl
+      # show` process — even though one call already returns both fields.
+      # Forking is the slow path on a node under real memory pressure
+      # (swap-in page faults on the new process's own pages), so the extra
+      # fork made this erpc-polled collector itself more likely to blow the
+      # master's 3s timeout right when a node was thrashing, turning one
+      # real memory-pressure event into a second "node unmonitored" alert.
+      src = File.read!("lib/ls/ops/node_resources.ex")
+
+      local_body =
+        src |> String.split("def local do") |> Enum.at(1) |> String.split("def restart_info") |> List.first()
+
+      assert Regex.scan(~r/restart_info\(/, local_body) |> length() == 1,
+             "local/0 must fetch restart result and count from a single restart_info() call"
+
+      restart_info_body =
+        src |> String.split("def restart_info do") |> Enum.at(1) |> String.split("def parse_restart_info") |> List.first()
+
+      assert Regex.scan(~r/System\.cmd\(/, restart_info_body) |> length() == 1,
+             "restart_info/0 must shell out to systemctl exactly once"
+    end
+  end
 end
