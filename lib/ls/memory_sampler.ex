@@ -9,28 +9,71 @@ defmodule LS.MemorySampler do
   Prefers the cgroup's own accounting (what the kernel enforces, and what
   actually killed the app) and falls back to `:erlang.memory/0` when no cgroup
   is present, as in dev and test.
+
+  ## Watch-zone logging (2026-09-01)
+
+  `LS.Ops.MemoryForensics` snapshots every 5 minutes, which is too coarse for
+  a fast spike: on 09-01 memory went from ~3.3G to the 7.5G that tripped
+  `OverloadGuard`'s shed in under 8 minutes, and the 5-minute snapshots
+  straddled the whole climb without capturing it — the forensics existed and
+  still could not say what grew. This process already samples every second
+  anyway, so logging at that resolution once usage crosses `@watch_ratio`
+  (half the shed threshold, an early warning before any request gets shed)
+  costs nothing extra to compute, only to print. Edge-triggered plus a
+  periodic reminder while still elevated, not every second, so a genuine
+  multi-minute excursion is not thousands of near-identical log lines.
   """
   use GenServer
   require Logger
 
   @interval_ms 1_000
   @cgroup_root "/sys/fs/cgroup"
+  # Half of OverloadGuard's 0.80 shed ratio: a warning zone entered well
+  # before any request is actually shed, so a fast spike leaves a trail even
+  # if it resolves before crossing the shed threshold.
+  @watch_ratio 0.40
+  @reminder_every_n_samples 10
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @impl true
   def init(_opts) do
     send(self(), :sample)
-    {:ok, %{}}
+    {:ok, %{watching?: false, since_log: 0}}
   end
 
   @impl true
   def handle_info(:sample, state) do
     {bytes, limit} = read()
     LSWeb.Plugs.OverloadGuard.publish(bytes, limit)
+    state = log_watch_zone(bytes, limit, state)
     Process.send_after(self(), :sample, @interval_ms)
     {:noreply, state}
   end
+
+  @doc "True once usage is far enough above baseline to be worth a trail, before any request is shed."
+  @spec in_watch_zone?(number(), number()) :: boolean()
+  def in_watch_zone?(bytes, limit), do: limit > 0 and bytes > limit * @watch_ratio
+
+  defp log_watch_zone(bytes, limit, state) do
+    cond do
+      not in_watch_zone?(bytes, limit) ->
+        %{state | watching?: false, since_log: 0}
+
+      not state.watching? ->
+        Logger.warning("[MEM-WATCH] entered watch zone: #{mb(bytes)}MB of #{mb(limit)}MB limit")
+        %{state | watching?: true, since_log: 0}
+
+      state.since_log + 1 >= @reminder_every_n_samples ->
+        Logger.warning("[MEM-WATCH] still elevated: #{mb(bytes)}MB of #{mb(limit)}MB limit")
+        %{state | since_log: 0}
+
+      true ->
+        %{state | since_log: state.since_log + 1}
+    end
+  end
+
+  defp mb(bytes), do: div(bytes, 1_048_576)
 
   # The app's own cgroup path comes from /proc/self/cgroup. Reading
   # /sys/fs/cgroup/memory.current directly gives the ROOT cgroup unless the
