@@ -18,20 +18,28 @@ defmodule LS.MemorySampler do
   straddled the whole climb without capturing it — the forensics existed and
   still could not say what grew. This process already samples every second
   anyway, so logging at that resolution once usage crosses `@watch_ratio`
-  (half the shed threshold, an early warning before any request gets shed)
   costs nothing extra to compute, only to print. Edge-triggered plus a
   periodic reminder while still elevated, not every second, so a genuine
   multi-minute excursion is not thousands of near-identical log lines.
+
+  `@watch_ratio` was 0.40 for its first day and turned out to sit AT normal
+  baseline (steady-state readings run 3.7-4.3G of the 9.2G limit, i.e.
+  40-47%), so it logged "entered watch zone" every few minutes around the
+  clock instead of only for a real excursion -- signal indistinguishable
+  from noise. Raised to 0.55 (~5.1G): comfortably above the noisiest normal
+  baseline observed, still well before OverloadGuard's 0.80 shed ratio.
   """
   use GenServer
   require Logger
 
   @interval_ms 1_000
   @cgroup_root "/sys/fs/cgroup"
-  # Half of OverloadGuard's 0.80 shed ratio: a warning zone entered well
-  # before any request is actually shed, so a fast spike leaves a trail even
-  # if it resolves before crossing the shed threshold.
-  @watch_ratio 0.40
+  # 2026-09-02: was 0.40 (half OverloadGuard's shed ratio) but that sat at or
+  # below normal steady-state usage (3.7-4.3G of 9.2G, i.e. 40-47%), so it
+  # fired on ordinary baseline noise instead of real excursions. 0.55 sits
+  # above the noisiest baseline actually observed and still well before the
+  # 0.80 shed ratio.
+  @watch_ratio 0.55
   @reminder_every_n_samples 10
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
