@@ -1,0 +1,21 @@
+<main class="pt-[140px] pb-20"><div class="mx-auto max-w-[720px] px-6">
+  <h1 class="font-display text-[clamp(28px,3.5vw,40px)] font-bold tracking-tight leading-[1.1] mb-6">About ListSignalBot</h1>
+  <div class="space-y-5 text-[15px] text-white/70 leading-relaxed">
+    <p>ListSignalBot is the crawler behind <a href="/" class="text-accent hover:underline">ListSignal</a>, a directory of online businesses. It visits public websites to record basic facts: the technology a site runs, its language, and whether it is a real business. It identifies itself with this User-Agent:</p>
+    <pre class="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07] text-sm text-white/80 overflow-x-auto">Mozilla/5.0 (compatible; ListSignalBot/1.0; +https://listsignal.com/bot)</pre>
+    <h2 class="font-display text-lg font-semibold text-white pt-4">What it does</h2>
+    <ul class="list-disc pl-5 space-y-2">
+      <li>Fetches a small number of public pages per site, usually one to five.</li>
+      <li>Waits at least one second between requests to the same server.</li>
+      <li>Visits most sites about once a month.</li>
+      <li>Never submits forms, never logs in, never downloads media.</li>
+    </ul>
+    <h2 class="font-display text-lg font-semibold text-white pt-4">How to block it</h2>
+    <p>Add this to your robots.txt and ListSignalBot will not visit again:</p>
+    <pre class="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07] text-sm text-white/80 overflow-x-auto">User-agent: ListSignalBot
+Disallow: /</pre>
+    <p>Blocking the User-Agent at your server or firewall also works. Once a site refuses the bot, it leaves the crawl rotation.</p>
+    <h2 class="font-display text-lg font-semibold text-white pt-4">Contact</h2>
+    <p>To have your site removed from ListSignal, or to report a problem with the crawler, email <a href="mailto:bot@listsignal.com" class="text-accent hover:underline">bot@listsignal.com</a> with your domain. Removals are processed within two business days and are permanent.</p>
+  </div>
+</div></main>

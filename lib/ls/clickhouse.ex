@@ -1008,6 +1008,14 @@ defmodule LS.Clickhouse do
     # Digital business models that get weekly crawling
     digital_bms = "'Ecommerce','SaaS','Tool','Marketplace','Agency'"
 
+    # 403/429/503 are excluded on purpose (2026-09-04, second Vultr abuse
+    # report): a WAF-walled domain re-hit on schedule, from a different node
+    # each cycle, with an HTTP client that cannot pass a JS challenge, reads
+    # as distributed malicious scraping to the WAF's operator, and 2.64M
+    # domains sat in those states when this was written. Blocked domains are
+    # the browser lane's job (enrichment_lane_filter browser_only: a real
+    # Firefox that passes the challenge instead of failing it); plain-HTTP
+    # recrawl never touches them again.
     sql = """
     SELECT domain FROM domains_current FINAL
     WHERE (
@@ -1016,6 +1024,7 @@ defmodule LS.Clickhouse do
       (business_model NOT IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{monthly_days} DAY)
     )
     AND (http_status IS NOT NULL OR dns_a != '')
+    AND (http_status IS NULL OR http_status NOT IN (403, 429, 503))
     ORDER BY tranco_rank ASC NULLS LAST, enriched_at ASC
     LIMIT #{limit}
     """

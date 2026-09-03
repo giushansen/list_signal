@@ -36,6 +36,19 @@ defmodule LS.Enrichment.Browser do
   """
   @spec render(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
   def render(domain, path \\ "/") do
+    cond do
+      LS.HTTP.NeverContact.blocked?(domain) ->
+        # An abuse-reporting site is off-limits for the browser too, not just
+        # plain HTTP (2026-09-04): "we sent a real browser instead" is not a
+        # defense Vultr will accept twice.
+        {:error, :never_contact}
+
+      true ->
+        render_via_sidecar(domain, path)
+    end
+  end
+
+  defp render_via_sidecar(domain, path) do
     case url() do
       nil ->
         {:error, :not_configured}

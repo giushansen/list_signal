@@ -52,6 +52,7 @@ defmodule LSWeb.Router do
     get "/search", SearchController, :search
     get "/pricing", PageController, :pricing
     get "/features", PageController, :features
+    get "/bot", PageController, :bot
 
     # Scoring methodology — public explainer pages. Long-form and structured so
     # they serve buyers, search engines and LLM answers from one source.

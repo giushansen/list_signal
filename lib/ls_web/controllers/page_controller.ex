@@ -23,6 +23,18 @@ defmodule LSWeb.PageController do
     |> render(:pricing)
   end
 
+  # The URL every ListSignalBot request advertises in its User-Agent. A
+  # crawler that names itself must answer for itself: this page is what a
+  # site owner (or an abuse desk) finds before deciding to block or report
+  # us, so it stays plain, honest and short (2026-09-04, Vultr report #2).
+  def bot(conn, _params) do
+    conn
+    |> assign(:page_title, "About ListSignalBot")
+    |> assign(:page_description, "What the ListSignal crawler does, how often it visits, and how to block it or opt out.")
+    |> put_layout(html: {LSWeb.Layouts, :public})
+    |> render(:bot)
+  end
+
   def features(conn, _params) do
     conn
     |> assign(:page_title, "Features, What ListSignal Tracks")

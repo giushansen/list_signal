@@ -25,6 +25,30 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-04
+
+**Second Vultr abuse report in a week; crawler identity overhauled.** Report
+named www.xayann-services.com: two requests to `/`, 6h13m apart, from ny1
+and dal2, both 503'd by the WAF, flagged as "Honey Pot verification / Rogue
+User-Agent identification". Matched our records to the second. Root cause
+is structural, not volume: (1) the HTTP lane rotated six fake desktop
+Chrome/Firefox UAs from a client that cannot pass a JS challenge, which is
+the exact fingerprint of malware to a WAF; (2) `stale_domains` re-selected
+WAF-blocked domains on schedule forever — 2.64M domains sat at 403/429/503
+(2.05M/388K/206K), each re-hit from a rotating IP; (3) 217K domains were
+crawled twice ~6h apart on 09-03 alone (separate follow-up: the CTL dedup
+cache holds ~1h of inflow at 1,400/s, so multi-log cert entries re-enqueue;
+not fixed in this change). Fixes shipped together: honest
+`ListSignalBot/1.0 (+https://listsignal.com/bot)` UA with a public
+transparency/opt-out page at /bot; blocked statuses excluded from plain-HTTP
+recrawl (the camoufox lane, a real browser that passes challenges, keeps
+them); and `LS.HTTP.NeverContact`, a permanent blocklist of abuse-reporting
+domains enforced in `Client.fetch/3` and `Browser.render/2` — the two choke
+points every engine goes through. Expected trade-off: some sites 403 a
+declared bot that tolerated a fake browser; those now exit the rotation
+after one clean refusal, which is the defensible behavior. Measure the
+200-rate before/after and log it here.
+
 ## 2026-08-31
 
 **`NodeResources.local/0` forked `systemctl` twice per erpc poll, tipping

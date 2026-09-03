@@ -14,18 +14,25 @@ defmodule LS.HTTP.Client do
   @receive_timeout 20_000
   @max_redirects 3
 
+  # One honest, declared crawler identity — not rotating fake browser strings.
+  #
+  # 2026-09-04, second Vultr abuse report in a week, and both name the same
+  # trigger: "Rogue User-Agent identification". We presented desktop
+  # Chrome/Firefox strings from a plain HTTP client that cannot pass a JS
+  # challenge, which is exactly the fingerprint of malware to a WAF. Rotating
+  # SIX of them across requests made it look worse, not better.
+  #
+  # A declared bot UA flips the classification: sites that tolerate crawlers
+  # serve us; sites that do not return a clean 403 once, leave the plain-HTTP
+  # recrawl rotation (Clickhouse.stale_domains excludes blocked statuses),
+  # and the camoufox lane, a real browser that legitimately PASSES
+  # challenges, takes over the ones worth the effort. The URL points at the
+  # transparency page with opt-out instructions.
   @user_agents [
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:121.0) Gecko/20100101 Firefox/121.0"
+    "Mozilla/5.0 (compatible; ListSignalBot/1.0; +https://listsignal.com/bot)"
   ]
 
   @accept_headers [
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
     "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
   ]
 
@@ -83,6 +90,18 @@ defmodule LS.HTTP.Client do
   def fetch(_domain, nil, opts) when is_list(opts), do: {:error, "no_ip", :no_ip}
 
   def fetch(domain, ip, opts) when is_list(opts) do
+    if LS.HTTP.NeverContact.blocked?(domain) do
+      # A site that has filed an abuse report is permanently off-limits
+      # (2026-09-04, second Vultr report). Refusing here, at the lowest HTTP
+      # choke point, covers discovery, recrawl, secondary pages and
+      # fetch_url in one place.
+      {:error, "never_contact", :never_contact}
+    else
+      do_fetch(domain, ip, opts)
+    end
+  end
+
+  defp do_fetch(domain, ip, opts) do
     path = Keyword.get(opts, :path, "/")
     recv_timeout = Keyword.get(opts, :timeout, @receive_timeout)
     max_bytes = Keyword.get(opts, :max_bytes, @max_body_bytes)
