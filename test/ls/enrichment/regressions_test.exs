@@ -58,11 +58,13 @@ defmodule LS.Enrichment.RegressionsTest do
 
       assert browser =~ "last_http_blocked != ''"
       # 429 is deliberately NOT here — see the "429 is not a wall" describe.
-      assert browser =~ "401, 403"
+      # 503 IS here since 2026-09-04: a WAF challenge page answers 503 to a
+      # plain client, and re-asking over HTTP became Vultr abuse report #2.
+      assert browser =~ "401, 403, 503"
       # the HTTP lane must EXCLUDE everything the browser lane claims
       assert http =~ "b.crawlable"
       assert http =~ "last_http_blocked = ''"
-      assert http =~ "NOT IN (401, 403)"
+      assert http =~ "NOT IN (401, 403, 503)"
     end
   end
 
@@ -91,9 +93,11 @@ defmodule LS.Enrichment.RegressionsTest do
       assert Agent.home_strategy(%{last_http_status: 429}) == :http_then_browser
       assert Agent.home_strategy(%{last_http_status: 429, tier: "light"}) == :http_only
 
-      # Real walls still go to the browser.
+      # Real walls still go to the browser — including the 503 a WAF
+      # challenge page serves to a plain client (2026-09-04, abuse report #2).
       assert Agent.home_strategy(%{last_http_status: 403}) == :browser_first
       assert Agent.home_strategy(%{last_http_status: 401}) == :browser_first
+      assert Agent.home_strategy(%{last_http_status: 503}) == :browser_first
       assert Agent.home_strategy(%{http_blocked: "cloudflare"}) == :browser_first
     end
 

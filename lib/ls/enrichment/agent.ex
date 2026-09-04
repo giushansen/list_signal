@@ -169,8 +169,12 @@ defmodule LS.Enrichment.Agent do
 
   # Blocked at discovery = plain HTTP already failed there; going browser-first
   # for these is the whole reason camoufox exists.
+  # 503 added 2026-09-04 (second Vultr abuse report): a WAF challenge page
+  # answers 503 to a plain client, and retrying it over HTTP is a guaranteed
+  # second "failed challenge" in someone's abuse log. 429 stays out — it
+  # means "come back later", not "you need a better fingerprint" (2026-08-02).
   defp needs_browser?(item),
-    do: item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403]
+    do: item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403, 503]
 
   @doc """
   How the homepage should be fetched for `item`. Pure — the routing rule alone,

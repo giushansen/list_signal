@@ -60,6 +60,7 @@ defmodule LS.Cluster.WorkQueue do
   @rate_window_ms 20_000
   @idx_enqueued 1
   @idx_dropped 2
+  @idx_deduped 3
 
   # ==========================================================================
   # CLIENT API
@@ -80,21 +81,35 @@ defmodule LS.Cluster.WorkQueue do
 
   `:queue_full` is deliberate load-shedding, not an error: when CT inflow
   outruns the fleet, we drop discoveries rather than grow unbounded (the cap
-  and the drop counter are visible in `stats/0`).
+  and the drop counter are visible in `stats/0`). `:recently_crawled` means
+  `LS.Cluster.CrawlDedup` saw this domain enqueued within its 3.5-7 day
+  window and suppressed the repeat visit (counted as `total_deduped`).
   """
-  @spec enqueue(map()) :: :ok | :queue_full
+  @spec enqueue(map()) :: :ok | :queue_full | :recently_crawled
   def enqueue(domain_data) when is_map(domain_data) do
     current_size = :ets.info(@queue_table, :size)
 
-    if current_size >= max_queue_size() do
-      :counters.add(counter_ref(), @idx_dropped, 1)
-      :queue_full
-    else
-      id = :erlang.unique_integer([:monotonic, :positive])
-      now = System.system_time(:millisecond)
-      :ets.insert(@queue_table, {id, domain_data, now})
-      :counters.add(counter_ref(), @idx_enqueued, 1)
-      :ok
+    cond do
+      current_size >= max_queue_size() ->
+        :counters.add(counter_ref(), @idx_dropped, 1)
+        :queue_full
+
+      # 27.6% of all fetches were repeat visits inside a week (2026-09-04:
+      # 62.3M crawls, 45.1M distinct domains) because the CTL cache holds
+      # ~1h of inflow and every cert renewal re-emits from many CT logs.
+      # CrawlDedup suppresses re-enqueues for 3.5-7 days; the requeue path
+      # in requeue_timed_out/1 inserts into the ETS table directly, so a
+      # timed-out batch is never blocked by its own enqueue-time entry.
+      LS.Cluster.CrawlDedup.seen_or_mark(domain_data[:ctl_domain] || domain_data[:domain]) ->
+        :counters.add(counter_ref(), @idx_deduped, 1)
+        :recently_crawled
+
+      true ->
+        id = :erlang.unique_integer([:monotonic, :positive])
+        now = System.system_time(:millisecond)
+        :ets.insert(@queue_table, {id, domain_data, now})
+        :counters.add(counter_ref(), @idx_enqueued, 1)
+        :ok
     end
   end
 
@@ -130,7 +145,7 @@ defmodule LS.Cluster.WorkQueue do
     :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
-    ref = :counters.new(2, [:write_concurrency])
+    ref = :counters.new(3, [:write_concurrency])
     :persistent_term.put(@counter_table, ref)
 
     schedule_cleanup()
@@ -191,6 +206,7 @@ defmodule LS.Cluster.WorkQueue do
     ref = counter_ref()
     total_enqueued = :counters.get(ref, @idx_enqueued)
     total_dropped = :counters.get(ref, @idx_dropped)
+    total_deduped = :counters.get(ref, @idx_deduped)
 
     # Lifetime averages kept for reference; the dashboard uses the windowed rates
     # below (total/uptime lied for hours after every restart — cold dedup cache
@@ -209,6 +225,7 @@ defmodule LS.Cluster.WorkQueue do
       total_completed: state.total_completed,
       total_requeued: state.total_requeued,
       total_dropped: total_dropped,
+      total_deduped: total_deduped,
       enqueue_rate_per_min: state.enqueue_rate_win,
       drain_rate_per_min: state.drain_rate_win,
       enqueue_rate_lifetime: enqueue_rate_lifetime,

@@ -70,15 +70,18 @@ defmodule LS.HTTP.NeverContactTest do
     end
 
     test "the recrawl scheduler never re-selects WAF-blocked domains for plain HTTP" do
-      # 2.64M domains sat at 403/429/503 when this was written, each re-hit
+      # 2.26M domains sat at 403/503 when this was written, each re-hit
       # on schedule from a rotating IP. Blocked domains belong to the
       # browser lane; the plain-HTTP recrawl must exclude them.
       src = File.read!("lib/ls/clickhouse.ex")
       [stale | _] = String.split(src, "def stale_domains") |> Enum.drop(1)
       [body | _] = String.split(stale, "def ")
 
-      assert body =~ "NOT IN (403, 429, 503)",
+      assert body =~ "http_status NOT IN (403, 503)",
              "stale_domains must exclude blocked statuses from plain-HTTP recrawl"
+
+      refute body =~ ~r/NOT IN \([^)]*429/,
+             "429 means come back later, not a wall: excluding it from recrawl would silently lose 388K rate-limited domains (2026-08-02 lesson)"
     end
   end
 end

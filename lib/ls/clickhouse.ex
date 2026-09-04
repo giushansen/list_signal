@@ -1008,14 +1008,17 @@ defmodule LS.Clickhouse do
     # Digital business models that get weekly crawling
     digital_bms = "'Ecommerce','SaaS','Tool','Marketplace','Agency'"
 
-    # 403/429/503 are excluded on purpose (2026-09-04, second Vultr abuse
+    # 403/503 are excluded on purpose (2026-09-04, second Vultr abuse
     # report): a WAF-walled domain re-hit on schedule, from a different node
     # each cycle, with an HTTP client that cannot pass a JS challenge, reads
-    # as distributed malicious scraping to the WAF's operator, and 2.64M
+    # as distributed malicious scraping to the WAF's operator, and 2.26M
     # domains sat in those states when this was written. Blocked domains are
     # the browser lane's job (enrichment_lane_filter browser_only: a real
     # Firefox that passes the challenge instead of failing it); plain-HTTP
-    # recrawl never touches them again.
+    # recrawl never touches them again. 429 is NOT excluded: rate limiting
+    # means "come back later", and one polite bot-UA request per month is
+    # exactly that (2026-08-02: treating 429 as a wall drowned the browser
+    # lane; the same mistake here would silently lose 388K domains).
     sql = """
     SELECT domain FROM domains_current FINAL
     WHERE (
@@ -1024,7 +1027,7 @@ defmodule LS.Clickhouse do
       (business_model NOT IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{monthly_days} DAY)
     )
     AND (http_status IS NOT NULL OR dns_a != '')
-    AND (http_status IS NULL OR http_status NOT IN (403, 429, 503))
+    AND (http_status IS NULL OR http_status NOT IN (403, 503))
     ORDER BY tranco_rank ASC NULLS LAST, enriched_at ASC
     LIMIT #{limit}
     """
@@ -1044,11 +1047,18 @@ defmodule LS.Clickhouse do
   """
   @spec enrichment_lane_filter(keyword()) :: String.t()
   def enrichment_lane_filter(opts) do
+    # 503 joined 401/403 on 2026-09-04 (second Vultr abuse report): a WAF
+    # that answers 503 to a plain client is refusing bots, exactly like a
+    # 403, so those domains belong to the browser lane — camoufox is a real
+    # Firefox that passes the challenge instead of failing it. 429 stays in
+    # the HTTP lane on purpose: it means "come back later", not "you need a
+    # better fingerprint" (2026-08-02, when 429s were 83% of all failures
+    # and drowned the scarce browser bucket — see regressions_test.exs).
     if Keyword.get(opts, :browser_only, false) do
-      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403))"
+      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403, 503))"
     else
       "b.crawlable AND b.last_http_blocked = '' AND " <>
-        "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403))"
+        "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403, 503))"
     end
   end
 

@@ -155,6 +155,9 @@ defmodule LS.Application do
       LS.Reputation.Majestic,
       LS.Reputation.Blocklist,
       LS.ML.Classifier,
+      # Before WorkQueue so enqueue/1's dedup check never races an empty
+      # persistent_term (it fails open, but the window should be zero).
+      LS.Cluster.CrawlDedup,
       LS.Cluster.WorkQueue,
       # Hour-long queue history behind the workers-needed figure.
       LS.Cluster.QueueTrend,

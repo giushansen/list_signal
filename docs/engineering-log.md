@@ -49,6 +49,20 @@ declared bot that tolerated a fake browser; those now exit the rotation
 after one clean refusal, which is the defensible behavior. Measure the
 200-rate before/after and log it here.
 
+**Same day, the duplicate-crawl waste got its fix: `LS.Cluster.CrawlDedup`.**
+Two rotating 50M-entry blooms (114MB total, 3.5-day rotation, suppression
+window 3.5-7 days) consulted by `WorkQueue.enqueue/1`; entries expire by
+day 7 so the weekly recrawl tier always passes, and the requeue path
+bypasses it by construction (direct ETS insert). Fails open, backfills the
+last 24h from ClickHouse in 16 shards after every restart. Also: 503 joined
+401/403 as a browser-lane wall (`enrichment_lane_filter`,
+`Agent.needs_browser?`), while 429 stayed OUT of every exclusion on the
+2026-08-02 lesson: rate limiting is patience, not a wall, and the
+regression suite caught exactly that mistake in review before it shipped —
+the first draft wrongly excluded 429 from recrawl and routed it to the
+browser lane, which would have silently lost 388K domains and drowned the
+camoufox bucket again.
+
 ## 2026-08-31
 
 **`NodeResources.local/0` forked `systemctl` twice per erpc poll, tipping
