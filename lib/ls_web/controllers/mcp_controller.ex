@@ -101,6 +101,18 @@ defmodule LSWeb.McpController do
         track(conn, "mcp_" <> name)
         LS.ApiKeys.record_usage_async(conn.assigns.api_key.id)
 
+        LS.ApiAudit.log_async(%{
+          user_id: conn.assigns.api_user.id,
+          email: conn.assigns.api_user.email,
+          plan: conn.assigns.api_plan,
+          key_prefix: conn.assigns.api_key.prefix,
+          surface: "mcp",
+          endpoint: name,
+          target: args["domain"],
+          filters: Map.drop(args, ["domain"]),
+          result_count: payload[:count] || (if payload[:domain], do: 1, else: 0)
+        })
+
         result(conn, id, %{
           content: [%{type: "text", text: Jason.encode!(payload)}],
           isError: false

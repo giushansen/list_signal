@@ -25,7 +25,7 @@ defmodule LSWeb.ApiV1Controller do
           "The 'domain' path segment must be a bare domain like 'gymshark.com' (no scheme, no path).")
 
       record = ApiData.company(domain) ->
-        track(conn, "api_company")
+        track(conn, "api_company", %{endpoint: "company", target: String.downcase(domain), result_count: 1})
         json(conn, %{data: gate_emails(record, conn.assigns.api_plan)})
 
       true ->
@@ -37,7 +37,11 @@ defmodule LSWeb.ApiV1Controller do
   def search(conn, params) do
     case ApiData.search(params) do
       {:ok, rows, applied} ->
-        track(conn, "api_search")
+        track(conn, "api_search", %{
+          endpoint: "search",
+          filters: Map.take(params, ~w(tech app country business_model revenue hiring limit offset)),
+          result_count: length(rows)
+        })
 
         json(conn, %{
           data: rows,
@@ -54,12 +58,12 @@ defmodule LSWeb.ApiV1Controller do
   end
 
   def technologies(conn, _params) do
-    track(conn, "api_technologies")
+    track(conn, "api_technologies", %{endpoint: "technologies"})
     json(conn, %{data: ApiData.technologies()})
   end
 
   def stats(conn, _params) do
-    track(conn, "api_stats")
+    track(conn, "api_stats", %{endpoint: "stats"})
     json(conn, %{data: ApiData.stats()})
   end
 
@@ -81,11 +85,23 @@ defmodule LSWeb.ApiV1Controller do
 
   defp valid_domain?(_), do: false
 
-  # Success-only, fully async: the SQLite monthly counter and a server-side
-  # Umami event. Neither can slow or fail the response.
-  defp track(conn, event) do
+  # Success-only, fully async: SQLite monthly counter, server-side Umami
+  # event, and the ClickHouse audit row (who/when/how/what was read).
+  # None of the three can slow or fail the response.
+  defp track(conn, event, meta) do
     LS.ApiKeys.record_usage_async(conn.assigns.api_key.id)
-    LS.Umami.track_async(event, %{plan: conn.assigns.api_plan})
+    LS.Umami.track_async(event, %{plan: conn.assigns.api_plan, endpoint: meta[:endpoint]})
+
+    LS.ApiAudit.log_async(
+      Map.merge(meta, %{
+        user_id: conn.assigns.api_user.id,
+        email: conn.assigns.api_user.email,
+        plan: conn.assigns.api_plan,
+        key_prefix: conn.assigns.api_key.prefix,
+        surface: "rest"
+      })
+    )
+
     conn
   end
 end

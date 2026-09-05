@@ -137,6 +137,34 @@ defmodule LSWeb.ApiV1Test do
     end
   end
 
+  describe "audit rows" do
+    test "the who/when/what row survives hostile values and stays one TSV line" do
+      row =
+        LS.ApiAudit.row(%{
+          user_id: "u-1",
+          email: "evil\ttab@x.com",
+          plan: "free",
+          key_prefix: "ls_abc",
+          surface: "rest",
+          endpoint: "search",
+          target: "new\nline.com",
+          filters: %{"tech" => "Shopify", "country" => "FR"},
+          result_count: 25
+        })
+
+      refute row =~ "\n"
+      assert length(String.split(row, "\t")) == 9
+      assert row =~ "Shopify"
+      assert String.ends_with?(row, "25")
+    end
+
+    test "empty filters and nils degrade to empty fields, not crashes" do
+      row = LS.ApiAudit.row(%{})
+      assert length(String.split(row, "\t")) == 9
+      assert String.ends_with?(row, "0")
+    end
+  end
+
   describe "key lifecycle" do
     test "one active key per user, rotation via revoke", %{user: user, key: key} do
       assert {:error, :already_has_key} = ApiKeys.create_key(user)
