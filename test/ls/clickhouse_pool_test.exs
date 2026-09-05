@@ -47,7 +47,7 @@ defmodule LS.ClickhousePoolTest do
       # These are the calls measured at 105-110s in the outage window.
       for fragment <- [
             "compact_sql(since_unix, until_unix), 300_000, background: true",
-            "compact_sql(0), 30 * 60_000, background: true",
+            "compact_sql(0, nil, 1790), 30 * 60_000, background: true",
             "compact_sql_shard(shard, total_shards), 300_000, background: true"
           ] do
         assert @source =~ fragment,
