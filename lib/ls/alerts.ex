@@ -331,26 +331,30 @@ defmodule LS.Alerts do
         # critical on the NEXT 15-minute tick (a sustained stall, the kind
         # that does cost real output) is worth a send; the single spike goes
         # to the log and the weekly report.
-        if sustained_critical?(node) do
-          [
-            al(
-              :critical,
-              "mem_pressure:#{node}",
-              "Memory thrashing: #{short(node)}",
-              "#{short(node)} has spent two consecutive checks (15+ min) with EVERY task " <>
-                "stalled on memory reclaim (now #{r.mem_pressure_full_avg10}% of the last 10s, " <>
-                "60s avg #{r.mem_pressure_full_avg60}%). Sustained stall at this level costs real " <>
-                "crawl throughput. Check its batch log for shrunk batches and inflated cycle times."
-            )
-            | a
-          ]
-        else
-          Logger.info(
-            "[ALERTS] #{short(node)} PSI critical (#{r.mem_pressure_full_avg10}% avg10), " <>
-              "first tick, transient swap storms self-recover, email only if still critical next tick"
-          )
+        case sustained_critical?(node) do
+          {true, since_min} ->
+            [
+              al(
+                :critical,
+                "mem_pressure:#{node}",
+                "Memory thrashing: #{short(node)}",
+                "#{short(node)} has had EVERY task stalled on memory reclaim for #{since_min} " <>
+                  "minutes straight (first critical reading #{since_min}m ago, still critical " <>
+                  "now: #{r.mem_pressure_full_avg10}% of the last 10s, 60s avg " <>
+                  "#{r.mem_pressure_full_avg60}%). A stall this long is costing real crawl " <>
+                  "throughput on this node. If this recurs on the same node across days, it " <>
+                  "needs more RAM; a one-off usually follows a camoufox render burst."
+              )
+              | a
+            ]
 
-          a
+          {false, _} ->
+            Logger.info(
+              "[ALERTS] #{short(node)} PSI critical (#{r.mem_pressure_full_avg10}% avg10), " <>
+                "first tick, transient swap storms self-recover, email only if still critical next tick"
+            )
+
+            a
         end
 
       :warning ->
@@ -412,13 +416,23 @@ defmodule LS.Alerts do
   # (the node had a fresh chance to recover while alerts were down anyway).
   @sustained_window_ms :timer.minutes(35)
 
+  # Returns {sustained?, minutes_since_streak_start}. The map tracks
+  # {first, last} per node so the email can state the real time range of
+  # the stall, not just "two ticks" (owner request 2026-09-05: the gravity
+  # of the problem is its duration).
   defp sustained_critical?(node) do
     key = {__MODULE__, :psi_critical_at}
     now = System.system_time(:millisecond)
     seen = :persistent_term.get(key, %{})
-    last = Map.get(seen, node)
-    :persistent_term.put(key, Map.put(seen, node, now))
-    is_integer(last) and now - last <= @sustained_window_ms
+
+    {first, streak?} =
+      case Map.get(seen, node) do
+        {first, last} when now - last <= @sustained_window_ms -> {first, true}
+        _ -> {now, false}
+      end
+
+    :persistent_term.put(key, Map.put(seen, node, {first, now}))
+    {streak?, div(now - first, 60_000)}
   end
 
   @doc """

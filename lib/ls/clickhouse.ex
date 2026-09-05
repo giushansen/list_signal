@@ -859,7 +859,7 @@ defmodule LS.Clickhouse do
       arrayMap(x -> ('app_removed', x),
         arrayFilter(x -> x != '' AND NOT has(splitByChar('|', n.new_apps), x), splitByChar('|', b.http_apps)))
     ) AS sig
-    SETTINGS join_use_nulls = 0, max_threads = 2
+    SETTINGS join_use_nulls = 0, max_threads = 2, max_execution_time = 115
     """
 
     hiring_sql = """
@@ -880,7 +880,7 @@ defmodule LS.Clickhouse do
     ) b ON n.domain = b.domain
     WHERE (coalesce(b.job_count, 0) = 0 AND new_jobs > 0)
        OR (coalesce(b.job_count, 0) > 0 AND new_jobs = 0)
-    SETTINGS join_use_nulls = 1, max_threads = 2
+    SETTINGS join_use_nulls = 1, max_threads = 2, max_execution_time = 115
     """
 
     with {:ok, _} <- query_raw(tech_sql, 120_000, background: true),
@@ -1194,7 +1194,7 @@ defmodule LS.Clickhouse do
   defp to_count(_), do: 0
 
   @doc "Full `businesses` rebuild — repair tool. See `LS.Cluster.Compactor`."
-  def rebuild_businesses_full, do: query_raw(compact_sql(0), 30 * 60_000, background: true)
+  def rebuild_businesses_full, do: query_raw(compact_sql(0, nil, 1790), 30 * 60_000, background: true)
 
   @doc """
   Rebuild one hash-shard of `businesses` — the memory-safe backfill unit.
@@ -1303,7 +1303,14 @@ defmodule LS.Clickhouse do
   @doc false
   def compact_sql_for_test(since_unix), do: compact_sql(since_unix)
 
-  defp compact_sql(since_unix, until_unix \\ nil) do
+  # `max_s` is the SERVER-side execution ceiling, sized just under each
+  # caller's client timeout. Without it, a pass the client abandons keeps
+  # running on ClickHouse: on 2026-09-05 one such orphaned INSERT ran for 32
+  # minutes holding 2 GiB while the compactor retried on top of it, until
+  # the whole server hit MEMORY_LIMIT_EXCEEDED and "new businesses" halved
+  # for two hours (caught by the DataCheck quantity alert). Client gives up
+  # and server keeps paying is the worst of both; now they die together.
+  defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 290) do
     upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
 
     # The same bounded domain set scopes BOTH sides of every join. The
@@ -1516,7 +1523,7 @@ defmodule LS.Clickhouse do
                FROM biz_news#{join_scope} GROUP BY domain) n ON h.domain = n.domain
     LEFT JOIN (#{verified_sql(join_scope)}) v ON h.domain = v.domain
     SETTINGS max_bytes_before_external_group_by = 1500000000, max_threads = 2,
-             join_use_nulls = 1
+             join_use_nulls = 1, max_execution_time = #{max_s}
     """
   end
 

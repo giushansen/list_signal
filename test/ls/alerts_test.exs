@@ -326,7 +326,7 @@ defmodule LS.AlertsTest do
       found = Enum.find(a, &(&1.key == "mem_pressure:worker_n1@10.0.0.1"))
       assert found.severity == :critical
       assert found.line =~ "18.0%"
-      assert found.line =~ "two consecutive checks", "the email must say the stall is sustained, not a blip"
+      assert found.line =~ ~r/for \d+ minutes straight/, "the email must state the real duration of the stall"
     end
 
     test "a node with no PSI falls back to the old raw-% check, not silence" do
