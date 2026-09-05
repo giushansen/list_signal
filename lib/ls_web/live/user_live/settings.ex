@@ -157,7 +157,7 @@ defmodule LSWeb.UserLive.Settings do
               <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="flex-1">
                 <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
                 <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
-                  Upgrade to Pro, $99/mo
+                  Upgrade to Pro, $149/mo
                 </button>
               </form>
             </div>

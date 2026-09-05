@@ -1542,12 +1542,12 @@ defmodule LSWeb.ExplorerLive do
               <div class="border border-emerald-500/20 rounded-xl p-5 bg-emerald-500/[0.03] relative">
                 <span class="absolute -top-2.5 right-4 bg-accent text-white px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Recommended</span>
                 <h4 class="font-semibold text-emerald-400 text-sm">Pro</h4>
-                <p class="text-3xl font-bold text-white mt-1">$99<span class="text-sm text-gray-500 font-normal">/mo</span></p>
+                <p class="text-3xl font-bold text-white mt-1">$149<span class="text-sm text-gray-500 font-normal">/mo</span></p>
                 <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
-                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Export up to 5,000 rows/mo</li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Export up to 50,000 rows/mo</li>
                   <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> 120 searches/min</li>
                   <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Priority support</li>
-                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> API access <span class="text-white/30 text-[9px] ml-1">(soon)</span></li>
+                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> API + MCP, 25,000 calls/mo</li>
                 </ul>
                 <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="mt-5">
                   <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
