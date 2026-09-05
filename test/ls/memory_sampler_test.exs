@@ -54,4 +54,25 @@ defmodule LS.MemorySamplerTest do
       refute MemorySampler.in_watch_zone?(1_000, -1)
     end
   end
+
+  describe "watch zone leaves a durable trail, not just journal lines" do
+    test "entering and remaining in the zone both persist a forensics snapshot" do
+      # 2026-09-05 02:40: a 7G allocation in under 93 seconds hit between two
+      # 5-minute forensics snapshots, and journald's 500MB cap had rotated
+      # the whole window away by analysis time -- the spike restarted prod
+      # with NO durable record of which process grew. The Logger trail alone
+      # is not evidence; the ClickHouse snapshot (top processes + top ETS) is.
+      src = File.read!("lib/ls/memory_sampler.ex")
+
+      entry_branch = src |> String.split("[MEM-WATCH] entered watch zone") |> Enum.at(1) |> String.split("cond do") |> List.first()
+      assert entry_branch =~ "persist_forensics",
+             "crossing into the watch zone must immediately capture forensics -- the entry sample may be the only one a fast spike allows"
+
+      reminder_branch = src |> String.split("[MEM-WATCH] still elevated") |> Enum.at(1) |> String.split("true ->") |> List.first()
+      assert reminder_branch =~ "persist_forensics"
+
+      assert src =~ "LS.Ops.MemoryForensics.snapshot_now",
+             "the durable record is MemoryForensics' ClickHouse snapshot, which survives journal rotation and the restart"
+    end
+  end
 end

@@ -70,15 +70,38 @@ defmodule LS.MemorySampler do
 
       not state.watching? ->
         Logger.warning("[MEM-WATCH] entered watch zone: #{mb(bytes)}MB of #{mb(limit)}MB limit")
+        persist_forensics()
         %{state | watching?: true, since_log: 0}
 
       state.since_log + 1 >= @reminder_every_n_samples ->
         Logger.warning("[MEM-WATCH] still elevated: #{mb(bytes)}MB of #{mb(limit)}MB limit")
+        persist_forensics()
         %{state | since_log: 0}
 
       true ->
         %{state | since_log: state.since_log + 1}
     end
+  end
+
+  # Journald on the master holds only a few hours (500MB cap at this log
+  # volume), so a Logger trail alone cannot explain yesterday's spike. The
+  # 09-05 02:40 restart proved it the hard way: the BEAM sat at a calm 2.1G
+  # at 02:38:28 (5-min forensics snapshot), the watchdog read 9.4G at
+  # 02:40:01, and by analysis time the journal had rotated past the whole
+  # window — a 7G allocation in under 93 seconds with no durable record of
+  # WHO. So while in the watch zone, every reminder (10s) also persists a
+  # full MemoryForensics snapshot (top processes + top ETS) to ClickHouse,
+  # which survives both rotation and the restart. Async so a slow insert
+  # never blocks the 1s sampling loop; skipped where forensics does not run
+  # (workers) and while a previous capture is still in flight.
+  defp persist_forensics do
+    if Process.whereis(LS.Ops.MemoryForensics) != nil and
+         Process.whereis(__MODULE__.ForensicsCapture) == nil do
+      {:ok, pid} = Task.start(fn -> LS.Ops.MemoryForensics.snapshot_now() end)
+      Process.register(pid, __MODULE__.ForensicsCapture)
+    end
+  rescue
+    _ -> :ok
   end
 
   defp mb(bytes), do: div(bytes, 1_048_576)

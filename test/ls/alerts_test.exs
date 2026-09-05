@@ -275,13 +275,58 @@ defmodule LS.AlertsTest do
       refute Enum.any?(a, &String.starts_with?(&1.key, "mem_pressure"))
     end
 
-    test "critical fires as :critical, not :warning, and names the real cost" do
+    test "a single critical tick does not email; the SAME node critical next tick does" do
+      # 2026-09-05: thrashing emails arrived several times a day from a
+      # rotating cast of workers, each a transient swap storm that dented one
+      # node ~15-25% for 15-30 min and self-recovered (~0.2% of a fleet-day).
+      # A stall only earns an email once it survives into the next 15-minute
+      # check; the isolated spike is log-and-weekly-report material.
+      :persistent_term.erase({LS.Alerts, :psi_critical_at})
+      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical_at}) end)
+
+      r = %{mem_pressure_full_avg10: 22.0, mem_pressure_full_avg60: 9.0, mem_avail_mb: 300, mem_total_mb: 4_000}
+      m = %{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}
+
+      first = Alerts.evaluate(m)
+      refute Enum.any?(first, &String.starts_with?(&1.key, "mem_pressure")),
+             "first critical tick must be logged, not emailed"
+
+      second = Alerts.evaluate(m)
+      assert Enum.any?(second, &String.starts_with?(&1.key, "mem_pressure")),
+             "still critical on the next tick is a sustained stall and must email"
+    end
+
+    test "two isolated spikes far apart never combine into a sustained alert" do
+      :persistent_term.erase({LS.Alerts, :psi_critical_at})
+      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical_at}) end)
+
+      r = %{mem_pressure_full_avg10: 22.0, mem_pressure_full_avg60: 9.0, mem_avail_mb: 300, mem_total_mb: 4_000}
+      m = %{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}
+      Alerts.evaluate(m)
+
+      # Age the marker past the 35-minute sustained window, as if the node
+      # recovered and spiked again hours later.
+      stale = System.system_time(:millisecond) - :timer.minutes(40)
+      :persistent_term.put({LS.Alerts, :psi_critical_at}, %{:"worker_n1@10.0.0.1" => stale})
+
+      later = Alerts.evaluate(m)
+      refute Enum.any?(later, &String.starts_with?(&1.key, "mem_pressure")),
+             "a spike 40 minutes after the last one is a fresh first tick, not a sustained stall"
+    end
+
+    test "a sustained critical fires as :critical and names the real cost" do
+      :persistent_term.erase({LS.Alerts, :psi_critical_at})
+      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical_at}) end)
+
       r = %{mem_pressure_full_avg10: 18.0, mem_pressure_full_avg60: 12.0, mem_avail_mb: 100, mem_total_mb: 2_000}
-      a = Alerts.evaluate(%{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]})
+      m = %{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}
+      # First tick arms the sustained marker (2026-09-05 rule); the second is the send.
+      Alerts.evaluate(m)
+      a = Alerts.evaluate(m)
       found = Enum.find(a, &(&1.key == "mem_pressure:worker_n1@10.0.0.1"))
       assert found.severity == :critical
       assert found.line =~ "18.0%"
-      assert found.line =~ "not crashing", "must be honest that this is throughput loss, not a crash"
+      assert found.line =~ "two consecutive checks", "the email must say the stall is sustained, not a blip"
     end
 
     test "a node with no PSI falls back to the old raw-% check, not silence" do

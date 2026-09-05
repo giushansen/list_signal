@@ -323,18 +323,35 @@ defmodule LS.Alerts do
   defp mem_alert(a, node, r) do
     case mem_pressure_band(r[:mem_pressure_full_avg10], r[:mem_pressure_full_avg60]) do
       :critical ->
-        [
-          al(
-            :critical,
-            "mem_pressure:#{node}",
-            "Memory thrashing: #{short(node)}",
-            "#{short(node)} spent #{r.mem_pressure_full_avg10}% of the last 10s with EVERY task " <>
-              "stalled on memory reclaim (60s avg #{r.mem_pressure_full_avg60}%). The process is not " <>
-              "crashing, but this level of stall reliably costs real crawl throughput. Check its " <>
-              "batch log for shrunk batch sizes and inflated cycle times."
+        # One critical tick is NOT an email (2026-09-05). Measured around the
+        # 09-04/09-05 thrashing alerts: a single-tick swap storm dents ONE
+        # node's throughput ~15-25% for 15-30 minutes and self-recovers —
+        # roughly 0.2% of a fleet-day, while the emails arrived several times
+        # a day from a rotating cast of workers. Only the same node still
+        # critical on the NEXT 15-minute tick (a sustained stall, the kind
+        # that does cost real output) is worth a send; the single spike goes
+        # to the log and the weekly report.
+        if sustained_critical?(node) do
+          [
+            al(
+              :critical,
+              "mem_pressure:#{node}",
+              "Memory thrashing: #{short(node)}",
+              "#{short(node)} has spent two consecutive checks (15+ min) with EVERY task " <>
+                "stalled on memory reclaim (now #{r.mem_pressure_full_avg10}% of the last 10s, " <>
+                "60s avg #{r.mem_pressure_full_avg60}%). Sustained stall at this level costs real " <>
+                "crawl throughput. Check its batch log for shrunk batches and inflated cycle times."
+            )
+            | a
+          ]
+        else
+          Logger.info(
+            "[ALERTS] #{short(node)} PSI critical (#{r.mem_pressure_full_avg10}% avg10), " <>
+              "first tick, transient swap storms self-recover, email only if still critical next tick"
           )
-          | a
-        ]
+
+          a
+        end
 
       :warning ->
         Logger.info(
@@ -385,6 +402,24 @@ defmodule LS.Alerts do
   end
 
   defp restart_alert(a, _node, _r), do: a
+
+  # Sentinel evaluates every 15 minutes; "sustained" means this node was
+  # ALSO critical on the previous tick. The marker is written on every
+  # critical reading and expires after @sustained_window_ms, so an isolated
+  # spike leaves a marker that ages out before the next spike months later.
+  # persistent_term is fine here: one small map, updated at most every 15
+  # minutes, and a master restart resetting the streak is correct behavior
+  # (the node had a fresh chance to recover while alerts were down anyway).
+  @sustained_window_ms :timer.minutes(35)
+
+  defp sustained_critical?(node) do
+    key = {__MODULE__, :psi_critical_at}
+    now = System.system_time(:millisecond)
+    seen = :persistent_term.get(key, %{})
+    last = Map.get(seen, node)
+    :persistent_term.put(key, Map.put(seen, node, now))
+    is_integer(last) and now - last <= @sustained_window_ms
+  end
 
   @doc """
   PSI severity band. `:unknown` when the node has no PSI to report (old
