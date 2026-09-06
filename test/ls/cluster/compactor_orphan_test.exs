@@ -40,6 +40,10 @@ defmodule LS.Cluster.CompactorOrphanTest do
     [c | _] = String.split(c, "defp compact_sql_shard")
     assert c =~ "WITH (SELECT groupUniqArray(domain) FROM (\#{domain_set})) AS _touched"
     assert length(String.split(c, "IN (SELECT arrayJoin(_touched))")) == 5, "the comment, the h side, the join sides and the depth side"
+    # The history filter must sit INSIDE the inner select, on `domain`, so the
+    # primary key prunes: outside on `s_domain` the whole table was read.
+    assert c =~ "FROM domains_history\#{inner_scope})"
+    assert c =~ ~s(scope = "")
     refute c =~ "IN (\#{domain_set})", "no scope may inline the set again"
     assert c =~ "\#{touched}SELECT"
   end
