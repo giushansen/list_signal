@@ -1220,13 +1220,17 @@ defmodule LS.Clickhouse do
   """
   @spec compact_businesses(integer(), integer() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
   def compact_businesses(since_unix, until_unix \\ nil) do
-    # 600s client / 590s server ceiling (2026-09-06, was 300/290): with the
+    # 1200s client / 1190s server ceiling (2026-09-06 late, was 600/590 and
+    # 300/290 before that): a pass still reads the whole history table (see
+    # the compaction full-scan entry in the engineering log) and completes
+    # in 450-900s under load; the ceiling's job is to kill a query the
+    # client abandoned, and the client waits 1200s. With the
     # observation predicate, the subdomain union and the sightings join,
     # a healthy incremental pass takes 140-200s and the tail crosses 290s;
     # at 290 every other pass timed out and, after a restart, three in a
     # row did, leaving `businesses` 38 minutes stale. The interval stays 5
     # minutes; a pass that runs long simply delays the next one.
-    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 600_000, background: true),
+    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 1_200_000, background: true),
          {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
       # ClickHouse JSON quotes UInt64 by default, so count() can arrive as a
       # string — which would crash the compactor's stats arithmetic.
@@ -1261,7 +1265,7 @@ defmodule LS.Clickhouse do
   6.5G cap.
   """
   def compact_shard(shard, total_shards) do
-    query_raw(compact_sql_shard(shard, total_shards), 600_000, background: true)
+    query_raw(compact_sql_shard(shard, total_shards), 1_200_000, background: true)
   end
 
   @doc """
@@ -1370,7 +1374,7 @@ defmodule LS.Clickhouse do
   # the whole server hit MEMORY_LIMIT_EXCEEDED and "new businesses" halved
   # for two hours (caught by the DataCheck quantity alert). Client gives up
   # and server keeps paying is the worst of both; now they die together.
-  defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 590) do
+  defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 1190) do
     upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
 
     # The same bounded domain set scopes BOTH sides of every join. The
