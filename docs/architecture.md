@@ -192,6 +192,13 @@ entries, so the recent window that politeness depends on is exactly what
 survives. TTLs and the per-IP rate limiter are unchanged — the cap is a memory
 bound, never a politeness relaxation.
 
+Eviction never copies a table (2026-09-06): `evict_to/3` samples 20K rows for
+the age cutoff, deletes with `:ets.select_delete` inside ETS, and is
+single-flight per table. The first version did tab2list + sort in the
+inserting process; on the master that meant ~28 CT poller workers each
+materialising the 5M-row `ctl_cache` in the same second, which was the
+"unexplained" 7 GB spike behind every master restart from 08-21 to 09-06.
+
 ### Page caches, and why they survive a deploy
 
 `LS.UICache` (assembled pages, single-flight, LRU-bounded) and
@@ -275,3 +282,9 @@ shared From identity is `MAIL_FROM` (default `team@listsignal.com`). Set
   the stages again.
 - Politeness: ≥1s between requests to the same IP (`LS.HTTP.IPRateLimiter`);
   RDAP is limited per registry server.
+- robots.txt is honoured (`LS.HTTP.Robots`, 2026-09-06): every fetch goes
+  through `Client.fetch/3` or `Browser.render/2`, both refuse a path the
+  domain's robots.txt disallows for `ListSignalBot` (or `*`). Refusals are
+  stored as `http_error = robots_disallow` and leave the recrawl and both
+  enrichment lanes. `LS.HTTP.NeverContact` is the permanent list of domains
+  that filed an abuse report; it is checked first.

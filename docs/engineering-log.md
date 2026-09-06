@@ -25,6 +25,54 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-06
+
+**The master's daily restart, root-caused and removed: cache eviction copied
+the 5M-row CT cache into every poller worker at once.** The forensics trap
+(watch-zone snapshots to `ops_memory_snapshots`, shipped 09-05) caught the
+09-06 02:30 spike: `processes` went 429 MB to 9,894 MB in 38 s, held by 14
+anonymous boot-time processes at 200-620 MB each, with `ctl_cache` at
+exactly 5,000,000 rows. Those pids are `LS.CTL.Poller`'s spawn_link'd
+workers, and `LS.Cache.evict_to/3` did `:ets.tab2list` + `Enum.sort_by` on
+the whole table inside whichever process inserted the entry that crossed
+the cap; ~28 workers cross it within the same second. The snapshot
+timeline shows the sawtooth: the 6-hourly TTL sweep trims the cache to
+~1.5M, inflow refills it at ~400K/h, and whenever it reaches 5M before the
+next sweep the BEAM blows up (09-03 19:19 at 5.0M rows, 09-06 02:30 at 5.0M
+rows; 14 watchdog restarts since 08-21). Nothing in ClickHouse: no query in
+either spike window returned more than 5 MB. Fix (commit below): eviction
+samples 20K rows for the age cutoff, deletes with `:ets.select_delete`
+(inside ETS, nothing copied), and is single-flight per table; ties at the
+cutoff second are trimmed by count so a burst cannot empty a table.
+`cache_bounds_test.exs` runs a 400K-row eviction under a 16 MB heap cap.
+Same change: `CacheSnapshot` reads the CT cache with a limited select
+instead of tab2list + take (its GenServer sat at 292 MB, 825 MB during the
+spike), forensics now records where each top process is executing
+(`at`), and the disk early warning is sustained-only (two ticks) because
+ClickHouse merges of the 59 GB history table legitimately borrow tens of GB
+for 10-20 minutes several times a day.
+
+**robots.txt is honoured, fleet-wide.** `/bot` promised "add a Disallow and
+ListSignalBot will not visit again" while no code read robots.txt.
+`LS.HTTP.Robots` (RFC 9309 groups, longest-match, wildcards, 24h cache,
+hostile-input bounded) gates `Client.fetch/3`, so discovery, recrawl,
+secondary pages, ATS boards and `fetch_url` all consult it, and
+`Browser.render/2` refuses too: the camoufox lane is not a way around an
+opt-out. A refusal is recorded as `http_error = robots_disallow`, which
+`stale_domains` and both enrichment lanes exclude. Cost: one small extra
+request per crawled domain-day, through the same politeness limiter.
+
+**Disk: master alerts were merges, opsbloc was full.** Master sits at 69%
+of 361 GB between merges and 78-81% during them; the alert fired per merge.
+Real waste found: 12.4 GB of ClickHouse system logs disabled on 07-26 but
+never dropped (`trace_log` 8.2 GB), 8 x 7.3 GB product archives (58 GB;
+retention was chosen when they were 1.6 GB), and opsbloc holding every
+product archive twice (`backup.sh` ships to `/root/ls-backups`,
+`offsite_backup.sh` to `/root/listsignal-offsite`) until its 120 GB disk hit
+100% and Umami's Postgres dropped into recovery. Retention cut to 4 local /
+3 offsite, the duplicate shipper retired, and the laptop pull
+(`devops/listsignal/laptop/pull_backup.py`) is now the deep copy.
+
 ## 2026-09-04
 
 **Second Vultr abuse report in a week; crawler identity overhauled.** Report

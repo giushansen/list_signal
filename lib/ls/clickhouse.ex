@@ -1028,6 +1028,7 @@ defmodule LS.Clickhouse do
     )
     AND (http_status IS NOT NULL OR dns_a != '')
     AND (http_status IS NULL OR http_status NOT IN (403, 503))
+    AND http_error != 'robots_disallow'
     ORDER BY tranco_rank ASC NULLS LAST, enriched_at ASC
     LIMIT #{limit}
     """
@@ -1054,10 +1055,13 @@ defmodule LS.Clickhouse do
     # the HTTP lane on purpose: it means "come back later", not "you need a
     # better fingerprint" (2026-08-02, when 429s were 83% of all failures
     # and drowned the scarce browser bucket — see regressions_test.exs).
+    # A robots.txt opt-out (2026-09-06) leaves BOTH lanes: the browser lane
+    # is not a way around a Disallow, it is the same bot with a renderer.
     if Keyword.get(opts, :browser_only, false) do
-      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403, 503))"
+      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403, 503)) " <>
+        "AND b.last_http_error != 'robots_disallow'"
     else
-      "b.crawlable AND b.last_http_blocked = '' AND " <>
+      "b.crawlable AND b.last_http_blocked = '' AND b.last_http_error != 'robots_disallow' AND " <>
         "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403, 503))"
     end
   end

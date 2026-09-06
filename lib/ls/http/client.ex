@@ -90,14 +90,24 @@ defmodule LS.HTTP.Client do
   def fetch(_domain, nil, opts) when is_list(opts), do: {:error, "no_ip", :no_ip}
 
   def fetch(domain, ip, opts) when is_list(opts) do
-    if LS.HTTP.NeverContact.blocked?(domain) do
-      # A site that has filed an abuse report is permanently off-limits
-      # (2026-09-04, second Vultr report). Refusing here, at the lowest HTTP
-      # choke point, covers discovery, recrawl, secondary pages and
-      # fetch_url in one place.
-      {:error, "never_contact", :never_contact}
-    else
-      do_fetch(domain, ip, opts)
+    path = Keyword.get(opts, :path, "/")
+
+    cond do
+      LS.HTTP.NeverContact.blocked?(domain) ->
+        # A site that has filed an abuse report is permanently off-limits
+        # (2026-09-04, second Vultr report). Refusing here, at the lowest HTTP
+        # choke point, covers discovery, recrawl, secondary pages and
+        # fetch_url in one place.
+        {:error, "never_contact", :never_contact}
+
+      # robots.txt is the opt-out /bot promises (2026-09-06). Same choke
+      # point, same reasoning; the robots.txt request itself is exempt or
+      # the check would recurse.
+      not LS.HTTP.Robots.exempt?(path) and LS.HTTP.Robots.check(domain, ip, path) == :disallow ->
+        {:error, "robots_disallow", :robots_disallow}
+
+      true ->
+        do_fetch(domain, ip, opts)
     end
   end
 

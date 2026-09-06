@@ -43,6 +43,13 @@ defmodule LS.Enrichment.Browser do
         # defense Vultr will accept twice.
         {:error, :never_contact}
 
+      # The browser lane is a real client, but it is still our bot: a
+      # robots.txt Disallow applies to camoufox exactly as to plain HTTP
+      # (2026-09-06). Circumventing an opt-out with a browser is the one
+      # thing /bot promises we never do.
+      LS.HTTP.Robots.check(domain, nil, path) == :disallow ->
+        {:error, :robots_disallow}
+
       true ->
         render_via_sidecar(domain, path)
     end
