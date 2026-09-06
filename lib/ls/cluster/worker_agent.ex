@@ -303,8 +303,10 @@ defmodule LS.Cluster.WorkerAgent do
         domain = d[:ctl_domain] || d[:domain]
         case LS.DNS.Resolver.lookup(domain) do
           {:ok, dns} ->
-            scores = %{}
-            {domain, %{dns: dns, scores: scores}}
+            # DMARC / BIMI / DKIM ride along with the DNS stage, and only for
+            # domains that have mail at all (2026-09-06, LS.DNS.EmailAuth).
+            dns = Map.merge(dns, LS.DNS.EmailAuth.lookup(domain, List.wrap(dns[:mx])))
+            {domain, %{dns: dns, scores: %{}}}
           {:error, _} ->
             {domain, %{
               dns: %{a: [], aaaa: [], mx: [], txt: [], cname: []},

@@ -27,6 +27,72 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-09-06
 
+**Discovery is gated to one fetch per 7 days, and what it gates is kept.**
+`LS.Cluster.CrawlDedup` moved from two 3.5-day blooms (guaranteed 3.5, at
+most 7) to eight daily windows of 10M entries (~96MB): a crawled domain is
+suppressed for 7 to 8 days, and the recrawl scheduler, which IS the 7-day
+schedule, bypasses the gate with `enqueue(data, force: true)`. A suppressed
+certificate sighting is no longer discarded: issuer, subdomain count and
+subdomains go to the new `ctl_sightings` table (migration 020, 90-day TTL)
+from an ETS buffer the CrawlDedup GenServer flushes every 30s. Deliberately
+not `domains_history`: `domains_current` is newest-row-wins on it and a
+certificate-only row would blank a domain's DNS and HTTP columns. For the
+record, pipeline 2 (depth enrichment: catalog, contacts, careers, pricing)
+re-runs a business every 30 days (`businesses_needing_enrichment`, "NOT IN
+biz_enrichment last 30 DAY"), while pipeline 1's recrawl of the homepage is
+7 days for digital business models and 30 for the rest.
+
+**DMARC, BIMI and DKIM are looked up; the DMARC revenue signal had never
+fired.** `LS.DNS.EmailAuth` runs in the discovery DNS stage for domains
+with MX only: one `_dmarc` query, BIMI only when DMARC enforces, at most two
+DKIM selector probes chosen from the MX provider. New columns `dns_dmarc`,
+`dns_bimi`, `dns_dkim` on `domains_history` and `businesses`. The
+estimator's `signal_dmarc_policy` had scanned the apex TXT, where DMARC
+never lives, so it voted "micro" for every domain since it was written; it
+now reads the column, and BIMI (trademark + VMC) and DKIM (Microsoft 365
+selectors, marketing platforms) are new voters.
+
+**Shopify apps beyond the signature list, and what kind of store.**
+`AppDetector` reads theme-app-extension handles generically from
+`cdn.shopify.com/extensions/<id>/<handle>-<version>/` (every extension-based
+app, not only the 135 domains on the list), app-proxy pages (`/apps/...`),
+and HubSpot hub loaders (Forms, CTA, Chat, Meetings, Ads, CMS). The depth
+pass (`Agent.deep_apps/5`) scans the homepage, the secondary pages and the
+first product page of Shopify stores, and reads theme, theme store id,
+currency, locale count and a Plus hint from `window.Shopify`
+(`LS.Enrichment.ShopifyStore`). `biz_enrichment.apps_deep` is unioned into
+`businesses.http_apps` by the compactor; `shop_*` are new columns.
+
+**google.com was a "<$1M, 51-500 people" company.** Several Wikidata items
+list google.com as their official website (a school founded in 1544 among
+them; Google LLC itself was not in the fetched set), the compactor's
+`LIMIT 1 BY domain, fact, source` picked one arbitrarily, and the store page
+prefers a verified fact over the estimate. Two fixes: among same-source
+candidates the largest value now wins (a subsidiary is never bigger than
+its parent), and a verified fact that contradicts a Tranco top-10K rank
+(revenue under $10M, headcount under 50) is blanked at compaction. Both
+apply to rows as they are recompacted; run `Compactor.rebuild_sharded/1`
+to sweep the existing table. `data_contract_test` pins the invariant.
+
+**ClickHouse's own log writer was wedged for 15 days, burning one core.**
+The 08-22 03:23 UTC disk-full event (the backup-dir pile-up cleaned on
+08-24) hit ClickHouse's main log stream mid-line. The disk was freed, the
+stream never recovered: every message after that threw "File access error"
+inside the log channel and the exception plus a 25-frame stack trace went to
+stderr, so journald received millions of lines per minute and answered with
+"Suppressed ~6M messages / 30s". sar shows the cost: system CPU 6-7% and
+idle 51-61% on 08-20/21, then system 21-22% and idle 15-24% every day
+through 09-06; journald alone sat at 60-93% of a core, and the 4G journal
+only held ~35h of history because it was full of this noise. Nothing in the
+app saw it: the file was writable, ClickHouse answered queries, the site
+was up. Found on 09-06 while reading the restart journal by eye. Fixed by
+`systemctl restart clickhouse-server` at 04:42 UTC (main log writes again,
+zero suppressed messages after). Prevention still owed: a Sentinel check
+that the ClickHouse main log mtime moves while the server runs, or that
+journald reports no suppression, so a wedged logger is an email and not a
+15-day silent tax. Unrelated to the 02:30 restart below, which is memory
+inside the BEAM.
+
 **The master's daily restart, root-caused and removed: cache eviction copied
 the 5M-row CT cache into every poller worker at once.** The forensics trap
 (watch-zone snapshots to `ops_memory_snapshots`, shipped 09-05) caught the

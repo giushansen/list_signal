@@ -100,6 +100,7 @@ defmodule LS.Revenue.Estimator do
       {scores, evidence} = signal_email_provider(signals, scores, evidence)
       {scores, evidence} = signal_spf_includes(signals, scores, evidence)
       {scores, evidence} = signal_dmarc_policy(signals, scores, evidence)
+      {scores, evidence} = signal_email_auth(signals, scores, evidence)
       {scores, evidence} = signal_marketing_automation(signals, scores, evidence)
       {scores, evidence} = signal_subdomain_count(signals, scores, evidence)
       {scores, evidence} = signal_tech_count(signals, scores, evidence)
@@ -408,25 +409,82 @@ defmodule LS.Revenue.Estimator do
   end
 
   # =========================================================================
+  # SIGNAL 7b — BIMI and DKIM (2026-09-06)
+  # =========================================================================
+  # BIMI needs a registered trademark and, for Gmail/Apple display, a Verified
+  # Mark Certificate at ~$1,500/yr: a brand with a legal and marketing
+  # function, not a shop. DKIM selectors name the platforms a company sends
+  # from; Microsoft 365 selectors (selector1/2) skew to organisations with IT,
+  # and a marketing-platform selector (k1 Mailchimp, hs1 HubSpot, mte1
+  # Mailjet, cm Campaign Monitor, s1 SendGrid/Klaviyo) means a marketing
+  # budget. Reads `dns_bimi` / `dns_dkim` from LS.DNS.EmailAuth.
+  defp signal_email_auth(signals, scores, evidence) do
+    bimi = get_str(signals, :dns_bimi)
+    dkim = get_str(signals, :dns_dkim) |> String.downcase()
+    selectors = if dkim == "", do: [], else: String.split(dkim, "|", trim: true)
+
+    {scores, evidence} =
+      if bimi != "" do
+        {add(scores, :enterprise, 8) |> add(:large_enterprise, 5) |> add(:mid_market, 3),
+         [{"bimi", "record", :enterprise} | evidence]}
+      else
+        {scores, evidence}
+      end
+
+    cond do
+      selectors == [] ->
+        {scores, evidence}
+
+      Enum.any?(selectors, &(&1 in ["selector1", "selector2"])) ->
+        {add(scores, :small, 2) |> add(:mid_market, 4) |> add(:enterprise, 2),
+         [{"dkim", "microsoft365", :mid_market} | evidence]}
+
+      Enum.any?(selectors, &(&1 in ["k1", "hs1-", "mte1", "cm", "s1", "mailjet", "sendgrid", "mandrill", "smtpapi", "pm", "everlytickey1"])) ->
+        {add(scores, :small, 3) |> add(:mid_market, 3),
+         [{"dkim", "marketing_platform", :small} | evidence]}
+
+      true ->
+        {add(scores, :small, 2) |> add(:micro, 1),
+         [{"dkim", Enum.join(selectors, "+"), :small} | evidence]}
+    end
+  end
+
+  # =========================================================================
   # SIGNAL 7 — DMARC Policy
   # =========================================================================
 
+  # 2026-09-06: reads the real record. DMARC lives at `_dmarc.<domain>`, never
+  # in the apex TXT this used to scan, so for as long as this signal existed
+  # it never saw a policy and voted "micro" for every domain. `dns_dmarc` is
+  # the policy word looked up by LS.DNS.EmailAuth in the discovery pipeline;
+  # the apex TXT is kept as a fallback for rows crawled before the column
+  # existed (a sender that pastes its DMARC at the apex is rare but real).
   defp signal_dmarc_policy(signals, scores, evidence) do
+    policy = get_str(signals, :dns_dmarc) |> String.downcase()
     txt = get_str(signals, :dns_txt) |> String.downcase()
 
+    policy =
+      cond do
+        policy != "" -> policy
+        String.contains?(txt, "v=dmarc1") and String.contains?(txt, "p=reject") -> "reject"
+        String.contains?(txt, "v=dmarc1") and String.contains?(txt, "p=quarantine") -> "quarantine"
+        String.contains?(txt, "v=dmarc1") and String.contains?(txt, "p=none") -> "none"
+        true -> ""
+      end
+
     cond do
-      not String.contains?(txt, "v=dmarc1") ->
+      policy == "" ->
         {add(scores, :micro, 2), evidence}
 
-      String.contains?(txt, "p=reject") ->
+      policy == "reject" ->
         {add(scores, :mid_market, 5) |> add(:enterprise, 4) |> add(:large_enterprise, 2),
          [{"dmarc", "p=reject", :mid_market} | evidence]}
 
-      String.contains?(txt, "p=quarantine") ->
+      policy == "quarantine" ->
         {add(scores, :small, 3) |> add(:mid_market, 3),
          [{"dmarc", "p=quarantine", :small} | evidence]}
 
-      String.contains?(txt, "p=none") ->
+      policy == "none" ->
         {add(scores, :small, 2) |> add(:micro, 1),
          [{"dmarc", "p=none", :small} | evidence]}
 

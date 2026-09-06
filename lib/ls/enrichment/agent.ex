@@ -130,6 +130,14 @@ defmodule LS.Enrichment.Agent do
       if Shopify.shopify?(item[:http_tech]),
         do: Shopify.analyze(domain, ip),
         else: %{summary: %{}, products: [], collections: []}
+
+    # Apps and store shape beyond the homepage (2026-09-06). Theme app
+    # extensions for reviews, upsells, size charts, bundles and wishlists
+    # only render on product pages, so the first catalogued product page is
+    # fetched and scanned too; the visited secondary pages come for free.
+    # Nothing here touches the homepage result: `apps_deep` is unioned into
+    # http_apps by the compactor, and the shop_* columns are new.
+    deep = deep_apps(domain, ip, home, visited, shopify)
     {jobs_summary, jobs} = Jobs.analyze(domain, careers_html, ip)
     about = About.analyze(domain, careers_html, jobs, ip)
     # SEO always runs on the homepage; perf is only populated when camoufox
@@ -154,6 +162,7 @@ defmodule LS.Enrichment.Agent do
         # browser, so a row could claim "camoufox" with no perf metrics on it.
         %{domain: domain, enriched_at: now(), render_engine: home[:source]}
         |> Map.merge(shopify.summary)
+        |> Map.merge(deep)
         |> Map.merge(jobs_summary)
         |> Map.merge(about)
         |> Map.merge(seo)
@@ -163,6 +172,44 @@ defmodule LS.Enrichment.Agent do
       Logger.warning("[ENRICH] #{item[:domain]} failed: #{Exception.message(e)}")
       %{domain: item[:domain], contacts: [], jobs: [], pricing: [],
         products: [], collections: [], page_fetches: [], summary: %{}}
+  end
+
+  # ── apps beyond the homepage ───────────────────────────────────────────────
+
+  @doc false
+  # Pure given the HTML: union of apps across every page we already hold plus
+  # the product page for Shopify stores. Store metadata is read from the
+  # homepage (window.Shopify is printed on every storefront page).
+  def deep_apps(domain, ip, home, visited, shopify) do
+    pages = [home[:html] | Enum.map(visited, fn {_, r} -> r[:html] end)]
+
+    product_html =
+      case shopify[:products] do
+        # The handle is third-party data going into a request path: only a
+        # plain Shopify handle shape is ever fetched.
+        [%{handle: h} | _] when is_binary(h) and h != "" ->
+          if Regex.match?(~r/^[a-z0-9][a-z0-9._-]{0,120}$/, h) do
+            Process.sleep(@page_jitter_base_ms)
+            fetch_page(domain, ip, "/products/#{h}")[:html]
+          end
+
+        _ ->
+          nil
+      end
+
+    apps =
+      [product_html | pages]
+      |> Enum.filter(&is_binary/1)
+      |> Enum.flat_map(&LS.HTTP.AppDetector.detect(&1).apps)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.take(150)
+
+    home[:html]
+    |> LS.Enrichment.ShopifyStore.metadata()
+    |> Map.put(:apps_deep, Enum.join(apps, "|"))
+  rescue
+    _ -> Map.put(LS.Enrichment.ShopifyStore.empty(), :apps_deep, "")
   end
 
   # ── page fetching ──────────────────────────────────────────────────────────

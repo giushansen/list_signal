@@ -80,7 +80,8 @@ defmodule LS.Cluster.EnrichmentWriter do
        job_count ats_platform job_departments job_locations
        seo_score seo_issues seo_word_count seo_alt_ratio
        perf_lcp_ms perf_cls perf_ttfb_ms
-       about_text mission hq_location job_locations_top positions_overview)
+       about_text mission hq_location job_locations_top positions_overview
+       apps_deep shop_theme shop_theme_store_id shop_currency shop_locales shopify_plus)
   end
 
   # ── insertion ──────────────────────────────────────────────────────────────

@@ -7,12 +7,131 @@ defmodule LS.HTTP.AppDetector do
     html = String.downcase(body)
     apps = []
       |> detect_shopify_apps(html)
+      |> detect_shopify_extensions(html)
+      |> detect_shopify_app_proxies(html)
+      |> detect_hubspot_modules(html)
       |> detect_wp_plugins(html)
       |> Enum.uniq() |> Enum.sort()
     %{apps: apps}
   end
 
   def detect(_, _), do: %{apps: []}
+
+  # ==========================================================================
+  # SHOPIFY THEME APP EXTENSIONS - generic, no signature needed (2026-09-06)
+  # ==========================================================================
+  # Since 2022 most Shopify apps render through theme app extensions, and
+  # every one of them loads its assets from
+  #   cdn.shopify.com/extensions/<extension-uuid>/<app-handle>-<version>/assets/...
+  # The handle is the app's own name, so ONE regex finds every extension-based
+  # app on the page, including the thousands the signature list above will
+  # never contain. Measured on a sample of live stores before this shipped:
+  # the signature list found 0-3 apps per store, the extension path 2-9.
+  @extension_re ~r|cdn\.shopify\.com/extensions/[0-9a-f-]+/([a-z0-9][a-z0-9-]{1,60}?)-\d+(?:[.\-]\d+)*/|
+  # A few handles are Shopify's own runtime, not a merchant-installed app.
+  @shopify_own_handles ~w(shopify shop-app shop-pay shopify-payments shop-promise shopify-inbox)
+
+  @doc "App handles read from theme-app-extension asset URLs; pure."
+  @spec extension_handles(String.t()) :: [String.t()]
+  def extension_handles(html) when is_binary(html) do
+    @extension_re
+    |> Regex.scan(String.downcase(html), capture: :all_but_first)
+    |> Enum.map(&hd/1)
+    |> Enum.reject(&(&1 in @shopify_own_handles))
+    |> Enum.uniq()
+    |> Enum.take(100)
+  end
+
+  def extension_handles(_), do: []
+
+  defp detect_shopify_extensions(acc, html) do
+    html
+    |> extension_handles()
+    |> Enum.map(&humanize_handle/1)
+    |> Kernel.++(acc)
+  end
+
+  # "judgeme-core" -> "Judgeme Core"; keeps names stable across versions.
+  @doc false
+  def humanize_handle(handle) do
+    handle
+    |> String.split("-", trim: true)
+    |> Enum.map_join(" ", &String.capitalize/1)
+  end
+
+  # ==========================================================================
+  # SHOPIFY APP PROXIES - /apps/<subpath> links (2026-09-06)
+  # ==========================================================================
+  # Apps that serve pages inside the storefront (wishlists, loyalty pages,
+  # bundle builders, store locators, reviews pages) do it through an app proxy
+  # at /apps/<subpath>, /a/<subpath>, /community/<subpath> or /tools/<subpath>.
+  # The subpath is chosen by the app, so it names the app or its function.
+  @proxy_re ~r|href=["'](?:https?://[^/"']+)?/(?:apps\|a\|tools\|community)/([a-z0-9][a-z0-9_-]{1,40})|
+  @proxy_names %{
+    "wishlist" => "Wishlist App Proxy", "loyalty" => "Loyalty App Proxy", "rewards" => "Loyalty App Proxy",
+    "reviews" => "Reviews App Proxy", "bundles" => "Bundles App Proxy", "bundle" => "Bundles App Proxy",
+    "store-locator" => "Store Locator App Proxy", "locator" => "Store Locator App Proxy",
+    "gift-registry" => "Gift Registry App Proxy", "subscriptions" => "Subscriptions App Proxy",
+    "trade-in" => "Trade-in App Proxy", "returns" => "Returns Portal App Proxy",
+    "referrals" => "Referral App Proxy", "affiliate" => "Affiliate App Proxy",
+    "size-chart" => "Size Chart App Proxy", "quiz" => "Product Quiz App Proxy", "faq" => "FAQ App Proxy"
+  }
+
+  @doc "App-proxy subpaths linked from the page; pure."
+  @spec app_proxy_paths(String.t()) :: [String.t()]
+  def app_proxy_paths(html) when is_binary(html) do
+    @proxy_re
+    |> Regex.scan(String.downcase(html), capture: :all_but_first)
+    |> Enum.map(&hd/1)
+    |> Enum.uniq()
+    |> Enum.take(50)
+  end
+
+  def app_proxy_paths(_), do: []
+
+  defp detect_shopify_app_proxies(acc, html) do
+    html
+    |> app_proxy_paths()
+    |> Enum.flat_map(fn sub ->
+      case Map.get(@proxy_names, sub) do
+        nil -> []
+        name -> [name]
+      end
+    end)
+    |> Kernel.++(acc)
+  end
+
+  # ==========================================================================
+  # HUBSPOT MODULES (2026-09-06)
+  # ==========================================================================
+  # HubSpot has no client-side "app store" footprint the way Shopify does, but
+  # each hub a customer pays for leaves its own loader on the page. The hub
+  # mix is the closest thing to "which HubSpot apps": forms and CTAs are
+  # Marketing Hub, chat is Service/Sales Hub, meetings is Sales Hub, and a
+  # page served from hs-sites/hubspotusercontent is CMS Hub.
+  @hubspot_markers [
+    {"js.hs-scripts.com", "HubSpot Tracking"},
+    {"js.hs-analytics.net", "HubSpot Tracking"},
+    {"js.hsforms.net", "HubSpot Forms"},
+    {"hbspt.forms.create", "HubSpot Forms"},
+    {"js.hscta.net", "HubSpot CTA"},
+    {"hbspt.cta.load", "HubSpot CTA"},
+    {"js.usemessages.com", "HubSpot Chat"},
+    {"hubspotconversations", "HubSpot Chat"},
+    {"meetings.hubspot.com", "HubSpot Meetings"},
+    {"js.hsadspixel.net", "HubSpot Ads"},
+    {"hs-sites.com", "HubSpot CMS"},
+    {"hubspotusercontent", "HubSpot CMS"},
+    {"hs-banner.com", "HubSpot Cookie Banner"},
+    {"js.hubspotfeedback.com", "HubSpot Feedback"},
+    {"js.hs-analytics.net/analytics", "HubSpot Tracking"}
+  ]
+
+  defp detect_hubspot_modules(acc, html) do
+    Enum.reduce(@hubspot_markers, acc, fn {marker, name}, a ->
+      if c?(html, marker), do: [name | a], else: a
+    end)
+  end
 
   @shopify_domains [
     # Reviews & UGC (sorted by install count)

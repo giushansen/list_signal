@@ -74,6 +74,26 @@ defmodule LS.DataContractTest do
              "values actually present: #{inspect(counts |> Map.keys() |> Enum.sort())}"
   end
 
+  describe "verified facts agree with observed traffic (2026-09-06)" do
+    # google.com carried verified_revenue "<$1M" and 51-500 employees from a
+    # Wikidata item whose official website is google.com. The compactor now
+    # blanks a verified fact that contradicts a Tranco top-10K rank; this
+    # holds once every such row has been recompacted.
+    test "no top-1K Tranco business is verified as a company under $10M or under 50 people" do
+      with_clickhouse(fn ->
+        {:ok, [[n]]} =
+          Clickhouse.query_raw("""
+          SELECT count() FROM businesses FINAL
+          WHERE tranco_rank <= 1000
+            AND (verified_revenue IN ('<$1M', '$1M-$10M') OR verified_employees IN ('1-10', '11-50'))
+          """)
+
+        # ClickHouse returns counts as strings over JSON.
+        assert to_string(n) == "0", "#{n} top-1K businesses still carry an implausible verified fact (recompaction pending?)"
+      end)
+    end
+  end
+
   describe "filter options select real rows" do
     test "every revenue bracket the dropdown offers" do
       with_clickhouse(fn ->

@@ -66,7 +66,7 @@ defmodule LS.PipelineTest do
   end
 
   describe "column count" do
-    test "inserter has 59 columns matching schema" do
+    test "inserter has 62 columns matching schema (59 + dns_dmarc, dns_bimi, dns_dkim on 2026-09-06)" do
       # 55 + is_junk (004_is_junk.sql)
       #    + http_country_evidence, http_country_evidence_src,
       #      rdap_registrant_country (018_country_evidence.sql)
@@ -75,7 +75,7 @@ defmodule LS.PipelineTest do
       # table. A mismatch shifts every value one column to the left and
       # writes a whole batch of garbage, so the number is asserted rather
       # than trusted.
-      assert length(LS.Cluster.Inserter.columns()) == 59
+      assert length(LS.Cluster.Inserter.columns()) == 62
     end
   end
 end

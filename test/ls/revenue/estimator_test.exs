@@ -17,6 +17,50 @@ defmodule LS.Revenue.EstimatorTest do
     |> Map.merge(overrides)
   end
 
+  # Enough independent evidence to clear the estimator's minimum, so one
+  # more signal shows up in revenue_evidence instead of an empty result.
+  defp rich do
+    signals(%{
+      tranco_rank: 40_000, majestic_rank: 30_000, majestic_ref_subnets: 600,
+      rdap_registrar: "GoDaddy.com, LLC", ctl_issuer: "R3", dns_mx: "10:aspmx.l.google.com",
+      http_tech: "React|Nginx|Cloudflare", http_apps: "Klaviyo", ctl_subdomain_count: 12
+    })
+  end
+
+  describe "email authentication records (2026-09-06)" do
+    # The DMARC signal read the apex TXT since it was written; DMARC lives at
+    # _dmarc.<domain>, so it never fired and every domain got a "micro" vote.
+    test "a DMARC reject policy from dns_dmarc is evidence, not a micro vote" do
+      base = rich()
+      with_policy = Estimator.estimate(Map.put(base, :dns_dmarc, "reject"))
+      assert with_policy.revenue_evidence =~ "dmarc:p=reject"
+      refute Estimator.estimate(base).revenue_evidence =~ "dmarc:p="
+    end
+
+    test "the apex TXT is still honoured for rows crawled before the column existed" do
+      r = Estimator.estimate(Map.put(rich(), :dns_txt, "v=DMARC1; p=quarantine"))
+      assert r.revenue_evidence =~ "dmarc:p=quarantine"
+    end
+
+    test "BIMI is an enterprise-leaning signal, DKIM names the sending platform" do
+      base = rich()
+      bimi = Estimator.estimate(Map.merge(base, %{dns_bimi: "https://cdn.example.com/logo.svg"}))
+      assert bimi.revenue_evidence =~ "bimi:record"
+
+      m365 = Estimator.estimate(Map.merge(base, %{dns_dkim: "selector1|selector2"}))
+      assert m365.revenue_evidence =~ "dkim:microsoft365"
+
+      mkt = Estimator.estimate(Map.merge(base, %{dns_dkim: "google|k1"}))
+      assert mkt.revenue_evidence =~ "dkim:marketing_platform"
+    end
+
+    test "hostile values never raise" do
+      for bad <- [nil, 42, <<255>>, String.duplicate("|", 10_000)] do
+        assert %{} = Estimator.estimate(signals(%{http_status: 200, dns_dmarc: bad, dns_bimi: bad, dns_dkim: bad}))
+      end
+    end
+  end
+
   describe "edge cases" do
     test "nil input → empty result" do
       r = Estimator.estimate(nil)

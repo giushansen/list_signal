@@ -1294,7 +1294,12 @@ defmodule LS.Clickhouse do
            EVERY compaction pass and froze `businesses` for 12h on 2026-08-19. */
         SELECT domain, fact, source, value, fetched_at
         FROM verified_facts#{join_scope}
-        ORDER BY fetched_at DESC
+        /* Same fetch, several entities (a parent company, its products and
+           subsidiaries all list the parent's website): the largest wins.
+           A subsidiary is never bigger than its parent, and the arbitrary
+           pick this used to make is how google.com became a 3-person
+           company (2026-09-06). */
+        ORDER BY fetched_at DESC, toFloat64OrZero(value) DESC
         LIMIT 1 BY domain, fact, source
       )
     )
@@ -1352,7 +1357,7 @@ defmodule LS.Clickhouse do
       end
 
     """
-    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
+    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
     SELECT
       h.domain AS domain,
       h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
@@ -1368,8 +1373,16 @@ defmodule LS.Clickhouse do
       h.dns_alive,
       h.ctl_tld, h.ctl_issuer, h.ctl_subdomain_count, h.ctl_subdomains,
       h.dns_a, h.dns_aaaa, h.dns_mx, h.dns_txt, h.dns_cname,
+      h.dns_dmarc, h.dns_bimi, h.dns_dkim,
       h.http_status, h.http_response_time, h.http_blocked, h.http_content_type,
-      h.http_tech, h.http_apps, h.http_language, h.http_title,
+      h.http_tech,
+      -- Apps seen on the homepage at discovery, unioned with what the depth
+      -- pass found on the product/collection pages (2026-09-06: theme app
+      -- extensions, app proxies, HubSpot hubs). s.apps_deep is NULL without
+      -- an enrichment row (join_use_nulls), hence the ifNull.
+      arrayStringConcat(arrayDistinct(arrayFilter(x -> x != '',
+        arrayConcat(splitByChar('|', h.http_apps), splitByChar('|', ifNull(s.apps_deep, ''))))), '|') AS http_apps,
+      h.http_language, h.http_title,
       h.http_meta_description, h.http_pages, h.http_emails, h.http_h1,
       h.business_model, h.industry, h.classification_confidence,
       h.http_schema_type, h.http_og_type,
@@ -1395,7 +1408,18 @@ defmodule LS.Clickhouse do
       s.render_engine, s.enriched_at_newest AS depth_enriched_at,
       s.about_text, s.mission, s.hq_location, s.job_locations_top, s.positions_overview,
       p.pricing_points, n.news_count, n.last_funding_usd,
-      v.verified_revenue, v.verified_revenue_source, v.verified_employees, v.verified_employees_source, v.mission_summary
+      s.shop_theme, s.shop_theme_store_id, s.shop_currency, s.shop_locales, s.shopify_plus,
+      -- A verified fact that contradicts observed traffic is a wrong entity,
+      -- not a fact (2026-09-06: google.com carried "<$1M / 51-500" from a
+      -- Wikidata item whose official website is google.com; several such
+      -- items exist and the pick was arbitrary). A Tranco top-10K site is
+      -- not a company under $10M or under 50 people; blank the fact and let
+      -- the estimator, which reads the rank, speak.
+      if(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'), '', v.verified_revenue) AS verified_revenue,
+      if(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'), '', v.verified_revenue_source) AS verified_revenue_source,
+      if(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50'), '', v.verified_employees) AS verified_employees,
+      if(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50'), '', v.verified_employees_source) AS verified_employees_source,
+      v.mission_summary
     FROM (
       SELECT s_domain AS domain,
         min(s_enriched_at) AS first_seen,
@@ -1452,6 +1476,9 @@ defmodule LS.Clickhouse do
         argMaxIf(s_dns_mx, s_enriched_at, s_dns_mx != '') AS dns_mx,
         argMaxIf(s_dns_txt, s_enriched_at, s_dns_txt != '') AS dns_txt,
         argMaxIf(s_dns_cname, s_enriched_at, s_dns_cname != '') AS dns_cname,
+        argMaxIf(s_dns_dmarc, s_enriched_at, s_dns_mx != '') AS dns_dmarc,
+        argMaxIf(s_dns_bimi, s_enriched_at, s_dns_mx != '') AS dns_bimi,
+        argMaxIf(s_dns_dkim, s_enriched_at, s_dns_mx != '') AS dns_dkim,
         argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
         argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
         argMaxIf(s_http_country_evidence, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence,
@@ -1467,7 +1494,7 @@ defmodule LS.Clickhouse do
         -- above: a parked domain that comes back to life must clear the flag,
         -- and a real site that dies into a parking page must gain it.
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
+      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
       #{scope}
       GROUP BY s_domain
       HAVING (is_malware = '' AND is_phishing = '')
@@ -1508,6 +1535,12 @@ defmodule LS.Clickhouse do
            next full crawl that finds a replacement. Cheap next to the numeric
            columns, which are what buyers filter on. */
         argMaxIf(product_types, enriched_at, product_types != '') AS product_types,
+        argMaxIf(apps_deep, enriched_at, apps_deep != '') AS apps_deep,
+        argMaxIf(shop_theme, enriched_at, shop_theme != '') AS shop_theme,
+        argMaxIf(shop_theme_store_id, enriched_at, shop_theme_store_id IS NOT NULL) AS shop_theme_store_id,
+        argMaxIf(shop_currency, enriched_at, shop_currency != '') AS shop_currency,
+        argMaxIf(shop_locales, enriched_at, shop_locales IS NOT NULL) AS shop_locales,
+        argMaxIf(shopify_plus, enriched_at, shopify_plus IS NOT NULL) AS shopify_plus,
         argMaxIf(ats_platform, enriched_at, ats_platform != '') AS ats_platform,
         argMaxIf(job_departments, enriched_at, job_departments != '') AS job_departments,
         argMaxIf(job_locations, enriched_at, job_locations != '') AS job_locations,

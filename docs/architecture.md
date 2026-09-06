@@ -132,6 +132,20 @@ module's docs.
 - Every run is logged with URL, snapshot, byte and record counts and matches
   per tier; downloaded snapshots live under `/home/ls/verification/<source>/<date>/`.
 
+## The 7-day gate and certificate sightings (2026-09-06)
+
+`LS.Cluster.CrawlDedup` keeps eight daily bloom windows (10M entries each,
+~96MB): a domain enqueued from a CT log is crawled at most once every 7 days
+and released by day 8. The recrawl scheduler bypasses the gate
+(`WorkQueue.enqueue(data, force: true)`) because it is the schedule. A
+suppressed sighting is appended to `ctl_sightings` (issuer, subdomains,
+90-day TTL) instead of being dropped, never to `domains_history`, whose
+newest-row-wins projection would blank the domain's other columns.
+
+Discovery's DNS stage also resolves DMARC, BIMI and DKIM
+(`LS.DNS.EmailAuth`, MX domains only, at most four small TXT lookups) into
+`dns_dmarc` / `dns_bimi` / `dns_dkim`, which the revenue estimator reads.
+
 ## Recrawl
 
 `LS.Recrawl.Scheduler` (master) re-enqueues stale domains every 6h:
