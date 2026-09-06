@@ -132,3 +132,34 @@ Baseline at freeze (`mix ls.golden_eval`, prod predictions at sampling time):
   the domains we actually sell.
 
 Frozen BEFORE any model/estimator tuning, per the working agreement.
+
+## v5 (2026-09-06) — Shopify/SaaS/online-heavy, Fable-labeled, with employees
+
+`golden_set_v5_2026-09-06.csv` — **320 domains**, sampled from `businesses`
+(alive, `http_status=200`, `dns_alive=1`, `is_junk=''`, non-empty title) by
+`cityHash64(concat(domain,'gv5'))` order within strata, every v1-v4 and
+teacher-labeled domain excluded. Strata: shopify 110, saas 70, ecommerce
+(non-Shopify) 40, online (Marketplace/Tool/Media/Newsletter/Community/
+Directory) 45, bigco (verified $10M+/501+ or Tranco <= 50K) 30, offline 25.
+The same pool's remainder (740 domains) became the distill v3 teacher set
+(`analysis/distill/teacher_labels_v3_2026-09-06.jsonl`); the two never
+overlap.
+
+Labeling: Claude Fable 5.1 agents, one batch of 50 per agent, each domain's
+homepage fetched live plus the stored HINTS (tech, apps, MX, DMARC, Shopify
+product count, verified facts) as scale evidence; raw output in
+`gv5_labels/batch_*.jsonl`. New column `true_employees`. Notes prefixed
+`AI:` and record whether the fetch worked. 100% LLM-authored: LLM-assisted
+ground truth, like v1/v2/v4.
+
+Baseline at freeze (`mix ls.golden_eval`, prod predictions at sampling time,
+all 320 rows): junk 15.6%; Ecommerce precision 68.5% (n=146), SaaS 63.5%
+(n=52), Agency 57.1%, Media 45.5%, Consulting 41.7%; high-confidence band
+76.5% (n=166) vs low 36.5% (n=104); revenue exact-bracket 69.3% (n=261).
+Sampled and frozen BEFORE head v3 and the 2026-09-06 estimator signals
+reached production (label-only commit).
+
+Recurring pipeline errors the labelers flagged: Shopify carts on
+LocalBusiness sites (bakery pickup, single bottle shop, takeaway) labeled
+Ecommerce; "Community" used as a catch-all for small organisations; frozen
+Shopify stores (HTTP 402) and "Opening soon" shells counted as businesses.
