@@ -281,6 +281,35 @@ defmodule LS.Pipeline do
   # ===========================================================================
 
   @doc """
+  Did this HTTP result actually observe the site? (2026-09-06)
+
+  1 when the fetch succeeded (2xx/3xx), was not a recognised block, carried
+  at least 200 characters of visible text, and its title is not one of the
+  stub signatures (bot wall, redirect shell, directory index). 0 otherwise,
+  including for failed fetches. Stored as `domains_history.http_observed`
+  and read by `LS.Clickhouse.observed_sql/1`: the change-event producer and
+  the compactor's technology fold only trust observed rows. Pure.
+  """
+  @spec observed?(map() | nil) :: 0 | 1
+  def observed?(http) when is_map(http) do
+    status = http[:http_status]
+    body = http[:_body_text] || http[:http_body_snippet] || ""
+    title = (http[:http_title] || "") |> to_string() |> String.downcase() |> String.trim()
+
+    cond do
+      not is_integer(status) or status < 200 or status > 399 -> 0
+      (http[:http_blocked] || "") != "" -> 0
+      not is_binary(body) or String.length(body) < 200 -> 0
+      Regex.match?(~r/^(just a moment|bot verification|redirecting|you are being redirected|attention required|access denied|index of \/)/, title) -> 0
+      true -> 1
+    end
+  rescue
+    _ -> 0
+  end
+
+  def observed?(_), do: 0
+
+  @doc """
   Build a complete enrichment row from DNS/HTTP/BGP/RDAP results.
   Used by both Pipeline.run (ctl defaults to %{}) and WorkerAgent (passes CTL data).
   """
@@ -369,6 +398,7 @@ defmodule LS.Pipeline do
       dns_dkim: d[:dkim] || "",
       dns_ptr: d[:ptr] || "",
       dns_ms_enterprise: d[:ms_enterprise] || "",
+      http_observed: observed?(http),
       http_status: http[:http_status],
       http_response_time: http[:http_response_time],
       http_blocked: http[:http_blocked] || "",

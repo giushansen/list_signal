@@ -136,7 +136,7 @@ defmodule LS.BizSignalTest do
     with_ch(fn ->
       now = System.system_time(:second)
       q("INSERT INTO businesses (domain, first_seen, as_of, http_tech, http_apps, job_count) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify|Klaviyo', '', 0)")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_title, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Cloudflare', 'Just a moment...', 'checking your browser')")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_title, http_observed) VALUES ('#{@d}', now(), 200, 'Cloudflare', 'Just a moment...', 0)")
       assert :ok = Clickhouse.record_signals(now - 300, now + 60)
       assert signals() == [], "a bot wall served as 200 must not emit tech_removed"
 

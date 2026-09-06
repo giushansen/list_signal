@@ -15,20 +15,39 @@ defmodule LS.Cluster.SignalObservationTest do
 
   @src File.read!("lib/ls/clickhouse.ex")
 
-  test "the observation predicate names the stub signatures the sample found" do
+  test "the predicate reads the stored flag, never the 500-byte snippet (compaction stayed under its ceiling)" do
     sql = LS.Clickhouse.observed_sql()
-    assert sql =~ "http_status BETWEEN 200 AND 399"
-    assert sql =~ "http_blocked = ''"
-    assert sql =~ "length(http_body_snippet) >= 200"
-    for t <- ["just a moment", "bot verification", "redirecting", "attention required", "index of /"] do
-      assert sql =~ t
-    end
+    assert sql == "(http_status BETWEEN 200 AND 399 AND http_observed = 1)"
+    refute sql =~ "http_body_snippet"
+    assert LS.Clickhouse.observed_sql("s_") == "(s_http_status BETWEEN 200 AND 399 AND s_http_observed = 1)"
   end
 
-  test "a prefix rewrites every column reference, for the compactor's s_ subselect" do
-    sql = LS.Clickhouse.observed_sql("s_")
-    assert sql =~ "s_http_status" and sql =~ "s_http_blocked" and sql =~ "s_http_body_snippet" and sql =~ "s_http_title"
-    refute sql =~ ~r/[^_]http_status/
+  describe "LS.Pipeline.observed?/1 is the rule, computed once at insert time" do
+    test "a real page is observed" do
+      assert LS.Pipeline.observed?(%{http_status: 200, http_blocked: "", _body_text: String.duplicate("word ", 60), http_title: "Acme Inc"}) == 1
+    end
+
+    test "the stub signatures the sample found are not" do
+      base = %{http_status: 200, http_blocked: "", _body_text: String.duplicate("word ", 60), http_title: "Acme"}
+      assert LS.Pipeline.observed?(%{base | _body_text: "checking your browser"}) == 0
+      assert LS.Pipeline.observed?(%{base | http_title: "Just a moment..."}) == 0
+      assert LS.Pipeline.observed?(%{base | http_title: "Index of /"}) == 0
+      assert LS.Pipeline.observed?(%{base | http_title: "Redirecting..."}) == 0
+      assert LS.Pipeline.observed?(%{base | http_blocked: "cloudflare"}) == 0
+      assert LS.Pipeline.observed?(%{base | http_status: 403}) == 0
+      assert LS.Pipeline.observed?(%{base | http_status: nil}) == 0
+    end
+
+    test "hostile input is unobserved, never a crash" do
+      assert LS.Pipeline.observed?(nil) == 0
+      assert LS.Pipeline.observed?(%{http_status: 200, _body_text: <<255, 0>>, http_title: 42}) in [0, 1]
+      assert LS.Pipeline.observed?(%{http_status: "200"}) == 0
+    end
+
+    test "every discovery row carries the flag" do
+      assert :http_observed in LS.Cluster.Inserter.columns()
+      assert File.read!("lib/ls/pipeline.ex") =~ "http_observed: observed?(http),"
+    end
   end
 
   test "record_signals, the backfill and the compactor fold all use it" do
@@ -42,9 +61,6 @@ defmodule LS.Cluster.SignalObservationTest do
 
     assert @src =~ "argMaxIf(s_http_tech, s_enriched_at, \#{observed_sql(\"s_\")}) AS http_tech"
     assert @src =~ "argMaxIf(s_http_apps, s_enriched_at, \#{observed_sql(\"s_\")}) AS http_apps"
-    # Only the first 200 bytes travel through the aggregation: the predicate
-    # needs "at least 200", not the text, and 500 bytes per history row was
-    # measurable on the compaction pass.
-    assert @src =~ "substring(http_body_snippet, 1, 200) AS s_http_body_snippet"
+    assert @src =~ "http_observed AS s_http_observed"
   end
 end

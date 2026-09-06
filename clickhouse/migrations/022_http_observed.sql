@@ -1,0 +1,21 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 022 — http_observed: did this crawl actually observe the site? (2026-09-06)
+--
+-- STATUS: apply BEFORE deploying the release that writes it. Additive, safe
+-- on a LIVE app.
+--
+-- WHY
+--   13.3% of "started showing" and 16.6% of "stopped showing" change events
+--   came from stub crawls (bot wall served as 200, redirect shell, empty
+--   body): recorded as "not present" instead of "not observed". The first
+--   fix expressed the rule in SQL over http_body_snippet, and reading that
+--   500-byte column for every history row of every touched domain made the
+--   compaction pass exceed its 590s ceiling on every run (businesses went an
+--   hour stale). The rule is now computed ONCE, at insert time, by
+--   LS.Pipeline.observed?/1, and stored as one byte.
+--
+-- DEFAULT 1 for existing rows: history keeps the behaviour it had (every
+-- successful crawl counted), new rows carry the real flag, and a domain's
+-- stub rows are outweighed as it is recrawled.
+-- ═══════════════════════════════════════════════════════════════════════════
+ALTER TABLE ls.domains_history ADD COLUMN IF NOT EXISTS http_observed UInt8 DEFAULT 1;
