@@ -139,6 +139,7 @@ defmodule LSWeb.ExplorerLive do
       |> Map.new(fn key ->
         {key, params[Atom.to_string(key)] || Map.get(socket.assigns.filters, key, "")}
       end)
+      |> prune_hidden_depth()
 
     socket =
       socket
@@ -298,7 +299,7 @@ defmodule LSWeb.ExplorerLive do
         else: MapSet.put(current_values, value)
 
     new_filter = new_values |> MapSet.to_list() |> Enum.sort() |> Enum.join(",")
-    filters = Map.put(socket.assigns.filters, field_atom, new_filter)
+    filters = Map.put(socket.assigns.filters, field_atom, new_filter) |> prune_hidden_depth()
 
     socket =
       socket
@@ -310,7 +311,7 @@ defmodule LSWeb.ExplorerLive do
 
   def handle_event("clear_filter", %{"field" => field}, socket) do
     field_atom = String.to_existing_atom(field)
-    filters = Map.put(socket.assigns.filters, field_atom, "")
+    filters = Map.put(socket.assigns.filters, field_atom, "") |> prune_hidden_depth()
 
     socket =
       socket
@@ -331,7 +332,7 @@ defmodule LSWeb.ExplorerLive do
       |> Enum.reject(&(&1 == value))
       |> Enum.join(",")
 
-    filters = Map.put(socket.assigns.filters, field_atom, new_filter)
+    filters = Map.put(socket.assigns.filters, field_atom, new_filter) |> prune_hidden_depth()
 
     socket =
       socket
@@ -559,26 +560,53 @@ defmodule LSWeb.ExplorerLive do
 
   def segments, do: @segments
 
-  # Which depth controls make sense for what the user has already chosen.
-  # :commerce -> catalogue and price band; :saas -> published pricing;
-  # :any -> nothing narrowed yet, so offer everything; :none -> keep the
-  # toolbar quiet until they have told us something.
-  defp filter_shape(filters) do
-    model = Map.get(filters, :business_model, "")
-    tech = Map.get(filters, :tech, "")
-    depth_in_use? = Enum.any?(~w(has_email hiring has_pricing has_catalog min_products max_products
-                                 min_price_avg max_price_avg min_seo_score max_seo_score)a,
-                              &(Map.get(filters, &1, "") != ""))
+  @commerce_fields ~w(has_catalog min_products max_products min_price_avg max_price_avg)a
+  @saas_fields ~w(has_pricing)a
 
-    commerce? = model =~ ~r/shopify|ecommerce/i or tech =~ ~r/shopify|woocommerce|magento|bigcommerce/i
-    saas? = model =~ ~r/saas|tool|marketplace/i
+  @doc """
+  Which depth controls belong on the toolbar for the business type already
+  chosen. `:commerce` adds catalogue size and price band, `:saas` adds
+  published pricing, `:base` is the row every search gets: reachable email,
+  hiring and SEO score.
+
+  The row itself is always shown. Until 2026-09-06 it was hidden until a
+  business model or tech was picked, which is where the "Hiring" and "SEO"
+  toggles, the two that apply to every business, went unfound. The
+  type-specific controls stay gated: a catalogue filter in front of a SaaS
+  search is noise, and a pricing-page filter in front of a Shopify search
+  is meaningless.
+  """
+  @spec filter_shape(map()) :: :commerce | :saas | :base
+  def filter_shape(filters) do
+    model = Map.get(filters, :business_model, "") || ""
+    tech = Map.get(filters, :tech, "") || ""
 
     cond do
-      commerce? -> :commerce
-      saas? -> :saas
-      model != "" or tech != "" or depth_in_use? -> :any
-      true -> :none
+      model =~ ~r/shopify|ecommerce/i or tech =~ ~r/shopify|woocommerce|magento|bigcommerce/i -> :commerce
+      model =~ ~r/saas|tool|marketplace/i -> :saas
+      true -> :base
     end
+  end
+
+  @doc """
+  Blanks the depth filters whose control is not on the toolbar for this
+  filter set. A filter with no visible control would keep narrowing the
+  results after the user switched business type, with nothing on screen to
+  explain the count: a "min products 10" left over from a Shopify search
+  would silently empty a SaaS list.
+  """
+  @spec prune_hidden_depth(map()) :: map()
+  def prune_hidden_depth(filters) do
+    hidden =
+      case filter_shape(filters) do
+        :commerce -> @saas_fields
+        :saas -> @commerce_fields
+        :base -> @commerce_fields ++ @saas_fields
+      end
+
+    Enum.reduce(hidden, filters, fn field, acc ->
+      if Map.has_key?(acc, field), do: Map.put(acc, field, ""), else: acc
+    end)
   end
 
   defp default_filters do
@@ -647,7 +675,12 @@ defmodule LSWeb.ExplorerLive do
       tech: "Tech", shopify_app: "Shopify Apps", country: "Country",
       business_model: "Business", industry: "Industry", revenue: "Revenue",
       employees: "Employees", language: "Language", freshness: "Freshness",
-      discovered: "Discovered"
+      discovered: "Discovered",
+      has_email: "Email", hiring: "Hiring", has_pricing: "Pricing", has_catalog: "Catalogue",
+      min_products: "Min products", max_products: "Max products",
+      min_price_avg: "Min avg $", max_price_avg: "Max avg $",
+      min_seo_score: "Min SEO", max_seo_score: "Max SEO",
+      min_new_products_30d: "New products 30d", ats_platform: "ATS"
     }
 
     filters
@@ -876,48 +909,47 @@ defmodule LSWeb.ExplorerLive do
             <% end %>
           </div>
 
-          <%!-- Depth filters, shown only when they apply.
-               A commerce filter set in front of someone searching SaaS is
-               noise they have to read past every time; a pricing-page filter
-               in front of a Shopify search is meaningless. So the row follows
-               the business type already chosen above. --%>
+          <%!-- Depth filters. The row is always there; the type-specific
+               controls follow the business type chosen above (see
+               filter_shape/1). A commerce filter set in front of someone
+               searching SaaS is noise they have to read past every time; a
+               pricing-page filter in front of a Shopify search is
+               meaningless. --%>
           <% shape = filter_shape(@filters) %>
-          <%= if shape != :none do %>
-            <div class="flex items-center gap-2 flex-wrap text-[12px]">
-              <span class="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Depth</span>
+          <div class="flex items-center gap-2 flex-wrap text-[12px]">
+            <span class="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Depth</span>
 
-              <.toggle_filter label="Has email" field="has_email" filters={@filters} />
-              <.toggle_filter label="Hiring" field="hiring" filters={@filters} />
+            <.toggle_filter label="Has email" field="has_email" filters={@filters} />
+            <.toggle_filter label="Hiring" field="hiring" filters={@filters} />
 
-              <%= if shape in [:saas, :any] do %>
-                <.toggle_filter label="Has pricing" field="has_pricing" filters={@filters} />
-              <% end %>
+            <%= if shape == :saas do %>
+              <.toggle_filter label="Has pricing" field="has_pricing" filters={@filters} />
+            <% end %>
 
-              <%= if shape in [:commerce, :any] do %>
-                <.toggle_filter label="With catalogue" field="has_catalog" filters={@filters} />
-                <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
-                  <span class="text-gray-500">Products</span>
-                  <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-                  <span class="text-gray-600">-</span>
-                  <input type="number" name="max_products" value={@filters.max_products} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-                </div>
-
-                <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
-                  <span class="text-gray-500">Avg $</span>
-                  <input type="number" name="min_price_avg" value={@filters.min_price_avg} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-                  <span class="text-gray-600">-</span>
-                  <input type="number" name="max_price_avg" value={@filters.max_price_avg} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
-                </div>
-              <% end %>
+            <%= if shape == :commerce do %>
+              <.toggle_filter label="With catalogue" field="has_catalog" filters={@filters} />
+              <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+                <span class="text-gray-500">Products</span>
+                <input type="number" name="min_products" value={@filters.min_products} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+                <span class="text-gray-600">-</span>
+                <input type="number" name="max_products" value={@filters.max_products} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
+              </div>
 
               <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
-                <span class="text-gray-500">SEO</span>
-                <input type="number" name="min_seo_score" value={@filters.min_seo_score} form="filter_form" phx-debounce="500" placeholder="min" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+                <span class="text-gray-500">Avg $</span>
+                <input type="number" name="min_price_avg" value={@filters.min_price_avg} form="filter_form" phx-debounce="500" placeholder="min" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
                 <span class="text-gray-600">-</span>
-                <input type="number" name="max_seo_score" value={@filters.max_seo_score} form="filter_form" phx-debounce="500" placeholder="max" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+                <input type="number" name="max_price_avg" value={@filters.max_price_avg} form="filter_form" phx-debounce="500" placeholder="max" class="w-14 bg-transparent text-white text-[12px] focus:outline-none" />
               </div>
+            <% end %>
+
+            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+              <span class="text-gray-500">SEO</span>
+              <input type="number" name="min_seo_score" value={@filters.min_seo_score} form="filter_form" phx-debounce="500" placeholder="min" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
+              <span class="text-gray-600">-</span>
+              <input type="number" name="max_seo_score" value={@filters.max_seo_score} form="filter_form" phx-debounce="500" placeholder="max" class="w-12 bg-transparent text-white text-[12px] focus:outline-none" />
             </div>
-          <% end %>
+          </div>
 
           <%!-- Active filter tags, clearable --%>
           <%= if active_filter_tags(@filters) != [] do %>

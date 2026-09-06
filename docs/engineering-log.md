@@ -27,6 +27,20 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-09-06
 
+**The dashboard's depth row is always on screen.** `/dashboard` hid the
+whole Depth row (email, hiring, pricing, catalogue, SEO) until a business
+model or tech was chosen, so the two filters that apply to every business,
+Hiring and SEO, were unreachable from a fresh page. The row now always
+shows; the type-specific controls still follow the chosen type
+(`LSWeb.ExplorerLive.filter_shape/1`): catalogue and price band only for a
+commerce model or platform, published pricing only for SaaS. Switching type
+blanks the filters whose control just disappeared
+(`prune_hidden_depth/1`), on every path that can change the type (form,
+dropdown, tag removal, column clear), so a leftover "min products 10" can
+never silently empty a SaaS list. The results table keeps its Products and
+Avg $ columns; only the filter controls are gated. Pinned by
+`test/ls_web/live/explorer_depth_toolbar_test.exs`.
+
 **Subdomains are now a union, and the depth pass estimates revenue with
 everything it knows.** `businesses.ctl_subdomains` used to be the newest
 certificate's SAN list; it is now the distinct union over every certificate
