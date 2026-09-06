@@ -85,8 +85,10 @@ defmodule LS.Cluster.WorkQueue do
   `LS.Cluster.CrawlDedup` saw this domain enqueued within its 3.5-7 day
   window and suppressed the repeat visit (counted as `total_deduped`).
   """
-  @spec enqueue(map()) :: :ok | :queue_full | :recently_crawled
-  def enqueue(domain_data) when is_map(domain_data) do
+  @spec enqueue(map(), keyword()) :: :ok | :queue_full | :recently_crawled
+  def enqueue(domain_data, opts \\ [])
+
+  def enqueue(domain_data, opts) when is_map(domain_data) and is_list(opts) do
     current_size = :ets.info(@queue_table, :size)
 
     cond do
@@ -97,10 +99,16 @@ defmodule LS.Cluster.WorkQueue do
       # 27.6% of all fetches were repeat visits inside a week (2026-09-04:
       # 62.3M crawls, 45.1M distinct domains) because the CTL cache holds
       # ~1h of inflow and every cert renewal re-emits from many CT logs.
-      # CrawlDedup suppresses re-enqueues for 3.5-7 days; the requeue path
+      # CrawlDedup suppresses re-enqueues for 7-8 days (2026-09-06: eight
+      # daily windows, was 3.5-7). `force: true` is for the recrawl
+      # scheduler, which IS the 7-day schedule and must not be second-guessed
+      # by a bloom that may still hold the entry on day 7. The requeue path
       # in requeue_timed_out/1 inserts into the ETS table directly, so a
-      # timed-out batch is never blocked by its own enqueue-time entry.
-      LS.Cluster.CrawlDedup.seen_or_mark(domain_data[:ctl_domain] || domain_data[:domain]) ->
+      # timed-out batch is never blocked by its own enqueue-time entry. A
+      # suppressed certificate sighting is still recorded (ctl_sightings).
+      not Keyword.get(opts, :force, false) and
+          LS.Cluster.CrawlDedup.seen_or_mark(domain_data[:ctl_domain] || domain_data[:domain]) ->
+        LS.Cluster.CrawlDedup.record_sighting(domain_data)
         :counters.add(counter_ref(), @idx_deduped, 1)
         :recently_crawled
 

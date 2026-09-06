@@ -83,7 +83,10 @@ defmodule LS.Recrawl.Scheduler do
           # Use the same :ctl_domain key CTL items carry so the worker pipeline
           # (enrich_dns/merge_results) can read it uniformly regardless of source.
           data = %{ctl_domain: domain, source: :recrawl}
-          case LS.Cluster.WorkQueue.enqueue(data) do
+          # This IS the 7-day schedule: stale_domains already selected only
+          # domains 7+ (or 30+) days old, so the dedup gate has nothing to add
+          # and could hold a day-7 domain until its window rotates (day 8).
+          case LS.Cluster.WorkQueue.enqueue(data, force: true) do
             :ok -> acc + 1
             :queue_full ->
               Logger.warning("[RECRAWL] WorkQueue full, stopping enqueue at #{acc}/#{count}")
