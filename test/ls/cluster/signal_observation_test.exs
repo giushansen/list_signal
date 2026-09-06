@@ -42,6 +42,9 @@ defmodule LS.Cluster.SignalObservationTest do
 
     assert @src =~ "argMaxIf(s_http_tech, s_enriched_at, \#{observed_sql(\"s_\")}) AS http_tech"
     assert @src =~ "argMaxIf(s_http_apps, s_enriched_at, \#{observed_sql(\"s_\")}) AS http_apps"
-    assert @src =~ "http_body_snippet AS s_http_body_snippet"
+    # Only the first 200 bytes travel through the aggregation: the predicate
+    # needs "at least 200", not the text, and 500 bytes per history row was
+    # measurable on the compaction pass.
+    assert @src =~ "substring(http_body_snippet, 1, 200) AS s_http_body_snippet"
   end
 end

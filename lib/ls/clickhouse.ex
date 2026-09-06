@@ -1217,7 +1217,13 @@ defmodule LS.Clickhouse do
   """
   @spec compact_businesses(integer(), integer() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
   def compact_businesses(since_unix, until_unix \\ nil) do
-    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 300_000, background: true),
+    # 600s client / 590s server ceiling (2026-09-06, was 300/290): with the
+    # observation predicate, the subdomain union and the sightings join,
+    # a healthy incremental pass takes 140-200s and the tail crosses 290s;
+    # at 290 every other pass timed out and, after a restart, three in a
+    # row did, leaving `businesses` 38 minutes stale. The interval stays 5
+    # minutes; a pass that runs long simply delays the next one.
+    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 600_000, background: true),
          {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
       # ClickHouse JSON quotes UInt64 by default, so count() can arrive as a
       # string — which would crash the compactor's stats arithmetic.
@@ -1252,7 +1258,7 @@ defmodule LS.Clickhouse do
   6.5G cap.
   """
   def compact_shard(shard, total_shards) do
-    query_raw(compact_sql_shard(shard, total_shards), 300_000, background: true)
+    query_raw(compact_sql_shard(shard, total_shards), 600_000, background: true)
   end
 
   @doc """
@@ -1361,7 +1367,7 @@ defmodule LS.Clickhouse do
   # the whole server hit MEMORY_LIMIT_EXCEEDED and "new businesses" halved
   # for two hours (caught by the DataCheck quantity alert). Client gives up
   # and server keeps paying is the worst of both; now they die together.
-  defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 290) do
+  defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 590) do
     upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
 
     # The same bounded domain set scopes BOTH sides of every join. The
@@ -1563,7 +1569,7 @@ defmodule LS.Clickhouse do
         -- above: a parked domain that comes back to life must clear the flag,
         -- and a real site that dies into a parking page must gain it.
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, dns_ptr AS s_dns_ptr, dns_ms_enterprise AS s_dns_ms_enterprise, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, http_body_snippet AS s_http_body_snippet, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
+      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, dns_ptr AS s_dns_ptr, dns_ms_enterprise AS s_dns_ms_enterprise, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, substring(http_body_snippet, 1, 200) AS s_http_body_snippet, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
       #{scope}
       GROUP BY s_domain
       HAVING (is_malware = '' AND is_phishing = '')

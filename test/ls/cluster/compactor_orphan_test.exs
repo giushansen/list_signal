@@ -14,11 +14,12 @@ defmodule LS.Cluster.CompactorOrphanTest do
   client, not outlive it.
   """
 
-  test "compact_sql carries a server ceiling under the 300s incremental client timeout" do
+  test "compact_sql carries a server ceiling under the 600s incremental client timeout" do
     src = File.read!("lib/ls/clickhouse.ex")
 
-    assert src =~ ~r/max_s \\\\ 290/,
-           "the incremental default must sit just under compact_businesses' 300s client timeout"
+    assert src =~ ~r/max_s \\\\ 590/,
+           "the incremental default must sit just under compact_businesses' 600s client timeout"
+    assert src =~ "query_raw(compact_sql(since_unix, until_unix), 600_000, background: true)"
 
     assert src =~ "max_execution_time = \#{max_s}",
            "the ceiling must be in the SQL SETTINGS so the server enforces it"
