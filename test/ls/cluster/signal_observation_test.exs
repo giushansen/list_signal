@@ -44,6 +44,13 @@ defmodule LS.Cluster.SignalObservationTest do
       assert LS.Pipeline.observed?(%{http_status: "200"}) == 0
     end
 
+    test "a row from a worker that predates the flag is observed when its fetch succeeded" do
+      # Rolling deploy, 2026-09-06: for the hour in which workers ran the old
+      # release, every row arrived without the key and was written as 0.
+      src = File.read!("lib/ls/cluster/inserter.ex")
+      assert src =~ "Map.put_new(&1, :http_observed, if(is_integer(&1[:http_status]) and &1[:http_status] in 200..399, do: 1, else: 0))"
+    end
+
     test "every discovery row carries the flag" do
       assert :http_observed in LS.Cluster.Inserter.columns()
       assert File.read!("lib/ls/pipeline.ex") =~ "http_observed: observed?(http),"

@@ -94,6 +94,13 @@ defmodule LS.Cluster.Inserter do
     # Workers no longer carry the Majestic table; the master owns it and fills
     # those columns here. Never blanks: see LS.Reputation.fill/1.
     rows = LS.Reputation.fill(rows)
+    # A row from a worker on a release older than migration 022 has no
+    # http_observed. Absent means "the old behaviour": observed when the
+    # fetch succeeded, exactly what DEFAULT 1 says for older rows. Written
+    # explicitly because a nil integer goes out as 0, and 0 would silence
+    # every change event and freeze the technology fold for the length of a
+    # rollout (measured 2026-09-06: 39,255 of 39,255 rows in ten minutes).
+    rows = Enum.map(rows, &Map.put_new(&1, :http_observed, if(is_integer(&1[:http_status]) and &1[:http_status] in 200..399, do: 1, else: 0)))
     {rows, state} = guard_batch(rows, state)
     state = %{state | buffer: rows ++ state.buffer, buffer_size: state.buffer_size + length(rows)}
     if state.buffer_size >= @flush_size, do: {:noreply, do_flush(state)}, else: {:noreply, state}
