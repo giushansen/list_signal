@@ -28,8 +28,14 @@
   A/B without the hint on the same v3 labels: 47.6% raw, 82.2% at 0.7, so
   the gain is the hint, not the extra labels. `priv/ml/head_v3.json`
   shipped; v2 stays as rollback (switch `@weights_path` AND remove the
-  hint together, never one without the other). Retrain as v3.1 when the
-  Sonnet batches complete.
+  hint together, never one without the other).
+- **v3.1 check (all 740 v3 labels, 4,899 rows):** 51.0% raw, 70.1% at 0.5,
+  83.7% at 0.7, v5 58.4%. Within noise of pass 2 (n=998, about 1.5 points
+  of error), so the shipped weights were kept rather than churned. The
+  Sonnet half of the labels adds training data for the next head, not
+  accuracy for this one; the next real gain needs either a better encoder
+  than MiniLM or owner-adjudicated labels on the classes that are still
+  weak (Tool, Marketplace, Directory, Community, Government at 8/50).
 
 ## v2 (2026-08-17) — 17 classes, +1,962 domains
 
