@@ -91,6 +91,35 @@ defmodule LS.Metrics do
     |> Enum.map(fn [d, n] -> %{day: d, rows: to_i(n)} end)
   end
 
+  @doc """
+  Change-event persistence (2026-09-06): of the events detected 8 to 9 weeks
+  ago, the share that still holds against the current `businesses` row, by
+  kind. A detection that vanishes on its own was a false positive; this
+  measures precision continuously with no labeling. Baseline at first
+  measurement: tech_added 86.7%, tech_removed 83.5%, app_added 78.7%,
+  app_removed 84.8%.
+  """
+  def signal_persistence do
+    ch_rows("""
+    SELECT s.kind, count() AS events,
+      round(100 * countIf(
+        (s.kind = 'tech_added'     AND has(splitByChar('|', b.http_tech), s.value)) OR
+        (s.kind = 'tech_removed'   AND NOT has(splitByChar('|', b.http_tech), s.value)) OR
+        (s.kind = 'app_added'      AND has(splitByChar('|', b.http_apps), s.value)) OR
+        (s.kind = 'app_removed'    AND NOT has(splitByChar('|', b.http_apps), s.value)) OR
+        (s.kind = 'started_hiring' AND coalesce(b.job_count, 0) > 0) OR
+        (s.kind = 'stopped_hiring' AND coalesce(b.job_count, 0) = 0)) / count(), 1) AS holds_pct
+    FROM (SELECT kind, value, domain FROM biz_signal WHERE changed_at >= now() - INTERVAL 63 DAY AND changed_at < now() - INTERVAL 56 DAY) s
+    INNER JOIN (
+      SELECT domain, http_tech, http_apps, job_count FROM businesses FINAL
+      WHERE domain IN (SELECT domain FROM biz_signal WHERE changed_at >= now() - INTERVAL 63 DAY AND changed_at < now() - INTERVAL 56 DAY)
+    ) b USING domain
+    GROUP BY s.kind ORDER BY events DESC
+    SETTINGS max_execution_time = 240, max_memory_usage = 4000000000, join_use_nulls = 1
+    """, 250_000)
+    |> Enum.map(fn [k, n, p] -> %{kind: k, events: to_i(n), holds_pct: to_f(p)} end)
+  end
+
   @doc "Business-model distribution of the product table."
   def by_model do
     ch_rows("SELECT business_model, count() FROM businesses FINAL WHERE business_model!='' GROUP BY 1 ORDER BY 2 DESC")
@@ -330,8 +359,8 @@ defmodule LS.Metrics do
     end
   end
 
-  defp ch_rows(sql) do
-    case Clickhouse.query_raw(sql, 20_000) do
+  defp ch_rows(sql, timeout \\ 20_000) do
+    case Clickhouse.query_raw(sql, timeout) do
       {:ok, rows} when is_list(rows) -> rows
       _ -> []
     end

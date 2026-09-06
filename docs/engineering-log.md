@@ -41,6 +41,33 @@ never silently empty a SaaS list. The results table keeps its Products and
 Avg $ columns; only the filter controls are gated. Pinned by
 `test/ls_web/live/explorer_depth_toolbar_test.exs`.
 
+**Change events audited: a stub crawl was recorded as "not present".**
+Inventory: 3.8M events in 90 days (tech_removed 1.55M, tech_added 1.36M,
+app_removed 502K, app_added 370K, started_hiring 34K). Persistence at 8
+weeks (free metric, now in the weekly report as "Signal quality"):
+tech_added 86.7%, tech_removed 83.5%, app_removed 84.8%, app_added 78.7%;
+63,863 (domain, technology) pairs flapped 3+ times in 90 days (275K events,
+7.4%). Sampled 2,000 "started showing" and 1,000 "stopped showing" events
+with their crawl history: 13.3% of additions had a before-crawl that was a
+stub (224 of 267 under 200 characters of visible text: bot wall served as
+200, redirect shell, "Index of /", empty body) and 16.6% of removals had
+an after-crawl of the same kind; 6% of additions had been seen in an
+earlier crawl and vanished in between (detector variance across edges,
+not fixable by this change). Re-fetching the 200-event subset with the
+pipeline's own detectors: 84.3% present now; 66.0% both present now AND
+absent in a healthy before-crawl (+/- 6.7pp). Fix: `Clickhouse.observed_sql/1`,
+one predicate for "this crawl observed the site" (2xx-3xx, not blocked,
+200+ characters of visible text, no bot-wall title), used by record_signals,
+the signals backfill and the compactor's http_tech/http_apps fold. On the
+sampled domains' histories it removes 30.5% of tech events and 40.8% of
+flapping pairs while suppressing 0 of the 1,578 clean adoptions. A note on
+method: an LLM reading a text fetch cannot verify technographics (WebFetch
+strips the script tags the evidence lives in; a Sonnet spot-check called 32
+of 40 events "absent" on that basis), so Eval 1 uses the pipeline's own
+detectors on a fresh fetch, which cannot see the detector's own systematic
+errors; the spot-check did surface two: a WooCommerce plugin and Odoo
+detected on Shopify stores (loose signatures, see the counts in the commit).
+
 **Subdomains are now a union, and the depth pass estimates revenue with
 everything it knows.** `businesses.ctl_subdomains` used to be the newest
 certificate's SAN list; it is now the distinct union over every certificate

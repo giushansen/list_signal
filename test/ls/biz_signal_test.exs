@@ -53,7 +53,7 @@ defmodule LS.BizSignalTest do
       now = System.system_time(:second)
 
       q("INSERT INTO businesses (domain, first_seen, as_of, http_tech, http_apps, job_count) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify|Klaviyo', 'ReCharge', 0)")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_apps) VALUES ('#{@d}', now(), 200, 'Shopify|Gorgias', 'ReCharge|Judge.me')")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_apps, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Shopify|Gorgias', 'ReCharge|Judge.me', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
       q("INSERT INTO biz_enrichment_log (domain, enriched_at, render_engine, job_count) VALUES ('#{@d}', now(), 'http', 5)")
 
       assert :ok = Clickhouse.record_signals(now - 300, now + 60)
@@ -84,7 +84,7 @@ defmodule LS.BizSignalTest do
       now = System.system_time(:second)
 
       # No businesses row at all: the domain is new to us.
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now(), 200, 'Shopify|Klaviyo')")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Shopify|Klaviyo', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
 
       assert :ok = Clickhouse.record_signals(now - 300, now + 60)
       assert signals() == []
@@ -96,7 +96,7 @@ defmodule LS.BizSignalTest do
       now = System.system_time(:second)
 
       q("INSERT INTO businesses (domain, first_seen, as_of, http_tech) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now(), 200, 'Shopify|Gorgias')")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Shopify|Gorgias', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
 
       assert :ok = Clickhouse.record_signals(now - 300, now + 60)
       assert :ok = Clickhouse.record_signals(now - 300, now + 60)
@@ -109,8 +109,8 @@ defmodule LS.BizSignalTest do
   test "the history backfill finds the same change a live diff would" do
     with_ch(fn ->
       q("INSERT INTO businesses (domain, first_seen, as_of, http_tech) VALUES ('#{@d}', now() - INTERVAL 60 DAY, now(), 'Shopify|Gorgias')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now() - INTERVAL 40 DAY, 200, 'Shopify|Klaviyo')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now() - INTERVAL 10 DAY, 200, 'Shopify|Gorgias')")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now() - INTERVAL 40 DAY, 200, 'Shopify|Klaviyo', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now() - INTERVAL 10 DAY, 200, 'Shopify|Gorgias', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
 
       # Run ONLY the shard this domain hashes into, out of a large shard count.
       # Running 8 shards over a full local domains_history means a
@@ -127,4 +127,23 @@ defmodule LS.BizSignalTest do
       assert "tech_removed" in kinds
     end)
   end
+  test "an unobserved crawl neither removes nor re-adds (2026-09-06)" do
+    # 13.3% of "started showing" and 16.6% of "stopped showing" events in a
+    # 3,000-event sample came from a stub crawl (bot wall served as 200,
+    # redirect shell, empty body). A stub is "not observed", never "not
+    # present": it must emit nothing, and the real crawl after it must not
+    # emit fake re-adoptions of everything the stub lacked.
+    with_ch(fn ->
+      now = System.system_time(:second)
+      q("INSERT INTO businesses (domain, first_seen, as_of, http_tech, http_apps, job_count) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify|Klaviyo', '', 0)")
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_title, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Cloudflare', 'Just a moment...', 'checking your browser')")
+      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
+      assert signals() == [], "a bot wall served as 200 must not emit tech_removed"
+
+      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now() + INTERVAL 1 SECOND, 200, 'Shopify|Klaviyo', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
+      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
+      assert signals() == [], "the real crawl after a bot wall must not re-add what the wall hid"
+    end)
+  end
+
 end

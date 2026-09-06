@@ -811,6 +811,30 @@ defmodule LS.Clickhouse do
   # ── biz_signal: observed business changes ──
 
   @doc """
+  SQL predicate: this crawl row actually OBSERVED the site (2026-09-06).
+
+  A change event is only as true as the two crawls it compares. Measured on
+  2,000 sampled "started showing" events and 1,000 "stopped showing" events
+  from the last 90 days: 13.3% of additions had a BEFORE crawl that was a
+  stub (bot wall served as 200, redirect shell, empty body: 224 of 267 had
+  under 200 characters of visible text) and 16.6% of removals had an AFTER
+  crawl of the same kind. Those are "not observed", recorded as "not
+  present", and they produce a fake adoption on the next real crawl and a
+  fake removal on the next stub. This predicate caught 232 of the 420
+  suspect additions in the sample and suppressed 0 of the 1,578 clean ones.
+
+  Used by record_signals/2, backfill_signals_shard/2 and the compactor's
+  http_tech/http_apps fold, so `businesses` and `biz_signal` agree on what
+  counts as an observation. `http_body_snippet` is the 500-character
+  visible-text extract every discovery row carries.
+  """
+  def observed_sql(prefix \\ "") do
+    "(#{prefix}http_status BETWEEN 200 AND 399 AND #{prefix}http_blocked = '' " <>
+      "AND length(#{prefix}http_body_snippet) >= 200 " <>
+      "AND NOT match(lower(#{prefix}http_title), '^(just a moment|bot verification|redirecting|you are being redirected|attention required|access denied|index of /)'))"
+  end
+
+  @doc """
   Emit change signals for the slice `[since, until)` by comparing the newest
   SUCCESSFUL crawl state in the slice against the current `businesses` row.
 
@@ -835,7 +859,7 @@ defmodule LS.Clickhouse do
            argMax(http_tech, enriched_at) AS new_tech,
            argMax(http_apps, enriched_at) AS new_apps
     FROM domains_history
-    WHERE #{window} AND http_status BETWEEN 200 AND 399 AND http_tech != ''
+    WHERE #{window} AND #{observed_sql()} AND http_tech != ''
     GROUP BY domain
     """
 
@@ -907,7 +931,7 @@ defmodule LS.Clickhouse do
              splitByChar('|', lagInFrame(http_apps, 1, '') OVER w) AS prev_a,
              lagInFrame(http_tech, 1, '') OVER w AS prev_raw
       FROM domains_history
-      WHERE #{guard} AND http_status BETWEEN 200 AND 399 AND http_tech != ''
+      WHERE #{guard} AND #{observed_sql()} AND http_tech != ''
         AND domain IN (SELECT domain FROM businesses WHERE #{guard})
       WINDOW w AS (PARTITION BY domain ORDER BY enriched_at ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)
     )
@@ -1473,8 +1497,12 @@ defmodule LS.Clickhouse do
         argMaxIf(s_http_response_time, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_response_time,
         argMaxIf(s_http_blocked, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_blocked,
         argMaxIf(s_http_content_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_content_type,
-        argMaxIf(s_http_tech, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_tech,
-        argMaxIf(s_http_apps, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_apps,
+        /* Only crawls that observed the site (observed_sql/1): a bot wall
+           served as 200 used to replace a real 40-technology list with
+           "Cloudflare", and the next real crawl then emitted 40 fake
+           adoptions (2026-09-06). */
+        argMaxIf(s_http_tech, s_enriched_at, #{observed_sql("s_")}) AS http_tech,
+        argMaxIf(s_http_apps, s_enriched_at, #{observed_sql("s_")}) AS http_apps,
         argMaxIf(s_http_language, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_language,
         argMaxIf(s_http_title, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_title,
         argMaxIf(s_http_meta_description, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_meta_description,
@@ -1535,7 +1563,7 @@ defmodule LS.Clickhouse do
         -- above: a parked domain that comes back to life must clear the flag,
         -- and a real site that dies into a parking page must gain it.
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, dns_ptr AS s_dns_ptr, dns_ms_enterprise AS s_dns_ms_enterprise, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
+      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, dns_ptr AS s_dns_ptr, dns_ms_enterprise AS s_dns_ms_enterprise, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, http_body_snippet AS s_http_body_snippet, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
       #{scope}
       GROUP BY s_domain
       HAVING (is_malware = '' AND is_phishing = '')

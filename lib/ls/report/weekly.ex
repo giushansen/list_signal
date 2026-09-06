@@ -34,6 +34,7 @@ defmodule LS.Report.Weekly do
     models = Metrics.by_model()
     clazz = Metrics.classification()
     est = Metrics.estimation()
+    persist = Metrics.signal_persistence()
 
     """
     <div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#1a2230;max-width:760px;margin:auto">
@@ -41,12 +42,29 @@ defmodule LS.Report.Weekly do
       #{chapter("1 · Infrastructure", infra_table(res))}
       #{chapter("2 · Traffic, errors &amp; downloads", crawl_block(crawl) <> ingestion_table(daily, enrich) <> downloads_table(vdl))}
       #{chapter("3 · Software, pipelines &amp; data quality", pipelines_block(tc, daily, enrich) <> quality_block(clazz, est, tc) <> models_table(models) <> query_cost_block())}
+      #{chapter("Signal quality", persistence_table(persist))}
       <p style="color:#9aa4b2;font-size:12px;margin-top:28px">Generated #{now()} UTC · reply to this email or open /admin for live detail.</p>
     </div>
     """
   end
 
   # ── header ──
+
+  # Change-event persistence at 8 weeks: the free, continuous precision
+  # metric for biz_signal (2026-09-06). A kind under 80% is worth a look.
+  defp persistence_table([]), do: "<p style=\"color:#667085\">No change events old enough to measure yet.</p>"
+
+  defp persistence_table(rows) do
+    body =
+      Enum.map_join(rows, "", fn r ->
+        color = if r.holds_pct < 80, do: "#b42318", else: "#1a2230"
+        "<tr><td style=\"padding:4px 8px\">#{r.kind}</td><td style=\"padding:4px 8px;text-align:right\">#{fmt(r.events)}</td>" <>
+          "<td style=\"padding:4px 8px;text-align:right;color:#{color}\">#{r.holds_pct}%</td></tr>"
+      end)
+
+    "<p style=\"color:#667085;margin:0 0 6px\">Of the change events detected 8 weeks ago, the share still true today. A detection that vanished on its own was a false positive.</p>" <>
+      "<table style=\"border-collapse:collapse;font-size:13px\"><tr><th style=\"text-align:left;padding:4px 8px\">event</th><th style=\"padding:4px 8px\">events</th><th style=\"padding:4px 8px\">still holds</th></tr>#{body}</table>"
+  end
 
   defp header(tc) do
     """
