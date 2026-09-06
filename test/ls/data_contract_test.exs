@@ -513,7 +513,16 @@ defmodule LS.DataContractTest do
           # Wrapped in a count so it validates every column reference without
           # writing anything or hauling back a shard of rows.
           sql = LS.Clickhouse.compact_sql_shard_preview(0, 4096)
-          select = String.slice(sql, (:binary.match(sql, "\nSELECT") |> elem(0))..-1//1)
+          # The incremental form opens with a WITH (the touched-domain set,
+          # computed once); the shard form starts at SELECT. Either way the
+          # body after the INSERT column list is what must execute.
+          start =
+            case :binary.match(sql, "\nWITH") do
+              {pos, _} -> pos
+              :nomatch -> :binary.match(sql, "\nSELECT") |> elem(0)
+            end
+
+          select = String.slice(sql, start..-1//1)
 
           assert {:ok, [[n]]} = LS.Clickhouse.query_raw("SELECT count() FROM (#{select})"),
                  "compaction SQL failed to execute; businesses would stop updating"

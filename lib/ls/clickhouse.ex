@@ -1389,8 +1389,18 @@ defmodule LS.Clickhouse do
       SELECT domain FROM verified_facts WHERE fetched_at >= toDateTime(#{since_unix})#{String.replace(upper, "enriched_at", "fetched_at")}
       """
 
-    scope = if since_unix > 0, do: "WHERE s_domain IN (#{domain_set})", else: ""
-    join_scope = if since_unix > 0, do: " WHERE domain IN (#{domain_set})", else: ""
+    # The set is evaluated ONCE (2026-09-06). It used to be inlined at every
+    # reference (the history side, biz_enrichment_log, verified_facts,
+    # biz_pricing, biz_news, and from today ctl_sightings): six copies of a
+    # three-way UNION whose first leg is a full scan of the current
+    # domains_history partition, because that table is ordered by domain,
+    # not by enriched_at. Adding the sightings join was the copy that took
+    # every pass past the 590s ceiling. A scalar subquery is computed once
+    # and cached for the query; `IN (SELECT arrayJoin(_touched))` turns the
+    # array back into a set so the primary key index still applies.
+    touched = if since_unix > 0, do: "WITH (SELECT groupUniqArray(domain) FROM (#{domain_set})) AS _touched\n", else: ""
+    scope = if since_unix > 0, do: "WHERE s_domain IN (SELECT arrayJoin(_touched))", else: ""
+    join_scope = if since_unix > 0, do: " WHERE domain IN (SELECT arrayJoin(_touched))", else: ""
 
     # The depth side reads only SUCCESSFUL enrichment rows. Without this, the
     # newest row wins even when it is a failed attempt: a business enriched
@@ -1402,14 +1412,14 @@ defmodule LS.Clickhouse do
     # crawl proved.
     depth_scope =
       if since_unix > 0 do
-        "WHERE render_engine != 'failed' AND domain IN (#{domain_set})"
+        "WHERE render_engine != 'failed' AND domain IN (SELECT arrayJoin(_touched))"
       else
         "WHERE render_engine != 'failed'"
       end
 
     """
     INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, dns_ptr, dns_ms_enterprise, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, sitemap_urls, sitemap_products, sitemap_blog, sitemap_children, sitemap_lastmod, sitemap_hash, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
-    SELECT
+    #{touched}SELECT
       h.domain AS domain,
       h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
       h.last_http_status, h.last_http_error,

@@ -32,6 +32,18 @@ defmodule LS.Cluster.CompactorOrphanTest do
     assert src =~ "compact_sql(0, nil, 1790)"
   end
 
+  test "the touched-domain set is computed once and every scope reads it (2026-09-06)" do
+    # Six inlined copies of a UNION whose first leg full-scans the current
+    # domains_history partition took every incremental pass past 590s.
+    src = File.read!("lib/ls/clickhouse.ex")
+    [c | _] = String.split(src, "defp compact_sql(since_unix") |> Enum.drop(1)
+    [c | _] = String.split(c, "defp compact_sql_shard")
+    assert c =~ "WITH (SELECT groupUniqArray(domain) FROM (\#{domain_set})) AS _touched"
+    assert length(String.split(c, "IN (SELECT arrayJoin(_touched))")) == 5, "the comment, the h side, the join sides and the depth side"
+    refute c =~ "IN (\#{domain_set})", "no scope may inline the set again"
+    assert c =~ "\#{touched}SELECT"
+  end
+
   test "the signals queries die with their 120s client too" do
     src = File.read!("lib/ls/clickhouse.ex")
     [signals | _] = String.split(src, "def record_signals") |> Enum.drop(1)
