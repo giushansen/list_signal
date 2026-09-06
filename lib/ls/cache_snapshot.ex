@@ -92,6 +92,9 @@ defmodule LS.CacheSnapshot do
   @impl true
   def handle_info(:save, state) do
     save()
+    # The dumped rows are garbage the moment the file is written; without a
+    # collection here the GenServer kept ~300 MB of dead heap between saves.
+    :erlang.garbage_collect()
     schedule_save()
     {:noreply, state}
   end
@@ -157,13 +160,32 @@ defmodule LS.CacheSnapshot do
   end
 
   # `[{key, value, remaining_ms}]` for one table; [] if it does not exist.
-  defp dump(table, shape) do
-    rows = :ets.tab2list(table)
-    rows = if shape == :ctl_4, do: Enum.take(rows, @ctl_max_rows), else: rows
+  # The CT cache is capped at @ctl_max_rows rows in the file, so it is read
+  # with a LIMITED :ets.select rather than tab2list + take: on the master that
+  # table holds up to 5M rows (~600 MB as a list), and copying all of it into
+  # this process every 5 minutes only to keep the first million kept a
+  # permanent ~300 MB heap here and peaked at 825 MB during the 2026-09-06
+  # memory spike. A `set` table is traversed in hash order, so the first
+  # million rows are an unbiased sample, same as tab2list |> take was.
+  @doc false
+  def dump(table, shape) do
+    rows =
+      if shape == :ctl_4 do
+        case :ets.select(table, [{:_, [], [:"$_"]}], @ctl_max_rows) do
+          {rows, _cont} -> rows
+          :"$end_of_table" -> []
+        end
+      else
+        :ets.tab2list(table)
+      end
+
     Enum.flat_map(rows, &entry_remaining(&1, shape))
   rescue
     ArgumentError -> []
   end
+
+  @doc false
+  def ctl_max_rows, do: @ctl_max_rows
 
   @doc false
   # Pure: native row -> [{key, value, remaining_ms}], dropping non-cache and

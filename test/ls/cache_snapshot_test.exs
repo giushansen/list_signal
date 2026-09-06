@@ -31,6 +31,21 @@ defmodule LS.CacheSnapshotTest do
     %{path: path}
   end
 
+  describe "the CT cache read is bounded (master memory, 2026-09-06)" do
+    test "a table past the row cap is read up to the cap, never copied whole" do
+      # tab2list + take copied all 5M master rows (~600 MB) into the GenServer
+      # every 5 minutes; the limited select reads only what the file keeps.
+      cap = CacheSnapshot.ctl_max_rows()
+      now = System.system_time(:second)
+      # 5 over the cap is enough to prove the limit; a full 1M-row table is not.
+      :ets.delete_all_objects(:ctl_cache)
+      for i <- 1..(cap + 5), do: :ets.insert(:ctl_cache, {"d#{i}", {1, 0, now, now}})
+
+      assert length(CacheSnapshot.dump(:ctl_cache, :ctl_4)) <= cap
+      :ets.delete_all_objects(:ctl_cache)
+    end
+  end
+
   describe "round trip" do
     test "a saved UICache entry comes back with its value intact" do
       now = System.system_time(:second)

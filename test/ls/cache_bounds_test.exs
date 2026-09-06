@@ -16,7 +16,18 @@ defmodule LS.CacheBoundsTest do
 
   The safety property that matters: eviction is OLDEST-FIRST, so a cap can
   never drop the recent window that politeness depends on.
+
+  2026-09-06: the eviction itself was the master's daily outage. `evict_to/3`
+  copied the whole table into the inserting process (tab2list + sort), and on
+  the master the table is the 5M-row CT dedup cache while the inserters are
+  ~28 CT poller workers that all cross the cap in the same second: 28 copies
+  of ~600 MB, BEAM 2.1 GB -> 11.9 GB in 40 s, watchdog restart, 14 times
+  since 2026-08-21. The "eviction never copies the table" block pins the fix
+  with a hard heap cap and a single-flight check.
   """
+
+  @http_spec {:"$2", :"$1"}
+  @bgp_spec {:"$2", {:_, :"$1"}}
 
   setup do
     for t <- [:http_cache, :rdap_cache, :bgp_cache] do
@@ -75,7 +86,7 @@ defmodule LS.CacheBoundsTest do
       end
 
       assert :ets.info(:http_cache, :size) == 200
-      dropped = Cache.evict_to(:http_cache, 100, &elem(&1, 1))
+      dropped = Cache.evict_to(:http_cache, 100, @http_spec)
       assert dropped == 100
 
       remaining = :ets.tab2list(:http_cache) |> Enum.map(&elem(&1, 0))
@@ -87,12 +98,12 @@ defmodule LS.CacheBoundsTest do
 
     test "evicting an already-small table is a no-op" do
       :ets.insert(:http_cache, {"a.example", 1})
-      assert Cache.evict_to(:http_cache, 100, &elem(&1, 1)) == 0
+      assert Cache.evict_to(:http_cache, 100, @http_spec) == 0
       assert :ets.info(:http_cache, :size) == 1
     end
 
     test "evicting a table that does not exist never raises" do
-      assert Cache.evict_to(:no_such_cache_table, 10, &elem(&1, 1)) == 0
+      assert Cache.evict_to(:no_such_cache_table, 10, @http_spec) == 0
     end
 
     test "it works for the nested BGP row shape too" do
@@ -100,9 +111,109 @@ defmodule LS.CacheBoundsTest do
       :ets.insert(:bgp_cache, {"1.1.1.1", {%{asn: 1}, now - 999_999}})
       :ets.insert(:bgp_cache, {"2.2.2.2", {%{asn: 2}, now}})
 
-      Cache.evict_to(:bgp_cache, 1, &elem(elem(&1, 1), 1))
+      Cache.evict_to(:bgp_cache, 1, @bgp_spec)
 
       assert [{"2.2.2.2", _}] = :ets.tab2list(:bgp_cache)
+    end
+  end
+
+  describe "eviction never copies the table (master restart root cause, 2026-09-06)" do
+    # 16 MB of heap (2M words on 64-bit). The tab2list version needed ~50 MB
+    # for this table and would be killed; the sampled select_delete needs
+    # under 1 MB whatever the table size.
+    @heap_cap_words 2_000_000
+
+    test "evicting a 400K-row table runs inside a 16MB heap cap" do
+      now = System.system_time(:second)
+      for i <- 1..400_000, do: :ets.insert(:http_cache, {"d#{i}.example", now - i})
+
+      parent = self()
+
+      {pid, ref} =
+        spawn_monitor(fn ->
+          Process.flag(:max_heap_size, %{size: @heap_cap_words, kill: true, error_logger: false})
+          send(parent, {:dropped, Cache.evict_to(:http_cache, 360_000, @http_spec)})
+        end)
+
+      assert_receive {:dropped, dropped}, 30_000
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 5_000
+
+      # Sampled cutoff: within ~1% of the exact 40,000.
+      assert_in_delta dropped, 40_000, 2_000
+      assert :ets.info(:http_cache, :size) == 400_000 - dropped
+    end
+
+    test "the sampled cutoff still drops the cold tail, not the recent window" do
+      now = System.system_time(:second)
+      # 50K old, 50K recent, distinct ages.
+      for i <- 1..50_000 do
+        :ets.insert(:http_cache, {"old#{i}.example", now - 5_000_000 - i})
+        :ets.insert(:http_cache, {"new#{i}.example", now - i})
+      end
+
+      Cache.evict_to(:http_cache, 50_000, @http_spec)
+
+      recent_left = :ets.select_count(:http_cache, [{{:_, :"$1"}, [{:>, :"$1", now - 1_000_000}], [true]}])
+      assert recent_left == 50_000, "eviction reached into the recent window"
+    end
+
+    test "a concurrent eviction of the same table is skipped, not repeated" do
+      now = System.system_time(:second)
+      for i <- 1..1_000, do: :ets.insert(:http_cache, {"d#{i}.example", now - i})
+
+      test = self()
+
+      holder =
+        spawn(fn ->
+          :ets.insert(Cache.evict_lock_table(), {:http_cache, self()})
+          send(test, :locked)
+
+          receive do
+            :release -> :ok
+          end
+        end)
+
+      assert_receive :locked
+
+      assert Cache.evict_to(:http_cache, 500, @http_spec) == 0,
+             "a second process must not evict while another holds the table"
+
+      assert :ets.info(:http_cache, :size) == 1_000
+
+      send(holder, :release)
+      ref = Process.monitor(holder)
+      assert_receive {:DOWN, ^ref, _, _, _}
+
+      # The dead holder's lock is stale: the next caller takes over.
+      assert Cache.evict_to(:http_cache, 500, @http_spec) > 0
+      assert :ets.info(:http_cache, :size) <= 510
+    end
+
+    test "a table filled within one second is trimmed to the target, not emptied" do
+      # Ages are whole seconds: a burst shares one age, and a cutoff applied
+      # as "everything at or below" would drop every row, including the
+      # recent window politeness depends on.
+      now = System.system_time(:second)
+      for i <- 1..1_000, do: :ets.insert(:http_cache, {"d#{i}.example", now})
+
+      assert Cache.evict_to(:http_cache, 900, @http_spec) == 100
+      assert :ets.info(:http_cache, :size) == 900
+    end
+
+    test "thirty inserters crossing the cap together shrink the table once, not thirty times" do
+      :persistent_term.put({Cache, :caps}, %{http: 1_000, rdap: 1_000, bgp: 1_000})
+      now = System.system_time(:second)
+      for i <- 1..1_000, do: :ets.insert(:http_cache, {"d#{i}.example", now - i})
+
+      1..30
+      |> Enum.map(fn i -> Task.async(fn -> Cache.http_insert("burst#{i}.example") end) end)
+      |> Task.await_many(10_000)
+
+      size = :ets.info(:http_cache, :size)
+      # One eviction to 90% plus up to 30 inserts; thirty evictions would
+      # have cut far deeper.
+      assert size >= 900 and size <= 1_030, "size #{size}"
+      :persistent_term.erase({Cache, :caps})
     end
   end
 

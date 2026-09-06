@@ -424,7 +424,7 @@ defmodule LS.Cluster.WorkQueue do
     expired = :ets.select_delete(@recent_table, [{{:"$1", :"$2"}, [{:<, :"$2", cutoff}], [true]}])
 
     over = :ets.info(@recent_table, :size) - @recent_max_entries
-    trimmed = if is_integer(over) and over > 0, do: LS.Cache.evict_to(@recent_table, @recent_max_entries, &elem(&1, 1)), else: 0
+    trimmed = if is_integer(over) and over > 0, do: LS.Cache.evict_to(@recent_table, @recent_max_entries, {:"$2", :"$1"}), else: 0
 
     if expired + trimmed > 0 do
       Logger.info("🧹 recently_crawled: dropped #{expired} expired, trimmed #{trimmed} over cap")

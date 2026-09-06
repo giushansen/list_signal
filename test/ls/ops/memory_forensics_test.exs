@@ -11,6 +11,12 @@ defmodule LS.Ops.MemoryForensicsTest do
   don't know why it restarted" with an actual record — is lost.
   """
 
+  defp hold_forever do
+    receive do
+      :never -> :ok
+    end
+  end
+
   describe "build_snapshot/0" do
     test "returns every field the ClickHouse table expects, with the right shapes" do
       snap = MemoryForensics.build_snapshot()
@@ -36,6 +42,36 @@ defmodule LS.Ops.MemoryForensicsTest do
 
       assert is_list(procs) and length(procs) <= 12
       assert Enum.all?(procs, &Map.has_key?(&1, "mailbox"))
+    end
+
+    test "an anonymous process is attributed to the code it is running, not just its pid" do
+      # 2026-09-06 02:30: the spike was 14 spawn_link'd CT poller workers with
+      # no $initial_call, so the snapshot named them "#PID<0.3158.0>" and the
+      # culprit had to be reconstructed from pid ranges on the next boot.
+      test = self()
+
+      pid =
+        spawn(fn ->
+          send(test, :ready)
+          hold_forever()
+        end)
+
+      assert_receive :ready
+
+      {:current_stacktrace, stack} = Process.info(pid, :current_stacktrace)
+      assert MemoryForensics.where(stack) =~ ~r/^LS\.Ops\.MemoryForensicsTest\./
+
+      procs = MemoryForensics.build_snapshot().top_processes |> Jason.decode!()
+      assert Enum.all?(procs, &Map.has_key?(&1, "at")), "every top process must say where it is"
+
+      Process.exit(pid, :kill)
+    end
+
+    test "where/1 survives hostile stack shapes" do
+      assert MemoryForensics.where([]) == ""
+      assert MemoryForensics.where(nil) == ""
+      assert MemoryForensics.where([{:gen_server, :loop, 7, []}]) == ":gen_server.loop/7"
+      assert MemoryForensics.where([{Foo, :bar, [1, 2], []}]) == "Foo.bar/2"
     end
 
     test "a table large enough to matter always outranks the noise floor" do

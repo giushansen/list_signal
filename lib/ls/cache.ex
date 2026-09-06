@@ -23,6 +23,27 @@ defmodule LS.Cache do
   Caps are deliberately generous relative to usefulness — measured hit rates
   are ~0.2% (the CT firehose is mostly first-sight domains), so the cold tail
   was costing gigabytes to serve almost nothing.
+
+  ## Eviction never copies the table (2026-09-06)
+
+  The first version of `evict_to/3` did `:ets.tab2list/1` + `Enum.sort_by/2`
+  on the whole table, inside whichever process happened to insert the entry
+  that crossed the cap. On the master that table is the 5M-entry CT dedup
+  cache and the inserting processes are the ~28 CT poller workers, which all
+  cross the cap within the same second. Each one materialised a 5M-row list
+  (~600 MB) and then sorted it: the BEAM went from 2.1 GB to 11.9 GB in 40
+  seconds and the watchdog restarted the site. This was the "unexplained"
+  ~7 GB spike behind every master restart since 2026-08-21 (14 restarts);
+  the forensics trap on 2026-09-06 02:30 caught the workers red-handed, and
+  the `ops_memory_snapshots` timeline shows `ctl_cache` at exactly 5,000,000
+  rows at the start of every spike.
+
+  Now eviction (a) samples 20K rows to find the age cutoff, (b) deletes with
+  `:ets.select_delete/2`, which runs inside ETS and copies nothing into the
+  caller, and (c) is single-flight per table, so concurrent inserters skip
+  instead of evicting the same tail 28 times over. Peak caller memory is a
+  few MB regardless of table size; `test/ls/cache_bounds_test.exs` pins it
+  with a hard heap cap.
   """
 
   use GenServer
@@ -49,6 +70,21 @@ defmodule LS.Cache do
   @bgp_cache :bgp_cache
   @rdap_cache :rdap_cache
 
+  # Row pattern per table with the age (unix seconds) bound to $1 and the key
+  # to $2. ONE place, used by both the TTL cleanup and the cap eviction, so
+  # the two can never disagree about where the timestamp lives in a row.
+  @age_specs %{
+    @ctl_cache => {:"$2", {:_, :_, :_, :"$1"}},
+    @http_cache => {:"$2", :"$1"},
+    @bgp_cache => {:"$2", {:_, :"$1"}},
+    @rdap_cache => {:"$2", :"$1"}
+  }
+  # Rows sampled to estimate the age cutoff. A `set` table is traversed in
+  # hash order, which is independent of insertion time, so the first N rows
+  # are an unbiased sample of ages. 20K keeps the quantile error under ~1%.
+  @evict_sample 20_000
+  @evict_locks :ls_cache_evict_locks
+
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
   @impl true
@@ -57,6 +93,7 @@ defmodule LS.Cache do
     :ets.new(@http_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
     :ets.new(@bgp_cache, [:set, :public, :named_table, read_concurrency: true])
     :ets.new(@rdap_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    ensure_lock_table()
     # Lock-free hit/miss counters: [http_hit, http_miss, bgp_hit, bgp_miss, rdap_hit, rdap_miss].
     # Feeds the admin dashboard's per-worker cache hit-ratio (are we re-fetching or reusing?).
     :persistent_term.put({__MODULE__, :counters}, :atomics.new(6, signed: false))
@@ -75,10 +112,10 @@ defmodule LS.Cache do
   def handle_info(:cleanup_cache, state) do
     cutoff = System.system_time(:second) - @cache_ttl
     rdap_cutoff = System.system_time(:second) - @rdap_cache_ttl
-    ctl_del = (try do :ets.select_delete(@ctl_cache, [{{:"$1", {:"$2", :"$3", :"$4", :"$5"}}, [{:<, :"$5", cutoff}], [true]}]) rescue _ -> 0 end)
-    http_del = (try do :ets.select_delete(@http_cache, [{{:"$1", :"$2"}, [{:<, :"$2", cutoff}], [true]}]) rescue _ -> 0 end)
-    bgp_del = (try do :ets.select_delete(@bgp_cache, [{{:"$1", {:"$2", :"$3"}}, [{:<, :"$3", cutoff}], [true]}]) rescue _ -> 0 end)
-    rdap_del = (try do :ets.select_delete(@rdap_cache, [{{:"$1", :"$2"}, [{:<, :"$2", rdap_cutoff}], [true]}]) rescue _ -> 0 end)
+    ctl_del = delete_older_than(@ctl_cache, cutoff)
+    http_del = delete_older_than(@http_cache, cutoff)
+    bgp_del = delete_older_than(@bgp_cache, cutoff)
+    rdap_del = delete_older_than(@rdap_cache, rdap_cutoff)
     total = ctl_del + http_del + bgp_del + rdap_del
     if total > 0, do: Logger.info("🧹 Cache cleanup: #{total} expired (CTL:#{ctl_del} HTTP:#{http_del} BGP:#{bgp_del} RDAP:#{rdap_del})")
     schedule_cleanup()
@@ -86,6 +123,12 @@ defmodule LS.Cache do
   end
 
   defp schedule_cleanup, do: Process.send_after(self(), :cleanup_cache, @cleanup_interval)
+
+  defp delete_older_than(table, cutoff) do
+    :ets.select_delete(table, [{Map.fetch!(@age_specs, table), [{:<, :"$1", cutoff}], [true]}])
+  rescue
+    _ -> 0
+  end
 
   # === CTL (5M cap, FIFO eviction) ===
   @tracker_max_size 5_000_000
@@ -140,8 +183,8 @@ defmodule LS.Cache do
 
   defp ctl_evict do
     keep = max(:ets.info(@ctl_cache, :size) - @eviction_batch, 0)
-    dropped = evict_to(@ctl_cache, keep, fn {_, {_, _, _, ls}} -> ls end)
-    Logger.info("🧹 CTL eviction: dropped #{dropped} oldest")
+    dropped = evict_to(@ctl_cache, keep, Map.fetch!(@age_specs, @ctl_cache))
+    if dropped > 0, do: Logger.info("🧹 CTL eviction: dropped #{dropped} oldest")
   end
 
   # ── Size bounds (see the moduledoc) ────────────────────────────────────
@@ -181,12 +224,12 @@ defmodule LS.Cache do
   end
 
   # Insert, evicting the coldest entries first when the table is at its cap.
-  defp bounded_insert(table, row, name, age_fn) do
+  defp bounded_insert(table, row, name) do
     cap = cap_for(name)
 
     if is_integer(:ets.info(table, :size)) and :ets.info(table, :size) >= cap do
-      dropped = evict_to(table, trunc(cap * @evict_to_fraction), age_fn)
-      Logger.info("🧹 #{name} cache at cap #{cap}: dropped #{dropped} coldest")
+      dropped = evict_to(table, trunc(cap * @evict_to_fraction), Map.fetch!(@age_specs, table))
+      if dropped > 0, do: Logger.info("🧹 #{name} cache at cap #{cap}: dropped #{dropped} coldest")
     end
 
     :ets.insert(table, row)
@@ -194,30 +237,118 @@ defmodule LS.Cache do
 
   @doc false
   # Drop entries oldest-first until the table holds at most `keep`. Returns the
-  # number dropped. Oldest-first is what makes a size cap safe for politeness:
-  # the recent window survives, only the cold tail goes.
-  def evict_to(table, keep, age_fn) do
+  # number dropped (0 when another process is already evicting this table).
+  # Oldest-first is what makes a size cap safe for politeness: the recent
+  # window survives, only the cold tail goes.
+  #
+  # `age_spec` is an ETS match pattern for one row with the age bound to $1
+  # and the key to $2 (see @age_specs). The cutoff comes from a bounded
+  # sample and the delete runs inside ETS, so the caller's heap stays flat
+  # however large the table: the tab2list version of this function is what
+  # blew the master up (moduledoc, 2026-09-06).
+  def evict_to(table, keep, age_spec) when is_tuple(age_spec) do
     # :ets.info/2 returns :undefined (not an error) for a missing table — a
     # table can legitimately be absent on a node that does not run that lane.
-    excess =
+    size =
       case :ets.info(table, :size) do
-        n when is_integer(n) -> n - keep
+        n when is_integer(n) -> n
         _ -> 0
       end
 
-    if excess > 0 do
-      table
-      |> :ets.tab2list()
-      |> Enum.sort_by(age_fn)
-      |> Enum.take(excess)
-      |> Enum.each(fn row -> :ets.delete(table, elem(row, 0)) end)
+    excess = size - keep
 
-      excess
-    else
-      0
+    cond do
+      excess <= 0 ->
+        0
+
+      not lock_evict(table) ->
+        0
+
+      true ->
+        try do
+          cutoff = age_cutoff(table, age_spec, excess / size)
+          # Strictly older than the cutoff first; then only as many rows AT
+          # the cutoff as still needed. Ages are whole seconds, so a burst of
+          # inserts shares one age and "everything =< cutoff" would empty the
+          # table, i.e. drop the recent window politeness depends on.
+          dropped = :ets.select_delete(table, [{age_spec, [{:<, :"$1", cutoff}], [true]}])
+          dropped + delete_at_age(table, age_spec, cutoff, excess - dropped)
+        after
+          unlock_evict(table)
+        end
     end
   rescue
     ArgumentError -> 0
+  end
+
+  defp delete_at_age(_table, _spec, _age, need) when need <= 0, do: 0
+
+  defp delete_at_age(table, age_spec, age, need) do
+    case :ets.select(table, [{age_spec, [{:==, :"$1", age}], [:"$2"]}], need) do
+      {keys, _cont} ->
+        Enum.each(keys, &:ets.delete(table, &1))
+        length(keys)
+
+      :"$end_of_table" ->
+        0
+    end
+  end
+
+  # The age below which `fraction` of the table falls, from a sample.
+  defp age_cutoff(table, age_spec, fraction) do
+    ages =
+      case :ets.select(table, [{age_spec, [], [:"$1"]}], @evict_sample) do
+        {ages, _cont} -> Enum.sort(ages)
+        :"$end_of_table" -> []
+      end
+
+    case ages do
+      [] -> 0
+      _ -> Enum.at(ages, min(max(ceil(fraction * length(ages)) - 1, 0), length(ages) - 1))
+    end
+  end
+
+  # Single-flight per table. A lock held by a dead process is stale and is
+  # taken over; a live holder means "someone is already on it, insert and
+  # move on" — a few hundred entries of overshoot beats N copies of the work.
+  @doc false
+  def evict_lock_table, do: @evict_locks
+
+  defp lock_evict(table) do
+    ensure_lock_table()
+
+    case :ets.insert_new(@evict_locks, {table, self()}) do
+      true ->
+        true
+
+      false ->
+        case :ets.lookup(@evict_locks, table) do
+          [{^table, pid}] when pid != self() ->
+            if Process.alive?(pid) do
+              false
+            else
+              :ets.delete_object(@evict_locks, {table, pid})
+              :ets.insert_new(@evict_locks, {table, self()})
+            end
+
+          _ ->
+            :ets.insert_new(@evict_locks, {table, self()})
+        end
+    end
+  end
+
+  defp unlock_evict(table), do: :ets.delete_object(@evict_locks, {table, self()})
+
+  # Owned by LS.Cache when it is running; created on demand otherwise (tests,
+  # nodes where the lane's cache exists but the GenServer does not).
+  defp ensure_lock_table do
+    if :ets.info(@evict_locks) == :undefined do
+      :ets.new(@evict_locks, [:set, :public, :named_table, write_concurrency: true])
+    end
+
+    :ok
+  rescue
+    ArgumentError -> :ok
   end
 
   # hit_idx/miss_idx per cache in the atomics vector
@@ -236,7 +367,7 @@ defmodule LS.Cache do
     end
   end
   def http_insert(domain),
-    do: bounded_insert(@http_cache, {domain, System.system_time(:second)}, :http, &elem(&1, 1))
+    do: bounded_insert(@http_cache, {domain, System.system_time(:second)}, :http)
 
   # === BGP ===
   def bgp_lookup(ip) do
@@ -246,7 +377,7 @@ defmodule LS.Cache do
     end
   end
   def bgp_insert(ip, result),
-    do: bounded_insert(@bgp_cache, {ip, {result, System.system_time(:second)}}, :bgp, &elem(elem(&1, 1), 1))
+    do: bounded_insert(@bgp_cache, {ip, {result, System.system_time(:second)}}, :bgp)
 
   # === RDAP (90-day TTL) ===
   def rdap_lookup(domain) do
@@ -256,7 +387,7 @@ defmodule LS.Cache do
     end
   end
   def rdap_insert(domain),
-    do: bounded_insert(@rdap_cache, {domain, System.system_time(:second)}, :rdap, &elem(&1, 1))
+    do: bounded_insert(@rdap_cache, {domain, System.system_time(:second)}, :rdap)
 
   # === DNS stubs ===
   def dns_lookup(_), do: :miss

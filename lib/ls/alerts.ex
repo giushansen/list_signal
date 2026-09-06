@@ -284,16 +284,31 @@ defmodule LS.Alerts do
           # Early warning: below this the ClickHouse dump (needs ~1.5x the DB
           # free) starts getting skipped silently — that is how the product DB
           # went unbacked in Aug 2026.
+          #
+          # Sustained only (2026-09-06): ClickHouse merges of the 59G
+          # domains_history table and the 6-hourly product dump each need
+          # tens of GB of scratch for 10-20 minutes, so a single reading over
+          # the line is the box working, not filling. The owner got a "Disk
+          # filling" email per merge (10 in two days) while usage sat at 69%
+          # between them. Two consecutive ticks means the space is not coming
+          # back on its own.
           r.disk_used_pct >= @disk_pct_warn ->
-            [
-              al(
-                :warning,
-                "disk_warn:#{node}",
-                "Disk filling: #{short(node)}",
-                "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB), backups need headroom"
-              )
-              | a
-            ]
+            case sustained?(:disk_warn, node) do
+              {true, since_min} ->
+                [
+                  al(
+                    :warning,
+                    "disk_warn:#{node}",
+                    "Disk filling: #{short(node)}",
+                    "#{short(node)} disk #{r.disk_used_pct}% used (#{r[:disk_used_gb]}/#{r[:disk_total_gb]}GB) " <>
+                      "for #{since_min} minutes straight, backups need headroom"
+                  )
+                  | a
+                ]
+
+              {false, _} ->
+                a
+            end
 
           true ->
             a
@@ -420,8 +435,12 @@ defmodule LS.Alerts do
   # {first, last} per node so the email can state the real time range of
   # the stall, not just "two ticks" (owner request 2026-09-05: the gravity
   # of the problem is its duration).
-  defp sustained_critical?(node) do
-    key = {__MODULE__, :psi_critical_at}
+  defp sustained_critical?(node), do: sustained?(:psi_critical, node)
+
+  # Generic streak tracker: {sustained?, minutes_since_streak_start} for one
+  # (kind, node). Used for memory pressure and for the disk early warning.
+  defp sustained?(kind, node) do
+    key = {__MODULE__, kind, :streak_at}
     now = System.system_time(:millisecond)
     seen = :persistent_term.get(key, %{})
 

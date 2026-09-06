@@ -135,8 +135,19 @@ defmodule LS.AlertsTest do
   end
 
   test "disk warns early at 80% so backups keep their headroom, criticals at 88%" do
-    warn = Alerts.evaluate(%{healthy() | node_resources: [{:"master@1", %{disk_used_pct: 83, disk_used_gb: 300, disk_total_gb: 361, mem_avail_mb: 8000}}]})
+    :persistent_term.erase({LS.Alerts, :disk_warn, :streak_at})
+    on_exit(fn -> :persistent_term.erase({LS.Alerts, :disk_warn, :streak_at}) end)
+    over = %{healthy() | node_resources: [{:"master@1", %{disk_used_pct: 83, disk_used_gb: 300, disk_total_gb: 361, mem_avail_mb: 8000}}]}
+
+    # 2026-09-06: a ClickHouse merge or the product dump takes the master
+    # over 80% for 10-20 minutes several times a day (69% in between). One
+    # reading is scratch space in use; two consecutive ticks is a real fill.
+    first = Alerts.evaluate(over)
+    refute Enum.any?(first, &(&1.key == "disk_warn:master@1")), "a single over-the-line reading is a merge, not a fill"
+
+    warn = Alerts.evaluate(over)
     assert Enum.any?(warn, &(&1.key == "disk_warn:master@1" and &1.severity == :warning))
+    assert Enum.find(warn, &(&1.key == "disk_warn:master@1")).line =~ ~r/for \d+ minutes straight/
     refute Enum.any?(warn, &(&1.key == "disk:master@1"))
 
     crit = Alerts.evaluate(%{healthy() | node_resources: [{:"master@1", %{disk_used_pct: 93, disk_used_gb: 330, disk_total_gb: 361, mem_avail_mb: 8000}}]})
@@ -281,8 +292,8 @@ defmodule LS.AlertsTest do
       # node ~15-25% for 15-30 min and self-recovered (~0.2% of a fleet-day).
       # A stall only earns an email once it survives into the next 15-minute
       # check; the isolated spike is log-and-weekly-report material.
-      :persistent_term.erase({LS.Alerts, :psi_critical_at})
-      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical_at}) end)
+      :persistent_term.erase({LS.Alerts, :psi_critical, :streak_at})
+      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical, :streak_at}) end)
 
       r = %{mem_pressure_full_avg10: 22.0, mem_pressure_full_avg60: 9.0, mem_avail_mb: 300, mem_total_mb: 4_000}
       m = %{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}
@@ -297,8 +308,8 @@ defmodule LS.AlertsTest do
     end
 
     test "two isolated spikes far apart never combine into a sustained alert" do
-      :persistent_term.erase({LS.Alerts, :psi_critical_at})
-      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical_at}) end)
+      :persistent_term.erase({LS.Alerts, :psi_critical, :streak_at})
+      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical, :streak_at}) end)
 
       r = %{mem_pressure_full_avg10: 22.0, mem_pressure_full_avg60: 9.0, mem_avail_mb: 300, mem_total_mb: 4_000}
       m = %{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}
@@ -307,7 +318,7 @@ defmodule LS.AlertsTest do
       # Age the marker past the 35-minute sustained window, as if the node
       # recovered and spiked again hours later.
       stale = System.system_time(:millisecond) - :timer.minutes(40)
-      :persistent_term.put({LS.Alerts, :psi_critical_at}, %{:"worker_n1@10.0.0.1" => stale})
+      :persistent_term.put({LS.Alerts, :psi_critical, :streak_at}, %{:"worker_n1@10.0.0.1" => stale})
 
       later = Alerts.evaluate(m)
       refute Enum.any?(later, &String.starts_with?(&1.key, "mem_pressure")),
@@ -315,8 +326,8 @@ defmodule LS.AlertsTest do
     end
 
     test "a sustained critical fires as :critical and names the real cost" do
-      :persistent_term.erase({LS.Alerts, :psi_critical_at})
-      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical_at}) end)
+      :persistent_term.erase({LS.Alerts, :psi_critical, :streak_at})
+      on_exit(fn -> :persistent_term.erase({LS.Alerts, :psi_critical, :streak_at}) end)
 
       r = %{mem_pressure_full_avg10: 18.0, mem_pressure_full_avg60: 12.0, mem_avail_mb: 100, mem_total_mb: 2_000}
       m = %{healthy() | node_resources: [{:"worker_n1@10.0.0.1", r}]}

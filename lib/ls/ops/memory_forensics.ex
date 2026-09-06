@@ -142,20 +142,38 @@ defmodule LS.Ops.MemoryForensics do
   # Info calls on a process racing to exit return nil, never raise — treated
   # as "gone", not as a snapshot failure.
   defp process_summary(pid) do
-    case Process.info(pid, [:memory, :message_queue_len, :registered_name, :dictionary]) do
+    case Process.info(pid, [:memory, :message_queue_len, :registered_name, :dictionary, :current_stacktrace]) do
       nil ->
         nil
 
       info ->
-        name = registered_or_initial(info, pid)
-
         %{
-          name: name,
+          name: registered_or_initial(info, pid),
+          # Where the process IS, not only how it was started. The 2026-09-06
+          # spike was 14 anonymous spawn_link'd processes with no
+          # $initial_call, so the snapshot named them "#PID<0.3158.0>" and
+          # the culprit (LS.CTL.Poller workers inside LS.Cache.evict_to) had
+          # to be inferred from PID ranges on a later boot.
+          at: where(info[:current_stacktrace]),
           mb: Float.round(info[:memory] / 1_048_576, 2),
           mailbox: info[:message_queue_len]
         }
     end
   end
+
+  @doc false
+  # The innermost frame in our own code, else the innermost frame at all.
+  def where(stack) when is_list(stack) do
+    frames = for {m, f, a, _} <- stack, do: "#{inspect(m)}.#{f}/#{arity(a)}"
+
+    Enum.find(frames, List.first(frames), &String.starts_with?(&1, "LS.")) || ""
+  end
+
+  def where(_), do: ""
+
+  defp arity(a) when is_integer(a), do: a
+  defp arity(a) when is_list(a), do: length(a)
+  defp arity(_), do: 0
 
   defp ets_name(t) do
     :ets.info(t, :name)
