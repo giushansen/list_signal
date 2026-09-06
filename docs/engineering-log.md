@@ -41,6 +41,26 @@ never silently empty a SaaS list. The results table keeps its Products and
 Avg $ columns; only the filter controls are gated. Pinned by
 `test/ls_web/live/explorer_depth_toolbar_test.exs`.
 
+**Compaction had been reading the entire domains_history table on every
+pass.** Found while chasing why passes failed continuously after the
+change-event fix: `system.query_log` shows every incremental pass since
+at least 09-05 11:00 reading 376-399M rows and 50-104 GB, and EXPLAIN on
+a live pass shows "Condition: true, Granules 47494/47494" on
+domains_history. The window's domain set was applied outside the aliased
+history subselect (`WHERE s_domain IN ...`), so every column of every row
+was materialised before the filter; the shard form always filtered inside
+(`WHERE domain IN ...` on the table), which is why a 4,507-domain shard
+took 14s. Passes succeeded in 180-260s only while the box was quiet, which
+is the whole history of "compaction timeouts on bad days", the 09-05
+orphaned-pass outage and today's two hours of staleness. Fix (c0a366d):
+the filter sits inside the inner select; measured on prod with the
+captured 93K-domain window of a failing pass, the same SELECT runs in 13s.
+Along the way: the touched-domain set is computed once per pass (it was
+inlined six times, 3848f0a), the ceiling is 590s under a 600s client
+(4ce085d), and the observation rule moved to insert time as
+`http_observed` (migration 022) because expressing it over the body
+snippet in SQL doubled the pass's IO.
+
 **Change events audited: a stub crawl was recorded as "not present".**
 Inventory: 3.8M events in 90 days (tech_removed 1.55M, tech_added 1.36M,
 app_removed 502K, app_added 370K, started_hiring 34K). Persistence at 8
