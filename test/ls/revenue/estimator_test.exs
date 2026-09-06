@@ -61,6 +61,37 @@ defmodule LS.Revenue.EstimatorTest do
     end
   end
 
+  describe "infrastructure and depth signals (2026-09-06)" do
+    test "Microsoft enterprise records and a branded reverse name vote up" do
+      ms = Estimator.estimate(Map.merge(rich(), %{dns_ms_enterprise: "autodiscover|sipfederation"}))
+      assert ms.revenue_evidence =~ "ms_enterprise:autodiscover|sipfederation"
+
+      ptr = Estimator.estimate(Map.merge(rich(), %{dns_ptr: "mail.example.com"}))
+      assert ptr.revenue_evidence =~ "ptr:branded"
+
+      shared = Estimator.estimate(Map.merge(rich(), %{dns_ptr: "srv-12.hostingco.net"}))
+      assert shared.revenue_evidence =~ "ptr:shared"
+    end
+
+    test "sitemap size, catalog and hiring are direct scale evidence" do
+      big = Estimator.estimate(Map.merge(rich(), %{sitemap_urls: 60_000, product_count: 2_500, job_count: 120}))
+      assert big.revenue_evidence =~ "sitemap:60000_urls"
+      assert big.revenue_evidence =~ "catalog:2500_products"
+      assert big.revenue_evidence =~ "hiring:120_jobs"
+      assert big.estimated_revenue in ["$10M-$100M", "$100M-$1B", "$1B+"]
+
+      tiny = Estimator.estimate(Map.merge(rich(), %{sitemap_urls: 12}))
+      assert tiny.revenue_evidence =~ "sitemap:12_urls"
+    end
+
+    test "absent depth facts mean no vote, and hostile values never raise" do
+      refute Estimator.estimate(rich()).revenue_evidence =~ "sitemap:"
+      for bad <- [nil, "x", -1, 1.5, <<255>>] do
+        assert %{} = Estimator.estimate(Map.merge(rich(), %{sitemap_urls: bad, product_count: bad, job_count: bad, dns_ptr: bad, dns_ms_enterprise: bad}))
+      end
+    end
+  end
+
   describe "edge cases" do
     test "nil input → empty result" do
       r = Estimator.estimate(nil)

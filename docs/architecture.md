@@ -144,7 +144,12 @@ newest-row-wins projection would blank the domain's other columns.
 
 Discovery's DNS stage also resolves DMARC, BIMI and DKIM
 (`LS.DNS.EmailAuth`, MX domains only, at most four small TXT lookups) into
-`dns_dmarc` / `dns_bimi` / `dns_dkim`, which the revenue estimator reads.
+`dns_dmarc` / `dns_bimi` / `dns_dkim`, plus reverse DNS and the Microsoft
+enterprise records (`LS.DNS.Infra`: `dns_ptr`, `dns_ms_enterprise`). The
+revenue estimator reads all of them; the depth pass re-runs the estimator
+with catalog, apps, sitemap (`LS.Enrichment.Sitemap`) and jobs and the
+compactor prefers that estimate. `businesses.ctl_subdomains` is the union
+over every certificate seen plus the suppressed sightings.
 
 ## Recrawl
 

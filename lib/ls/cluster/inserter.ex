@@ -17,7 +17,7 @@ defmodule LS.Cluster.Inserter do
     :enriched_at, :worker, :domain,
     :ctl_tld, :ctl_issuer, :ctl_subdomain_count, :ctl_subdomains,
     :dns_a, :dns_aaaa, :dns_mx, :dns_txt, :dns_cname,
-    :dns_dmarc, :dns_bimi, :dns_dkim,
+    :dns_dmarc, :dns_bimi, :dns_dkim, :dns_ptr, :dns_ms_enterprise,
     :http_status, :http_response_time, :http_blocked,
     :http_content_type, :http_tech, :http_apps, :http_language,
     :http_title, :http_meta_description, :http_pages, :http_emails, :http_error,

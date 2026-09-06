@@ -25,13 +25,18 @@ unless LS.ML.Classifier.ready?() do
   Enum.find(1..120, fn _ -> Process.sleep(2_000); LS.ML.Classifier.ready?() end)
 end
 
+# 2026-09-06: the structured hint (platform, apps, mail, catalog, jobs,
+# pages) is appended exactly as LS.Pipeline does at runtime, through the
+# same LS.ML.Features.text_with_hint/2, so the head trains on the shape it
+# is served. Rows exported without those columns simply get no hint.
 texts =
   Enum.map(domains, fn d ->
     r = rows[d]
+
     [r["http_title"], r["http_h1"], r["http_meta_description"], r["http_body_snippet"]]
     |> Enum.map(&(&1 || ""))
     |> Enum.join(" ")
-    |> String.trim()
+    |> LS.ML.Features.text_with_hint(r)
   end)
 
 out = File.open!(out_path, [:write])

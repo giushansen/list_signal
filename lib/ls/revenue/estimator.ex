@@ -101,6 +101,10 @@ defmodule LS.Revenue.Estimator do
       {scores, evidence} = signal_spf_includes(signals, scores, evidence)
       {scores, evidence} = signal_dmarc_policy(signals, scores, evidence)
       {scores, evidence} = signal_email_auth(signals, scores, evidence)
+      {scores, evidence} = signal_ms_enterprise(signals, scores, evidence)
+      {scores, evidence} = signal_hosting_ptr(signals, scores, evidence)
+      {scores, evidence} = signal_site_size(signals, scores, evidence)
+      {scores, evidence} = signal_depth(signals, scores, evidence)
       {scores, evidence} = signal_marketing_automation(signals, scores, evidence)
       {scores, evidence} = signal_subdomain_count(signals, scores, evidence)
       {scores, evidence} = signal_tech_count(signals, scores, evidence)
@@ -405,6 +409,114 @@ defmodule LS.Revenue.Estimator do
         true ->
           {add(scores, :micro, 2), evidence}
       end
+    end
+  end
+
+  # =========================================================================
+  # SIGNAL 7c — Microsoft enterprise records (2026-09-06, LS.DNS.Infra)
+  # =========================================================================
+  # _autodiscover._tcp (Exchange), _sipfederationtls._tcp (Teams federation),
+  # enterpriseregistration (Entra/Intune device enrolment). Each is set up
+  # by an IT function; two or three together is an organisation with one.
+  defp signal_ms_enterprise(signals, scores, evidence) do
+    flags = get_str(signals, :dns_ms_enterprise)
+    n = if flags == "", do: 0, else: length(String.split(flags, "|", trim: true))
+
+    cond do
+      n >= 2 ->
+        {add(scores, :mid_market, 6) |> add(:enterprise, 6) |> add(:large_enterprise, 2),
+         [{"ms_enterprise", flags, :enterprise} | evidence]}
+
+      n == 1 ->
+        {add(scores, :small, 2) |> add(:mid_market, 4) |> add(:enterprise, 2),
+         [{"ms_enterprise", flags, :mid_market} | evidence]}
+
+      true ->
+        {scores, evidence}
+    end
+  end
+
+  # =========================================================================
+  # SIGNAL 7d — Reverse DNS of the web host (2026-09-06, LS.DNS.Infra)
+  # =========================================================================
+  # A branded reverse name is own or rented dedicated infrastructure; a
+  # provider pool name is shared hosting or a cloud instance.
+  defp signal_hosting_ptr(signals, scores, evidence) do
+    case LS.DNS.Infra.ptr_kind(get_str(signals, :dns_ptr), get_str(signals, :domain)) do
+      :branded ->
+        {add(scores, :mid_market, 4) |> add(:enterprise, 3) |> add(:small, 1),
+         [{"ptr", "branded", :mid_market} | evidence]}
+
+      :shared ->
+        {add(scores, :micro, 2) |> add(:small, 2),
+         [{"ptr", "shared", :small} | evidence]}
+
+      :unknown ->
+        {scores, evidence}
+    end
+  end
+
+  # =========================================================================
+  # SIGNAL 7e — Site size from the sitemap (2026-09-06, LS.Enrichment.Sitemap)
+  # =========================================================================
+  # URL count is one of the best public proxies for organisation size: a
+  # 40-URL brochure and a 40,000-URL site are different companies. Only
+  # present after the depth pass; absent means unknown, no vote.
+  defp signal_site_size(signals, scores, evidence) do
+    urls = get_int(signals, :sitemap_urls)
+
+    cond do
+      is_nil(urls) -> {scores, evidence}
+      urls >= 50_000 ->
+        {add(scores, :enterprise, 8) |> add(:large_enterprise, 6) |> add(:mid_market, 2),
+         [{"sitemap", "#{urls}_urls", :enterprise} | evidence]}
+      urls >= 5_000 ->
+        {add(scores, :mid_market, 6) |> add(:enterprise, 4),
+         [{"sitemap", "#{urls}_urls", :mid_market} | evidence]}
+      urls >= 500 ->
+        {add(scores, :small, 4) |> add(:mid_market, 3),
+         [{"sitemap", "#{urls}_urls", :small} | evidence]}
+      urls >= 50 ->
+        {add(scores, :small, 3) |> add(:micro, 1),
+         [{"sitemap", "#{urls}_urls", :small} | evidence]}
+      true ->
+        {add(scores, :micro, 3) |> add(:small, 1),
+         [{"sitemap", "#{urls}_urls", :micro} | evidence]}
+    end
+  end
+
+  # =========================================================================
+  # SIGNAL 7f — Depth-pass facts: catalog and hiring (2026-09-06)
+  # =========================================================================
+  # Only the depth pass carries these, so the discovery-time estimate never
+  # sees them. A 2,000-product catalog or 30 open jobs is direct scale
+  # evidence, stronger than any DNS inference.
+  defp signal_depth(signals, scores, evidence) do
+    products = get_int(signals, :product_count)
+    jobs = get_int(signals, :job_count)
+
+    {scores, evidence} =
+      cond do
+        is_nil(products) -> {scores, evidence}
+        products >= 2_000 ->
+          {add(scores, :mid_market, 6) |> add(:enterprise, 3), [{"catalog", "#{products}_products", :mid_market} | evidence]}
+        products >= 300 ->
+          {add(scores, :small, 4) |> add(:mid_market, 3), [{"catalog", "#{products}_products", :small} | evidence]}
+        products > 0 ->
+          {add(scores, :micro, 2) |> add(:small, 2), [{"catalog", "#{products}_products", :small} | evidence]}
+        true -> {scores, evidence}
+      end
+
+    cond do
+      is_nil(jobs) or jobs == 0 -> {scores, evidence}
+      jobs >= 100 ->
+        {add(scores, :enterprise, 8) |> add(:large_enterprise, 5), [{"hiring", "#{jobs}_jobs", :enterprise} | evidence]}
+      jobs >= 20 ->
+        {add(scores, :mid_market, 6) |> add(:enterprise, 3), [{"hiring", "#{jobs}_jobs", :mid_market} | evidence]}
+      jobs >= 5 ->
+        {add(scores, :small, 3) |> add(:mid_market, 3), [{"hiring", "#{jobs}_jobs", :small} | evidence]}
+      true ->
+        {add(scores, :small, 2), [{"hiring", "#{jobs}_jobs", :small} | evidence]}
     end
   end
 

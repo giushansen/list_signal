@@ -333,7 +333,10 @@ defmodule LS.Pipeline do
       if classify_result.confidence < 0.55 and
            (ml_mode == :defer or MLClassifier.ready?()) do
         ml_text = Enum.join([http[:http_title] || "", h1, http[:http_meta_description] || "", body_text], " ")
-        ml_text = String.trim(ml_text)
+        # Structured clues (platform, apps, mail setup) travel with the text
+        # (2026-09-06, LS.ML.Features): the same builder embeds the training
+        # rows, so the head sees one shape.
+        ml_text = LS.ML.Features.text_with_hint(ml_text, %{http_tech: http[:http_tech], http_apps: http[:http_apps], dns_mx: d[:mx] |> List.wrap() |> Enum.join("|"), dns_dmarc: d[:dmarc], dns_dkim: d[:dkim], dns_ms_enterprise: d[:ms_enterprise], dns_bimi: d[:bimi]})
 
         cond do
           byte_size(ml_text) <= 20 -> {classify_result, nil}
@@ -364,6 +367,8 @@ defmodule LS.Pipeline do
       dns_dmarc: d[:dmarc] || "",
       dns_bimi: d[:bimi] || "",
       dns_dkim: d[:dkim] || "",
+      dns_ptr: d[:ptr] || "",
+      dns_ms_enterprise: d[:ms_enterprise] || "",
       http_status: http[:http_status],
       http_response_time: http[:http_response_time],
       http_blocked: http[:http_blocked] || "",

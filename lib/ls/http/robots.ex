@@ -37,6 +37,7 @@ defmodule LS.HTTP.Robots do
 
   @ua_token "listsignalbot"
   @table :ls_robots_cache
+  @sitemaps_table :ls_robots_sitemaps
   @ttl_s 86_400
   @error_ttl_s 6 * 3_600
   @max_entries 200_000
@@ -50,6 +51,41 @@ defmodule LS.HTTP.Robots do
   @type rules :: [{:allow | :disallow, String.t()}]
 
   # ── Gate ────────────────────────────────────────────────────────────────
+
+  @doc """
+  Sitemap URLs declared in a robots.txt body (`Sitemap:` lines, any group).
+  Pure; capped; used by LS.Enrichment.Sitemap so the file is not fetched
+  twice.
+  """
+  @spec sitemaps(term()) :: [String.t()]
+  def sitemaps(body) when is_binary(body) do
+    body
+    |> binary_part(0, min(byte_size(body), @max_bytes))
+    |> String.split(~r/\r\n|\r|\n/)
+    |> Enum.flat_map(fn line ->
+      case Regex.run(~r/^\s*sitemap\s*:\s*(\S{1,2000})/i, line) do
+        [_, url] -> [url]
+        _ -> []
+      end
+    end)
+    |> Enum.uniq()
+    |> Enum.take(10)
+  end
+
+  def sitemaps(_), do: []
+
+  @doc "Sitemap URLs remembered for `domain` at its last robots.txt fetch, or []."
+  @spec sitemaps_for(String.t()) :: [String.t()]
+  def sitemaps_for(domain) do
+    ensure_table()
+
+    case :ets.lookup(@sitemaps_table, domain) do
+      [{^domain, urls}] -> urls
+      _ -> []
+    end
+  rescue
+    _ -> []
+  end
 
   @doc "Paths that are never gated: the file that defines the gate."
   @spec exempt?(String.t() | nil) :: boolean()
@@ -120,9 +156,26 @@ defmodule LS.HTTP.Robots do
       :ets.new(@table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
     end
 
+    if :ets.info(@sitemaps_table) == :undefined do
+      :ets.new(@sitemaps_table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    end
+
     :ok
   rescue
     ArgumentError -> :ok
+  end
+
+  @doc false
+  def remember_sitemaps(domain, []), do: (ensure_table() && :ets.delete(@sitemaps_table, domain) && :ok)
+
+  def remember_sitemaps(domain, urls) when is_list(urls) do
+    ensure_table()
+    # Bounded like the rules table; the rules eviction keeps the two in step.
+    if :ets.info(@sitemaps_table, :size) >= @max_entries, do: :ets.delete_all_objects(@sitemaps_table)
+    :ets.insert(@sitemaps_table, {domain, Enum.take(urls, 10)})
+    :ok
+  rescue
+    _ -> :ok
   end
 
   defp fetch_and_cache(domain, ip) do
@@ -132,6 +185,7 @@ defmodule LS.HTTP.Robots do
       {:ok, %{status: 200, body: body}} ->
         rules = parse(body)
         seed(domain, rules)
+        remember_sitemaps(domain, sitemaps(body))
         rules
 
       # 4xx (most often 404): no robots.txt, everything allowed, remember for

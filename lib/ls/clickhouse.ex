@@ -1106,7 +1106,15 @@ defmodule LS.Clickhouse do
          OR b.http_emails != ''
          OR (b.dns_mx != '' AND b.classification_confidence >= 0.6)
          OR positionCaseInsensitive(concat(b.http_tech, b.http_apps), 'shopify') > 0,
-         'full', 'light') AS tier
+         'full', 'light') AS tier,
+      -- Everything the revenue estimator reads (2026-09-06): the depth pass
+      -- re-estimates with catalog, apps, sitemap and jobs on top of these,
+      -- and carrying them in the queue item beats a point query per business.
+      b.tranco_rank, b.majestic_rank, b.majestic_ref_subnets, b.rdap_registrar, b.ctl_issuer,
+      b.dns_mx, b.dns_txt, b.dns_dmarc, b.dns_bimi, b.dns_dkim, b.dns_ptr, b.dns_ms_enterprise,
+      b.http_apps, b.ctl_subdomain_count, b.ctl_subdomains, b.rdap_domain_created_at, b.bgp_asn_org, b.bgp_asn_number,
+      b.business_model, b.industry, b.http_title, b.http_status, b.http_emails, b.http_schema_type,
+      b.rdap_nameservers, b.dns_a, b.dns_cname
     FROM businesses b
     -- Semi-join, not LEFT JOIN: identical result set (measured 2026-08-24 —
     # 256,992 vs 257,158 distinct domains, the delta is concurrent writes) but
@@ -1147,16 +1155,26 @@ defmodule LS.Clickhouse do
     case query_raw(sql, 90_000) do
       {:ok, rows} ->
         {:ok,
-         Enum.map(rows, fn [d, pages, tech, blocked, status, country, tier] ->
+         Enum.map(rows, fn [d, pages, tech, blocked, status, country, tier | est] ->
            %{domain: d, http_pages: pages, http_tech: tech,
              http_blocked: blocked, last_http_status: status,
-             inferred_country: country, tier: tier}
+             inferred_country: country, tier: tier,
+             est: Enum.zip(estimator_columns(), est) |> Map.new() |> Map.merge(%{domain: d, http_tech: tech, inferred_country: country})}
          end)}
 
       err ->
         err
     end
   end
+
+  @doc false
+  # Order matches the trailing columns of businesses_needing_enrichment/2.
+  def estimator_columns,
+    do: ~w(tranco_rank majestic_rank majestic_ref_subnets rdap_registrar ctl_issuer
+           dns_mx dns_txt dns_dmarc dns_bimi dns_dkim dns_ptr dns_ms_enterprise
+           http_apps ctl_subdomain_count ctl_subdomains rdap_domain_created_at bgp_asn_org bgp_asn_number
+           business_model industry http_title http_status http_emails http_schema_type
+           rdap_nameservers dns_a dns_cname)a
 
   @doc """
   Refresh `businesses` rows for domains touched in `[since_unix, until_unix)`.
@@ -1357,7 +1375,7 @@ defmodule LS.Clickhouse do
       end
 
     """
-    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
+    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, dns_ptr, dns_ms_enterprise, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, sitemap_urls, sitemap_products, sitemap_blog, sitemap_children, sitemap_lastmod, sitemap_hash, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
     SELECT
       h.domain AS domain,
       h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
@@ -1371,9 +1389,14 @@ defmodule LS.Clickhouse do
       if(s.render_engine = 'camoufox' AND s.enriched_at_newest > h._blk_at,
          '', h.last_http_blocked) AS last_http_blocked,
       h.dns_alive,
-      h.ctl_tld, h.ctl_issuer, h.ctl_subdomain_count, h.ctl_subdomains,
+      h.ctl_tld, h.ctl_issuer,
+      -- Union of every certificate's SANs (h._subs_hist) and the suppressed
+      -- sightings (c.subs), 2026-09-06. Written twice on purpose: an alias
+      -- column would break the positional INSERT list.
+      length(arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300)) AS ctl_subdomain_count,
+      arrayStringConcat(arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300), '|') AS ctl_subdomains,
       h.dns_a, h.dns_aaaa, h.dns_mx, h.dns_txt, h.dns_cname,
-      h.dns_dmarc, h.dns_bimi, h.dns_dkim,
+      h.dns_dmarc, h.dns_bimi, h.dns_dkim, h.dns_ptr, h.dns_ms_enterprise,
       h.http_status, h.http_response_time, h.http_blocked, h.http_content_type,
       h.http_tech,
       -- Apps seen on the homepage at discovery, unioned with what the depth
@@ -1398,7 +1421,17 @@ defmodule LS.Clickhouse do
       h.rdap_registrar, h.rdap_registrar_iana_id, h.rdap_nameservers, h.rdap_status,
       h.tranco_rank, h.majestic_rank, h.majestic_ref_subnets,
       h.is_disposable_email, h.is_junk,
-      h.estimated_revenue, h.estimated_employees, h.revenue_confidence, h.revenue_evidence,
+      -- The depth pass re-runs the estimator with catalog, apps, sitemap,
+      -- jobs and DNS on top of the discovery row (2026-09-06); when it has,
+      -- that estimate is the better one. s.* are NULL without an enrichment
+      -- row (join_use_nulls), so ifNull keeps h's value then.
+      -- (aliases d_* on the fold side: an alias equal to the source column
+      -- name inside another argMaxIf condition is a nested aggregate to
+      -- ClickHouse, Code 184, the 2026-08-19 compaction freeze.)
+      if(ifNull(s.d_est_revenue, '') != '', s.d_est_revenue, h.estimated_revenue) AS estimated_revenue,
+      if(ifNull(s.d_est_revenue, '') != '', s.d_est_employees, h.estimated_employees) AS estimated_employees,
+      if(ifNull(s.d_est_revenue, '') != '', s.d_rev_confidence, h.revenue_confidence) AS revenue_confidence,
+      if(ifNull(s.d_est_revenue, '') != '', s.d_rev_evidence, h.revenue_evidence) AS revenue_evidence,
       s.product_count, s.price_min, s.price_avg, s.price_max, s.new_products_30d,
       s.last_product_at, s.oos_ratio, s.discount_depth, s.vendor_count,
       s.catalog_age_days, s.product_types,
@@ -1409,6 +1442,7 @@ defmodule LS.Clickhouse do
       s.about_text, s.mission, s.hq_location, s.job_locations_top, s.positions_overview,
       p.pricing_points, n.news_count, n.last_funding_usd,
       s.shop_theme, s.shop_theme_store_id, s.shop_currency, s.shop_locales, s.shopify_plus,
+      s.sitemap_urls, s.sitemap_products, s.sitemap_blog, s.sitemap_children, s.sitemap_lastmod, s.sitemap_hash,
       -- A verified fact that contradicts observed traffic is a wrong entity,
       -- not a fact (2026-09-06: google.com carried "<$1M / 51-500" from a
       -- Wikidata item whose official website is google.com; several such
@@ -1465,8 +1499,13 @@ defmodule LS.Clickhouse do
         argMaxIf(s_rdap_status, s_enriched_at, s_rdap_registrar != '') AS rdap_status,
         argMaxIf(s_ctl_tld, s_enriched_at, s_ctl_issuer != '') AS ctl_tld,
         argMaxIf(s_ctl_issuer, s_enriched_at, s_ctl_issuer != '') AS ctl_issuer,
-        argMaxIf(s_ctl_subdomain_count, s_enriched_at, s_ctl_issuer != '') AS ctl_subdomain_count,
-        argMaxIf(s_ctl_subdomains, s_enriched_at, s_ctl_issuer != '') AS ctl_subdomains,
+        /* Subdomains are a UNION over every certificate we have seen for the
+           domain, not the newest certificate's list (2026-09-06): each cert
+           names a few SANs, and the interesting hosts (api., app., staging.)
+           are spread across them. ctl_subdomain_count follows the union.
+           Capped at 300 names so one wildcard-happy CDN cannot bloat a row. */
+        arraySlice(arrayDistinct(arrayFilter(x -> x != '',
+          arrayFlatten(groupArray(splitByChar('|', s_ctl_subdomains))))), 1, 300) AS _subs_hist,
         argMaxIf(s_estimated_revenue, s_enriched_at, s_estimated_revenue != '') AS estimated_revenue,
         argMaxIf(s_estimated_employees, s_enriched_at, s_estimated_revenue != '') AS estimated_employees,
         argMaxIf(s_revenue_confidence, s_enriched_at, s_estimated_revenue != '') AS revenue_confidence,
@@ -1479,6 +1518,8 @@ defmodule LS.Clickhouse do
         argMaxIf(s_dns_dmarc, s_enriched_at, s_dns_mx != '') AS dns_dmarc,
         argMaxIf(s_dns_bimi, s_enriched_at, s_dns_mx != '') AS dns_bimi,
         argMaxIf(s_dns_dkim, s_enriched_at, s_dns_mx != '') AS dns_dkim,
+        argMaxIf(s_dns_ptr, s_enriched_at, s_dns_ptr != '') AS dns_ptr,
+        argMaxIf(s_dns_ms_enterprise, s_enriched_at, s_dns_mx != '') AS dns_ms_enterprise,
         argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
         argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
         argMaxIf(s_http_country_evidence, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence,
@@ -1494,7 +1535,7 @@ defmodule LS.Clickhouse do
         -- above: a parked domain that comes back to life must clear the flag,
         -- and a real site that dies into a parking page must gain it.
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
+      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, dns_ptr AS s_dns_ptr, dns_ms_enterprise AS s_dns_ms_enterprise, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history)
       #{scope}
       GROUP BY s_domain
       HAVING (is_malware = '' AND is_phishing = '')
@@ -1541,6 +1582,16 @@ defmodule LS.Clickhouse do
         argMaxIf(shop_currency, enriched_at, shop_currency != '') AS shop_currency,
         argMaxIf(shop_locales, enriched_at, shop_locales IS NOT NULL) AS shop_locales,
         argMaxIf(shopify_plus, enriched_at, shopify_plus IS NOT NULL) AS shopify_plus,
+        argMaxIf(sitemap_urls, enriched_at, sitemap_urls IS NOT NULL) AS sitemap_urls,
+        argMaxIf(sitemap_products, enriched_at, sitemap_products IS NOT NULL) AS sitemap_products,
+        argMaxIf(sitemap_blog, enriched_at, sitemap_blog IS NOT NULL) AS sitemap_blog,
+        argMaxIf(sitemap_children, enriched_at, sitemap_children IS NOT NULL) AS sitemap_children,
+        argMaxIf(sitemap_lastmod, enriched_at, sitemap_lastmod IS NOT NULL) AS sitemap_lastmod,
+        argMaxIf(sitemap_hash, enriched_at, sitemap_hash IS NOT NULL) AS sitemap_hash,
+        argMaxIf(depth_estimated_revenue, enriched_at, depth_estimated_revenue != '') AS d_est_revenue,
+        argMaxIf(depth_estimated_employees, enriched_at, depth_estimated_revenue != '') AS d_est_employees,
+        argMaxIf(depth_revenue_confidence, enriched_at, depth_estimated_revenue != '') AS d_rev_confidence,
+        argMaxIf(depth_revenue_evidence, enriched_at, depth_estimated_revenue != '') AS d_rev_evidence,
         argMaxIf(ats_platform, enriched_at, ats_platform != '') AS ats_platform,
         argMaxIf(job_departments, enriched_at, job_departments != '') AS job_departments,
         argMaxIf(job_locations, enriched_at, job_locations != '') AS job_locations,
@@ -1559,6 +1610,16 @@ defmodule LS.Clickhouse do
                       max(amount_usd) AS last_funding_usd
                FROM biz_news#{join_scope} GROUP BY domain) n ON h.domain = n.domain
     LEFT JOIN (#{verified_sql(join_scope)}) v ON h.domain = v.domain
+    LEFT JOIN (
+      /* Certificates the 7-day gate suppressed (LS.Cluster.CrawlDedup):
+         their subdomains join the union too. 90-day TTL table, scoped to
+         this pass's domains, so the join stays small. */
+      SELECT domain,
+        arraySlice(arrayDistinct(arrayFilter(x -> x != '',
+          arrayFlatten(groupArray(splitByChar('|', ctl_subdomains))))), 1, 300) AS subs
+      FROM ctl_sightings#{join_scope}
+      GROUP BY domain
+    ) c ON h.domain = c.domain
     SETTINGS max_bytes_before_external_group_by = 1500000000, max_threads = 2,
              join_use_nulls = 1, max_execution_time = #{max_s}
     """

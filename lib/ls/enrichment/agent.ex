@@ -138,6 +138,9 @@ defmodule LS.Enrichment.Agent do
     # Nothing here touches the homepage result: `apps_deep` is unioned into
     # http_apps by the compactor, and the shop_* columns are new.
     deep = deep_apps(domain, ip, home, visited, shopify)
+    # Sitemap snapshot (2026-09-06): size, shape, freshness, fingerprint.
+    # Full tier only; the light tier is the cheap pass by definition.
+    sitemap = if light?, do: LS.Enrichment.Sitemap.empty(), else: LS.Enrichment.Sitemap.snapshot(domain, ip, LS.HTTP.Robots.sitemaps_for(domain))
     {jobs_summary, jobs} = Jobs.analyze(domain, careers_html, ip)
     about = About.analyze(domain, careers_html, jobs, ip)
     # SEO always runs on the homepage; perf is only populated when camoufox
@@ -163,15 +166,57 @@ defmodule LS.Enrichment.Agent do
         %{domain: domain, enriched_at: now(), render_engine: home[:source]}
         |> Map.merge(shopify.summary)
         |> Map.merge(deep)
+        |> Map.merge(sitemap)
         |> Map.merge(jobs_summary)
         |> Map.merge(about)
         |> Map.merge(seo)
+        |> then(&Map.merge(&1, depth_estimate(item, &1)))
     }
   rescue
     e ->
       Logger.warning("[ENRICH] #{item[:domain]} failed: #{Exception.message(e)}")
       %{domain: item[:domain], contacts: [], jobs: [], pricing: [],
         products: [], collections: [], page_fetches: [], summary: %{}}
+  end
+
+  # ── depth estimate ─────────────────────────────────────────────────────────
+
+  @doc false
+  # The revenue estimator, re-run with everything the depth pass learned on
+  # top of the discovery row the queue carried (`item.est`, 2026-09-06). The
+  # compactor prefers this over the discovery-time estimate when present.
+  # Pure given its inputs; an item without `est` (older queue entries,
+  # tests) still gets an estimate from the depth facts alone.
+  def depth_estimate(item, summary) do
+    base = Map.get(item, :est) || %{domain: item[:domain], http_tech: item[:http_tech]}
+
+    apps =
+      [Map.get(base, :http_apps), summary[:apps_deep]]
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+      |> Enum.flat_map(&String.split(&1, "|", trim: true))
+      |> Enum.uniq()
+      |> Enum.join("|")
+
+    signals =
+      base
+      |> Map.merge(%{
+        http_status: Map.get(base, :http_status) || 200,
+        http_apps: apps,
+        product_count: summary[:product_count],
+        job_count: summary[:job_count],
+        sitemap_urls: summary[:sitemap_urls]
+      })
+
+    est = LS.Revenue.Estimator.estimate(signals)
+
+    %{
+      depth_estimated_revenue: est.estimated_revenue || "",
+      depth_estimated_employees: est.estimated_employees || "",
+      depth_revenue_confidence: if(est.estimated_revenue in [nil, ""], do: nil, else: est.revenue_confidence),
+      depth_revenue_evidence: est.revenue_evidence || ""
+    }
+  rescue
+    _ -> %{depth_estimated_revenue: "", depth_estimated_employees: "", depth_revenue_confidence: nil, depth_revenue_evidence: ""}
   end
 
   # ── apps beyond the homepage ───────────────────────────────────────────────

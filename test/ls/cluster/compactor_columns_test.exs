@@ -36,8 +36,38 @@ defmodule LS.Cluster.CompactorColumnsTest do
       assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
     end
 
-    assert LS.Cluster.EnrichmentWriter.summary_columns() |> Enum.take(-6) ==
-             ~w(apps_deep shop_theme shop_theme_store_id shop_currency shop_locales shopify_plus)
+    assert ~w(apps_deep shop_theme shop_theme_store_id shop_currency shop_locales shopify_plus) --
+             LS.Cluster.EnrichmentWriter.summary_columns() == []
+  end
+
+  test "sitemap snapshot and the depth estimate travel from biz_enrichment to businesses (2026-09-06)" do
+    for col <- ~w(sitemap_urls sitemap_products sitemap_blog sitemap_children sitemap_lastmod sitemap_hash) do
+      assert @src =~ "AS #{col},", "#{col} missing from the enrichment fold"
+      assert @src =~ "s.#{col}", "#{col} missing from the businesses select"
+      assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
+    end
+
+    assert @src =~ "if(ifNull(s.d_est_revenue, '') != '', s.d_est_revenue, h.estimated_revenue) AS estimated_revenue"
+    assert @src =~ "argMaxIf(depth_revenue_evidence, enriched_at, depth_estimated_revenue != '') AS d_rev_evidence"
+
+    assert ~w(sitemap_urls sitemap_hash depth_estimated_revenue depth_revenue_evidence) --
+             LS.Cluster.EnrichmentWriter.summary_columns() == []
+  end
+
+  test "infrastructure DNS columns travel to businesses (2026-09-06)" do
+    for col <- ~w(dns_ptr dns_ms_enterprise) do
+      assert @src =~ "#{col} AS s_#{col}"
+      assert @src =~ "AS #{col},"
+      assert @src =~ "h.#{col}"
+      assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/
+    end
+  end
+
+  test "subdomains are a union across certificates and suppressed sightings, capped" do
+    assert @src =~ "arrayFlatten(groupArray(splitByChar('|', s_ctl_subdomains))))), 1, 300) AS _subs_hist"
+    assert @src =~ "FROM ctl_sightings\#{join_scope}"
+    assert length(String.split(@src, "arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300)")) == 3,
+           "the union must feed BOTH ctl_subdomain_count and ctl_subdomains"
   end
 
   describe "verified facts (google.com was a 3-person company, 2026-09-06)" do

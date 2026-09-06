@@ -305,7 +305,14 @@ defmodule LS.Cluster.WorkerAgent do
           {:ok, dns} ->
             # DMARC / BIMI / DKIM ride along with the DNS stage, and only for
             # domains that have mail at all (2026-09-06, LS.DNS.EmailAuth).
-            dns = Map.merge(dns, LS.DNS.EmailAuth.lookup(domain, List.wrap(dns[:mx])))
+            mx = List.wrap(dns[:mx])
+            first_ip = dns[:a] |> List.wrap() |> List.first()
+
+            dns =
+              dns
+              |> Map.merge(LS.DNS.EmailAuth.lookup(domain, mx))
+              |> Map.merge(LS.DNS.Infra.lookup(domain, first_ip, mx))
+
             {domain, %{dns: dns, scores: %{}}}
           {:error, _} ->
             {domain, %{

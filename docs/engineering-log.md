@@ -27,6 +27,51 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-09-06
 
+**Subdomains are now a union, and the depth pass estimates revenue with
+everything it knows.** `businesses.ctl_subdomains` used to be the newest
+certificate's SAN list; it is now the distinct union over every certificate
+in `domains_history` plus the last 90 days of `ctl_sightings` (the ones the
+7-day gate suppressed), capped at 300 names, with `ctl_subdomain_count`
+following. The expression is written twice in the compactor on purpose: an
+alias column would break the positional INSERT list, and a WITH clause is
+stripped by the contract test that executes the SELECT alone.
+
+**More DNS that says how big the IT is.** `LS.DNS.Infra`: reverse DNS of the
+web host (cached per IP, 300K cap) and the Microsoft records that only exist
+with Exchange, Teams federation or Entra/Intune enrolment
+(`_autodiscover._tcp`, `_sipfederationtls._tcp` SRV, `enterpriseregistration`
+CNAME; MX domains only). Columns `dns_ptr`, `dns_ms_enterprise` (migration
+021). The estimator gained `signal_ms_enterprise`, `signal_hosting_ptr`,
+`signal_site_size`, `signal_depth` (catalog, hiring).
+
+**Sitemap snapshot.** `LS.Enrichment.Sitemap` reads the sitemap named by the
+robots.txt we already fetch (else `/sitemap.xml`), samples up to three child
+sitemaps of an index and extrapolates: URL count, product and blog URL
+counts, child count, newest lastmod, and a 64-bit simhash of the URL paths
+so a restructure becomes a change signal. Full tier only, at most four
+requests per business. `sitemap_*` columns on `biz_enrichment` and
+`businesses`.
+
+**Depth-pass revenue estimate.** The queue item now carries the 27 columns
+the estimator reads (`Clickhouse.estimator_columns/0`), and
+`Agent.depth_estimate/2` re-runs the estimator with apps, catalog, sitemap
+and jobs on top. Stored as `depth_estimated_*` on `biz_enrichment`; the
+compactor prefers it over the discovery-time estimate when present (fold
+aliases `d_*`, because an alias equal to a source column inside another
+argMaxIf condition is a nested aggregate to ClickHouse, Code 184).
+
+**The classifier sees structure.** `LS.ML.Features.hint/1` renders
+platform, apps, mail setup, catalog, jobs and page counts as a short
+fixed-vocabulary sentence appended to the text MiniLM embeds, in the
+pipeline and in the training embedding script alike, so the head is trained
+and served on one shape. Head v3 is trained on the distill v3 teacher
+labels once they are complete (in progress, `analysis/distill/`).
+
+**robots.txt cost, measured after 6 hours fleet-wide:** 5,016 of 512,781
+HTTP attempts refused (0.98%); 1,250 of the 5,408 refused domains were
+already known businesses. Sites that allow only Googlebot are correctly
+refused: the group for `*` applies to a declared bot.
+
 **Discovery is gated to one fetch per 7 days, and what it gates is kept.**
 `LS.Cluster.CrawlDedup` moved from two 3.5-day blooms (guaranteed 3.5, at
 most 7) to eight daily windows of 10M entries (~96MB): a crawled domain is
