@@ -1,5 +1,36 @@
 # Distillation datasets — teacher labels + trained heads
 
+## v3 (2026-09-06) — structured hints, Fable teacher, +740 domains (in progress)
+
+- `teacher_labels_v3_2026-09-06.jsonl` — the remainder of the golden v5
+  pool (740 domains, same strata: Shopify/SaaS/online-heavy, zero overlap
+  with any golden set). Teacher: Claude Fable 5.1 agents (`teacher:
+  "fable"`) for batches 0-6, Sonnet (`teacher: "sonnet"`) for 7-14 after
+  the Fable usage limit; each domain's homepage fetched live plus the
+  stored hints. Method validated in v1 (Haiku 67% vs Sonnet 63% against
+  owner labels, statistically equal).
+- **The text the head embeds changed**: `LS.ML.Features.hint/1` appends
+  platform, apps, mail setup (provider + DMARC), catalog, jobs and page
+  counts as a fixed-vocabulary sentence, in `LS.Pipeline` and in
+  `embed_labels.exs` alike. Every embedding file used for v3 was produced
+  AFTER that change; v1/v2 embeddings are not comparable.
+- `train_head_v3.py` — same contract as v2, evaluates per golden set.
+- **Result (pass 2: v1 + v2 + 350 v3 labels = 4,509 rows), measured on all
+  998 embeddable golden rows (v3 + v4 + v5), never trained on:**
+
+  | | head v2 (shipped, no hint) | head v3 (hint) |
+  |---|---|---|
+  | raw accuracy | 48.0% | 51.7% |
+  | conf >= 0.5 | cov 43%, prec 67.5% | cov 41%, prec 72.0% |
+  | conf >= 0.7 (shipped tier) | cov 19%, prec 79.3% | cov 19%, prec 83.8% |
+  | golden v5 (Shopify/SaaS-heavy) | 49.1% | 57.5% |
+
+  A/B without the hint on the same v3 labels: 47.6% raw, 82.2% at 0.7, so
+  the gain is the hint, not the extra labels. `priv/ml/head_v3.json`
+  shipped; v2 stays as rollback (switch `@weights_path` AND remove the
+  hint together, never one without the other). Retrain as v3.1 when the
+  Sonnet batches complete.
+
 ## v2 (2026-08-17) — 17 classes, +1,962 domains
 
 Head v2 (`priv/ml/head_v2.json`, sha256 a21de941…) adds four classes the

@@ -222,3 +222,26 @@ valuable-but-uncertain domains where heuristic and MiniLM disagree, distilling
 LLM labels back into the embedding tier → revenue calibration against golden
 labels, later against free registries (Sirene, Companies House) → drift
 dashboards in Metabase.
+
+## Golden v5 + head v3 (2026-09-06)
+
+Golden v5: 320 rows, Shopify/SaaS/online-heavy, Fable-labeled with a new
+`true_employees` column (`analysis/golden_set/README.md`). Baseline at
+freeze: Ecommerce 68.5%, SaaS 63.5%, revenue exact-bracket 69.3%.
+
+Head v3: the classifier's text now carries a structured hint
+(`LS.ML.Features`: platform, apps, mail setup, catalog, jobs, pages), and
+the head was retrained on v1 + v2 + the new v3 teacher labels. On the 998
+golden rows it never saw: 48.0% -> 51.7% raw, 79.3% -> 83.8% precision at
+the shipped confidence tier, 49.1% -> 57.5% on golden v5. Per the working
+agreement the golden sets were frozen and committed (label-only) before
+the head, the estimator signals and the hint reached production. Details
+in `analysis/distill/README.md`.
+
+Revenue: the estimator gained DMARC (which had never fired), BIMI, DKIM,
+Microsoft enterprise records, reverse DNS, sitemap size, catalog size and
+hiring signals, and the depth pass now re-estimates with all of them; the
+verified layer blanks facts that contradict a Tranco top-10K rank. Score
+the estimator against v4 + v5 (`mix ls.golden_eval`) after one full
+enrichment cycle (30 days) before drawing conclusions: the new depth
+signals only exist on rows the depth pass has revisited.

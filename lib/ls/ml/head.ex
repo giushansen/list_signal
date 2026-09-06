@@ -21,7 +21,7 @@ defmodule LS.ML.Head do
 
   require Logger
 
-  @weights_path "ml/head_v2.json"
+  @weights_path "ml/head_v3.json"
 
   @doc """
   Load head weights from priv. Returns `%{classes: [...], coef: tensor,

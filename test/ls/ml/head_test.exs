@@ -28,7 +28,14 @@ defmodule LS.ML.HeadTest do
 
   test "the shipped weights file loads with the expected 17x384 shape" do
     head = Head.load()
-    assert head, "priv/ml/head_v2.json must load — the ML tier silently falls back to zero-shot cosine without it"
+    assert head, "priv/ml/head_v3.json must load — the ML tier silently falls back to zero-shot cosine without it"
+    # 2026-09-06: v3 is trained on text + LS.ML.Features hint. Serving v3 on
+    # un-hinted text (or v2 on hinted text) is a shape mismatch that no test
+    # on the head alone can see, so the version and the pipeline's builder
+    # are pinned together.
+    assert head.version == "head_v3_2026-09-06"
+    assert File.read!("lib/ls/pipeline.ex") =~ "LS.ML.Features.text_with_hint(ml_text"
+    assert File.read!("analysis/distill/embed_labels.exs") =~ "LS.ML.Features.text_with_hint(r)"
     assert length(head.classes) == 17
     assert "Junk" in head.classes and "LocalBusiness" in head.classes
 
