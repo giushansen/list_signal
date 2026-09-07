@@ -103,8 +103,7 @@ defmodule LSWeb.BrandComponents do
         @class
       ]}
     >
-      <.logo_tile />
-      ListSignal
+      <.logo_tile /> ListSignal
     </a>
     """
   end

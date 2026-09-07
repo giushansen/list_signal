@@ -109,7 +109,9 @@ defmodule LSWeb.BrandTest do
 
     test "is listed in static_paths/0 and exists on disk" do
       for file <- @served do
-        assert file in LSWeb.static_paths(), "#{file} is not in LSWeb.static_paths/0, Plug.Static will 404 it"
+        assert file in LSWeb.static_paths(),
+               "#{file} is not in LSWeb.static_paths/0, Plug.Static will 404 it"
+
         assert File.exists?("priv/static/#{file}"), "priv/static/#{file} is missing"
       end
 
@@ -148,7 +150,9 @@ defmodule LSWeb.BrandTest do
       assert html =~ ~s(<meta name="theme-color" content="#080e1e">)
     end
 
-    test "public_root: head icons, og:image with its dimensions, the lockup in the nav", %{conn: conn} do
+    test "public_root: head icons, og:image with its dimensions, the lockup in the nav", %{
+      conn: conn
+    } do
       html = conn |> get("/") |> html_response(200)
       head_assertions(html)
 
@@ -157,7 +161,10 @@ defmodule LSWeb.BrandTest do
       assert html =~ ~s(property="og:image:height" content="630")
       assert html =~ ~s(property="og:image:alt" content="ListSignal")
 
-      [nav] = Regex.run(~r/<nav aria-label="Main".*?<\/nav>/s, html) || Regex.run(~r/<nav.*?aria-label="Main".*?<\/nav>/s, html)
+      [nav] =
+        Regex.run(~r/<nav aria-label="Main".*?<\/nav>/s, html) ||
+          Regex.run(~r/<nav.*?aria-label="Main".*?<\/nav>/s, html)
+
       assert nav =~ ~s(viewBox="0 0 64 64")
       assert nav =~ "ListSignal"
 
@@ -178,6 +185,10 @@ defmodule LSWeb.BrandTest do
 
   test "the OpenAPI info block names the logo for Redoc" do
     spec = LSWeb.OpenapiController.spec()
-    assert spec.info[:"x-logo"] == %{url: "https://listsignal.com/images/brand/tile-green-512.png", altText: "ListSignal"}
+
+    assert spec.info[:"x-logo"] == %{
+             url: "https://listsignal.com/images/brand/tile-green-512.png",
+             altText: "ListSignal"
+           }
   end
 end

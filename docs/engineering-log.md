@@ -27,6 +27,23 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-09-07
 
+**Brand v1: the LS letter box is gone, the "Live list" mark is in.** The
+logo is one frozen SVG path (`LSWeb.BrandComponents`, `@mark_path`) and
+every favicon, tile, lockup and the share card is generated from the same
+path and two colours by `docs/brand/gen_brand_assets.py`. The pack arrived
+with `DARK = #0a0e17`; Tailwind `ls-dark` is `#080E1E`, so the assets were
+regenerated before install (`brand_test.exs` pins the manifest colour to
+the config). `head_icons/1` is shared by `public_root/1` and `root/1`.
+Emails deliberately get no logo. Rules in `docs/brand/README.md`.
+
+How it landed: the component, rollout and assets were still an uncommitted
+working tree when a concurrent session ran `git add -A` and committed them
+inside 1740612 ("An unknown /tech/<slug> is a free 404"), then pushed and
+deployed. That commit therefore carries two unrelated changes, plus a stray
+`listsignal-brand-pack.zip` removed in the next commit. `git notes show
+1740612` has the detail. Lesson for concurrent sessions: stage by path,
+never `git add -A`, when another session may have work in the tree.
+
 **Compaction no longer reads the whole history table: the pass folds the
 window into the compiled row.** The 09-06 finding stood: with
 `domains_history` ordered by domain, `domain IN (touched)` for ~20K domains
