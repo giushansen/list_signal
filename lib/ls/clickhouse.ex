@@ -1441,6 +1441,12 @@ defmodule LS.Clickhouse do
   # the whole server hit MEMORY_LIMIT_EXCEEDED and "new businesses" halved
   # for two hours (caught by the DataCheck quantity alert). Client gives up
   # and server keeps paying is the worst of both; now they die together.
+  # Hard bound on the older-history leg of an incremental pass. Beyond it a
+  # newly qualifying blocked domain is compiled from its window rows alone
+  # (DNS, certificate, registry and mail data from the blocked crawl) and
+  # picks up nothing from crawls before the window.
+  @candidates_per_pass 500
+
   # The history columns the fold reads, in the order the aggregate above
   # names them (`s_<col>`). One list, three sources: see history_rows_sql/2.
   @history_cols ~w(enriched_at worker domain ctl_tld ctl_issuer ctl_subdomain_count ctl_subdomains
@@ -1503,10 +1509,13 @@ defmodule LS.Clickhouse do
        their own columns because min(time) and "newest row had an A record"
        are not recoverable from a compiled row otherwise;
     3. the whole history of `_candidates`: window domains without a
-       `businesses` row whose window rows could qualify one (a
-       classification, a block, or a 401/403/429). Their old crawls decide
-       the row the same way they always did: ~900 domains a pass, so the
-       primary key really does prune. A window domain that is neither a
+       `businesses` row that could qualify one only through a block or a
+       401/403/429, with no classified crawl in the window, at most
+       `@candidates_per_pass` of them. A classified 2xx crawl in the window
+       carries every field a row needs, so it folds from the window alone;
+       a blocked crawl carries only DNS, certificate, registry and mail
+       data, and the older 2xx crawl that may hold its title and stack is
+       worth one primary-key read. A window domain that is neither a
        business nor a candidate cannot qualify from older rows alone (a
        classification implies a 2xx crawl, which would have compiled it),
        so its window rows fold on their own and the HAVING drops it.
@@ -1629,22 +1638,32 @@ defmodule LS.Clickhouse do
     # Two scalar sets, computed once per pass:
     #   _touched    every domain any pipeline wrote in the window (scopes the
     #               joins and the businesses fold below);
-    #   _candidates window domains with no `businesses` row yet whose window
-    #               rows could qualify one (see history_rows_sql/2). The
+    #   _candidates window domains with no `businesses` row yet that could
+    #               qualify one only through a block or a 401/403/429, with
+    #               no classified crawl in the window (see history_rows_sql/2
+    #               for why a classified crawl needs no older history). The
     #               "no row yet" test reads `businesses` scoped to the
     #               window's domains: unscoped, NOT IN builds a hash set of
     #               all 18.6M business domains, 3.3 GB on a server capped at
     #               6 GB (measured 2026-09-07); scoped it is a few thousand.
+    #               Capped per pass: this leg is the pass's variable cost
+    #               (989 candidates on a live window against 349 on the
+    #               probe window took a pass from 2.4 GB to 5.3 GB); the
+    #               rest fold from their window rows alone.
     touched =
       if since_unix > 0 do
         """
         WITH (SELECT groupUniqArray(domain) FROM (#{domain_set})) AS _touched,
-             (SELECT groupUniqArray(domain) FROM domains_history
+             (SELECT groupUniqArray(domain) FROM (
+               SELECT domain FROM domains_history
                WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
-                 AND (business_model != '' OR http_blocked != '' OR http_status IN (401, 403, 429))
                  AND domain NOT IN (SELECT domain FROM businesses
                                     WHERE domain IN (SELECT domain FROM domains_history
-                                                     WHERE enriched_at >= toDateTime(#{since_unix})#{upper}))) AS _candidates
+                                                     WHERE enriched_at >= toDateTime(#{since_unix})#{upper}))
+               GROUP BY domain
+               HAVING max(business_model != '') = 0
+                  AND max(http_blocked != '' OR http_status IN (401, 403, 429)) = 1
+               LIMIT #{@candidates_per_pass})) AS _candidates
         """
       else
         ""
@@ -1657,6 +1676,12 @@ defmodule LS.Clickhouse do
     # read buffers, not state, and spilling on that wrote 628 files for
     # 36 MB and took the pass from 44 s to 165 s (measured 2026-09-07).
     spill = if since_unix > 0, do: 0, else: 1_500_000_000
+    # The byte threshold alone does not switch spilling off: the server
+    # default max_bytes_ratio_before_external_group_by = 0.5 spills once the
+    # query passes half the memory limit, and the first live passes of the
+    # fold wrote 749 spill files that way (2026-09-07 05:54). Both off for
+    # the incremental form; both at their defaults for a rebuild.
+    spill_ratio = if since_unix > 0, do: 0, else: 0.5
     join_scope = if since_unix > 0, do: " WHERE domain IN (SELECT arrayJoin(_touched))", else: ""
 
     # The depth side reads only SUCCESSFUL enrichment rows. Without this, the
@@ -1938,8 +1963,8 @@ defmodule LS.Clickhouse do
       FROM ctl_sightings#{join_scope}
       GROUP BY domain
     ) c ON h.domain = c.domain
-    SETTINGS max_bytes_before_external_group_by = #{spill}, max_threads = 2,
-             join_use_nulls = 1, max_execution_time = #{max_s}
+    SETTINGS max_bytes_before_external_group_by = #{spill}, max_bytes_ratio_before_external_group_by = #{spill_ratio},
+             max_threads = 2, join_use_nulls = 1, max_execution_time = #{max_s}
     """
   end
 

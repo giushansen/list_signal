@@ -85,7 +85,12 @@ defmodule LS.CompactorSliceTest do
       # qualify one. Anything else folds from its window rows alone.
       assert sql =~ "AND domain NOT IN (SELECT domain FROM businesses\n"
       refute sql =~ "NOT IN (SELECT domain FROM businesses)", "unscoped NOT IN is a 3.3 GB hash set"
-      assert sql =~ "(business_model != '' OR http_blocked != '' OR http_status IN (401, 403, 429))"
+      # Only blocked or 4xx domains with no classified crawl in the window,
+      # and never more than the per-pass cap: 989 candidates on one live
+      # window took a pass from 2.4 GB to 5.3 GB (2026-09-07).
+      assert sql =~ "HAVING max(business_model != '') = 0\n"
+      assert sql =~ "AND max(http_blocked != '' OR http_status IN (401, 403, 429)) = 1\n"
+      assert sql =~ "LIMIT 500)) AS _candidates"
     end
 
     test "existing rows enter the fold as two synthetic history rows from one read" do
@@ -117,8 +122,8 @@ defmodule LS.CompactorSliceTest do
     test "the incremental fold never spills its aggregation to disk" do
       # 628 spill files for 36 MB took a 44 s fold to 165 s (2026-09-07).
       # What the tracker counts here is read buffers, not aggregation state.
-      assert LS.Clickhouse.compact_sql_for_test(@since, @until) =~ "max_bytes_before_external_group_by = 0,"
-      assert LS.Clickhouse.compact_sql_for_test(0) =~ "max_bytes_before_external_group_by = 1500000000,"
+      assert LS.Clickhouse.compact_sql_for_test(@since, @until) =~ "max_bytes_before_external_group_by = 0, max_bytes_ratio_before_external_group_by = 0,"
+      assert LS.Clickhouse.compact_sql_for_test(0) =~ "max_bytes_before_external_group_by = 1500000000, max_bytes_ratio_before_external_group_by = 0.5,"
     end
 
     test "a blank on a synthetic row is a typed NULL for Nullable columns, '' otherwise" do

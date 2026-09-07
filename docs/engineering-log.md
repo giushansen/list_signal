@@ -88,7 +88,14 @@ index_granularity, left for a measured follow-up. The 1190 s ceiling stays as he
 shows the steady state. Live after the deploy: the first calm pass ran
 64 s at 2.3 GB; the first catch-up pass over a 30-minute slice ran 208 s
 at 5.4 GB, so the catch-up slice is now 600 s (three cheap passes 2 s
-apart instead of one that can die on the cap).
+apart instead of one that can die on the cap). A five-minute live window
+then still ran 336 s at 5.3 GB with 749 spill files: the server default
+max_bytes_ratio_before_external_group_by = 0.5 spills past half the cap
+whatever the byte threshold says (now 0 for the incremental form), and
+that window had 989 candidates against the probe's 349, the pass's one
+variable cost. Candidates are now only blocked or 4xx domains with no
+classified crawl in the window (a classified 2xx crawl carries every
+field; 121 and 31 on those two windows) and capped at 500 a pass.
 
 ## 2026-09-07
 
