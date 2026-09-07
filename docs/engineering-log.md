@@ -99,6 +99,23 @@ field; 121 and 31 on those two windows) and capped at 500 a pass.
 
 ## 2026-09-07
 
+**Every worker-side revenue estimate has been blind to Tranco and Majestic.**
+Found through google.com again: a forced recrawl at 07:00 UTC came back
+"$10M-$100M" with an evidence trail of mail records and a cookie banner,
+and the compactor took it as the newest estimate over the "$1B+" at 0.95
+from 09-04. Workers hold a Tranco bloom (membership only) and no Majestic
+table; `LS.Reputation.fill/1` adds the ranks on the master AFTER the
+worker computed the estimate, and nothing re-estimated. Measured: of
+101,243 ranked domains crawled in the last day with an estimate, 0 carry a
+rank in `revenue_evidence`; in `businesses`, 533K of 1.15M ranked rows
+still do, from crawls before the bloom change. Two fixes: the master's
+Inserter re-runs the estimator after the fill (`Inserter.reestimate/1`),
+and the compactor keeps the best-evidenced estimate (argMax on
+`(revenue_confidence, enriched_at)`) instead of the newest, so a sparse
+recrawl (rank and RDAP lookups served from cache, columns empty in that
+row) can no longer replace a rich one. The ~616K degraded rows recover as
+their domains are recompacted: history still holds the richer estimate.
+
 **"Search unavailable" on a customer dashboard: a crawler walking invented
 /tech/ slugs starved ClickHouse.** 05:15-05:40 UTC: 145 distinct /tech/<slug>
 URLs in 25 minutes, slugs that are page titles, not technologies. Each

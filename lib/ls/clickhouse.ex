@@ -1845,10 +1845,16 @@ defmodule LS.Clickhouse do
            Capped at 300 names so one wildcard-happy CDN cannot bloat a row. */
         arraySlice(arrayDistinct(arrayFilter(x -> x != '',
           arrayFlatten(groupArray(splitByChar('|', s_ctl_subdomains))))), 1, 300) AS _subs_hist,
-        argMaxIf(s_estimated_revenue, s_enriched_at, s_estimated_revenue != '') AS estimated_revenue,
-        argMaxIf(s_estimated_employees, s_enriched_at, s_estimated_revenue != '') AS estimated_employees,
-        argMaxIf(s_revenue_confidence, s_enriched_at, s_estimated_revenue != '') AS revenue_confidence,
-        argMaxIf(s_revenue_evidence, s_enriched_at, s_estimated_revenue != '') AS revenue_evidence,
+        /* The BEST-EVIDENCED estimate wins, newest on ties (2026-09-07), not
+           the newest: a recrawl whose RDAP and rank lookups were cache hits
+           carries a sparse row, and its lower-confidence estimate used to
+           replace a rich earlier one (google.com: "$1B+" at 0.95 replaced by
+           "$10M-$100M" from mail records and a cookie banner). Confidence
+           grows with evidence count, so it is the right key. */
+        argMaxIf(s_estimated_revenue, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS estimated_revenue,
+        argMaxIf(s_estimated_employees, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS estimated_employees,
+        argMaxIf(s_revenue_confidence, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS revenue_confidence,
+        argMaxIf(s_revenue_evidence, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS revenue_evidence,
         argMaxIf(s_dns_a, s_enriched_at, s_dns_a != '') AS dns_a,
         argMaxIf(s_dns_aaaa, s_enriched_at, s_dns_aaaa != '') AS dns_aaaa,
         argMaxIf(s_dns_mx, s_enriched_at, s_dns_mx != '') AS dns_mx,

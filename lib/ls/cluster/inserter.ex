@@ -95,6 +95,13 @@ defmodule LS.Cluster.Inserter do
     # Workers no longer carry the Majestic table; the master owns it and fills
     # those columns here. Never blanks: see LS.Reputation.fill/1.
     rows = LS.Reputation.fill(rows)
+    # Re-estimate on the master (2026-09-07). Workers carry a Tranco bloom,
+    # not the ranks, and no Majestic table at all, so the estimate a worker
+    # computed never saw the two strongest signals; the fill above adds the
+    # ranks but the estimate stayed the worker's. google.com's forced recrawl
+    # came back "$10M-$100M" with an evidence trail of mail records and a
+    # cookie banner, and the compactor took it as the newest estimate.
+    rows = Enum.map(rows, &reestimate/1)
     # A row from a worker on a release older than migration 022 has no
     # http_observed. Absent means "the old behaviour": observed when the
     # fetch succeeded, exactly what DEFAULT 1 says for older rows. Written
@@ -191,6 +198,29 @@ defmodule LS.Cluster.Inserter do
 
   @doc false
   def shutdown_flush_ms, do: @shutdown_flush_ms
+
+  @doc false
+  # Pure: the estimator over the filled row, keeping the row's estimate when
+  # the estimator has nothing to say (no website) so a fetch failure never
+  # blanks a stored estimate.
+  def reestimate(%{} = row) do
+    case LS.Revenue.Estimator.estimate(row) do
+      %{estimated_revenue: r} = est when is_binary(r) and r != "" ->
+        Map.merge(row, %{
+          estimated_revenue: est.estimated_revenue,
+          estimated_employees: est.estimated_employees,
+          revenue_confidence: est.revenue_confidence,
+          revenue_evidence: est.revenue_evidence
+        })
+
+      _ ->
+        row
+    end
+  rescue
+    _ -> row
+  end
+
+  def reestimate(row), do: row
 
   defp do_flush(%{buffer: []} = state), do: state
   defp do_flush(state) do
