@@ -95,13 +95,14 @@ defmodule LS.DataContractTest do
     # Wikidata item whose official website is google.com. The compactor now
     # blanks a verified fact that contradicts a Tranco top-10K rank; this
     # holds once every such row has been recompacted.
-    test "no top-1K Tranco business is verified as a company under $10M or under 50 people" do
+    test "no top-1K Tranco business is verified as a company under $100M or under 500 people" do
       with_clickhouse(fn ->
         {:ok, [[n]]} =
           Clickhouse.query_raw("""
           SELECT count() FROM businesses FINAL
           WHERE tranco_rank <= 1000
-            AND (verified_revenue IN ('<$1M', '$1M-$10M') OR verified_employees IN ('1-10', '11-50'))
+            AND ((verified_revenue != '' AND verified_revenue NOT IN ('$100M-$1B', '$1B+'))
+                 OR (verified_employees != '' AND verified_employees NOT IN ('501-5000', '5001+')))
           """)
 
         # ClickHouse returns counts as strings over JSON.

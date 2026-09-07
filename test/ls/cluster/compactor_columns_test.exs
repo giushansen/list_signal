@@ -75,10 +75,13 @@ defmodule LS.Cluster.CompactorColumnsTest do
       assert @src =~ "ORDER BY fetched_at DESC, toFloat64OrZero(value) DESC\n        LIMIT 1 BY domain, fact, source"
     end
 
-    test "a fact that contradicts a top-10K Tranco rank is blanked, source included" do
-      assert @src =~ "if(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'), '', v.verified_revenue) AS verified_revenue"
-      assert @src =~ "if(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'), '', v.verified_revenue_source) AS verified_revenue_source"
-      assert @src =~ "if(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50'), '', v.verified_employees) AS verified_employees"
+    test "a fact that contradicts the Tranco rank is blanked, source included, tiered by rank" do
+      # google.com (rank 1) kept "51-500 employees" under a flat top-10K rule (2026-09-07).
+      assert @src =~ "(h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))"
+      assert @src =~ "(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue) AS verified_revenue"
+      assert @src =~ "(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue_source) AS verified_revenue_source"
+      assert @src =~ "(h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))"
+      assert @src =~ "(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50')), '', v.verified_employees) AS verified_employees"
     end
   end
 

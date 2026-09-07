@@ -1715,10 +1715,19 @@ defmodule LS.Clickhouse do
       -- items exist and the pick was arbitrary). A Tranco top-10K site is
       -- not a company under $10M or under 50 people; blank the fact and let
       -- the estimator, which reads the rank, speak.
-      if(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'), '', v.verified_revenue) AS verified_revenue,
-      if(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'), '', v.verified_revenue_source) AS verified_revenue_source,
-      if(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50'), '', v.verified_employees) AS verified_employees,
-      if(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50'), '', v.verified_employees_source) AS verified_employees_source,
+      -- Tiered (2026-09-07): a Tranco top-1K site is one of the thousand
+      -- most visited on earth; anything under $100M or 500 people there is
+      -- a mis-linked entity (google.com kept "51-500 employees" from a
+      -- school's Wikidata item under the flat rule). Top-10K keeps the
+      -- looser bar: a mid-size SaaS can legitimately sit there.
+      if((h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))
+         OR (h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue) AS verified_revenue,
+      if((h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))
+         OR (h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue_source) AS verified_revenue_source,
+      if((h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))
+         OR (h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50')), '', v.verified_employees) AS verified_employees,
+      if((h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))
+         OR (h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50')), '', v.verified_employees_source) AS verified_employees_source,
       v.mission_summary
     FROM (
       SELECT s_domain AS domain,
