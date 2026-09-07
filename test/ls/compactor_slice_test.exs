@@ -14,11 +14,13 @@ defmodule LS.CompactorSliceTest do
     now = 1_800_000_000
 
     # 19 hours behind — the real incident. Window must still be one slice.
+    # 600 s since 2026-09-07: a 30-minute slice folded at 5.4 GB against a
+    # 6 GB ClickHouse cap; a five-minute pass sits at 2.3-2.4 GB.
     since = now - 19 * 3600
-    assert Compactor.slice_until(since, now) - since == 1_800
+    assert Compactor.slice_until(since, now) - since == 600
 
     # A week behind (post-incident cold start) — still one slice.
-    assert Compactor.slice_until(now - 7 * 86_400, now) - (now - 7 * 86_400) == 1_800
+    assert Compactor.slice_until(now - 7 * 86_400, now) - (now - 7 * 86_400) == 600
   end
 
   test "a caught-up compactor stops at now, not in the future" do

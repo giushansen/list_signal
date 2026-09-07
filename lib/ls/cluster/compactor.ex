@@ -84,11 +84,15 @@ defmodule LS.Cluster.Compactor do
     {:reply, result, s}
   end
 
-  # Max enrichment-window one pass may cover (~10K domains at current rates,
-  # ~2 min of query). This bound is the fix for the 2026-08-05 death spiral:
-  # an open-ended catch-up window meant one timeout guaranteed every retry a
-  # larger batch, and compaction never recovered — 19h of stale depth data.
-  @catchup_slice_s 1_800
+  # Max window one pass may cover. This bound is the fix for the 2026-08-05
+  # death spiral: an open-ended catch-up window meant one timeout guaranteed
+  # every retry a larger batch, and compaction never recovered, 19h of stale
+  # depth data. 600 s, not 1,800 s, since 2026-09-07: the fold's memory
+  # scales with the window (a five-minute pass peaks at 2.3-2.4 GB, the
+  # first 30-minute catch-up slice after the deploy peaked at 5.4 GB on a
+  # ClickHouse capped at 6 GB). Catch-up still runs slices 2 s apart, so it
+  # is three cheap passes instead of one that can die on the cap.
+  @catchup_slice_s 600
 
   @doc "Where this pass's window must stop. Pure, so the spiral-proof bound is testable."
   def slice_until(since_s, now_s), do: min(now_s, since_s + @catchup_slice_s)

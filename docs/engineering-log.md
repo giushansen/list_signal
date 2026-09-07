@@ -68,7 +68,10 @@ the businesses read (all granules, because touched domains land in every
 one) and the candidates' older history (85M rows, 23 s on the reference
 window); the businesses half would shrink with a smaller
 index_granularity, left for a measured follow-up. The 1190 s ceiling stays as headroom until a week of passes
-shows the steady state.
+shows the steady state. Live after the deploy: the first calm pass ran
+64 s at 2.3 GB; the first catch-up pass over a 30-minute slice ran 208 s
+at 5.4 GB, so the catch-up slice is now 600 s (three cheap passes 2 s
+apart instead of one that can die on the cap).
 
 ## 2026-09-07
 
