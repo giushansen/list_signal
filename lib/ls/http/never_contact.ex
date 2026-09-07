@@ -28,7 +28,22 @@ defmodule LS.HTTP.NeverContact do
               # 2026-08: Vultr report, expoBMS WAF (dal2 + par1, 31 min apart)
               "morbihan-genealogie.bzh",
               # 2026-09-04: Vultr report, Xayann WAF (ny1 + dal2, 6h apart)
-              "xayann-services.com"
+              "xayann-services.com",
+              # 2026-09-07: Shinhan Financial Group (KR) CERT via Vultr: one GET /
+              # to shinhangroup.com (106.249.55.48) from sg1 at 08:05:10 UTC,
+              # HTTP 200, robots.txt allowing, reported as a "sophisticated
+              # attack". The whole group and its 106.249.55.0/24 neighbours
+              # (shinhantrust.kr), not just the one host: a bank's IDS reports
+              # again on any sibling.
+              "shinhangroup.com",
+              "shinhan.com",
+              "shinhan.co.kr",
+              "shinhancard.com",
+              "shinhaninvest.com",
+              "shinhanlife.co.kr",
+              "shinhansec.com",
+              "shinhantrust.kr",
+              "shinhanbank.com"
             ])
 
   @doc """

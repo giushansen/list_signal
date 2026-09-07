@@ -19,6 +19,12 @@ defmodule LS.HTTP.NeverContactTest do
       assert NeverContact.blocked?("www.morbihan-genealogie.bzh")
     end
 
+    test "the Shinhan group is blocked on every sibling domain (report 3, 2026-09-07)" do
+      for d <- ~w(shinhangroup.com www.shinhangroup.com shinhan.com shinhan.co.kr shinhancard.com ir.shinhaninvest.com shinhantrust.kr) do
+        assert NeverContact.blocked?(d), d
+      end
+    end
+
     test "case, trailing dots and deep subdomains cannot slip through" do
       assert NeverContact.blocked?("WWW.Xayann-Services.COM")
       assert NeverContact.blocked?("xayann-services.com.")

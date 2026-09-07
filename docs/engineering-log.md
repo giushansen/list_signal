@@ -99,6 +99,22 @@ field; 121 and 31 on those two windows) and capped at 500 a pass.
 
 ## 2026-09-07
 
+**Third abuse report, from a bank's CERT: one GET.** Shinhan Financial
+Group's security centre reported, through Vultr, a "sophisticated attack"
+from sg1 (139.180.191.194) at 17:05:10 KST. Our record: one HTTP GET to
+the homepage of shinhangroup.com (106.249.55.48) at 08:05:10 UTC, HTTP 200,
+1.3 s, with the declared ListSignalBot user agent, on a site whose
+robots.txt allows every agent on `/`; the only other contact with that
+network in 30 days was two fetches of shinhantrust.kr on 08-26. A bank's
+intrusion detection treats any unknown crawler as an attack and the
+report language is a template. Response: the whole Shinhan group is in
+`LS.HTTP.NeverContact` (nine domains), and the reply to Vultr states the
+single request with its evidence. The pattern across the three reports:
+none was about volume; all were single fetches judged by a WAF or IDS on
+identity. The honest UA, /bot page, robots.txt compliance and the
+never-contact list are the defence; the exposure that remains is any
+site whose security team reports on sight.
+
 **Every worker-side revenue estimate has been blind to Tranco and Majestic.**
 Found through google.com again: a forced recrawl at 07:00 UTC came back
 "$10M-$100M" with an evidence trail of mail records and a cookie banner,
