@@ -52,9 +52,11 @@ defmodule LS.Tools.Lookup do
   defp check_clickhouse(domain) do
     case LS.Clickhouse.get_store(domain) do
       {:ok, [row | _]} ->
-        enriched_at = Enum.at(row, 0)
+        # get_store/1 returns a map keyed by domains_current's own columns
+        # (2026-09-07); the cached path still hands lists in inserter order.
+        enriched_at = row[:enriched_at]
         if fresh_enough?(enriched_at) do
-          {:ok, parse_row(row, domain)}
+          {:ok, row_to_response(row, domain, false)}
         else
           Logger.debug("[LOOKUP] #{domain} — ClickHouse data older than #{@freshness_ttl_days}d (#{enriched_at})")
           :stale

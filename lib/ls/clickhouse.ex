@@ -179,8 +179,43 @@ defmodule LS.Clickhouse do
 
   # ── Store profile ──
 
+  # Rows come back as MAPS keyed by domains_current's OWN column names
+  # (2026-09-07). They used to be positional lists that the store page and
+  # the lookup tool indexed with LS.Cluster.Inserter.columns/0; that list
+  # gained nine columns on 09-06/07 that domains_current does not have, so
+  # every field after dns_cname read its neighbour: titles came out as page
+  # lists for a day, and once the shift reached classification_confidence a
+  # float hit decode_html/1 (104 FunctionClauseErrors in ten minutes,
+  # reported by the other session). A row is now self-describing.
   def get_store(domain) when is_binary(domain) do
-    query("SELECT * FROM domains_current FINAL WHERE domain = '#{escape(domain)}' LIMIT 1")
+    case query("SELECT * FROM domains_current FINAL WHERE domain = '#{escape(domain)}' LIMIT 1") do
+      {:ok, rows} -> {:ok, Enum.map(rows, &(domains_current_columns() |> Enum.zip(&1) |> Map.new()))}
+      err -> err
+    end
+  end
+
+  @doc """
+  domains_current's physical column order, as atoms, read once from the
+  server and cached. The inserter's list is the wrong key for a
+  `SELECT *` on this table (see get_store/1).
+  """
+  @spec domains_current_columns() :: [atom()]
+  def domains_current_columns do
+    case :persistent_term.get({__MODULE__, :domains_current_columns}, nil) do
+      cols when is_list(cols) ->
+        cols
+
+      nil ->
+        case query_raw("SELECT name FROM system.columns WHERE database = currentDatabase() AND table = 'domains_current' ORDER BY position", 5_000) do
+          {:ok, [_ | _] = rows} ->
+            cols = Enum.map(rows, fn [n] -> String.to_atom(n) end)
+            :persistent_term.put({__MODULE__, :domains_current_columns}, cols)
+            cols
+
+          _ ->
+            LS.Cluster.Inserter.columns()
+        end
+    end
   end
 
   # ── Tech profile ──

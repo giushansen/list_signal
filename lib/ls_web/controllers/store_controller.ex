@@ -201,9 +201,18 @@ defmodule LSWeb.StoreController do
   # ── Parsing ──
 
   defp parse_store(row, domain) do
-    # Dynamic column lookup — always in sync with inserter schema
-    col_idx = LS.Cluster.Inserter.columns() |> Enum.with_index() |> Map.new()
-    at = fn key -> Enum.at(row, Map.get(col_idx, key, -1)) end
+    # A ClickHouse row is a map keyed by domains_current's own columns
+    # (Clickhouse.get_store/1). A cached row from LS.Tools.Lookup is still
+    # a list in LS.Cluster.Inserter.columns/0 order, which is the order it
+    # was built in. Indexing a ClickHouse row with the inserter's list is
+    # what broke every store page on 2026-09-06/07.
+    row_map =
+      case row do
+        %{} -> row
+        list when is_list(list) -> LS.Cluster.Inserter.columns() |> Enum.zip(list) |> Map.new()
+      end
+
+    at = fn key -> Map.get(row_map, key) end
     s = fn key -> at.(key) || "" end
 
     tech = parse_pipe(at.(:http_tech))
@@ -234,8 +243,6 @@ defmodule LSWeb.StoreController do
     # the columns this row already holds, so compute them at render instead
     # of showing holes. A no-website/parked domain honestly defaults to the
     # lowest bracket at 0% confidence rather than a fabricated number.
-    row_map = LS.Cluster.Inserter.columns() |> Enum.zip(row) |> Map.new()
-
     {est_revenue, est_employees, rev_conf} =
       if s.(:estimated_revenue) != "" do
         {s.(:estimated_revenue), s.(:estimated_employees), at.(:revenue_confidence)}
