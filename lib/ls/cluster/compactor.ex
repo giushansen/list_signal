@@ -9,13 +9,25 @@ defmodule LS.Cluster.Compactor do
 
   ## Incremental, not nightly
 
-  A full rebuild costs ~8 minutes because it coalesces the whole 126M-row
-  history. Doing that once a night would leave the product up to 24h stale and
-  waste CPU recomputing 6.36M rows when only a few thousand changed. Instead
-  we run every `@interval_ms` over **only the domains touched since the last
-  pass** (~15K at current throughput), which takes well under a second:
-  `businesses` is a `ReplacingMergeTree(as_of)`, so re-inserting a domain's row
-  *is* the update.
+  A full rebuild coalesces the whole history (378M rows, 60 GB on 2026-09-07)
+  and runs in memory-bounded shards over hours. Doing that once a night
+  would leave the product up to 24h stale and recompute 18M rows when only a
+  few thousand changed. Instead a pass runs every `@interval_ms` over the
+  domains touched since the last pass (~20K per five minutes) and
+  re-inserts their rows: `businesses` is a `ReplacingMergeTree(as_of)`, so
+  the insert *is* the update.
+
+  What a pass reads is the load-bearing part. Until 2026-09-07 it
+  re-aggregated each touched domain's whole history, and because
+  `domains_history` is ordered by domain, ~20K touched domains fell into
+  every one of its 47K granules: every five-minute pass read the entire
+  table (80 GB), took 190-570 s, crossed every execution ceiling and died
+  on ClickHouse's memory cap twice a day, with "Ingestion rate: new
+  businesses" emails as the symptom. A pass now folds the window's new
+  rows into the compiled row it already has, and reads whole history only
+  for the few hundred domains a pass could newly qualify. See
+  `LS.Clickhouse.history_rows_sql/2` for the three sources and why the
+  result is the same row.
 
   The expensive full rebuild remains available as `rebuild_all/0` — a repair
   tool for after an incident, not a routine job.

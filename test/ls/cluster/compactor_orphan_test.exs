@@ -39,10 +39,12 @@ defmodule LS.Cluster.CompactorOrphanTest do
     [c | _] = String.split(src, "defp compact_sql(since_unix") |> Enum.drop(1)
     [c | _] = String.split(c, "defp compact_sql_shard")
     assert c =~ "WITH (SELECT groupUniqArray(domain) FROM (\#{domain_set})) AS _touched"
-    assert length(String.split(c, "IN (SELECT arrayJoin(_touched))")) == 5, "the comment, the h side, the join sides and the depth side"
-    # The history filter must sit INSIDE the inner select, on `domain`, so the
-    # primary key prunes: outside on `s_domain` the whole table was read.
-    assert c =~ "FROM domains_history\#{inner_scope})"
+    # 2026-09-07: the history side no longer reads by touched set at all
+    # (that read was the whole table, see history_rows_sql/2); the compiled
+    # rows, the depth side and the four join sides do.
+    sql = LS.Clickhouse.compact_sql_for_test(1_700_000_000, 1_700_000_300)
+    assert length(String.split(sql, "IN (SELECT arrayJoin(_touched))")) == 7, "businesses, depth, pricing, news, verified, sightings"
+    assert c =~ "FROM (\#{history_rows_sql(since_unix, until_unix)})"
     assert c =~ ~s(scope = "")
     refute c =~ "IN (\#{domain_set})", "no scope may inline the set again"
     assert c =~ "\#{touched}SELECT"

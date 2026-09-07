@@ -68,6 +68,8 @@ defmodule LS.Cluster.SignalObservationTest do
 
     assert @src =~ "argMaxIf(s_http_tech, s_enriched_at, \#{observed_sql(\"s_\")}) AS http_tech"
     assert @src =~ "argMaxIf(s_http_apps, s_enriched_at, \#{observed_sql(\"s_\")}) AS http_apps"
-    assert @src =~ "http_observed AS s_http_observed"
+    # The history legs are generated from this list (2026-09-07).
+    assert "http_observed" in LS.Clickhouse.history_cols()
+    assert LS.Clickhouse.compact_sql_for_test(1_700_000_000) =~ "http_observed AS s_http_observed"
   end
 end

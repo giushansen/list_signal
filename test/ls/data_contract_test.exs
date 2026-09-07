@@ -507,6 +507,27 @@ defmodule LS.DataContractTest do
   # ==========================================================================
   describe "the compaction query actually runs against the real schema" do
     @tag :data_contract
+    test "the incremental fold parses and executes on a live ClickHouse" do
+      # 2026-09-07: the incremental form is now a UNION ALL of the window's
+      # history rows, two synthetic rows per compiled business and the
+      # candidates' older history. Four legs of 65 columns each must agree
+      # on type and order, which only ClickHouse can confirm.
+      case LS.Clickhouse.query_raw("SELECT 1") do
+        {:ok, _} ->
+          now = System.system_time(:second)
+          sql = LS.Clickhouse.compact_sql_for_test(now - 600, now - 300)
+          {pos, _} = :binary.match(sql, "\nWITH")
+          select = String.slice(sql, pos..-1//1)
+
+          assert {:ok, [[_n]]} = LS.Clickhouse.query_raw("SELECT count() FROM (#{select})"),
+                 "incremental compaction SQL failed to execute; businesses would stop updating"
+
+        _ ->
+          IO.puts("\n[data contract] skipped — no ClickHouse reachable on 127.0.0.1:8123")
+      end
+    end
+
+    @tag :data_contract
     test "compact_sql_shard parses and executes on a live ClickHouse" do
       case LS.Clickhouse.query_raw("SELECT 1") do
         {:ok, _} ->

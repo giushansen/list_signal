@@ -25,6 +25,51 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-07
+
+**Compaction no longer reads the whole history table: the pass folds the
+window into the compiled row.** The 09-06 finding stood: with
+`domains_history` ordered by domain, `domain IN (touched)` for ~20K domains
+hits all 47K granules, so every five-minute pass read 378M rows / 80 GB
+(query_log 09-01 to 09-07: mean 218 s rising to 327 s with growth alone,
+5-7 GB memory) and the 1190 s ceiling only changed which passes died: two
+a day still hit the server's 6 GB cap, and "Ingestion rate: new businesses"
+went out at 09-06 12:32 and 18:39 (the 18:00 hour also had three deploys
+that SIGKILLed passes mid-flight). The fix is the compactor the 09-06 entry
+described and did not build: `LS.Clickhouse.history_rows_sql/2` feeds the
+unchanged `argMaxIf` fold from three sources under one UNION ALL, the
+window's history rows (partition-pruned, ~1M rows read), each touched
+business's newest compiled row replayed as two synthetic history rows (a
+"verified" row at last_verified_at holding the 2xx columns, a "latest" row
+at as_of holding the rest, status masked when it was 2xx), and the whole
+history of the few hundred window domains that could newly qualify.
+Measured alone on the box: a five-minute window (a real pass) runs in
+32 s, reads 100M rows / 12.8 GB and peaks at 2.4 GB; the 13-minute
+reference window runs in 141 s / 21 GB / 4.1 GB against the old form's
+369 s / 82 GB on the same window under load. Output on that window: 9,633
+rows against the old form's 9,612, every column equal on the 9,609 common
+rows except ctl_subdomains ordering (same set, 0 set differences) and the
+depth-side columns of rows the enrichment pass touched between the two
+runs. Three things found on the way, each now a test: an
+unscoped `NOT IN (SELECT domain FROM businesses)` is a 3.3 GB hash set on
+a 6 GB server; the 1.5 GB spill setting, right for a rebuild, wrote 628
+spill files for 36 MB and made a 44 s fold take 165 s; and blanking
+`domain` on the verified row folded 2,082 of 9,633 businesses into an
+empty-string group. FINAL on the businesses read is out: 33 s against
+10 s on the count probe, and 966 s / 7 GB / killed on the server cap in the
+full statement; the newest version is taken by an ordered LIMIT 1 BY, and
+two versions sharing as_of with different content occur in 8 of 186,558
+sampled domains.
+Three rows in 9,612 are no longer refreshed by non-qualifying crawls: they
+qualified only through a block flag a later browser render had cleared in
+the compiled row, which the fold cannot see; they keep their row and
+refresh on the next qualifying crawl. Remaining cost per pass:
+the businesses read (all granules, because touched domains land in every
+one) and the candidates' older history (85M rows, 23 s on the reference
+window); the businesses half would shrink with a smaller
+index_granularity, left for a measured follow-up. The 1190 s ceiling stays as headroom until a week of passes
+shows the steady state.
+
 ## 2026-09-06
 
 **The dashboard's depth row is always on screen.** `/dashboard` hid the

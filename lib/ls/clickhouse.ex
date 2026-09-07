@@ -1220,16 +1220,14 @@ defmodule LS.Clickhouse do
   """
   @spec compact_businesses(integer(), integer() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
   def compact_businesses(since_unix, until_unix \\ nil) do
-    # 1200s client / 1190s server ceiling (2026-09-06 late, was 600/590 and
-    # 300/290 before that): a pass still reads the whole history table (see
-    # the compaction full-scan entry in the engineering log) and completes
-    # in 450-900s under load; the ceiling's job is to kill a query the
-    # client abandoned, and the client waits 1200s. With the
-    # observation predicate, the subdomain union and the sightings join,
-    # a healthy incremental pass takes 140-200s and the tail crosses 290s;
-    # at 290 every other pass timed out and, after a restart, three in a
-    # row did, leaving `businesses` 38 minutes stale. The interval stays 5
-    # minutes; a pass that runs long simply delays the next one.
+    # 1200s client / 1190s server ceiling. The ceiling's job is to kill a
+    # query the client abandoned; the client waits 1200s. It was raised
+    # from 300/290 and 600/590 on 2026-09-06 while every pass still read
+    # the whole history table (190-570 s). Since 2026-09-07 a pass folds the
+    # window into the compiled rows (history_rows_sql/2) and the ceiling is
+    # headroom, not a working limit: lower it once a week of passes has
+    # shown the new steady state. The interval stays 5 minutes; a pass that
+    # runs long simply delays the next one.
     with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 1_200_000, background: true),
          {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
       # ClickHouse JSON quotes UInt64 by default, so count() can arrive as a
@@ -1365,7 +1363,7 @@ defmodule LS.Clickhouse do
   # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
   # anti-erasure rule: a later empty row cannot overwrite an earlier good value.
   @doc false
-  def compact_sql_for_test(since_unix), do: compact_sql(since_unix)
+  def compact_sql_for_test(since_unix, until_unix \\ nil), do: compact_sql(since_unix, until_unix)
 
   # `max_s` is the SERVER-side execution ceiling, sized just under each
   # caller's client timeout. Without it, a pass the client abandons keeps
@@ -1374,6 +1372,162 @@ defmodule LS.Clickhouse do
   # the whole server hit MEMORY_LIMIT_EXCEEDED and "new businesses" halved
   # for two hours (caught by the DataCheck quantity alert). Client gives up
   # and server keeps paying is the worst of both; now they die together.
+  # The history columns the fold reads, in the order the aggregate above
+  # names them (`s_<col>`). One list, three sources: see history_rows_sql/2.
+  @history_cols ~w(enriched_at worker domain ctl_tld ctl_issuer ctl_subdomain_count ctl_subdomains
+    dns_a dns_aaaa dns_mx dns_txt dns_cname dns_dmarc dns_bimi dns_dkim dns_ptr dns_ms_enterprise
+    http_status http_response_time http_blocked http_content_type http_tech http_apps http_language
+    http_title http_meta_description http_pages http_emails http_error http_h1 http_observed
+    business_model industry classification_confidence http_schema_type http_og_type
+    bgp_ip bgp_asn_number bgp_asn_org bgp_asn_country bgp_asn_prefix inferred_country
+    http_country_evidence http_country_evidence_src rdap_registrant_country
+    rdap_domain_created_at rdap_domain_expires_at rdap_domain_updated_at
+    rdap_registrar rdap_registrar_iana_id rdap_nameservers rdap_status
+    tranco_rank majestic_rank majestic_ref_subnets is_malware is_phishing is_disposable_email is_junk
+    estimated_revenue estimated_employees revenue_confidence revenue_evidence)
+
+  # Nullable history columns and their inner type: an "absent" value on a
+  # synthetic row must be a typed NULL, not '', or the fold's `IS NOT NULL`
+  # rules would take it for a measurement.
+  @history_nullable %{
+    "ctl_subdomain_count" => "Int32", "http_status" => "Int32", "http_response_time" => "Int32",
+    "classification_confidence" => "Float32", "revenue_confidence" => "Float32",
+    "rdap_domain_created_at" => "DateTime", "rdap_domain_expires_at" => "DateTime",
+    "rdap_domain_updated_at" => "DateTime",
+    "tranco_rank" => "Int32", "majestic_rank" => "Int32", "majestic_ref_subnets" => "Int32"
+  }
+
+  # Columns only a crawl that reached the site (2xx-3xx) can fill. They live
+  # on the "verified" synthetic row; the "latest" row leaves them blank so
+  # `argMaxIf(col, ts, status BETWEEN 200 AND 399)` cannot pick it.
+  @verified_cols ~w(http_status http_response_time http_blocked http_content_type http_tech http_apps
+    http_language http_title http_meta_description http_pages http_h1 http_schema_type http_og_type is_junk)
+
+  @doc false
+  def history_cols, do: @history_cols
+
+  @doc """
+  The rows the fold aggregates for one pass, as `s_*` columns.
+
+  A full rebuild (`since_unix == 0`) reads `domains_history` whole: that is
+  the point of a rebuild. An incremental pass used to do the same thing in
+  disguise: `domain IN (touched)` on a table ordered by domain, with ~20K
+  touched domains spread over its 47K granules, prunes nothing, so every
+  five-minute pass read all 378M rows / 80 GB and took 190-570 s on a box
+  with 4 cores (2026-09-07, `system.query_log`). Growth alone had pushed
+  the mean from 218 s (09-01) to 327 s (09-07) and past every ceiling.
+
+  Now a pass folds the WINDOW's new rows into what `businesses` already
+  holds, three sources under one UNION ALL:
+
+    1. the window's rows from `domains_history`: the partition key is
+       toYYYYMM(enriched_at), so a time predicate reads only the parts the
+       window touched (~20K rows, ~40 ms measured for 30 minutes);
+    2. each touched business's current row (newest version, one read),
+       replayed as two synthetic history rows so the unchanged `argMaxIf`
+       rules fold it exactly as they folded the crawls it was compiled from: a "verified" row at
+       `last_verified_at` carrying the 2xx-only columns (marked observed),
+       and a "latest" row at `as_of` carrying everything else, with the
+       status masked to NULL when it was 2xx-3xx so the verified row alone
+       answers the 2xx rules. `first_seen` and `dns_alive` are carried as
+       their own columns because min(time) and "newest row had an A record"
+       are not recoverable from a compiled row otherwise;
+    3. the whole history of `_candidates`: window domains without a
+       `businesses` row whose window rows could qualify one (a
+       classification, a block, or a 401/403/429). Their old crawls decide
+       the row the same way they always did: ~900 domains a pass, so the
+       primary key really does prune. A window domain that is neither a
+       business nor a candidate cannot qualify from older rows alone (a
+       classification implies a 2xx crawl, which would have compiled it),
+       so its window rows fold on their own and the HAVING drops it.
+
+  Existing rows therefore change only by what the window adds, which is the
+  "never blank another writer's data" rule stated as a query. Measured
+  alone on the master (2026-09-07): a five-minute window in 32 s, 100M
+  rows / 12.8 GB read, 2.4 GB peak, where the old form took 190-570 s,
+  398M rows / 80 GB and 3-7 GB for the same window. The shard rebuild
+  keeps rewriting `FROM domains_history)` on the full form, so that string
+  must stay the tail of the `since_unix == 0` branch.
+  """
+  def history_rows_sql(since_unix, until_unix \\ nil)
+
+  def history_rows_sql(0, _), do: history_leg("domains_history")
+
+  def history_rows_sql(since_unix, until_unix) do
+    upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
+    window = "enriched_at >= toDateTime(#{since_unix})#{upper}"
+
+    Enum.join(
+      [
+        history_leg("domains_history WHERE #{window}"),
+        history_leg("domains_history WHERE domain IN (SELECT arrayJoin(_candidates)) AND enriched_at < toDateTime(#{since_unix})"),
+        synthetic_leg()
+      ],
+      "\n      UNION ALL\n      "
+    )
+  end
+
+  # A real history leg: every column as itself plus the two carried values.
+  defp history_leg(from) do
+    cols = Enum.map_join(@history_cols, ", ", &"#{&1} AS s_#{&1}")
+    "SELECT #{cols}, enriched_at AS s_first_seen, (dns_a != '' OR dns_cname != '') AS s_dns_alive FROM #{from}"
+  end
+
+  # The compiled rows, replayed as history. One read of `businesses` for the
+  # touched set (every touched domain lands in a different granule, so the
+  # read is the whole table either way: 13 GB, 10 s without FINAL and 33 s
+  # with it), then ARRAY JOIN fans each row out into its verified row (leg
+  # 1, crawlable rows only) and its latest row (leg 2). Not FINAL: over
+  # 18.6M rows it merged the whole table per pass (966 s, 7 GB, killed on
+  # the server cap, 2026-09-07). The ordered LIMIT 1 BY picks the newest
+  # as_of; two versions with the same as_of and different content occur
+  # in 8 of 186,558 sampled domains, and the newest crawl settles them.
+  defp synthetic_leg do
+    # `domain` is the group key: blank it on either row and that row folds
+    # into an empty-string group instead of its business (2,082 businesses
+    # silently dropped from one probe pass, 2026-09-07).
+    verified = %{
+      "enriched_at" => "last_verified_at",
+      "worker" => "last_worker",
+      "domain" => "domain",
+      "http_observed" => "1"
+    }
+
+    latest = %{
+      "enriched_at" => "as_of",
+      "worker" => "last_worker",
+      "http_status" => "if(last_http_status BETWEEN 200 AND 399, NULL, last_http_status)",
+      "http_error" => "last_http_error",
+      "http_blocked" => "last_http_blocked",
+      "http_observed" => "0",
+      "is_malware" => "''",
+      "is_phishing" => "''"
+    }
+
+    cols =
+      Enum.map_join(@history_cols, ", ", fn col ->
+        v = Map.get_lazy(verified, col, fn -> if(col in @verified_cols, do: col, else: blank(col)) end)
+        l = Map.get_lazy(latest, col, fn -> if(col in @verified_cols, do: blank(col), else: col) end)
+        expr = if v == l, do: v, else: "if(leg = 1, #{v}, #{l})"
+        "#{expr} AS s_#{col}"
+      end)
+
+    """
+    SELECT #{cols}, first_seen AS s_first_seen, dns_alive AS s_dns_alive
+      FROM (SELECT * FROM businesses WHERE domain IN (SELECT arrayJoin(_touched)) ORDER BY as_of DESC LIMIT 1 BY domain)
+      ARRAY JOIN if(crawlable = 1, [1, 2], [2]) AS leg
+    """
+  end
+
+  defp blank("http_observed"), do: "0"
+
+  defp blank(col) do
+    case Map.fetch(@history_nullable, col) do
+      {:ok, t} -> "CAST(NULL, 'Nullable(#{t})')"
+      :error -> "''"
+    end
+  end
+
   defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 1190) do
     upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
 
@@ -1402,19 +1556,37 @@ defmodule LS.Clickhouse do
     # every pass past the 590s ceiling. A scalar subquery is computed once
     # and cached for the query; `IN (SELECT arrayJoin(_touched))` turns the
     # array back into a set so the primary key index still applies.
-    touched = if since_unix > 0, do: "WITH (SELECT groupUniqArray(domain) FROM (#{domain_set})) AS _touched\n", else: ""
-    # The history filter goes INSIDE the inner select, on `domain`, exactly
-    # as compact_sql_shard/2 does. Applied outside, on the alias `s_domain`,
-    # ClickHouse materialised every column of every row first: EXPLAIN on
-    # the live pass showed "Condition: true, Granules 47494/47494" on
-    # domains_history, and query_log showed every pass since at least
-    # 2026-09-05 reading 376-399M rows and 50-104 GB (the whole table),
-    # succeeding only when the box was quiet. Inside, the primary key
-    # prunes granules and PREWHERE reads the 54 other columns only for the
-    # touched rows. Measured on the shard form, which always had it: 4,507
-    # domains in 14s.
-    inner_scope = if since_unix > 0, do: " WHERE domain IN (SELECT arrayJoin(_touched))", else: ""
+    # Two scalar sets, computed once per pass:
+    #   _touched    every domain any pipeline wrote in the window (scopes the
+    #               joins and the businesses fold below);
+    #   _candidates window domains with no `businesses` row yet whose window
+    #               rows could qualify one (see history_rows_sql/2). The
+    #               "no row yet" test reads `businesses` scoped to the
+    #               window's domains: unscoped, NOT IN builds a hash set of
+    #               all 18.6M business domains, 3.3 GB on a server capped at
+    #               6 GB (measured 2026-09-07); scoped it is a few thousand.
+    touched =
+      if since_unix > 0 do
+        """
+        WITH (SELECT groupUniqArray(domain) FROM (#{domain_set})) AS _touched,
+             (SELECT groupUniqArray(domain) FROM domains_history
+               WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
+                 AND (business_model != '' OR http_blocked != '' OR http_status IN (401, 403, 429))
+                 AND domain NOT IN (SELECT domain FROM businesses
+                                    WHERE domain IN (SELECT domain FROM domains_history
+                                                     WHERE enriched_at >= toDateTime(#{since_unix})#{upper}))) AS _candidates
+        """
+      else
+        ""
+      end
+
     scope = ""
+
+    # A rebuild aggregates whole tables and must be allowed to spill. The
+    # incremental fold aggregates ~100K rows; what its tracker counts is
+    # read buffers, not state, and spilling on that wrote 628 files for
+    # 36 MB and took the pass from 44 s to 165 s (measured 2026-09-07).
+    spill = if since_unix > 0, do: 0, else: 1_500_000_000
     join_scope = if since_unix > 0, do: " WHERE domain IN (SELECT arrayJoin(_touched))", else: ""
 
     # The depth side reads only SUCCESSFUL enrichment rows. Without this, the
@@ -1514,7 +1686,7 @@ defmodule LS.Clickhouse do
       v.mission_summary
     FROM (
       SELECT s_domain AS domain,
-        min(s_enriched_at) AS first_seen,
+        min(s_first_seen) AS first_seen,
         max(s_enriched_at) AS as_of,
         maxIf(s_enriched_at, s_http_status BETWEEN 200 AND 399) AS last_verified_at,
         argMax(s_worker, s_enriched_at) AS last_worker,
@@ -1526,7 +1698,7 @@ defmodule LS.Clickhouse do
         maxIf(s_enriched_at, s_http_blocked != '') AS _blk_at,
         if(_blk_at > last_verified_at,
            argMaxIf(s_http_blocked, s_enriched_at, s_http_blocked != ''), '') AS last_http_blocked,
-        argMax(s_dns_a != '' OR s_dns_cname != '', s_enriched_at) AS dns_alive,
+        argMax(s_dns_alive, s_enriched_at) AS dns_alive,
         argMaxIf(s_http_status, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_status,
         argMaxIf(s_http_response_time, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_response_time,
         argMaxIf(s_http_blocked, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_blocked,
@@ -1597,7 +1769,7 @@ defmodule LS.Clickhouse do
         -- above: a parked domain that comes back to life must clear the flag,
         -- and a real site that dies into a parking page must gain it.
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (SELECT enriched_at AS s_enriched_at, worker AS s_worker, domain AS s_domain, ctl_tld AS s_ctl_tld, ctl_issuer AS s_ctl_issuer, ctl_subdomain_count AS s_ctl_subdomain_count, ctl_subdomains AS s_ctl_subdomains, dns_a AS s_dns_a, dns_aaaa AS s_dns_aaaa, dns_mx AS s_dns_mx, dns_txt AS s_dns_txt, dns_cname AS s_dns_cname, dns_dmarc AS s_dns_dmarc, dns_bimi AS s_dns_bimi, dns_dkim AS s_dns_dkim, dns_ptr AS s_dns_ptr, dns_ms_enterprise AS s_dns_ms_enterprise, http_status AS s_http_status, http_response_time AS s_http_response_time, http_blocked AS s_http_blocked, http_content_type AS s_http_content_type, http_tech AS s_http_tech, http_apps AS s_http_apps, http_language AS s_http_language, http_title AS s_http_title, http_meta_description AS s_http_meta_description, http_pages AS s_http_pages, http_emails AS s_http_emails, http_error AS s_http_error, http_h1 AS s_http_h1, http_observed AS s_http_observed, business_model AS s_business_model, industry AS s_industry, classification_confidence AS s_classification_confidence, http_schema_type AS s_http_schema_type, http_og_type AS s_http_og_type, bgp_ip AS s_bgp_ip, bgp_asn_number AS s_bgp_asn_number, bgp_asn_org AS s_bgp_asn_org, bgp_asn_country AS s_bgp_asn_country, bgp_asn_prefix AS s_bgp_asn_prefix, inferred_country AS s_inferred_country, http_country_evidence AS s_http_country_evidence, http_country_evidence_src AS s_http_country_evidence_src, rdap_registrant_country AS s_rdap_registrant_country, rdap_domain_created_at AS s_rdap_domain_created_at, rdap_domain_expires_at AS s_rdap_domain_expires_at, rdap_domain_updated_at AS s_rdap_domain_updated_at, rdap_registrar AS s_rdap_registrar, rdap_registrar_iana_id AS s_rdap_registrar_iana_id, rdap_nameservers AS s_rdap_nameservers, rdap_status AS s_rdap_status, tranco_rank AS s_tranco_rank, majestic_rank AS s_majestic_rank, majestic_ref_subnets AS s_majestic_ref_subnets, is_malware AS s_is_malware, is_phishing AS s_is_phishing, is_disposable_email AS s_is_disposable_email, is_junk AS s_is_junk, estimated_revenue AS s_estimated_revenue, estimated_employees AS s_estimated_employees, revenue_confidence AS s_revenue_confidence, revenue_evidence AS s_revenue_evidence FROM domains_history#{inner_scope})
+      FROM (#{history_rows_sql(since_unix, until_unix)})
       #{scope}
       GROUP BY s_domain
       HAVING (is_malware = '' AND is_phishing = '')
@@ -1682,7 +1854,7 @@ defmodule LS.Clickhouse do
       FROM ctl_sightings#{join_scope}
       GROUP BY domain
     ) c ON h.domain = c.domain
-    SETTINGS max_bytes_before_external_group_by = 1500000000, max_threads = 2,
+    SETTINGS max_bytes_before_external_group_by = #{spill}, max_threads = 2,
              join_use_nulls = 1, max_execution_time = #{max_s}
     """
   end

@@ -12,7 +12,7 @@ defmodule LS.Cluster.CompactorColumnsTest do
 
   test "email-auth columns travel from domains_history to businesses" do
     for col <- ~w(dns_dmarc dns_bimi dns_dkim) do
-      assert @src =~ "#{col} AS s_#{col}", "#{col} missing from the history subselect"
+      assert col in LS.Clickhouse.history_cols(), "#{col} missing from the history subselect"
       assert @src =~ "AS #{col},", "#{col} missing from the argMaxIf fold"
       assert @src =~ "h.#{col}", "#{col} missing from the businesses select"
       assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
@@ -56,7 +56,7 @@ defmodule LS.Cluster.CompactorColumnsTest do
 
   test "infrastructure DNS columns travel to businesses (2026-09-06)" do
     for col <- ~w(dns_ptr dns_ms_enterprise) do
-      assert @src =~ "#{col} AS s_#{col}"
+      assert col in LS.Clickhouse.history_cols()
       assert @src =~ "AS #{col},"
       assert @src =~ "h.#{col}"
       assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/
