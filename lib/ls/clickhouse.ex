@@ -1418,7 +1418,8 @@ defmodule LS.Clickhouse do
     rdap_domain_created_at rdap_domain_expires_at rdap_domain_updated_at
     rdap_registrar rdap_registrar_iana_id rdap_nameservers rdap_status
     tranco_rank majestic_rank majestic_ref_subnets is_malware is_phishing is_disposable_email is_junk
-    estimated_revenue estimated_employees revenue_confidence revenue_evidence)
+    estimated_revenue estimated_employees revenue_confidence revenue_evidence
+    classification_source pipeline_version)
 
   # Nullable history columns and their inner type: an "absent" value on a
   # synthetic row must be a typed NULL, not '', or the fold's `IS NOT NULL`
@@ -1639,7 +1640,7 @@ defmodule LS.Clickhouse do
       end
 
     """
-    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, dns_ptr, dns_ms_enterprise, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, sitemap_urls, sitemap_products, sitemap_blog, sitemap_children, sitemap_lastmod, sitemap_hash, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
+    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, dns_ptr, dns_ms_enterprise, classification_source, pipeline_version, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, sitemap_urls, sitemap_products, sitemap_blog, sitemap_children, sitemap_lastmod, sitemap_hash, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
     #{touched}SELECT
       h.domain AS domain,
       h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
@@ -1661,6 +1662,7 @@ defmodule LS.Clickhouse do
       arrayStringConcat(arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300), '|') AS ctl_subdomains,
       h.dns_a, h.dns_aaaa, h.dns_mx, h.dns_txt, h.dns_cname,
       h.dns_dmarc, h.dns_bimi, h.dns_dkim, h.dns_ptr, h.dns_ms_enterprise,
+      h.classification_source, h.pipeline_version,
       h.http_status, h.http_response_time, h.http_blocked, h.http_content_type,
       h.http_tech,
       -- Apps seen on the homepage at discovery, unioned with what the depth
@@ -1788,6 +1790,10 @@ defmodule LS.Clickhouse do
         argMaxIf(s_dns_dkim, s_enriched_at, s_dns_mx != '') AS dns_dkim,
         argMaxIf(s_dns_ptr, s_enriched_at, s_dns_ptr != '') AS dns_ptr,
         argMaxIf(s_dns_ms_enterprise, s_enriched_at, s_dns_mx != '') AS dns_ms_enterprise,
+        -- Provenance (2026-09-06): the tier that chose the shipped model,
+        -- and the build of the newest crawl.
+        argMaxIf(s_classification_source, s_enriched_at, s_business_model != '') AS classification_source,
+        argMaxIf(s_pipeline_version, s_enriched_at, s_pipeline_version != '') AS pipeline_version,
         argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
         argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
         argMaxIf(s_http_country_evidence, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence,

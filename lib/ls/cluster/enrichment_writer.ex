@@ -83,7 +83,8 @@ defmodule LS.Cluster.EnrichmentWriter do
        about_text mission hq_location job_locations_top positions_overview
        apps_deep shop_theme shop_theme_store_id shop_currency shop_locales shopify_plus
        sitemap_urls sitemap_products sitemap_blog sitemap_children sitemap_lastmod sitemap_hash
-       depth_estimated_revenue depth_estimated_employees depth_revenue_confidence depth_revenue_evidence)
+       depth_estimated_revenue depth_estimated_employees depth_revenue_confidence depth_revenue_evidence
+       pipeline_version)
   end
 
   # ── insertion ──────────────────────────────────────────────────────────────

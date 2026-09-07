@@ -154,6 +154,7 @@ defmodule LS.Pipeline do
           result = %{
             http_status: resp.status,
             http_response_time: resp[:elapsed_ms],
+            http_fingerprint: LS.HTTP.Fingerprint.build(resp),
             http_blocked: tech_result.blocked,
             http_content_type: get_header(resp, "content-type"),
             http_tech: tech_result.tech |> Enum.join("|"),
@@ -399,6 +400,8 @@ defmodule LS.Pipeline do
       dns_ptr: d[:ptr] || "",
       dns_ms_enterprise: d[:ms_enterprise] || "",
       http_observed: observed?(http),
+      http_fingerprint: http[:http_fingerprint] || "",
+      pipeline_version: LS.Version.sha(),
       http_status: http[:http_status],
       http_response_time: http[:http_response_time],
       http_blocked: http[:http_blocked] || "",
@@ -416,6 +419,7 @@ defmodule LS.Pipeline do
       business_model: classify_result.business_model,
       industry: classify_result.industry,
       classification_confidence: classify_result.confidence,
+      classification_source: classify_result[:source] || (if classify_result.business_model != "", do: "heuristic", else: ""),
       http_schema_type: http[:http_schema_type] || "",
       http_og_type: http[:http_og_type] || "",
       bgp_ip: bgp[:bgp_ip] || "",
@@ -473,7 +477,7 @@ defmodule LS.Pipeline do
 
     row
     |> Map.drop([:_ml_text, :_ml_heuristic])
-    |> Map.merge(%{business_model: r.business_model, industry: r.industry, classification_confidence: r.confidence})
+    |> Map.merge(%{business_model: r.business_model, industry: r.industry, classification_confidence: r.confidence, classification_source: r[:source] || ""})
   end
 
   @doc "Drop defer bookkeeping from a row that needed no ML."
@@ -511,7 +515,19 @@ defmodule LS.Pipeline do
     # Confidence: take the higher of heuristic or ML
     conf = max(heuristic.confidence, ml.ml_confidence)
 
+    # Provenance (2026-09-06): which tier the shipped business model came
+    # from, so a wrong label can be traced to the heuristic rules or to a
+    # specific head version instead of to "the classifier".
+    source =
+      cond do
+        bm == "" -> ""
+        bm == ml.business_model and bm != heuristic.business_model -> "ml:" <> (ml[:ml_source] || "cosine")
+        bm == heuristic.business_model -> "heuristic"
+        true -> "ml:" <> (ml[:ml_source] || "cosine")
+      end
+
     %{heuristic | business_model: bm, industry: ind, confidence: conf}
+    |> Map.put(:source, source)
   end
 
   # ===========================================================================

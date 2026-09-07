@@ -321,7 +321,7 @@ defmodule LS.ML.Classifier do
   # =========================================================================
 
   @empty_classification %{business_model: "", industry: "", ml_confidence: 0.0,
-                           ml_bm_confidence: 0.0, ml_industry_confidence: 0.0}
+                           ml_bm_confidence: 0.0, ml_industry_confidence: 0.0, ml_source: ""}
 
   defp safe_classify(text, state) do
     do_classify(text, state)
@@ -393,12 +393,18 @@ defmodule LS.ML.Classifier do
       industry: if(ind_conf >= 0.35, do: industry, else: ""),
       ml_confidence: Float.round(min(max(bm_conf, ind_conf), 0.85), 2),
       ml_bm_confidence: Float.round(bm_conf, 2),
-      ml_industry_confidence: Float.round(ind_conf, 2)
+      ml_industry_confidence: Float.round(ind_conf, 2),
+      # Provenance (2026-09-06): the head's version string when the head
+      # scored the business model, "cosine" for the zero-shot path.
+      ml_source: ml_source(state)
     }
   end
 
   # Head path: calibrated 17-class softmax (see LS.ML.Head). A "Junk" vote is
   # a decline-to-classify, not a label — is_junk stays owned by junk_reason/1.
+  defp ml_source(%{head: %{version: v}}) when is_binary(v), do: v
+  defp ml_source(_), do: "cosine"
+
   # Cosine fallback keeps the tier alive if the weights file is broken.
   defp score_business_model(text_embedding, %{head: head}) when not is_nil(head) do
     case LS.ML.Head.predict(head, text_embedding) do

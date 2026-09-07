@@ -163,7 +163,7 @@ defmodule LS.Enrichment.Agent do
         # render_engine records what actually fetched the homepage, not what we
         # intended to use. It used to be derived from the *decision* to allow a
         # browser, so a row could claim "camoufox" with no perf metrics on it.
-        %{domain: domain, enriched_at: now(), render_engine: home[:source]}
+        %{domain: domain, enriched_at: now(), render_engine: home[:source], pipeline_version: LS.Version.sha()}
         |> Map.merge(shopify.summary)
         |> Map.merge(deep)
         |> Map.merge(sitemap)

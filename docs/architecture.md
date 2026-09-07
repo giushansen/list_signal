@@ -151,6 +151,33 @@ with catalog, apps, sitemap (`LS.Enrichment.Sitemap`) and jobs and the
 compactor prefers that estimate. `businesses.ctl_subdomains` is the union
 over every certificate seen plus the suppressed sightings.
 
+## Provenance: every value has a cause, not only a time (2026-09-06)
+
+The raw tables are append-only logs: `domains_history` (one row per crawl),
+`biz_enrichment_log` (one row per depth pass), `ctl_sightings` (certificate
+sightings the crawl gate suppressed), `biz_signal` (change events),
+`verified_facts` (pipeline 3, with source and source id). `businesses` is
+derived from them and can be rebuilt. Since migration 023 each crawl row
+also carries:
+
+- `pipeline_version`: the git revision of the build that produced it
+  (`LS.Version.sha/0`, baked in at compile time). Compare rows before and
+  after a revision to measure a change instead of guessing from dates.
+- `http_fingerprint`: a 2 KB JSON of what the detectors saw (distinct
+  script hosts, generator meta, server and x-powered-by headers, HTML
+  size, script count). Raw HTML is not stored; this is enough to check a
+  detection or replay a new signature over stored rows without a crawl.
+- `http_observed`: whether the crawl actually observed the site
+  (`LS.Pipeline.observed?/1`); a stub crawl is never "not present".
+- `classification_source`: `heuristic`, or `ml:<head version>`, for the
+  shipped business model. Enrichment rows carry `pipeline_version` too.
+
+To debug a value on a business: read its `domains_history` rows ordered by
+`enriched_at` (status, observed, fingerprint, tech, version), its
+`biz_enrichment_log` rows, its `verified_facts` (with `source_id`), and
+`biz_signal`. Everything the compactor decided can be recomputed from
+those; `Clickhouse.compact_domains/1` recompacts a named list now.
+
 ## Recrawl
 
 `LS.Recrawl.Scheduler` (master) re-enqueues stale domains every 6h:

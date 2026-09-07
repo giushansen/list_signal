@@ -86,6 +86,22 @@ never silently empty a SaaS list. The results table keeps its Products and
 Avg $ columns; only the filter controls are gated. Pinned by
 `test/ls_web/live/explorer_depth_toolbar_test.exs`.
 
+**Provenance on every row.** `pipeline_version` (git sha at compile time),
+`http_fingerprint` (script hosts, generator, server headers, size: the
+evidence the detectors read, 2 KB, no raw HTML), `classification_source`
+(`heuristic` or `ml:<head version>`) on `domains_history` and folded into
+`businesses`; `pipeline_version` on enrichment rows (migration 023). The
+motivation was tonight's google.com row: the wrong value could be traced
+to a time and a table but the reasoning had to be reconstructed by hand.
+`Clickhouse.compact_domains/1` recompacts a named list; the 98 Tranco
+top-10K businesses still carrying a mis-linked Wikidata fact were
+re-queued for a crawl so the plausibility guard applies through the
+rewritten compactor's fast path (8ba7401, the other session's change,
+measured 32 s per pass). Wikidata's Google entity (Q95) lists about.google
+as its website and carries no revenue statement, so google.com has no
+legitimate verified revenue; the estimate ($1B+, 5001+) is the value to
+show, and the guard now blanks the mis-linked facts.
+
 **Compaction has always read the entire domains_history table on every
 pass, and no filter placement changes that.** Found while chasing why
 passes failed continuously after the change-event fix: `system.query_log`
