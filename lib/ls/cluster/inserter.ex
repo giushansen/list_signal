@@ -165,13 +165,32 @@ defmodule LS.Cluster.Inserter do
   end
 
   @impl true
+  # Bounded (2026-09-07): with ClickHouse starved, the shutdown flush waited
+  # out its 30s receive timeout plus the 15s pool timeout, past the unit's
+  # 20s TimeoutStopSec, and systemd SIGKILLed the app mid-flush (05:15:34
+  # UTC, "restart counter is at 13"): the rows were lost anyway and the
+  # stop was ugly. A batch that cannot land in @shutdown_flush_ms is
+  # dropped and logged, well inside the unit's limit; the recrawl tiers
+  # revisit what a lost batch covered.
+  @shutdown_flush_ms 8_000
+
   def terminate(_reason, state) do
     if state.buffer_size > 0 do
-      Logger.info("Inserter terminating — flushing #{state.buffer_size} rows")
-      do_flush(state)
+      Logger.info("Inserter terminating — flushing #{state.buffer_size} rows (#{@shutdown_flush_ms}ms cap)")
+
+      task = Task.async(fn -> do_flush(state) end)
+
+      case Task.yield(task, @shutdown_flush_ms) || Task.shutdown(task, :brutal_kill) do
+        {:ok, _} -> :ok
+        _ -> Logger.warning("Inserter shutdown flush exceeded #{@shutdown_flush_ms}ms; #{state.buffer_size} rows dropped")
+      end
     end
+
     :ok
   end
+
+  @doc false
+  def shutdown_flush_ms, do: @shutdown_flush_ms
 
   defp do_flush(%{buffer: []} = state), do: state
   defp do_flush(state) do
