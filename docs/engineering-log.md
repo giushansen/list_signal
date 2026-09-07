@@ -75,6 +75,21 @@ apart instead of one that can die on the cap).
 
 ## 2026-09-07
 
+**"Search unavailable" on a customer dashboard: a crawler walking invented
+/tech/ slugs starved ClickHouse.** 05:15-05:40 UTC: 145 distinct /tech/<slug>
+URLs in 25 minutes, slugs that are page titles, not technologies. Each
+unknown slug fell through `canonical_tech_name/1` to a capitalised guess
+and then `stores_by_tech_full_ilike/2`, a full scan of the 188M-row
+`domains_fast` view, uncached because every slug is a new cache key, then
+the six distribution queries. 415 concurrent scans of 18-25 minutes, load
+average 120 on the 4-core master, every ClickHouse query timing out
+(inserts, recrawl, DataCheck, and the explorer, whose failure message is
+the one the owner saw). Killed 372 queries by hand, ran a 15-minute kill
+loop, and shipped 1740612: a slug the tech directory does not know is a
+404 that costs nothing, and the ILIKE fallback is deleted. Lesson, again:
+a public page must never let a visitor-chosen string reach a full table
+scan; the directory is the contract for what a URL may cost.
+
 **Store pages read a `SELECT *` row by the inserter's column positions.**
 `StoreController.parse_store/2` and `Tools.Lookup.parse_row/2` indexed the
 domains_current row with `LS.Cluster.Inserter.columns/0`. That list gained
