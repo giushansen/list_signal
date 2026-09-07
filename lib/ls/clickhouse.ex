@@ -1278,6 +1278,52 @@ defmodule LS.Clickhouse do
   """
   def compact_sql_shard_preview(shard \\ 0, total \\ 256), do: compact_sql_shard(shard, total)
 
+  @doc """
+  Recompact an explicit list of domains now, outside the time window
+  (2026-09-06). The incremental pass only revisits a domain when a new
+  crawl, enrichment or verified fact touches it, so a rule change in the
+  compactor (the verified-fact plausibility guard, the subdomain union)
+  reaches an untouched domain only at its next crawl, weeks later for a
+  monthly-tier site. google.com kept "<$1M, 51-500 employees" from a
+  mis-linked Wikidata item for two days after the guard shipped because
+  nothing had crawled it since. Bounded: at most `@compact_domains_max`
+  domains per call, so a literal IN list stays well under the parser's
+  query-size limit.
+  """
+  @compact_domains_max 2_000
+  @spec compact_domains([String.t()]) :: {:ok, term()} | {:error, term()}
+  def compact_domains(domains) when is_list(domains) do
+    domains =
+      domains
+      |> Enum.filter(&(is_binary(&1) and &1 != "" and not String.contains?(&1, ["'", "\\", "\n"])))
+      |> Enum.uniq()
+      |> Enum.take(@compact_domains_max)
+
+    case domains do
+      [] -> {:ok, 0}
+      _ -> query_raw(compact_sql_domains(domains), 1_200_000, background: true)
+    end
+  end
+
+  @doc false
+  def compact_sql_domains(domains) do
+    lit = domains |> Enum.map(&"'#{&1}'") |> Enum.join(",")
+    compact_sql_guarded("domain IN (#{lit})")
+  end
+
+  # The same five table sources as the shard form, each carrying the guard.
+  defp compact_sql_guarded(guard) do
+    compact_sql(0)
+    |> String.replace("FROM domains_history)", "FROM domains_history WHERE #{guard})")
+    |> String.replace(
+      "FROM biz_enrichment_log WHERE render_engine != 'failed'",
+      "FROM biz_enrichment_log WHERE #{guard} AND render_engine != 'failed'"
+    )
+    |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
+    |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
+    |> String.replace("FROM verified_facts\n", "FROM verified_facts WHERE #{guard}\n")
+  end
+
   defp compact_sql_shard(shard, total) do
     # The shard is a set of DOMAINS, not a raw hash predicate on every table.
     # domains_history is sorted by (domain, enriched_at), so `domain IN (set)`
@@ -1287,22 +1333,10 @@ defmodule LS.Clickhouse do
     # visible. Membership in `businesses` also bounds the set to real
     # businesses (9.6M) rather than every domain ever seen.
     set = "SELECT domain FROM businesses WHERE cityHash64(domain) % #{total} = #{shard}"
-    guard = "domain IN (#{set})"
 
     # Every table read carries the guard — one unsharded side is the whole
     # memory problem back.
-    compact_sql(0)
-    |> String.replace(
-      "FROM domains_history)",
-      "FROM domains_history WHERE #{guard})"
-    )
-    |> String.replace(
-      "FROM biz_enrichment_log WHERE render_engine != 'failed'",
-      "FROM biz_enrichment_log WHERE #{guard} AND render_engine != 'failed'"
-    )
-    |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
-    |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
-    |> String.replace("FROM verified_facts\n", "FROM verified_facts WHERE #{guard}\n")
+    compact_sql_guarded("domain IN (#{set})")
   end
 
   # Pipeline 3's contribution to a `businesses` row: one verified revenue and

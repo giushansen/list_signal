@@ -74,6 +74,22 @@ defmodule LS.DataContractTest do
              "values actually present: #{inspect(counts |> Map.keys() |> Enum.sort())}"
   end
 
+  describe "targeted recompaction (2026-09-06)" do
+    test "compact_domains/1 executes for a real domain and touches only it" do
+      with_clickhouse(fn ->
+        {:ok, [[d]]} = Clickhouse.query_raw("SELECT domain FROM businesses LIMIT 1")
+        assert {:ok, _} = Clickhouse.compact_domains([d, "not-a-real-domain.invalid"])
+        sql = Clickhouse.compact_sql_domains([d])
+        assert length(String.split(sql, "domain IN ('#{d}')")) == 6, "all five table sources must carry the guard"
+      end)
+    end
+
+    test "hostile domain strings never reach the SQL" do
+      assert Clickhouse.compact_domains(["x' OR 1=1 --", "", nil, "a\nb"]) == {:ok, 0}
+      refute Clickhouse.compact_sql_domains(["ok.example"]) =~ "OR 1=1"
+    end
+  end
+
   describe "verified facts agree with observed traffic (2026-09-06)" do
     # google.com carried verified_revenue "<$1M" and 51-500 employees from a
     # Wikidata item whose official website is google.com. The compactor now
