@@ -71,6 +71,9 @@ product start reading like a model again. The rest of the list is on you.
 
 ## Code
 
+- **Brand and design rules live in `docs/brand/README.md`.** Read it before
+  touching layouts, colours, fonts or the logo. The mark's geometry is frozen
+  and every brand file is generated, never hand-edited.
 - **Document as you go.** Every module gets a `@moduledoc`; every public
   function that isn't self-evident gets a `@doc` (and a `@spec` where it
   clarifies). Explain *why*, not *what* — especially for anything that exists

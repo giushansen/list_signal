@@ -10,7 +10,7 @@ defmodule LSWeb.UserLive.Confirmation do
     <div class="min-h-screen bg-[#0a0e17] flex items-center justify-center px-4">
       <div class="w-full max-w-sm">
         <div class="text-center mb-8">
-          <span class="text-emerald-400 font-bold text-3xl">LS</span>
+          <.logo_lockup />
           <h1 class="text-xl font-semibold text-white mt-2">Welcome <%= @user.email %></h1>
         </div>
 

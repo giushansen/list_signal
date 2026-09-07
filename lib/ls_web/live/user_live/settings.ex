@@ -15,7 +15,7 @@ defmodule LSWeb.UserLive.Settings do
       <header class="border-b border-white/[0.06] bg-[#0F1628]">
         <div class="max-w-[1700px] mx-auto px-5 py-3.5 flex items-center justify-between">
           <.link navigate={~p"/dashboard"} class="flex items-center gap-3 hover:opacity-80 transition">
-            <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500 text-xs font-extrabold text-white">LS</div>
+            <.logo_tile size={32} />
             <span class="text-white font-semibold text-[15px] tracking-tight">Settings</span>
           </.link>
           <div class="flex items-center gap-4 text-sm">
@@ -234,7 +234,7 @@ defmodule LSWeb.UserLive.Settings do
         <div class="max-w-[1700px] mx-auto px-5 py-5">
           <div class="flex flex-col md:flex-row items-center justify-between gap-3 text-[11px] text-gray-600">
             <div class="flex items-center gap-2">
-              <div class="flex h-4 w-4 items-center justify-center rounded bg-emerald-500/80 text-[8px] font-extrabold text-white">LS</div>
+              <.logo_tile size={16} class="opacity-80" />
               <span>© 2026 ListSignal · A <span class="text-gray-500">ListSignal Pte Ltd</span> company, Singapore</span>
             </div>
             <div class="flex items-center gap-4">

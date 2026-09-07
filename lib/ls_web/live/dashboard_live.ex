@@ -119,6 +119,7 @@ defmodule LSWeb.DashboardLive do
       .dash { font-family: 'IBM Plex Sans', -apple-system, sans-serif; color: #c8d3e0; max-width: 1400px; margin: 0 auto; padding: 24px; }
       .header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 24px; border-bottom: 1px solid #1a2235; padding-bottom: 16px; }
       .header h1 { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 700; color: #e8edf4; letter-spacing: -0.5px; }
+      .header-mark { color: #e8edf4; align-self: center; flex-shrink: 0; }
       .role-badge { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: #38bdf8; background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); padding: 3px 10px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
       .tabs { display: flex; gap: 4px; margin-left: 20px; }
       .tab { font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 500; color: #64748b;
@@ -250,6 +251,7 @@ defmodule LSWeb.DashboardLive do
 
     <div class="dash">
       <div class="header">
+        <.logo_mark size={20} class="header-mark" />
         <h1>ListSignal</h1>
         <span class="role-badge">{@role}</span>
         <div class="tabs">

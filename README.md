@@ -1,5 +1,9 @@
 # ListSignal
 
+<img src="priv/static/images/brand/tile-green-256.png" width="64" alt="ListSignal">
+
+Brand and design rules: docs/brand/README.md
+
 Domain intelligence platform. Ingests SSL certificates in real-time, enriches domains with DNS/HTTP/BGP/RDAP data, looks up reputation signals, and stores everything in ClickHouse.
 
 No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's it.

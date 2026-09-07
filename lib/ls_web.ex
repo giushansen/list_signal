@@ -1,7 +1,9 @@
 defmodule LSWeb do
   @moduledoc "Web interface for ListSignal."
 
-  def static_paths, do: ~w(assets fonts images favicon.ico favicon-32x32.png apple-touch-icon.png og-card.png robots.txt llms.txt verify.html)
+  def static_paths,
+    do:
+      ~w(assets fonts images favicon.ico favicon.svg favicon-16x16.png favicon-32x32.png apple-touch-icon.png icon-192.png icon-512.png site.webmanifest og-card.png robots.txt llms.txt verify.html)
 
   def router do
     quote do
@@ -53,6 +55,7 @@ defmodule LSWeb do
       import Phoenix.HTML
       import Phoenix.Component
       import LSWeb.CoreComponents, only: [translate_error: 1, icon: 1]
+      import LSWeb.BrandComponents
       unquote(verified_routes())
     end
   end

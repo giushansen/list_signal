@@ -24,7 +24,11 @@ defmodule LSWeb.OpenapiController do
         version: "1.0.0",
         description:
           "Live business intelligence for 14M+ online businesses: tech stacks, Shopify apps, revenue and employee estimates, hiring signals with posting dates, SEO scores, and contact emails. Free tier: 1,000 lookups/month. Contact emails require a paid plan. Auth: 'Authorization: Bearer ls_...' (or X-API-Key). Errors are RFC 9457 problem+json with actionable detail.",
-        contact: %{email: "will@listsignal.com", url: "https://listsignal.com/developers"}
+        contact: %{email: "will@listsignal.com", url: "https://listsignal.com/developers"},
+        "x-logo": %{
+          url: "https://listsignal.com/images/brand/tile-green-512.png",
+          altText: "ListSignal"
+        }
       },
       servers: [%{url: "https://listsignal.com"}],
       security: [%{bearerAuth: []}],

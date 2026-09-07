@@ -10,20 +10,29 @@ defmodule LSWeb.TechController do
   """
   def warm(tech_name) do
     LS.UICache.fetch(:tech_page, tech_name, fn ->
-      assemble_tech_page(tech_name, String.replace(tech_name, "-", " "))
+      assemble_tech_page(tech_name)
     end)
 
     :ok
   end
 
   def show(conn, %{"slug" => slug}) do
-    # Resolve against the real http_tech values first; naive capitalisation breaks
-    # every non-Title-Case tech ("vue-js" -> "Vue Js" never matches "Vue.js").
-    tech_name =
-      LS.Clickhouse.canonical_tech_name(slug) ||
-        (slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" "))
+    # Only a technology the directory offers gets a page (2026-09-07). An
+    # unknown slug used to fall through to a capitalised guess and then an
+    # ILIKE scan of the whole table, uncached because every slug was a new
+    # cache key: a crawler walking 145 invented slugs in 25 minutes put 415
+    # concurrent 20-minute scans on ClickHouse, the box hit load 120, every
+    # query timed out and the dashboard showed "Search unavailable" to a
+    # paying user. A slug the directory does not know is a 404 that costs
+    # nothing, which is also the sitemap's contract: never offer a URL the
+    # page cannot serve.
+    case LS.Clickhouse.canonical_tech_name(slug) do
+      nil -> conn |> put_status(:not_found) |> put_layout(html: {LSWeb.Layouts, :public}) |> text("Not found")
+      tech_name -> show_known(conn, slug, tech_name)
+    end
+  end
 
-    search_term = slug |> String.replace("-", " ")
+  defp show_known(conn, slug, tech_name) do
 
     # One cache entry per tech, 6h. The assembly below runs SEVEN full scans
     # of a 118M-row table (a 9s store query plus six distributions) — fine
@@ -36,7 +45,7 @@ defmodule LSWeb.TechController do
       hosting: hosting, registrars: registrars, co_techs: co_techs
     } =
       LS.UICache.fetch(:tech_page, tech_name, fn ->
-        assemble_tech_page(tech_name, search_term)
+        assemble_tech_page(tech_name)
       end)
 
     conn
@@ -59,18 +68,13 @@ defmodule LSWeb.TechController do
   end
 
 
-  defp assemble_tech_page(tech_name, search_term) do
+  defp assemble_tech_page(tech_name) do
+    # No ILIKE fallback: the name is canonical by the time we are here.
     {stores, store_count, actual_name} = case LS.Clickhouse.stores_by_tech_full(tech_name, 100) do
       {:ok, rows} when rows != [] ->
         parsed = Enum.map(rows, &parse_full_row/1)
         {parsed, length(parsed), tech_name}
-      _ ->
-        case LS.Clickhouse.stores_by_tech_full_ilike(search_term, 100) do
-          {:ok, rows} when rows != [] ->
-            parsed = Enum.map(rows, &parse_full_row/1)
-            {parsed, length(parsed), tech_name}
-          _ -> {[], 0, tech_name}
-        end
+      _ -> {[], 0, tech_name}
     end
 
     # These 6 ClickHouse queries are independent, so run them concurrently.
