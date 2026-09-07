@@ -70,6 +70,24 @@ window); the businesses half would shrink with a smaller
 index_granularity, left for a measured follow-up. The 1190 s ceiling stays as headroom until a week of passes
 shows the steady state.
 
+## 2026-09-07
+
+**Store pages read a `SELECT *` row by the inserter's column positions.**
+`StoreController.parse_store/2` and `Tools.Lookup.parse_row/2` indexed the
+domains_current row with `LS.Cluster.Inserter.columns/0`. That list gained
+nine columns on 09-06/07 that domains_current does not have (the
+email-auth, infrastructure, observation and provenance columns live on
+domains_history and businesses only), so every field after dns_cname read
+its neighbour: from the 09-06 morning deploy titles rendered as page lists
+without an error, and once the shift reached classification_confidence a
+float hit decode_html/1 (104 FunctionClauseErrors in ten minutes, found
+by the other session at 04:5x UTC). Fix (e4d2fb0): `get_store/1` returns
+maps keyed by domains_current's own column order, read once from
+system.columns; cached lookup rows keep the inserter order they are built
+in; a contract test reads a real row and asserts the title is text. Rule
+for next time: a positional row must be zipped with the column list of the
+query that produced it, never with a list that happens to look similar.
+
 ## 2026-09-06
 
 **The dashboard's depth row is always on screen.** `/dashboard` hid the
