@@ -37,7 +37,8 @@ defmodule LS.QueryCostTest do
   end
 
   test "every per-tech distribution is cached — each one full-scans 153.7M rows" do
-    src = ch()
+    # The tech readers moved to LS.Clickhouse.Tech on 2026-09-09.
+    src = File.read!("lib/ls/clickhouse/tech.ex")
 
     for f <- ~w(tech_language_distribution tech_hosting_distribution
                 tech_registrar_distribution tech_co_occurring tech_stats) do

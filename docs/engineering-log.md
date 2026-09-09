@@ -111,6 +111,17 @@ fetches are skipped, so the same crawl fits about seven fetch IPs.
 `LS_STABLE_REVISIT=false` turns it off. Decide the worker count on 09-11
 from `total_deduped_stable` against `total_enqueued`.
 
+**Two modules split, two left alone.** `LS.Clickhouse` was 2,187 lines;
+the tech index readers are their own surface with their own table, so they
+became `LS.Clickhouse.Tech` (308 lines, callers repointed). `LSWeb.ExplorerLive`
+was 2,268 lines; its 430 lines of pure formatting and lookup helpers became
+`LSWeb.ExplorerLive.Format`, imported back. Both are moves, no behaviour
+change; the tests that scan source text follow the files. The compaction
+SQL stays in `LS.Clickhouse`: the 09-07 fold rewrite is days old and its
+tests pin that file, so a move now is risk without a gain. `revenue/
+estimator.ex` (1,418) and `dashboard_live.ex` (1,315) are also left as they
+are for the same reason; each is one cohesive thing, not two.
+
 **Node state left /tmp.** `LS.CacheSnapshot` wrote to `/tmp`, which
 systemd-tmpfiles prunes after 10 days and which blocked `PrivateTmp`.
 `LS.State.dir/0` resolves `/var/lib/listsignal` (`LS_STATE_DIR`), created

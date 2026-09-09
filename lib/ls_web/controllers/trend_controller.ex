@@ -28,21 +28,21 @@ defmodule LSWeb.TrendController do
   end
 
   def show(conn, %{"slug" => slug}) do
-    case LS.Clickhouse.canonical_tech_name(slug) do
+    case LS.Clickhouse.Tech.canonical_tech_name(slug) do
       nil ->
         conn |> put_status(404) |> assign(:page_title, "Unknown technology")
         |> put_layout(html: {LSWeb.Layouts, :public}) |> render(:not_found)
 
       tech ->
         trends = LS.Clickhouse.tech_trends(tech)
-        total = LS.Clickhouse.tech_store_count(tech)
+        total = LS.Clickhouse.Tech.tech_store_count(tech)
         adopters = LS.Clickhouse.recent_adopters(tech, 6)
 
         compares =
           LSWeb.SitemapController.compare_pairs()
           |> Enum.filter(fn {a, b} -> a == tech or b == tech end)
           |> Enum.map(fn {a, b} ->
-            cslug = "#{LS.Clickhouse.tech_slug(a)}-vs-#{LS.Clickhouse.tech_slug(b)}"
+            cslug = "#{LS.Clickhouse.Tech.tech_slug(a)}-vs-#{LS.Clickhouse.Tech.tech_slug(b)}"
             {"/compare/#{cslug}", "#{a} vs #{b}"}
           end)
 

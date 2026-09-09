@@ -219,7 +219,7 @@ defmodule LS.DataContractTest do
     test "the aggregate returns four real numbers for a high-volume tech" do
       with_clickhouse(fn ->
         assert {:ok, [[total, avg_rt, responding, top_100k]]} =
-                 Clickhouse.tech_stats("Google Analytics")
+                 Clickhouse.Tech.tech_stats("Google Analytics")
 
         # Each of these rendered as 0 — or as the 100-row listing cap — when the
         # query timed out and the controller substituted a fallback.
@@ -235,7 +235,7 @@ defmodule LS.DataContractTest do
 
     test "the aggregate agrees with a plain count of the same predicate over the source table" do
       with_clickhouse(fn ->
-        {:ok, [[total, _, _, _]]} = Clickhouse.tech_stats("Klaviyo")
+        {:ok, [[total, _, _, _]]} = Clickhouse.Tech.tech_stats("Klaviyo")
 
         # tech_index (2026-09-09) is rebuilt from domains_current every six
         # hours; the truth it must track is the exact-token count of titled
@@ -271,7 +271,7 @@ defmodule LS.DataContractTest do
       with_clickhouse(fn ->
         # It used to share the 10s default and intermittently blew it, which is
         # what triggered the fabricated fallback in the first place.
-        {elapsed_us, {:ok, _}} = :timer.tc(fn -> Clickhouse.tech_stats("Shopify") end)
+        {elapsed_us, {:ok, _}} = :timer.tc(fn -> Clickhouse.Tech.tech_stats("Shopify") end)
 
         assert elapsed_us / 1_000 < 30_000,
                "tech_stats took #{round(elapsed_us / 1_000)}ms — at this rate it will time out again"
@@ -284,12 +284,12 @@ defmodule LS.DataContractTest do
       # tech; techs with zero Shopify users (Pendo...) rendered 404 for
       # Google. The rule: the sitemap may only emit what the page can serve.
       with_clickhouse(fn ->
-        {:ok, rows} = LS.Clickhouse.shopify_tech_names()
+        {:ok, rows} = LS.Clickhouse.Tech.shopify_tech_names()
 
         sample = rows |> Enum.take_every(max(div(length(rows), 20), 1)) |> Enum.take(20)
 
         for [tech | _] <- sample do
-          {:ok, stores} = LS.Clickhouse.top_stores_using_tech(tech, 1)
+          {:ok, stores} = LS.Clickhouse.Tech.top_stores_using_tech(tech, 1)
 
           assert stores != [],
                  "sitemap offers /top/shopify-stores-using-#{tech} but the page query finds nothing"

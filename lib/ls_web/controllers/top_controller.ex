@@ -70,7 +70,7 @@ defmodule LSWeb.TopController do
 
   defp render_country_top(conn, code, slug) do
     country_name = Map.get(@country_names, String.upcase(code), String.upcase(code))
-    case LS.Clickhouse.top_stores_by_country(String.upcase(code), 50) do
+    case LS.Clickhouse.Tech.top_stores_by_country(String.upcase(code), 50) do
       {:ok, rows} when rows != [] ->
         stores = parse_rows(rows)
         conn
@@ -90,7 +90,7 @@ defmodule LSWeb.TopController do
   end
 
   defp render_tech_top(conn, tech_name, slug) do
-    case LS.Clickhouse.top_stores_using_tech(tech_name, 50) do
+    case LS.Clickhouse.Tech.top_stores_using_tech(tech_name, 50) do
       {:ok, rows} when rows != [] ->
         stores = parse_rows(rows)
         conn
@@ -111,7 +111,7 @@ defmodule LSWeb.TopController do
 
   defp render_tech_country_top(conn, tech_name, code, slug) do
     country_name = Map.get(@country_names, String.upcase(code), String.upcase(code))
-    case LS.Clickhouse.top_stores_using_tech_in_country(tech_name, String.upcase(code), 50) do
+    case LS.Clickhouse.Tech.top_stores_using_tech_in_country(tech_name, String.upcase(code), 50) do
       {:ok, rows} when rows != [] ->
         stores = parse_rows(rows)
         conn
@@ -236,7 +236,7 @@ defmodule LSWeb.TopController do
   # Same trap as the other controllers: "vue-js" must resolve to "Vue.js", not
   # "Vue Js", or the ClickHouse LIKE matches nothing and the page 404s.
   defp humanize(slug) do
-    LS.Clickhouse.canonical_tech_name(slug) ||
+    LS.Clickhouse.Tech.canonical_tech_name(slug) ||
       (slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" "))
   end
 

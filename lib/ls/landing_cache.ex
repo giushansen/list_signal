@@ -199,7 +199,7 @@ defmodule LS.LandingCache do
   end
 
   defp fetch_tech_names do
-    case LS.Clickhouse.tech_directory() do
+    case LS.Clickhouse.Tech.tech_directory() do
       {:ok, rows} ->
         Enum.map(rows, fn [name, count] -> {name, count} end)
       _ -> []

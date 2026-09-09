@@ -50,8 +50,7 @@ defmodule LS.TechIndexTest do
   end
 
   test "no public tech query interpolates the technology name or reads domains_fast with LIKE" do
-    src = File.read!("lib/ls/clickhouse.ex")
-    [tech_section | _] = src |> String.split("# ── Tech profile ──") |> Enum.at(1) |> String.split("# ── Sitemap ──")
+    tech_section = File.read!("lib/ls/clickhouse/tech.ex")
     refute tech_section =~ ~r/LIKE '%#\{/, "a LIKE over an interpolated name is the 09-07 storm"
     refute tech_section =~ "FROM domains_fast"
     assert tech_section =~ "{t:String}"

@@ -81,7 +81,7 @@ defmodule LS.CacheWarmer do
   # Warming must never crash the app or block boot; a failed warm just means a
   # slower first visitor, which is the situation we were already in.
   defp warm_techs do
-    case LS.Clickhouse.shopify_tech_names() do
+    case LS.Clickhouse.Tech.shopify_tech_names() do
       {:ok, rows} ->
         rows
         |> Enum.take(@top_techs)
@@ -97,7 +97,7 @@ defmodule LS.CacheWarmer do
   end
 
   defp warm_stores do
-    case LS.Clickhouse.all_shopify_domains(@top_stores) do
+    case LS.Clickhouse.Tech.all_shopify_domains(@top_stores) do
       {:ok, rows} ->
         rows
         |> Enum.reduce(0, fn [domain], acc ->

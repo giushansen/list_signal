@@ -6,7 +6,7 @@ defmodule LSWeb.TrendHTML do
   def format_number(n) when is_integer(n), do: LSWeb.StoreHTML.format_number(n)
   def format_number(_), do: "0"
 
-  def slugify(name), do: LS.Clickhouse.tech_slug(name)
+  def slugify(name), do: LS.Clickhouse.Tech.tech_slug(name)
 
   @doc "Net movement badge: green for growth, red for shrink."
   def net_badge(assigns) do

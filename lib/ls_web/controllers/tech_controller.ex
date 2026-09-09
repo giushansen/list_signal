@@ -26,7 +26,7 @@ defmodule LSWeb.TechController do
     # paying user. A slug the directory does not know is a 404 that costs
     # nothing, which is also the sitemap's contract: never offer a URL the
     # page cannot serve.
-    case LS.Clickhouse.canonical_tech_name(slug) do
+    case LS.Clickhouse.Tech.canonical_tech_name(slug) do
       nil -> conn |> put_status(:not_found) |> put_layout(html: {LSWeb.Layouts, :public}) |> text("Not found")
       tech_name -> show_known(conn, slug, tech_name)
     end
@@ -76,7 +76,7 @@ defmodule LSWeb.TechController do
 
   defp assemble_from_index(tech_name) do
     # No ILIKE fallback: the name is canonical by the time we are here.
-    {stores, store_count, actual_name} = case LS.Clickhouse.stores_by_tech_full(tech_name, 100) do
+    {stores, store_count, actual_name} = case LS.Clickhouse.Tech.stores_by_tech_full(tech_name, 100) do
       {:ok, rows} when rows != [] ->
         parsed = Enum.map(rows, &parse_full_row/1)
         {parsed, length(parsed), tech_name}
@@ -88,12 +88,12 @@ defmodule LSWeb.TechController do
     # dominant page cost (~0.8s). In parallel the page waits on the slowest one only.
     [countries_r, languages_r, hosting_r, registrars_r, co_techs_r, stats_r] =
       [
-        fn -> LS.Clickhouse.tech_country_distribution(actual_name) end,
-        fn -> LS.Clickhouse.tech_language_distribution(actual_name) end,
-        fn -> LS.Clickhouse.tech_hosting_distribution(actual_name) end,
-        fn -> LS.Clickhouse.tech_registrar_distribution(actual_name) end,
-        fn -> LS.Clickhouse.tech_co_occurring(actual_name) end,
-        fn -> LS.Clickhouse.tech_stats(actual_name) end
+        fn -> LS.Clickhouse.Tech.tech_country_distribution(actual_name) end,
+        fn -> LS.Clickhouse.Tech.tech_language_distribution(actual_name) end,
+        fn -> LS.Clickhouse.Tech.tech_hosting_distribution(actual_name) end,
+        fn -> LS.Clickhouse.Tech.tech_registrar_distribution(actual_name) end,
+        fn -> LS.Clickhouse.Tech.tech_co_occurring(actual_name) end,
+        fn -> LS.Clickhouse.Tech.tech_stats(actual_name) end
       ]
       |> Task.async_stream(& &1.(), max_concurrency: 6, timeout: 15_000, on_timeout: :kill_task)
       |> Enum.map(fn
@@ -306,7 +306,7 @@ defmodule LSWeb.TechController do
       |> Enum.filter(fn {a, b} -> a == tech or b == tech end)
       |> Enum.take(3)
       |> Enum.map(fn {a, b} ->
-        {"/compare/#{LS.Clickhouse.tech_slug(a)}-vs-#{LS.Clickhouse.tech_slug(b)}", "#{a} vs #{b}"}
+        {"/compare/#{LS.Clickhouse.Tech.tech_slug(a)}-vs-#{LS.Clickhouse.Tech.tech_slug(b)}", "#{a} vs #{b}"}
       end)
 
     [{"/trends/#{slug}", "#{tech} adoption trend"},

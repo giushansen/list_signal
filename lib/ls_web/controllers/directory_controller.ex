@@ -9,7 +9,7 @@ defmodule LSWeb.DirectoryController do
   plug :cache_headers
 
   def apps(conn, _params) do
-    techs = case LS.Clickhouse.tech_directory() do
+    techs = case LS.Clickhouse.Tech.tech_directory() do
       {:ok, rows} -> Enum.map(rows, fn [name, count] -> %{name: name, count: count} end)
       _ -> []
     end
@@ -23,7 +23,7 @@ defmodule LSWeb.DirectoryController do
   end
 
   def countries(conn, _params) do
-    countries = case LS.Clickhouse.country_directory() do
+    countries = case LS.Clickhouse.Tech.country_directory() do
       {:ok, rows} -> Enum.map(rows, fn [code, count] -> %{code: code, count: count} end)
       _ -> []
     end

@@ -9,15 +9,15 @@ defmodule LSWeb.CompareDegradeTest do
   use ExUnit.Case, async: true
 
   test "ok_or_empty/1 unwraps success and swallows every failure shape" do
-    assert LS.Clickhouse.ok_or_empty({:ok, [1, 2]}) == [1, 2]
-    assert LS.Clickhouse.ok_or_empty({:error, %{reason: :timeout}}) == []
-    assert LS.Clickhouse.ok_or_empty(:anything_else) == []
+    assert LS.Clickhouse.Tech.ok_or_empty({:ok, [1, 2]}) == [1, 2]
+    assert LS.Clickhouse.Tech.ok_or_empty({:error, %{reason: :timeout}}) == []
+    assert LS.Clickhouse.Tech.ok_or_empty(:anything_else) == []
   end
 
   test "the compare page's heavy scans are no longer hard-matched" do
     # Tripwire on the source: a `{:ok, x} = stores_by_tech(...)` style match
     # inside compare_techs is exactly what produced the 500.
-    src = File.read!("lib/ls/clickhouse.ex")
+    src = File.read!("lib/ls/clickhouse/tech.ex")
     [_, body] = String.split(src, "def compare_techs(tech_a, tech_b) do", parts: 2)
     body = body |> String.split("\n  end\n", parts: 2) |> hd()
 

@@ -18,7 +18,7 @@ defmodule LSWeb.CompareController do
         # per pair. See tech_controller for the incident.
         data =
           LS.UICache.fetch(:compare_page, {tech_a, tech_b}, fn ->
-            LS.Clickhouse.compare_techs(tech_a, tech_b)
+            LS.Clickhouse.Tech.compare_techs(tech_a, tech_b)
           end)
 
         # A degraded result (a ClickHouse scan timed out) still renders — but it
@@ -34,10 +34,10 @@ defmodule LSWeb.CompareController do
         switchers_ba = LS.Clickhouse.switchers(tech_b, tech_a)
 
         related = [
-          {"/trends/#{LS.Clickhouse.tech_slug(tech_a)}", "#{tech_a} adoption trend"},
-          {"/trends/#{LS.Clickhouse.tech_slug(tech_b)}", "#{tech_b} adoption trend"},
-          {"/tech/#{LS.Clickhouse.tech_slug(tech_a)}", "Businesses using #{tech_a}"},
-          {"/tech/#{LS.Clickhouse.tech_slug(tech_b)}", "Businesses using #{tech_b}"}
+          {"/trends/#{LS.Clickhouse.Tech.tech_slug(tech_a)}", "#{tech_a} adoption trend"},
+          {"/trends/#{LS.Clickhouse.Tech.tech_slug(tech_b)}", "#{tech_b} adoption trend"},
+          {"/tech/#{LS.Clickhouse.Tech.tech_slug(tech_a)}", "Businesses using #{tech_a}"},
+          {"/tech/#{LS.Clickhouse.Tech.tech_slug(tech_b)}", "Businesses using #{tech_b}"}
         ]
 
         conn
@@ -71,7 +71,7 @@ defmodule LSWeb.CompareController do
   # "vue-js" into "Vue Js" and "paypal" into "Paypal", neither of which matches
   # anything (ClickHouse LIKE is case-sensitive), so the page rendered 0 vs 0.
   defp humanize(slug) do
-    LS.Clickhouse.canonical_tech_name(slug) ||
+    LS.Clickhouse.Tech.canonical_tech_name(slug) ||
       (slug |> String.split("-") |> Enum.map(&String.capitalize/1) |> Enum.join(" "))
   end
 

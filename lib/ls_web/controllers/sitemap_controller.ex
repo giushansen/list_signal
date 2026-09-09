@@ -82,7 +82,7 @@ defmodule LSWeb.SitemapController do
   defp build_xml do
     base = "https://listsignal.com"
 
-    stores = case LS.Clickhouse.all_shopify_domains(10_000) do
+    stores = case LS.Clickhouse.Tech.all_shopify_domains(10_000) do
       {:ok, rows} -> Enum.map(rows, fn [d] -> entry(base, "/shopify/" <> String.replace(d, ".", "-"), "0.6", "weekly") end)
       _ -> []
     end
@@ -96,13 +96,13 @@ defmodule LSWeb.SitemapController do
     # drifts far slower than the cache expires.
     shopify_techs =
       LS.UICache.fetch(:sitemap_techs, :all, fn ->
-        case LS.Clickhouse.shopify_tech_names() do
+        case LS.Clickhouse.Tech.shopify_tech_names() do
           {:ok, rows} -> MapSet.new(rows, fn [name | _] -> name end)
           _ -> MapSet.new()
         end
       end)
 
-    techs = case LS.Clickhouse.all_tech_slugs() do
+    techs = case LS.Clickhouse.Tech.all_tech_slugs() do
       {:ok, names} ->
         Enum.flat_map(names, fn name ->
           slug = name |> String.downcase() |> String.replace(~r/[^a-z0-9]+/, "-") |> String.trim("-")
@@ -117,19 +117,19 @@ defmodule LSWeb.SitemapController do
       _ -> []
     end
 
-    countries = case LS.Clickhouse.country_directory() do
+    countries = case LS.Clickhouse.Tech.country_directory() do
       {:ok, rows} -> Enum.map(rows, fn [code, _] -> entry(base, "/top/shopify-stores-" <> String.downcase(code), "0.6", "weekly") end)
       _ -> []
     end
 
-    compares = case LS.Clickhouse.tech_directory_cached() do
+    compares = case LS.Clickhouse.Tech.tech_directory_cached() do
       {:ok, rows} ->
         known = MapSet.new(rows, fn [name | _] -> name end)
 
         @compare_pairs
         |> Enum.filter(fn {a, b} -> MapSet.member?(known, a) and MapSet.member?(known, b) end)
         |> Enum.map(fn {a, b} ->
-          slug = LS.Clickhouse.tech_slug(a) <> "-vs-" <> LS.Clickhouse.tech_slug(b)
+          slug = LS.Clickhouse.Tech.tech_slug(a) <> "-vs-" <> LS.Clickhouse.Tech.tech_slug(b)
           entry(base, "/compare/" <> slug, "0.8", "weekly")
         end)
 
@@ -169,7 +169,7 @@ defmodule LSWeb.SitemapController do
       [entry(base, "/trends", "0.8", "daily")] ++
         (LS.Clickhouse.tech_movers(60)
          |> Enum.map(fn [tech | _] ->
-           entry(base, "/trends/" <> LS.Clickhouse.tech_slug(tech), "0.7", "daily")
+           entry(base, "/trends/" <> LS.Clickhouse.Tech.tech_slug(tech), "0.7", "daily")
          end))
 
     # Industry / business-model tops: only segments with >= 500 titled,
@@ -187,9 +187,9 @@ defmodule LSWeb.SitemapController do
     # cached) — long-tail queries like "shopify stores using klaviyo in france".
     combo_techs = ~w(Klaviyo Gorgias Tidio Attentive Afterpay Mailchimp Zendesk Stripe PayPal Recharge)
     tech_country =
-      for {{tech, cc}, count} <- LS.Clickhouse.tech_country_matrix(combo_techs),
+      for {{tech, cc}, count} <- LS.Clickhouse.Tech.tech_country_matrix(combo_techs),
           count >= 25 do
-        entry(base, "/top/shopify-stores-using-#{LS.Clickhouse.tech_slug(tech)}-in-#{String.downcase(cc)}", "0.6", "weekly")
+        entry(base, "/top/shopify-stores-using-#{LS.Clickhouse.Tech.tech_slug(tech)}-in-#{String.downcase(cc)}", "0.6", "weekly")
       end
 
     all =
