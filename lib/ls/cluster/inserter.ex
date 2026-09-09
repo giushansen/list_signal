@@ -247,8 +247,7 @@ defmodule LS.Cluster.Inserter do
     # those ran, inserts starved, the pipeline stalled to 0/min, and the web
     # acceptors died with it — the Aug 3 outage repeated because that fix
     # routed clickhouse.ex but missed the biggest writer of all.
-    case Req.post(url, body: tsv <> "\n", receive_timeout: 30_000,
-                  finch: LS.Finch.CH, pool_timeout: 15_000) do
+    case LS.Clickhouse.post(url, tsv <> "\n", receive_timeout: 30_000, finch: LS.Finch.CH) do
       {:ok, %{status: 200}} -> :ok
       {:ok, %{status: s, body: b}} -> {:error, "HTTP #{s}: #{String.slice(to_string(b), 0, 200)}"}
       {:error, e} -> {:error, inspect(e)}

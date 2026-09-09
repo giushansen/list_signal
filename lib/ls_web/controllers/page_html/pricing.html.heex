@@ -8,8 +8,7 @@
   <div class="flex items-center justify-center gap-3 mb-10">
     <span id="label-monthly" class="text-sm font-medium text-white">Monthly</span>
     <button id="billing-toggle" type="button" role="switch" aria-checked="false"
-      class="relative inline-flex h-7 w-[52px] items-center rounded-full bg-white/[0.08] transition-colors cursor-pointer"
-      onclick="toggleBilling()">
+      class="relative inline-flex h-7 w-[52px] items-center rounded-full bg-white/[0.08] transition-colors cursor-pointer">
       <span id="toggle-dot" class="inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform translate-x-1"></span>
     </button>
     <span id="label-annual" class="text-sm font-medium text-white/40">
@@ -149,7 +148,10 @@
   </div>
 </div>
 
-<script>
+<%!-- Nonce, not an onclick: the Content-Security-Policy (LSWeb.Plugs.CSP,
+     2026-09-09) runs only scripts that carry the request's nonce and never
+     inline event handlers. --%>
+<script nonce={@csp_nonce}>
 function toggleBilling() {
   var toggle = document.getElementById('billing-toggle');
   var dot = document.getElementById('toggle-dot');
@@ -185,6 +187,7 @@ function toggleBilling() {
     el.classList.toggle('hidden', !newState);
   });
 }
+document.getElementById('billing-toggle').addEventListener('click', toggleBilling);
 </script>
 </main>
 <footer class="border-t border-white/[0.07] py-10 text-center text-[13px] text-white/35">

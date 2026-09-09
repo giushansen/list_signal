@@ -60,12 +60,12 @@
     <div id="searchError" class="mx-auto max-w-[660px] hidden mb-4">
       <div class="rounded-xl border border-red-500/20 bg-red-500/[0.05] px-5 py-3 text-sm text-red-400 text-center">
         <span id="errorText"></span>
-        <button onclick="resetSearch()" class="ml-3 underline hover:text-red-300">Try again</button>
+        <button type="button" id="heroReset" class="ml-3 underline hover:text-red-300">Try again</button>
       </div>
     </div>
 
     <p class="text-[13px] text-white/35 animate-fade-in-up-delay-3" id="searchHints">
-      Try: <button onclick="fillSearch('gymshark.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">gymshark.com</button> · <button onclick="fillSearch('Shopify')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Shopify</button> · <button onclick="fillSearch('HubSpot')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">HubSpot</button> · <button onclick="fillSearch('Klaviyo')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Klaviyo</button> · <button onclick="fillSearch('allbirds.com')" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">allbirds.com</button>
+      Try: <button type="button" data-fill="gymshark.com" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">gymshark.com</button> · <button type="button" data-fill="Shopify" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Shopify</button> · <button type="button" data-fill="HubSpot" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">HubSpot</button> · <button type="button" data-fill="Klaviyo" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">Klaviyo</button> · <button type="button" data-fill="allbirds.com" class="text-white/55 border-b border-dashed border-white/20 hover:text-accent transition-colors cursor-pointer bg-transparent font-body">allbirds.com</button>
     </p>
   </div>
 </section>
@@ -342,7 +342,7 @@
   </div>
 </footer>
 
-<script>
+<script nonce={@csp_nonce}>
 // Animations
 const obs=new IntersectionObserver(e=>{e.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');e.target.querySelectorAll('.count').forEach(c=>{if(!c.dataset.done){c.dataset.done='1';animCount(c)}})}})},{threshold:0.12});
 document.querySelectorAll('.anim').forEach(el=>obs.observe(el));
@@ -396,7 +396,7 @@ const el=document.getElementById('tickerTrack');if(mixed.length>0){el.innerHTML=
     }
     updateIcon(true);
     dropdown.innerHTML=results.map(function(r,i){
-      return '<button type="button" data-idx="'+i+'" class="ac-item w-full text-left px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0" onmousedown="acSelect('+i+')">'
+      return '<button type="button" data-idx="'+i+'" class="ac-item w-full text-left px-4 py-2.5 flex items-center justify-between hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0">'
         +'<span class="text-sm font-medium text-slate-800">'+r.name+'</span>'
         +'<span class="text-xs text-slate-400">'+r.count.toLocaleString()+' sites</span>'
         +'</button>';
@@ -438,6 +438,12 @@ const el=document.getElementById('tickerTrack');if(mixed.length>0){el.innerHTML=
   window.acSelect=function(idx){
     if(lastResults[idx]){input.value=lastResults[idx].name;hideDropdown();updateIcon(true);input.focus();}
   };
+  // Delegated, not an onmousedown attribute in the generated markup: the
+  // Content-Security-Policy (2026-09-09) never runs inline handlers.
+  dropdown.addEventListener('mousedown',function(e){
+    const item=e.target.closest('.ac-item');
+    if(item)acSelect(+item.dataset.idx);
+  });
 
   document.addEventListener('click',function(e){
     if(!e.target.closest('#heroForm'))hideDropdown();
@@ -450,6 +456,8 @@ const el=document.getElementById('tickerTrack');if(mixed.length>0){el.innerHTML=
 })();
 
 // INLINE SEARCH: the main thing
+document.querySelectorAll('[data-fill]').forEach(function(b){b.addEventListener('click',function(){fillSearch(b.dataset.fill)})});
+document.getElementById('heroReset').addEventListener('click',resetSearch);
 function fillSearch(t){document.getElementById('heroSearch').value=t;document.getElementById('heroSearch').focus();
   // Trigger autocomplete check for tech names
   document.getElementById('heroSearch').dispatchEvent(new Event('input'));

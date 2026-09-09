@@ -95,6 +95,8 @@ defmodule LS.Application do
       {Phoenix.PubSub, name: LS.PubSub},
       LS.Cache,
       LS.UICache,
+      # Magic-link send limits (security audit, 2026-09-09) — see LS.Throttle.
+      LS.Throttle,
       # Feeds LSWeb.Plugs.OverloadGuard. Must start before the endpoint so the
       # guard has a reading; until it does, the guard fails open and serves.
       LS.MemorySampler,

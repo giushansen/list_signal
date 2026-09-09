@@ -11,7 +11,7 @@
         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="9" cy="9" r="7"/><path d="M16 16l-4-4"/></svg>
       </div>
       <input type="text" id="domainInput" placeholder="e.g. gymshark.com" class="flex-1 border-none outline-none bg-transparent font-body text-base text-slate-900 px-3 py-3.5 placeholder:text-slate-400" autocomplete="off" />
-      <button onclick="doLookup()" id="checkBtn" class="rounded-[10px] bg-accent px-7 py-3.5 font-display text-[15px] font-semibold text-white hover:bg-accent-hover transition-all whitespace-nowrap">Check</button>
+      <button type="button" id="checkBtn" class="rounded-[10px] bg-accent px-7 py-3.5 font-display text-[15px] font-semibold text-white hover:bg-accent-hover transition-all whitespace-nowrap">Check</button>
     </div>
   </div>
 
@@ -70,7 +70,7 @@
     <p>&copy; 2026 ListSignal</p>
   </div>
 </footer>
-<script>
+<script nonce={@csp_nonce}>
 const msgs=['Scanning DNS records...','Fetching HTTP headers...','Detecting technologies...','Analyzing infrastructure...'];
 let mi=0,loadTimer;
 
@@ -118,4 +118,5 @@ async function doLookup(){
   document.getElementById('checkBtn').textContent='Check';document.getElementById('checkBtn').disabled=false;
 }
 document.getElementById('domainInput').addEventListener('keydown',e=>{if(e.key==='Enter')doLookup()});
+document.getElementById('checkBtn').addEventListener('click',doLookup);
 </script>

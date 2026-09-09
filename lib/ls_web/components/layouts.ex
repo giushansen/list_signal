@@ -48,7 +48,7 @@ defmodule LSWeb.Layouts do
         <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" rel="stylesheet" />
         <link rel="stylesheet" href="/assets/app.css" />
         <%= if assigns[:json_ld] do %>
-          <script type="application/ld+json"><%= raw(@json_ld) %></script>
+          <script type="application/ld+json"><%= raw(LSWeb.JsonLD.safe(@json_ld)) %></script>
         <% end %>
         <.umami />
       </head>
@@ -306,7 +306,7 @@ defmodule LSWeb.Layouts do
         <title>Dashboard | ListSignal</title>
         <.head_icons />
         <link rel="stylesheet" href="/assets/app.css" />
-        <script defer phx-track-static src="/assets/app.js"></script>
+        <script defer phx-track-static src="/assets/app.js" nonce={assigns[:csp_nonce]}></script>
         <.umami />
       </head>
       <body class="bg-[#0a0e17] text-gray-200 antialiased">

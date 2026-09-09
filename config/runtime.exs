@@ -19,6 +19,18 @@ config :ls, :alert_emails,
    |> Enum.map(&String.trim/1))
 config :ls, :verification_dir, System.get_env("LS_VERIFICATION_DIR", "/home/ls/verification")
 
+# Durable node state (cache snapshots, crawl-gate blooms). See LS.State.
+if config_env() == :prod do
+  config :ls, :state_dir, System.get_env("LS_STATE_DIR", "/var/lib/listsignal")
+end
+
+# The app's own ClickHouse user (security audit, 2026-09-09). Empty means the
+# passwordless `default` superuser, which is what every install had before
+# `ls_app` existed; production sets both in /home/ls/.env.
+config :ls, :clickhouse,
+  user: System.get_env("CLICKHOUSE_USER", "default"),
+  password: System.get_env("CLICKHOUSE_PASSWORD", "")
+
 config :ls, :stripe_publishable_key, System.get_env("STRIPE_PUBLISHABLE_KEY")
 config :ls, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
 config :stripity_stripe, api_key: System.get_env("STRIPE_SECRET_KEY")

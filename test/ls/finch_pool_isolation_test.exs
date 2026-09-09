@@ -27,9 +27,11 @@ defmodule LS.FinchPoolIsolationTest do
 
       # Req.get/post calls in these modules must carry a finch: option. The
       # option may sit on a continuation line, so check the call through to
-      # its closing paren rather than line-by-line.
+      # its closing paren rather than line-by-line. `LS.Clickhouse.post/3`
+      # (2026-09-09, the one authenticated door to ClickHouse) counts as an
+      # HTTP call too and raises without a pool, so the rule holds through it.
       calls =
-        Regex.scan(~r/Req\.(get|post)\((?:[^()]|\([^()]*\))*\)/s, source)
+        Regex.scan(~r/(Req|LS\.Clickhouse)\.(get|post)\((?:[^()]|\([^()]*\))*\)/s, source)
         |> Enum.map(&hd/1)
 
       assert calls != [], "#{path}: expected HTTP calls but found none — did the module move?"

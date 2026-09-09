@@ -78,8 +78,21 @@ defmodule LSWeb.SubscriptionController do
     end
   end
 
+  # A fixed table, not `String.to_atom` on request input: atoms are never
+  # garbage-collected, so a script posting random plan names could exhaust
+  # the atom table and crash the node (sobelow DOS.StringToAtom, 2026-09-09).
+  @price_keys %{
+    {"pro", "monthly"} => :stripe_pro_monthly_price_id,
+    {"pro", "yearly"} => :stripe_pro_yearly_price_id,
+    {"starter", "monthly"} => :stripe_starter_monthly_price_id,
+    {"starter", "yearly"} => :stripe_starter_yearly_price_id
+  }
+
   defp get_price_id(plan, period) do
-    Application.get_env(:ls, String.to_atom("stripe_#{plan}_#{period}_price_id"))
+    case Map.fetch(@price_keys, {plan, period}) do
+      {:ok, key} -> Application.get_env(:ls, key)
+      :error -> nil
+    end
   end
 
   defp stripe_client, do: Application.get_env(:ls, :stripe_client)

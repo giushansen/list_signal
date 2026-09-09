@@ -63,6 +63,21 @@ defmodule LSWeb.UserLive.Registration do
 
   @impl true
   def handle_event("save", %{"user" => user_params}, socket) do
+    # Checked BEFORE the account is created: a throttled sign-up must not
+    # leave behind a user row with no link (security audit 2026-09-09).
+    if LSWeb.MagicLink.allowed?(user_params["email"]) do
+      register(user_params, socket)
+    else
+      {:noreply, put_flash(socket, :error, "Too many sign-up attempts for this address. Try again in an hour.")}
+    end
+  end
+
+  def handle_event("validate", %{"user" => user_params}, socket) do
+    changeset = Accounts.change_user_email(%User{}, user_params, validate_unique: false)
+    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
+  end
+
+  defp register(user_params, socket) do
     case Accounts.register_user(user_params) do
       {:ok, user} ->
         {:ok, _} =
@@ -79,11 +94,6 @@ defmodule LSWeb.UserLive.Registration do
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign_form(socket, changeset)}
     end
-  end
-
-  def handle_event("validate", %{"user" => user_params}, socket) do
-    changeset = Accounts.change_user_email(%User{}, user_params, validate_unique: false)
-    {:noreply, assign_form(socket, Map.put(changeset, :action, :validate))}
   end
 
   defp assign_form(socket, %Ecto.Changeset{} = changeset) do

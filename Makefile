@@ -1,4 +1,4 @@
-.PHONY: help setup dev dev-worker master worker clean
+.PHONY: help setup dev dev-worker master worker clean check
 
 COOKIE ?= ls_prod
 MASTER ?= master@10.0.0.1
@@ -12,6 +12,7 @@ help:
 	@echo "  make master      - Production master node"
 	@echo "  make worker      - Production worker node"
 	@echo "  make clean       - Clean build"
+	@echo "  make check       - Tests, warnings-as-errors, sobelow, hex.audit (run before a deploy)"
 
 setup:
 	mix deps.get
@@ -61,3 +62,11 @@ worker:
 
 clean:
 	rm -rf _build deps
+# Everything a deploy should have passed (security audit 2026-09-09). The
+# deploy script builds on the nodes in prod, where the dev-only tools are
+# absent, so this runs on the laptop before pushing.
+check:
+	mix compile --warnings-as-errors
+	mix test
+	mix sobelow
+	mix hex.audit

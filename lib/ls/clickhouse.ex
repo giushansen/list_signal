@@ -1987,13 +1987,41 @@ defmodule LS.Clickhouse do
     # so no caller can trip on it again.
     url = "#{@ch_url}?database=#{@ch_db}&query=#{URI.encode(String.trim_trailing(sql))}"
 
-    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: body <> "\n", receive_timeout: 30_000) do
+    case post(url, body <> "\n", finch: LS.Finch.CH, receive_timeout: 30_000) do
       {:ok, %{status: 200}} -> :ok
       {:ok, %{status: s, body: b}} -> {:error, "CH #{s}: #{String.slice(to_string(b), 0, 200)}"}
       {:error, reason} -> {:error, inspect(reason)}
     end
   rescue
     e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Every HTTP call to ClickHouse goes through here so all of them authenticate
+  as the app's own user (security audit, 2026-09-09). Before this the app ran
+  as the passwordless `default` superuser, which holds FILE, URL, REMOTE and
+  DROP: one unescaped string in any query would have been a file read on the
+  master. `ls_app` has SELECT and INSERT on `ls.*` plus what the index
+  rebuilds and the optimizer need, and nothing else.
+
+  `:ls, :clickhouse_req_options` lets a test route the request through a
+  `Req.Test` plug instead of the network.
+  """
+  @spec post(String.t(), iodata(), keyword()) :: {:ok, Req.Response.t()} | {:error, term()}
+  def post(url, body, opts) do
+    # The pool is mandatory: an unpooled ClickHouse call shared Req's default
+    # pool with the crawler and took the web tier down twice in August.
+    Req.post(
+      url,
+      [body: body, headers: auth_headers(), finch: Keyword.fetch!(opts, :finch), pool_timeout: 15_000] ++
+        Keyword.delete(opts, :finch) ++ Application.get_env(:ls, :clickhouse_req_options, [])
+    )
+  end
+
+  @doc false
+  def auth_headers do
+    cfg = Application.get_env(:ls, :clickhouse, [])
+    [{"x-clickhouse-user", cfg[:user] || "default"}, {"x-clickhouse-key", cfg[:password] || ""}]
   end
 
   @doc false
@@ -2031,7 +2059,7 @@ defmodule LS.Clickhouse do
       end
 
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1#{server_cap}"
-    case Req.post(url, finch: finch_for(opts), pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
+    case post(url, sql, finch: finch_for(opts), receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       # DDL / OPTIMIZE / statements with no result set return an empty 200 body.
       {:ok, %{status: 200, body: body}} -> {:ok, body}
@@ -2056,7 +2084,7 @@ defmodule LS.Clickhouse do
   def measure(sql, receive_timeout \\ @timeout) do
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSON"
 
-    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: receive_timeout) do
+    case post(url, sql, finch: LS.Finch.CH, receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"statistics" => stats} = body}} ->
         {:ok,
          %{
@@ -2086,7 +2114,7 @@ defmodule LS.Clickhouse do
     # carried no cap at all. Every read path must hang up together or the
     # pile-up simply moves to whichever one was missed.
     url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1"
-    case Req.post(url, finch: LS.Finch.CH, pool_timeout: 15_000, body: sql, receive_timeout: @timeout) do
+    case post(url, sql, finch: LS.Finch.CH, receive_timeout: @timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       {:ok, %{status: 200, body: body}} when is_binary(body) -> {:ok, body}
       {:ok, %{status: status, body: body}} -> {:error, "CH #{status}: #{inspect(body)}"}

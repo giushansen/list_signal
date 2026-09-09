@@ -1,0 +1,18 @@
+# `mix sobelow` settings (security audit 2026-09-09). Run via `make check`.
+#
+# Ignored on purpose:
+#   Config.CSP        the policy is set by LSWeb.Plugs.CSP (per-request nonce),
+#                     which sobelow cannot see; LSWeb.CSPTest pins the header.
+#   Config.HTTPS      TLS is configured in config/runtime.exs; sobelow reads
+#                     prod.exs only.
+#   Misc.BinToTerm    LS.CacheSnapshot decodes with [:safe]; sobelow flags any use.
+#   Traversal.*       every path is built from config, never from a request.
+# Low-confidence String.to_atom findings on internal, bounded inputs stay
+# visible but do not fail the build; anything high-confidence does.
+[
+  verbose: false,
+  private: false,
+  skip: false,
+  exit: "high",
+  ignore: ["Config.CSP", "Config.HTTPS", "Misc.BinToTerm", "Traversal.FileModule"]
+]

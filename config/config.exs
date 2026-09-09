@@ -51,6 +51,12 @@ config :logger, :console,
 
 config :phoenix, :json_library, Jason
 
+# Request logs must never carry a credential (security audit, 2026-09-09).
+# Phoenix masks only "password" by default; API keys arrive as query
+# parameters and Stripe payloads carry secrets and ids, and journald keeps
+# 500MB of history on the master.
+config :phoenix, :filter_parameters, ["password", "token", "key", "api_key", "secret", "authorization", "signature"]
+
 # ML — Nx/EXLA configuration
 config :nx, default_backend: EXLA.Backend
 config :exla, default_client: :host

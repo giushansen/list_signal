@@ -91,7 +91,7 @@
 [data-step].failed .fail { display: block; }
 </style>
 
-<script>
+<script nonce={@csp_nonce}>
 (function(){
   const domain = "<%= @domain %>";
   const slug = "<%= @slug %>";
@@ -152,8 +152,9 @@
       document.getElementById('scanHint').textContent = '';
       const actions = document.getElementById('scanActions');
       actions.innerHTML =
-        '<button onclick="location.reload()" class="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-all mr-3">Retry</button>' +
+        '<button type="button" id="scanRetry" class="rounded-lg bg-accent px-6 py-2.5 text-sm font-semibold text-white hover:bg-accent-hover transition-all mr-3">Retry</button>' +
         '<a href="/" class="rounded-lg border border-white/[0.12] px-6 py-2.5 text-sm font-medium text-white/60 hover:text-white transition-all">Back to search</a>';
+      document.getElementById('scanRetry').addEventListener('click', function() { location.reload(); });
       actions.classList.remove('hidden');
     }
   }

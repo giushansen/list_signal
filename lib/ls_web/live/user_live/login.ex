@@ -102,11 +102,12 @@ defmodule LSWeb.UserLive.Login do
   end
 
   def handle_event("submit_magic", %{"user" => %{"email" => email}}, socket) do
-    if user = Accounts.get_user_by_email(email) do
-      Accounts.deliver_login_instructions(
-        user,
-        &url(~p"/users/log-in/#{&1}")
-      )
+    # Same flash whether the address exists, is throttled, or got a link:
+    # the form must not reveal who has an account. Security audit 2026-09-09:
+    # unlimited sends let anyone run up the Mailgun bill; see LS.Throttle.
+    with user when not is_nil(user) <- Accounts.get_user_by_email(email),
+         true <- LSWeb.MagicLink.allowed?(email) do
+      Accounts.deliver_login_instructions(user, &url(~p"/users/log-in/#{&1}"))
     end
 
     {:noreply,

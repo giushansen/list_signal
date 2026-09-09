@@ -91,6 +91,8 @@ defmodule LS.MixProject do
       {:exla, "~> 0.9"},
       # Docs — `mix docs` generates the HTML documentation site
       {:ex_doc, "~> 0.34", only: :dev, runtime: false},
+      # Security — `mix sobelow` (see `make check`); audit 2026-09-09
+      {:sobelow, "~> 0.13", only: [:dev, :test], runtime: false},
       # Test
       {:lazy_html, ">= 0.1.0", only: :test}
     ]
