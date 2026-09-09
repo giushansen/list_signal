@@ -12,10 +12,10 @@ defmodule LS.CacheSnapshot do
 
   The caches are small (`ls_ui_cache` is ~4 MB / 410 entries on prod) and the
   values are *derived* — recomputing them is expensive but re-reading them is
-  free. So we write them to a file in the system temp dir on the way down and
-  read them back on the way up. `/tmp` is the right home: it survives a deploy
-  (same box, no reboot) but not a reboot, which is exactly the lifetime a
-  derived cache should have.
+  free. So we write them to a file on the way down and read them back on the
+  way up. The file lives in `LS.State.dir/0` (`/var/lib/listsignal` in
+  production, 2026-09-09; it was `/tmp`, which systemd-tmpfiles prunes after
+  10 days and which kept the unit from running with `PrivateTmp`).
 
   ## Freshness is never extended
 
@@ -74,8 +74,13 @@ defmodule LS.CacheSnapshot do
   @doc "Where the snapshot lives. Overridable in tests via `:ls, :cache_snapshot_path`."
   def path do
     Application.get_env(:ls, :cache_snapshot_path) ||
-      Path.join(System.tmp_dir!(), "ls_cache_snapshot.bin")
+      Path.join(LS.State.dir(), "cache_snapshot.bin")
   end
+
+  # The pre-2026-09-09 location. Read once so the deploy that moves the file
+  # does not start cold; never written to. Drop after the fleet has restarted.
+  @doc false
+  def legacy_path, do: Path.join(System.tmp_dir!(), "ls_cache_snapshot.bin")
 
   @doc "How many entries the last restore put back — read by `LS.CacheWarmer`."
   def restored_count, do: :persistent_term.get({__MODULE__, :restored}, 0)
@@ -223,7 +228,7 @@ defmodule LS.CacheSnapshot do
   there is no snapshot, it is too old, or it is unreadable).
   """
   def restore do
-    with {:ok, bin} <- File.read(path()),
+    with {:ok, bin} <- read_snapshot(),
          {:ok, %{saved_at: saved_at, tables: tables}} <- safe_binary_to_term(bin),
          age when age <= @max_age_ms <- System.system_time(:millisecond) - saved_at do
       n = Enum.sum(for {t, rows} <- tables, do: load(t, shape_of(t), rows, age))
@@ -240,6 +245,15 @@ defmodule LS.CacheSnapshot do
       other ->
         Logger.warning("[SNAPSHOT] restore skipped: #{inspect(other)}")
         0
+    end
+  end
+
+  # The configured path first; the pre-2026-09-09 `/tmp` file only when the
+  # new one does not exist yet, so the move never costs a cold start.
+  defp read_snapshot do
+    case File.read(path()) do
+      {:error, :enoent} -> File.read(legacy_path())
+      other -> other
     end
   end
 
