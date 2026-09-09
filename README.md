@@ -236,27 +236,30 @@ LS_ROLE=worker LS_MASTER=master@10.0.0.1 LS_DNS_CONCURRENCY=500 \
 Production nodes are **mix releases** with long-name distribution (`-name node@ip`).
 RDAP/HTTP/enrichment state lives on **worker** nodes — connect there for diagnostics.
 
-### Connect to a running worker
+### One-shot commands from the laptop (the reliable way)
 
 ```bash
-# 1. SSH into the worker
-ssh ls@<worker-public-ip>          # e.g. 108.61.94.33 (ny1)
-
-# 2. Extract release root, node name, and cookie from the running process
-RELROOT=$(ps -eo args | grep '[b]eam.smp' | grep -oP '(?<=-root )\S+')
-NODE=$(ps -eo args | grep '[b]eam.smp' | grep -oP '(?<=-name )\S+')
-COOKIE=$(ps -eo args | grep '[b]eam.smp' | grep -oP '(?<=-setcookie )\S+')
-
-# 3. Open the remote console (all 4 env vars required for long-name releases)
-RELEASE_DISTRIBUTION=name RELEASE_NODE=$NODE RELEASE_COOKIE=$COOKIE \
-  "$RELROOT/bin/ls" remote
+bash ../devops/listsignal/rpc.sh 45.63.7.58 'LS.Cluster.WorkQueue.stats()'
+bash ../devops/listsignal/rpc.sh 108.61.94.33 'LS.Cluster.WorkerAgent.stats()'
 ```
 
-### One-shot commands (no interactive shell)
+`rpc.sh` reads the cookie and the RUNNING release directory from `/proc`
+(the `current` symlink may point at a newer build), sets `LS_ROLE` so
+`rel/env.sh.eex` derives the same node name, and uses the release's bundled
+runtime instead of sourcing asdf. Since 2026-09-09 distribution listens on
+the WireGuard address only; epmd still answers on loopback, which is what
+this relies on.
+
+### Interactive console on the node
 
 ```bash
-RELEASE_DISTRIBUTION=name RELEASE_NODE=$NODE RELEASE_COOKIE=$COOKIE \
-  "$RELROOT/bin/ls" rpc 'IO.inspect(LS.RDAP.Client.stats())'
+# as root on the node
+unit=listsignal@master   # or listsignal@worker
+pid=$(systemctl show -p MainPID --value $unit)
+cookie=$(tr '\0' '\n' < /proc/$pid/environ | grep ^RELEASE_COOKIE= | cut -d= -f2)
+rel=$(tr '\0' '\n' < /proc/$pid/cmdline | grep -m1 -o '/home/ls/app/releases/[^/]*')
+sudo -u ls -H env -i HOME=/home/ls PATH=/usr/bin:/bin RELEASE_COOKIE=$cookie LS_ROLE=${unit#listsignal@} \
+  bash -c "cd $rel && _build/prod/rel/ls/bin/ls remote"
 ```
 
 ### Useful runtime diagnostics
