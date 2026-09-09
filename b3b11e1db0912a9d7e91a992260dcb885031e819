@@ -1,0 +1,1 @@
+Deployed 2026-09-09 15:48 UTC. ss confirmed epmd and dist on the wg0 address only. Snapshot saves now land in /var/lib/listsignal (first save 5 min after boot). The legacy /tmp read did not help on this first restart because the unit's new PrivateTmp hides the old file; harmless, one cold start.
