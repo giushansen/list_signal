@@ -129,7 +129,21 @@ defmodule LS.Report.Weekly do
       <span style="color:#d97706">#{pct.(c.blocked)} blocked</span> ·
       <span style="color:#dc2626">#{pct.(c.failed)} failed</span> ·
       <span style="color:#667085">#{pct.(c.no_dns)} no-DNS</span>.</p>
+    #{revisit_line()}
     """
+  end
+
+  # The change-aware revisit gate (2026-09-09): how many enqueues the stable
+  # ring turned away since the master last booted, next to what got in. The
+  # ratio is the number the worker-count decision reads.
+  defp revisit_line do
+    case LS.Metrics.queue() do
+      %{total_enqueued: enq, total_deduped: d, total_deduped_stable: ds} ->
+        "<p style=\"margin:0 0 10px;color:#667085\">Revisit gate since boot: #{fmt(enq)} enqueued, #{fmt(d)} skipped by the 7-day ring, <b>#{fmt(ds)}</b> skipped as unchanged (28-35 day ring).</p>"
+
+      _ ->
+        ""
+    end
   end
 
   defp ingestion_table(daily, enrich) do

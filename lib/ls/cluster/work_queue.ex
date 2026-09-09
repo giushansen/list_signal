@@ -61,6 +61,7 @@ defmodule LS.Cluster.WorkQueue do
   @idx_enqueued 1
   @idx_dropped 2
   @idx_deduped 3
+  @idx_deduped_stable 4
 
   # ==========================================================================
   # CLIENT API
@@ -95,6 +96,14 @@ defmodule LS.Cluster.WorkQueue do
       current_size >= max_queue_size() ->
         :counters.add(counter_ref(), @idx_dropped, 1)
         :queue_full
+
+      # Stable ring first, and NOT bypassed by force (2026-09-09): a domain
+      # whose last crawl came back unchanged waits 28-35 days, whoever asks.
+      # The recrawl scheduler's force only means "I am the 7-day schedule".
+      LS.Cluster.CrawlDedup.stable?(domain_data[:ctl_domain] || domain_data[:domain]) ->
+        LS.Cluster.CrawlDedup.record_sighting(domain_data)
+        :counters.add(counter_ref(), @idx_deduped_stable, 1)
+        :recently_crawled
 
       # 27.6% of all fetches were repeat visits inside a week (2026-09-04:
       # 62.3M crawls, 45.1M distinct domains) because the CTL cache holds
@@ -153,7 +162,7 @@ defmodule LS.Cluster.WorkQueue do
     :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
-    ref = :counters.new(3, [:write_concurrency])
+    ref = :counters.new(4, [:write_concurrency])
     :persistent_term.put(@counter_table, ref)
 
     schedule_cleanup()
@@ -215,6 +224,7 @@ defmodule LS.Cluster.WorkQueue do
     total_enqueued = :counters.get(ref, @idx_enqueued)
     total_dropped = :counters.get(ref, @idx_dropped)
     total_deduped = :counters.get(ref, @idx_deduped)
+    total_deduped_stable = :counters.get(ref, @idx_deduped_stable)
 
     # Lifetime averages kept for reference; the dashboard uses the windowed rates
     # below (total/uptime lied for hours after every restart — cold dedup cache
@@ -234,6 +244,7 @@ defmodule LS.Cluster.WorkQueue do
       total_requeued: state.total_requeued,
       total_dropped: total_dropped,
       total_deduped: total_deduped,
+      total_deduped_stable: total_deduped_stable,
       enqueue_rate_per_min: state.enqueue_rate_win,
       drain_rate_per_min: state.drain_rate_win,
       enqueue_rate_lifetime: enqueue_rate_lifetime,

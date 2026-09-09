@@ -143,6 +143,10 @@ defmodule LS.Cluster.Compactor do
       err -> Logger.warning("[SIGNAL] emit failed (compaction continues): #{inspect(err) |> String.slice(0, 200)}")
     end
 
+    # Also before compaction: which touched domains came back unchanged. They
+    # go into the crawl gate's stable ring (28-35 days, see CrawlDedup).
+    mark_stable(s.since - @lookback_slack_s, until)
+
     s =
       case Clickhouse.compact_businesses(s.since - @lookback_slack_s, until) do
         {:ok, count} ->
@@ -169,6 +173,20 @@ defmodule LS.Cluster.Compactor do
     # full interval — catch-up at ~2 min per 30-min slice, not 7 min each.
     Process.send_after(self(), :compact, if(behind?, do: 2_000, else: @interval_ms))
     {:noreply, s}
+  end
+
+  @doc false
+  def mark_stable(since, until) do
+    case Clickhouse.stable_domains(since, until) do
+      {:ok, domains} ->
+        n = LS.Cluster.CrawlDedup.mark_stable(domains)
+        if n > 0, do: Logger.info("[COMPACT] #{n} unchanged domains marked stable")
+        n
+
+      {:error, reason} ->
+        Logger.warning("[COMPACT] stable check failed (compaction continues): #{inspect(reason) |> String.slice(0, 200)}")
+        0
+    end
   end
 
   defp now_s, do: System.system_time(:second)

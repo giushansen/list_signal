@@ -143,6 +143,25 @@ suppressed sighting is appended to `ctl_sightings` (issuer, subdomains,
 90-day TTL) instead of being dropped, never to `domains_history`, whose
 newest-row-wins projection would blank the domain's other columns.
 
+### The stable ring: change-aware revisits (2026-09-09)
+
+Measured on prod over 45 days (2% of domains): 73.9% of crawls in a week
+are revisits, and 88.9% of revisits at least 7 days apart return the same
+title, technologies, apps and status. After each compaction pass the
+compactor asks `LS.Clickhouse.stable_domains/2` which touched domains came
+back unchanged (observed 2xx/3xx crawls only, top-100K excluded) and
+`CrawlDedup.mark_stable/1` writes them into a second ring of five weekly
+blooms (20M entries each at 0.1% FP, ~180MB). `WorkQueue.enqueue/2` checks
+`CrawlDedup.stable?/1` first, and `force: true` does not bypass it: a
+stable domain's schedule is 28-35 days, and the recrawl scheduler is only
+the 7-day schedule. The first crawl after release decides again. The ring
+is saved to `LS.State.dir/0` every six hours and on shutdown, and rotated
+forward by the weeks a restart took. `LS_STABLE_REVISIT=false` turns the
+gate off. Expected effect at steady state: about half of all fetches
+skipped, which is what lets the fleet shrink to about seven fetch IPs;
+the 09-11 worker count decision reads `WorkQueue.stats.total_deduped_stable`
+against `total_enqueued`.
+
 Discovery's DNS stage also resolves DMARC, BIMI and DKIM
 (`LS.DNS.EmailAuth`, MX domains only, at most four small TXT lookups) into
 `dns_dmarc` / `dns_bimi` / `dns_dkim`, plus reverse DNS and the Microsoft

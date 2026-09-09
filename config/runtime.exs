@@ -19,6 +19,10 @@ config :ls, :alert_emails,
    |> Enum.map(&String.trim/1))
 config :ls, :verification_dir, System.get_env("LS_VERIFICATION_DIR", "/home/ls/verification")
 
+# Change-aware revisits (LS.Cluster.CrawlDedup's stable ring). Off = every
+# revisit follows the 7-day cadence again, no deploy needed.
+config :ls, :stable_revisit, System.get_env("LS_STABLE_REVISIT", "true") != "false"
+
 # Durable node state (cache snapshots, crawl-gate blooms). See LS.State.
 if config_env() == :prod do
   config :ls, :state_dir, System.get_env("LS_STATE_DIR", "/var/lib/listsignal")

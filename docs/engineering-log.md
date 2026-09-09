@@ -92,6 +92,22 @@ now filtered. (S9) `mix sobelow` in `make check`; it found one real bug, an
 atom built from request input in SubscriptionController. Nothing here
 slows a page or adds a step for a user.
 
+**Change-aware revisits: a domain that came back unchanged waits four
+weeks.** Measured on prod (2% of domains, 45 days): 73.9% of the week's
+579,895 sampled crawls were revisits, and 88.9% of the 184,714 revisit
+pairs at least 7 days apart returned the same title, technologies, apps
+and status. Two thirds of the fleet's fetches confirmed that nothing had
+changed. The compactor now asks `LS.Clickhouse.stable_domains/2`, before
+each pass compiles the window, which touched domains match their compiled
+row (observed 2xx/3xx only, top-100K excluded) and `LS.Cluster.CrawlDedup`
+puts them in a ring of five weekly blooms that `WorkQueue.enqueue/2`
+checks before the daily ring and that `force: true` does not bypass. The
+ring is saved to the state dir and rotated forward across restarts. This
+is the item that lets the fleet shrink: at steady state about half of all
+fetches are skipped, so the same crawl fits about seven fetch IPs.
+`LS_STABLE_REVISIT=false` turns it off. Decide the worker count on 09-11
+from `total_deduped_stable` against `total_enqueued`.
+
 **Node state left /tmp.** `LS.CacheSnapshot` wrote to `/tmp`, which
 systemd-tmpfiles prunes after 10 days and which blocked `PrivateTmp`.
 `LS.State.dir/0` resolves `/var/lib/listsignal` (`LS_STATE_DIR`), created

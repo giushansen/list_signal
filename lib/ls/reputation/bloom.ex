@@ -91,4 +91,40 @@ defmodule LS.Reputation.Bloom do
   @doc "Approximate memory in MB."
   def memory_mb(%{bits: m}), do: Float.round(m / 8 / 1_048_576, 2)
   def memory_mb(_), do: 0.0
+
+  @doc """
+  The filter as a binary (`from_binary/1` restores it), so a bloom can
+  outlive the BEAM. Added 2026-09-09 for the crawl gate's stable-domain
+  ring: a master restart must not forget four weeks of "this site did not
+  change" and refetch every stable domain in the fleet at once.
+  """
+  @spec to_binary(map()) :: binary()
+  def to_binary(%{ref: ref, bits: m, hashes: k} = f) do
+    words = div(m, 64) + 1
+    data = for i <- 1..words, into: <<>>, do: <<:atomics.get(ref, i)::unsigned-64>>
+    :erlang.term_to_binary({:bloom, 1, m, k, count(f), data})
+  end
+
+  @spec from_binary(binary()) :: {:ok, map()} | :error
+  def from_binary(bin) when is_binary(bin) do
+    case :erlang.binary_to_term(bin, [:safe]) do
+      {:bloom, 1, m, k, n, data} when byte_size(data) == (div(m, 64) + 1) * 8 ->
+        ref = :atomics.new(div(m, 64) + 1, signed: false)
+
+        for {<<word::unsigned-64>>, i} <- Enum.with_index(for(<<w::binary-size(8) <- data>>, do: w), 1),
+            word != 0,
+            do: :atomics.put(ref, i, word)
+
+        c = :counters.new(1, [])
+        :counters.add(c, 1, n)
+        {:ok, %{ref: ref, bits: m, hashes: k, count: c}}
+
+      _ ->
+        :error
+    end
+  rescue
+    _ -> :error
+  end
+
+  def from_binary(_), do: :error
 end

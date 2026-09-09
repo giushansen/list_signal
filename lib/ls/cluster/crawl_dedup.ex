@@ -50,6 +50,32 @@ defmodule LS.Cluster.CrawlDedup do
   Sized for 10M entries per daily bloom at 1% FP (inflow is ~7M
   domains/day): ~12MB each, ~96MB for all eight, on a box whose BEAM steady
   state is ~2G under a 9G limit.
+
+  ## The stable ring: change-aware revisits (2026-09-09)
+
+  Measured on prod (2% of domains, 45 days): 73.9% of all crawls in a week
+  are revisits of domains first seen more than a week earlier, and 88.9% of
+  revisits at least 7 days apart come back with the same title,
+  technologies, apps and status. Two thirds of the fleet's fetches were
+  confirming that nothing had changed.
+
+  After each compaction pass the compactor asks ClickHouse which touched
+  domains came back unchanged (`LS.Clickhouse.stable_domains/2`, top-100K
+  domains excluded) and hands them to `mark_stable/1`, which writes them
+  into a second ring of five WEEKLY blooms. `stable?/1` is checked by
+  `LS.Cluster.WorkQueue.enqueue/2` before anything else, and unlike the
+  daily ring it is NOT bypassed by `force: true`: the recrawl scheduler is
+  the 7-day schedule, and a stable domain's schedule is 28-35 days. A
+  suppressed sighting is still recorded. The first crawl after the ring
+  releases a domain decides again: unchanged, it is marked for another
+  four weeks; changed, it falls back to the weekly cadence.
+
+  The ring is written to `LS.State.dir/0` every six hours and on shutdown
+  and read back at boot (rotating as many weeks as passed), because a
+  master restart that forgot it would refetch every stable domain in the
+  fleet within a week. 20M entries per weekly bloom at 0.1% FP: ~36MB each,
+  ~180MB for five. `LS_STABLE_REVISIT=false` turns the gate off without a
+  deploy.
   """
 
   use GenServer
@@ -62,6 +88,13 @@ defmodule LS.Cluster.CrawlDedup do
   @rotate_ms :timer.hours(24)
   @capacity 10_000_000
   @fp_rate 0.01
+  @stable_key {__MODULE__, :stable}
+  @stable_windows 5
+  @stable_capacity 20_000_000
+  @stable_fp 0.001
+  @week_s 7 * 86_400
+  @stable_save_ms :timer.hours(6)
+  @stable_file "stable_blooms.bin"
   @backfill_shards 16
   @backfill_days 3
   @sightings :ctl_sightings_buffer
@@ -94,6 +127,44 @@ defmodule LS.Cluster.CrawlDedup do
   end
 
   def seen_or_mark(_), do: false
+
+  @doc """
+  True if `domain` was marked stable within the last 28-35 days, so the
+  crawl is skipped even when the caller forces past the daily ring.
+  Fails open like the daily ring, and is off under `LS_STABLE_REVISIT=false`.
+  """
+  @spec stable?(term()) :: boolean()
+  def stable?(domain) when is_binary(domain) and domain != "" do
+    Application.get_env(:ls, :stable_revisit, true) and
+      case :persistent_term.get(@stable_key, nil) do
+        %{blooms: blooms} -> Enum.any?(blooms, &Bloom.member?(&1, domain))
+        _ -> false
+      end
+  end
+
+  def stable?(_), do: false
+
+  @doc "Remember that these domains came back unchanged. Returns how many were written."
+  @spec mark_stable([String.t()]) :: non_neg_integer()
+  def mark_stable(domains) when is_list(domains) do
+    case :persistent_term.get(@stable_key, nil) do
+      %{blooms: [newest | _]} ->
+        n = domains |> Enum.filter(&(is_binary(&1) and &1 != "")) |> Enum.map(&Bloom.put(newest, &1)) |> length()
+        :counters.add(stable_counter(), 1, n)
+        n
+
+      _ ->
+        0
+    end
+  end
+
+  defp stable_counter, do: :persistent_term.get({__MODULE__, :stable_marked}, nil) || init_stable_counter()
+
+  defp init_stable_counter do
+    c = :counters.new(1, [:write_concurrency])
+    :persistent_term.put({__MODULE__, :stable_marked}, c)
+    c
+  end
 
   @doc """
   Remember what a suppressed certificate sighting said. Cheap: one ETS
@@ -147,18 +218,36 @@ defmodule LS.Cluster.CrawlDedup do
 
   @doc "Entry counts and memory, for the admin dashboard."
   def stats do
-    case :persistent_term.get(@pt_key, nil) do
-      blooms when is_list(blooms) ->
-        %{
-          windows: length(blooms),
-          entries: Enum.map(blooms, &Bloom.count/1),
-          memory_mb: blooms |> Enum.map(&Bloom.memory_mb/1) |> Enum.sum() |> Float.round(1),
-          sightings_buffered: (:ets.info(@sightings, :size) || 0)
-        }
+    daily =
+      case :persistent_term.get(@pt_key, nil) do
+        blooms when is_list(blooms) ->
+          %{
+            windows: length(blooms),
+            entries: Enum.map(blooms, &Bloom.count/1),
+            memory_mb: blooms |> Enum.map(&Bloom.memory_mb/1) |> Enum.sum() |> Float.round(1),
+            sightings_buffered: (:ets.info(@sightings, :size) || 0)
+          }
 
-      _ ->
-        %{windows: 0, entries: [], memory_mb: 0.0, sightings_buffered: 0}
-    end
+        _ ->
+          %{windows: 0, entries: [], memory_mb: 0.0, sightings_buffered: 0}
+      end
+
+    stable =
+      case :persistent_term.get(@stable_key, nil) do
+        %{blooms: blooms, rotated_at: at} ->
+          %{
+            stable_windows: length(blooms),
+            stable_entries: Enum.map(blooms, &Bloom.count/1),
+            stable_memory_mb: blooms |> Enum.map(&Bloom.memory_mb/1) |> Enum.sum() |> Float.round(1),
+            stable_marked_total: :counters.get(stable_counter(), 1),
+            stable_rotated_at: at
+          }
+
+        _ ->
+          %{stable_windows: 0, stable_entries: [], stable_memory_mb: 0.0, stable_marked_total: 0, stable_rotated_at: nil}
+      end
+
+    Map.merge(daily, stable)
   end
 
   @impl true
@@ -169,9 +258,99 @@ defmodule LS.Cluster.CrawlDedup do
     Process.send_after(self(), :flush, @flush_ms)
     send(self(), :backfill)
 
-    Logger.info("🔁 CrawlDedup started (#{@windows} daily windows x #{@capacity} entries, suppression 7-8 days)")
+    init_stable_counter()
+    restore_stable()
+    Process.send_after(self(), :rotate_stable, ms_until_stable_rotation())
+    Process.send_after(self(), :save_stable, @stable_save_ms)
+
+    Logger.info("🔁 CrawlDedup started (#{@windows} daily windows x #{@capacity} entries, suppression 7-8 days; #{@stable_windows} weekly stable windows)")
 
     {:ok, %{recorded: 0}}
+  end
+
+  # ── stable ring ────────────────────────────────────────────────────────
+
+  defp new_stable_bloom, do: Bloom.new(@stable_capacity, @stable_fp)
+
+  @doc false
+  def stable_path, do: Path.join(LS.State.dir(), @stable_file)
+
+  # A saved ring is rotated forward by the weeks that passed while the BEAM
+  # was down, so a two-week outage releases two weeks of domains instead of
+  # none. Anything unreadable starts fresh: an empty ring only costs fetches.
+  defp restore_stable do
+    now = System.system_time(:second)
+
+    ring =
+      with {:ok, bin} <- File.read(stable_path()),
+           {:ok, ring} <- decode_stable(bin, now) do
+        Logger.info("🔁 CrawlDedup stable ring restored (#{Enum.map_join(ring.blooms, "/", &Bloom.count/1)} entries)")
+        ring
+      else
+        {:error, :enoent} -> fresh_stable(now)
+        other ->
+          Logger.warning("🔁 CrawlDedup stable ring not restored (#{inspect(other)}), starting empty")
+          fresh_stable(now)
+      end
+
+    :persistent_term.put(@stable_key, ring)
+  end
+
+  defp fresh_stable(now), do: %{blooms: for(_ <- 1..@stable_windows, do: new_stable_bloom()), rotated_at: now}
+
+  @doc false
+  def decode_stable(bin, now) do
+    case :erlang.binary_to_term(bin, [:safe]) do
+      %{v: 1, rotated_at: at, blooms: bins} when is_integer(at) and is_list(bins) and length(bins) == @stable_windows ->
+        blooms = Enum.map(bins, fn b -> case Bloom.from_binary(b) do {:ok, f} -> f; :error -> new_stable_bloom() end end)
+        {:ok, rotate_stable_ring(%{blooms: blooms, rotated_at: at}, now)}
+
+      _ ->
+        {:error, :corrupt}
+    end
+  rescue
+    _ -> {:error, :corrupt}
+  end
+
+  @doc false
+  # Pure: advance the ring by however many whole weeks separate `rotated_at`
+  # from `now`; more than the ring's length means a fresh ring.
+  def rotate_stable_ring(%{blooms: blooms, rotated_at: at} = ring, now) do
+    weeks = div(max(now - at, 0), @week_s)
+
+    cond do
+      weeks == 0 -> ring
+      weeks >= @stable_windows -> fresh_stable(now)
+      true ->
+        kept = Enum.take(blooms, @stable_windows - weeks)
+        %{blooms: for(_ <- 1..weeks, do: new_stable_bloom()) ++ kept, rotated_at: at + weeks * @week_s}
+    end
+  end
+
+  defp ms_until_stable_rotation do
+    %{rotated_at: at} = :persistent_term.get(@stable_key)
+    max((at + @week_s - System.system_time(:second)) * 1000, 60_000)
+  end
+
+  @doc false
+  def save_stable do
+    case :persistent_term.get(@stable_key, nil) do
+      %{blooms: blooms, rotated_at: at} ->
+        bin = :erlang.term_to_binary(%{v: 1, rotated_at: at, blooms: Enum.map(blooms, &Bloom.to_binary/1)})
+        tmp = stable_path() <> ".tmp"
+
+        with :ok <- File.write(tmp, bin), :ok <- File.rename(tmp, stable_path()) do
+          :ok
+        else
+          err ->
+            File.rm(tmp)
+            Logger.warning("🔁 CrawlDedup stable ring not saved: #{inspect(err)}")
+            err
+        end
+
+      _ ->
+        :ok
+    end
   end
 
   @impl true
@@ -190,6 +369,20 @@ defmodule LS.Cluster.CrawlDedup do
     {:noreply, %{state | recorded: state.recorded + n}}
   end
 
+  def handle_info(:rotate_stable, state) do
+    ring = :persistent_term.get(@stable_key)
+    :persistent_term.put(@stable_key, rotate_stable_ring(ring, System.system_time(:second)))
+    Process.send_after(self(), :rotate_stable, ms_until_stable_rotation())
+    Logger.info("🔁 CrawlDedup stable ring rotated")
+    {:noreply, state}
+  end
+
+  def handle_info(:save_stable, state) do
+    Task.start(&save_stable/0)
+    Process.send_after(self(), :save_stable, @stable_save_ms)
+    {:noreply, state}
+  end
+
   # Refill the window after a restart so the watchdog cycling the master
   # does not reopen the duplicate-crawl gap every time. Sharded so no single
   # response is large on the memory-capped master; async so boot never waits.
@@ -201,6 +394,7 @@ defmodule LS.Cluster.CrawlDedup do
   @impl true
   def terminate(_reason, _state) do
     flush_sightings()
+    save_stable()
     :ok
   end
 

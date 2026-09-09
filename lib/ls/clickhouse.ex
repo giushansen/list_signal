@@ -823,6 +823,55 @@ defmodule LS.Clickhouse do
   end
 
   @doc """
+  Domains whose newest crawl in the window looks exactly like the compiled
+  business row we already had: same title, technologies, apps and status.
+  Feeds `LS.Cluster.CrawlDedup.mark_stable/1` (2026-09-09). Runs BEFORE the
+  pass compiles the window, like `record_signals/2`, because the comparison
+  needs the previous state.
+
+  Measured on 2% of domains over 45 days: 88.9% of revisits at least 7 days
+  apart returned an unchanged tuple, and 73.9% of all crawls in a week are
+  revisits. A domain marked stable is not refetched for 28-35 days instead
+  of 7; a change on it is noticed within five weeks instead of one.
+  Top-100K domains are never marked: they are what customers look at and
+  they keep the weekly cadence. Only observed 2xx/3xx crawls count, so a
+  bot wall or a redirect shell can never mark a site as unchanged.
+  """
+  def stable_domains(since_unix, until_unix) do
+    case query_raw(stable_domains_sql(since_unix, until_unix), 120_000, background: true) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d] -> d end)}
+      err -> err
+    end
+  end
+
+  @doc false
+  def stable_domains_sql(since_unix, until_unix) do
+    window = "enriched_at >= toDateTime(#{int(since_unix)}) AND enriched_at < toDateTime(#{int(until_unix)})"
+
+    """
+    SELECT n.domain
+    FROM (
+      SELECT domain,
+             argMax(http_title, enriched_at) AS title,
+             argMax(http_tech, enriched_at) AS tech,
+             argMax(http_apps, enriched_at) AS apps,
+             argMax(http_status, enriched_at) AS status
+      FROM domains_history
+      WHERE #{window} AND #{observed_sql("")}
+      GROUP BY domain
+    ) AS n
+    INNER JOIN (
+      SELECT domain, http_title, http_tech, http_apps, http_status, tranco_rank
+      FROM businesses
+      WHERE domain IN (SELECT domain FROM domains_history WHERE #{window})
+    ) AS o USING (domain)
+    WHERE n.title = o.http_title AND n.tech = o.http_tech AND n.apps = o.http_apps AND n.status = o.http_status
+      AND (o.tranco_rank IS NULL OR o.tranco_rank > 100000)
+    SETTINGS max_execution_time = 115, max_threads = 2
+    """
+  end
+
+  @doc """
   Emit change signals for the slice `[since, until)` by comparing the newest
   SUCCESSFUL crawl state in the slice against the current `businesses` row.
 

@@ -61,3 +61,15 @@ target IP per machine) stays, always.
   it is steered — residential gets the browser/WAF backlog first.
 * `fleet.conf` role column is documentation for humans + deploy tooling; the
   runtime truth is `LS_LANES` in `/home/ls/.env.local` on each node.
+
+## Change-aware revisits (2026-09-09)
+
+The envelope above is per source IP; the other side of capacity is how many
+fetches the crawl needs. Measured 2026-09-09: 73.9% of a week's crawls are
+revisits and 88.9% of those return an unchanged site. `LS.Cluster.CrawlDedup`'s
+stable ring skips a revisit for 28-35 days once a domain has come back
+unchanged (top-100K domains excepted), which at steady state removes about
+half of all fetches. Read `LS.Cluster.WorkQueue.stats().total_deduped_stable`
+against `total_enqueued` before deciding node counts; the fleet's fetch
+budget should follow the fetches actually needed, not the number of domains
+discovered.
