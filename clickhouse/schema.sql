@@ -1358,3 +1358,30 @@ LEFT JOIN
 ) AS n ON b.domain = n.domain
 ;
 
+
+-- ═══ tech_index (migration 024, 2026-09-09; rebuilt every 6h by LS.TechIndex) ═══
+CREATE TABLE ls.tech_index
+(
+    `tech` LowCardinality(String),
+    `rank` UInt32,
+    `domain` String,
+    `http_title` String,
+    `http_tech` String,
+    `country` LowCardinality(String),
+    `tranco_rank` Nullable(Int32),
+    `majestic_rank` Nullable(Int32),
+    `is_shopify` UInt8,
+    `http_status` Nullable(Int32),
+    `http_response_time` Nullable(Int32),
+    `http_language` LowCardinality(String),
+    `rdap_registrar` LowCardinality(String),
+    `rdap_domain_created_at` Nullable(DateTime),
+    `bgp_asn_org` LowCardinality(String),
+    `dns_mx` String,
+    `http_emails` String,
+    `enriched_at` DateTime,
+    `built_at` DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+ORDER BY (tech, rank, domain)
+SETTINGS index_granularity = 8192;

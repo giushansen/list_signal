@@ -33,20 +33,22 @@ defmodule LSWeb.TechController do
   end
 
   defp show_known(conn, slug, tech_name) do
+    # One cache entry per tech, 6h. The reads are key-range lookups on
+    # tech_index since 2026-09-09 (they were seven full scans of a 118M-row
+    # table, fatal per crawler hit), but a public SEO page whose data drifts
+    # daily still never recomputes per view. `{:error, _}` is never cached:
+    # a fresh box before its first index build must not pin empty pages.
+    case LS.UICache.fetch(:tech_page, tech_name, fn -> assemble_tech_page(tech_name) end) do
+      {:error, _} -> conn |> put_status(503) |> put_resp_header("retry-after", "60") |> text("Try again in a minute")
+      page -> render_known(conn, slug, page)
+    end
+  end
 
-    # One cache entry per tech, 6h. The assembly below runs SEVEN full scans
-    # of a 118M-row table (a 9s store query plus six distributions) — fine
-    # once, fatal per crawler hit: post-mutation cold caches took every
-    # /tech/* page past the origin timeout and Google saw dead pages. A
-    # public SEO page whose data drifts daily must never recompute per view.
-    %{
-      stores: stores, store_count: store_count, actual_name: actual_name,
-      stats: stats, countries: countries, languages: languages,
-      hosting: hosting, registrars: registrars, co_techs: co_techs
-    } =
-      LS.UICache.fetch(:tech_page, tech_name, fn ->
-        assemble_tech_page(tech_name)
-      end)
+  defp render_known(conn, slug, %{
+         stores: stores, store_count: store_count, actual_name: actual_name,
+         stats: stats, countries: countries, languages: languages,
+         hosting: hosting, registrars: registrars, co_techs: co_techs
+       }) do
 
     conn
     |> assign(:page_title, tech_page_title(actual_name, stats.total))
@@ -69,6 +71,10 @@ defmodule LSWeb.TechController do
 
 
   defp assemble_tech_page(tech_name) do
+    if LS.TechIndex.ready?(), do: assemble_from_index(tech_name), else: {:error, :index_not_ready}
+  end
+
+  defp assemble_from_index(tech_name) do
     # No ILIKE fallback: the name is canonical by the time we are here.
     {stores, store_count, actual_name} = case LS.Clickhouse.stores_by_tech_full(tech_name, 100) do
       {:ok, rows} when rows != [] ->

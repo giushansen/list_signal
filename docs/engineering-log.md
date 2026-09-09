@@ -25,6 +25,81 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-09
+
+**Architecture review and security audit, shipped as one series.** The
+review ranked ten performance items and ten security items (the owner
+dropped the Cloudflare load-balancer item and the release-tarball item);
+everything below is measured on prod before the change, and the follow-up
+numbers live in `git notes` on each commit.
+
+**The public tech pages read an index, not a 193M-row scan.** Every
+`/tech`, `/top`, `/compare`, directory and sitemap query ran
+`http_tech LIKE '%X%'` over `domains_fast`, a view on `domains_current`
+whose only sorting key is the domain. 24h of query_log before the change:
+1,844 such queries, 29.5s average, 119s p95, 54,483 CPU-seconds and
+7.6 TiB read; with the other `domains_fast` readers, 72% of all ClickHouse
+read time on the customer-serving box. It is the shape of the 09-07
+"Search unavailable" storm too. Migration 024 adds `ls.tech_index`, one
+row per (technology, titled domain) sorted by (tech, rank, domain);
+`LS.TechIndex` rebuilds it every six hours into a shadow table and swaps
+it in (`EXCHANGE TABLES`), so readers never see it empty. The first fill on
+prod took 5m05s and 13.2 GiB (146.8M rows, 292 technologies); a dry run of
+the read side alone was 33s at 96 MB. Two meaning changes, deliberate and
+documented in the migration: exact-token matching ("React" no longer counts
+"React Router", which the directory already did), and directory counts and
+per-tech distributions now count titled domains only, as the page's own
+total always did. Names are bound as ClickHouse query parameters
+(`{t:String}`), the first use of parameters in the codebase; `escape/1`
+strips quotes and changes what was searched, parameters do not.
+Commit: see `git log --grep='tech_index'`.
+
+**Half the FINAL cost was two landing-page samples, and the hourly
+`OPTIMIZE domains_current` cost more than every FINAL read together.**
+query_log, 24h: 32,434 FINAL reads for 12,340s, of which 2,200 were
+`sample_shopify_stores` / `sample_online_businesses` (3.3s and 3 GB each,
+every 60s from LS.LandingCache) for 7,061s, 57% of the total. Those now
+read without FINAL, dedupe their ten rows with `LIMIT 1 BY domain`, and
+refresh every 30 minutes. `OPTIMIZE TABLE domains_current FINAL` ran 20
+times a day at 566s each: 3.1 hours of merge CPU and a 33 GB rewrite per
+hour, for a table nothing reads without FINAL that cares (point lookups
+use FINAL; the tech index build reads FINAL once per six hours). Dropped
+from `LS.Cluster.Optimizer`; `businesses` keeps its 94s hourly pass, which
+holds duplicates at 0.07% (13,077 of 19.2M rows) and is what makes the
+explorer's option lists safe to read without FINAL (0.7s/500 MB to
+0.1s/80 MB each). CSV exports no longer aggregate every `biz_contact` row
+with FINAL per export; the contact side is scoped to the exported domains.
+Store point lookups (29,768/day at 102ms, `SELECT * ... FINAL WHERE
+domain = ?`) were left alone: they are correct and cheap per call.
+
+**Security audit findings and fixes.** In severity order: (S1) the users
+database `/home/ls/ls_prod.db` and its WAL were mode 644 on the master;
+now 600, with `UMask=0077` in the unit. (S2) Erlang distribution and epmd
+listened on 0.0.0.0 on all 15 nodes behind nothing but iptables, which has
+failed once before; `rel/env.sh.eex` binds both to the wg0 address. (S3)
+the app queried ClickHouse as the passwordless `default` superuser (FILE,
+URL, REMOTE, DROP with grant option); every call now goes through
+`LS.Clickhouse.post/3` with the `ls_app` user (SELECT, INSERT, CREATE/DROP
+TABLE, TRUNCATE, OPTIMIZE on `ls.*`, SELECT on `system.*`). (S4) no systemd
+sandboxing; `devops/listsignal/systemd/30-hardening.conf` (ProtectSystem=
+strict, PrivateTmp, NoNewPrivileges, no capabilities, address families
+limited) applied by `apply_hardening.sh`. (S6) no Content-Security-Policy;
+`LSWeb.Plugs.CSP` with a per-request nonce, enforced, every inline script
+and handler converted. (S7) magic-link sends were unlimited; `LS.Throttle`
++ `LSWeb.MagicLink`, 5 per address per hour, 300 per hour in total. (S8)
+request logs masked only "password"; keys, tokens, secrets and signatures
+now filtered. (S9) `mix sobelow` in `make check`; it found one real bug, an
+atom built from request input in SubscriptionController. Nothing here
+slows a page or adds a step for a user.
+
+**Node state left /tmp.** `LS.CacheSnapshot` wrote to `/tmp`, which
+systemd-tmpfiles prunes after 10 days and which blocked `PrivateTmp`.
+`LS.State.dir/0` resolves `/var/lib/listsignal` (`LS_STATE_DIR`), created
+by the deploy script and the hardening script; the old file is read once
+so the move does not cost a cold start.
+
+---
+
 ## 2026-09-07
 
 **Brand v1: the LS letter box is gone, the "Live list" mark is in.** The

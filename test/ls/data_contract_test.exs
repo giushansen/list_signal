@@ -233,20 +233,37 @@ defmodule LS.DataContractTest do
       end)
     end
 
-    test "the aggregate agrees with a plain count of the same predicate" do
+    test "the aggregate agrees with a plain count of the same predicate over the source table" do
       with_clickhouse(fn ->
         {:ok, [[total, _, _, _]]} = Clickhouse.tech_stats("Klaviyo")
 
+        # tech_index (2026-09-09) is rebuilt from domains_current every six
+        # hours; the truth it must track is the exact-token count of titled
+        # domains. Up to seven hours of inflow separates the two.
         {:ok, [[direct]]} =
           Clickhouse.query_raw("""
-          SELECT count() FROM domains_current
-          WHERE http_tech LIKE '%Klaviyo%' AND http_title != ''
-          -- same unquoting as tech_stats: JSON output stringifies UInt64
+          SELECT count() FROM domains_current FINAL
+          WHERE has(splitByChar('|', http_tech), 'Klaviyo') AND http_title != ''
           SETTINGS output_format_json_quote_64bit_integers = 0
           """)
 
-        # Rows arrive continuously, so allow a little drift rather than equality.
-        assert_in_delta total, direct, max(direct * 0.01, 100)
+        assert_in_delta total, direct, max(direct * 0.05, 100)
+      end)
+    end
+
+    test "the tech index is fresh and never empty" do
+      with_clickhouse(fn ->
+        age = LS.TechIndex.age_s()
+        assert is_integer(age), "tech_index has no rows: run migration 024 or LS.TechIndex.rebuild_now/0"
+        assert age < 7 * 3600, "tech_index is #{div(age, 3600)}h old; LS.TechIndex is not rebuilding"
+      end)
+    end
+
+    test "tech = 'Shopify' on the index means what is_shopify meant on the source" do
+      with_clickhouse(fn ->
+        {:ok, [[via_index]]} = Clickhouse.query_raw("SELECT toUInt64(count()) FROM tech_index WHERE tech = 'Shopify' SETTINGS output_format_json_quote_64bit_integers = 0")
+        {:ok, [[via_source]]} = Clickhouse.query_raw("SELECT toUInt64(count()) FROM domains_current FINAL WHERE is_shopify = 1 AND http_title != '' SETTINGS output_format_json_quote_64bit_integers = 0")
+        assert_in_delta via_index, via_source, max(via_source * 0.05, 100)
       end)
     end
 

@@ -83,7 +83,8 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 |---|---|---|
 | ClickHouse `ls.enrichments` | append-only log, one row per enrichment | 90-day TTL; recrawls duplicate domains |
 | ClickHouse `ls.domains_current` | `ReplacingMergeTree(enriched_at)` MV keyed on domain | *the product table* — newest row wins |
-| ClickHouse `ls.domains_fast` | view adding materialized `country`, `is_shopify` | what web queries use (`LS.Clickhouse`) |
+| ClickHouse `ls.domains_fast` | view over `domains_current` exposing the materialized `country`, `is_shopify` | two cached landing counters read it; public pages moved to `tech_index` (2026-09-09) |
+| ClickHouse `ls.tech_index` | one row per (technology, titled domain), `ORDER BY (tech, rank, domain)` | what `/tech`, `/top`, `/compare`, the directory and the sitemap read; rebuilt every 6h by `LS.TechIndex` (migration 024) |
 | ClickHouse `ls.daily_*` | SummingMergeTree daily aggregates | kept forever; feed dashboards |
 | ClickHouse `ls.verified_facts` / `verified_source_records` / `verification_runs` | pipeline 3: facts per (domain, fact, source), the persisted source archive, the dated run log | `ReplacingMergeTree(fetched_at)`; see Verification below |
 | SQLite (`LS.Repo`) | users, plans, Stripe state | the only critical durable state; hourly backups |
@@ -189,7 +190,36 @@ CT items — workers process both identically.
 
 Phoenix (`LSWeb`) on the master serves the public directory
 (`/shopify/:slug`, `/website/:slug`, `/top/*`, `/compare/*`), SEO pages from
-`domains_fast`, and the account/billing area backed by SQLite + Stripe.
+`tech_index`, and the account/billing area backed by SQLite + Stripe.
+
+### The tech index (2026-09-09)
+
+Every technology page used to run `http_tech LIKE '%X%'` over `domains_fast`,
+a view on the 193M-row `domains_current` whose only sorting key is the
+domain. Measured over 24 hours before the change: 1,844 such queries at
+29.5s average and 119s at p95, 54,483 CPU-seconds and 7.6 TiB read, 72% of
+all ClickHouse read time together with the other `domains_fast` readers. It
+is also the shape of the 09-07 "Search unavailable" storm.
+
+`ls.tech_index` holds one row per (technology, titled domain) with the
+columns the pages show, sorted by `(tech, rank, domain)`: a technology is one
+contiguous key range and its ranked top-100 is the first few granules.
+`LS.TechIndex` rebuilds it in full every six hours (33s read for 147M rows at
+~100 MB, measured) into a shadow table and swaps it in with
+`EXCHANGE TABLES`, so readers never see it empty; a failed build leaves the
+previous index in place. Names reach the queries as ClickHouse query
+parameters (`{t:String}`), never interpolated.
+
+Two meaning changes came with it, on purpose: a technology matches by exact
+token ("React" no longer counts "React Router"), and the directory counts and
+per-tech distributions count titled domains only, as the tech page's own
+total always did.
+
+`domains_current` is no longer `OPTIMIZE ... FINAL`ed every hour (566s per
+pass, a 33 GB rewrite): nothing reads it without FINAL that cares, and the
+index build reads FINAL once per six hours. `businesses` keeps its hourly
+optimize (94s), which is what lets the explorer's option lists and the
+landing samples read without FINAL (0.07% duplicate rows between passes).
 
 ### Reference data lives once, not on every worker
 
@@ -256,7 +286,9 @@ with a load average of 39.9.
 
 Two mechanisms close that window:
 
-- **`LS.CacheSnapshot`** writes both tables to `/tmp` every 5 minutes and on
+- **`LS.CacheSnapshot`** writes both tables to `LS.State.dir/0`
+  (`/var/lib/listsignal`, `LS_STATE_DIR`; it was `/tmp` until 2026-09-09,
+  which systemd-tmpfiles prunes after 10 days) every 5 minutes and on
   graceful shutdown, and reads them back at boot. Entries are stored as
   *milliseconds remaining*, so the monotonic clock in `LandingCache` survives a
   restart; downtime is charged against the remaining TTL, so a restore can

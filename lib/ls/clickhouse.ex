@@ -29,11 +29,12 @@ defmodule LS.Clickhouse do
     SELECT domain, http_title, inferred_country, tranco_rank,
            estimated_revenue, business_model, product_count, price_avg,
            job_count, seo_score, http_emails != '' AS has_contact
-    FROM businesses FINAL
+    FROM businesses
     WHERE positionCaseInsensitive(http_tech, 'shopify') > 0
       AND http_title != '' AND depth_enriched_at IS NOT NULL
       AND estimated_revenue != ''
     ORDER BY tranco_rank ASC NULLS LAST
+    LIMIT 1 BY domain
     LIMIT #{limit}
     """)
   end
@@ -43,17 +44,25 @@ defmodule LS.Clickhouse do
   marketplaces...) for the landing page. Mirrors `sample_shopify_stores/1`
   so the two tables read the same: the homepage must show that the dataset
   is every digital business, not a Shopify directory.
+
+  Both samples read WITHOUT FINAL and dedupe the ten rows they return with
+  `LIMIT 1 BY domain` (2026-09-09). With FINAL each was a 3.3s, 3 GB sort of
+  the whole table, and LS.LandingCache asked every 60s: 2,200 runs and
+  7,000 CPU-seconds a day, 57% of all FINAL read time, to refresh a sample
+  of ten that changes by the day. The hourly optimizer keeps duplicates at
+  0.07%, and a duplicate cannot reach the page through the LIMIT 1 BY.
   """
   def sample_online_businesses(limit \\ 6) do
     query("""
     SELECT domain, http_title, inferred_country, tranco_rank,
            estimated_revenue, business_model, industry,
            job_count, seo_score, http_emails != '' AS has_contact, http_tech
-    FROM businesses FINAL
+    FROM businesses
     WHERE business_model IN ('SaaS', 'Agency', 'Marketplace', 'Tool', 'Media')
       AND http_title != '' AND depth_enriched_at IS NOT NULL
       AND estimated_revenue != ''
     ORDER BY tranco_rank ASC NULLS LAST
+    LIMIT 1 BY domain
     LIMIT #{limit}
     """)
   end
@@ -219,29 +228,29 @@ defmodule LS.Clickhouse do
   end
 
   # ── Tech profile ──
+  #
+  # Every reader below hits `tech_index` (migration 024, kept fresh by
+  # LS.TechIndex): one row per (technology, titled domain), sorted by
+  # (tech, rank, domain). A technology is one contiguous key range, and the
+  # ranked top-N is its first granules. Before 2026-09-09 these were
+  # `http_tech LIKE '%X%'` scans of the 193M-row domains_fast view: 29.5s
+  # average, 119s p95, 54,000 CPU-seconds a day, and the shape of the 09-07
+  # "Search unavailable" storm. Names are bound as query parameters, never
+  # interpolated. Matching is by exact token (see the migration for the
+  # meaning change: "React" no longer counts "React Router").
+
+  @store_cols "domain, http_title, http_tech, country, tranco_rank"
+  @store_cols_full @store_cols <>
+                     ", http_response_time, http_language, rdap_registrar, rdap_domain_created_at, " <>
+                     "http_status, bgp_asn_org, dns_mx, http_emails, majestic_rank"
+  @by_rank "ORDER BY rank, domain"
 
   def stores_by_tech(tech_name, limit \\ 100) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank
-    FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST
-    LIMIT #{limit}
-    """)
-  end
-
-  def stores_by_tech_ilike(search, limit \\ 100) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank
-    FROM domains_fast
-    WHERE lower(http_tech) LIKE '%#{escape(String.downcase(search))}%' AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST
-    LIMIT #{limit}
-    """)
+    query("SELECT #{@store_cols} FROM tech_index WHERE tech = {t:String} #{@by_rank} LIMIT #{int(limit)}", %{t: tech_name})
   end
 
   def tech_store_count(tech_name) do
-    case query("SELECT count() FROM domains_fast WHERE http_tech LIKE '%#{escape(tech_name)}%'") do
+    case query("SELECT count() FROM tech_index WHERE tech = {t:String}", %{t: tech_name}) do
       {:ok, [[count]]} -> count
       _ -> 0
     end
@@ -250,103 +259,80 @@ defmodule LS.Clickhouse do
   # ── Tech profile (rich) ──
 
   def stores_by_tech_full(tech_name, limit \\ 100) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank,
-           http_response_time, http_language, rdap_registrar,
-           rdap_domain_created_at, http_status, bgp_asn_org,
-           dns_mx, http_emails, majestic_rank
-    FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST
-    LIMIT #{limit}
-    """)
+    query("SELECT #{@store_cols_full} FROM tech_index WHERE tech = {t:String} #{@by_rank} LIMIT #{int(limit)}", %{t: tech_name})
   end
 
-  def stores_by_tech_full_ilike(search, limit \\ 100) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank,
-           http_response_time, http_language, rdap_registrar,
-           rdap_domain_created_at, http_status, bgp_asn_org,
-           dns_mx, http_emails, majestic_rank
-    FROM domains_fast
-    WHERE lower(http_tech) LIKE '%#{escape(String.downcase(search))}%' AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST
-    LIMIT #{limit}
-    """)
-  end
-
-  # Aggregating over every row matching a popular tech (Google Analytics matches
-  # ~1.5M rows) regularly runs 5-10s on a loaded master. At the default 10s
-  # timeout this silently failed and the page fell back to fabricated numbers,
-  # so give it room and cache the result for 15 minutes.
-  @tech_stats_timeout 30_000
+  # These reads are milliseconds now, but the page assembles six of them and
+  # a public SEO page's population does not move hour to hour, so the results
+  # still cache. The TTLs predate the index (when each was a full scan).
   @tech_stats_ttl_ms :timer.minutes(15)
-  # The four per-tech distributions below were the only uncached queries on the
-  # tech page, and each full-scans 153.7M rows of domains_fast: together
-  # 88,000 CPU-seconds a day. They describe a technology's whole population,
-  # which does not move hour to hour, so they cache for six hours.
   @tech_dist_ttl :timer.hours(6)
 
   def tech_stats(tech_name) do
     LS.LandingCache.cached({:tech_stats, tech_name}, @tech_stats_ttl_ms, fn ->
-      query_raw(
+      query(
         """
         SELECT
           count() AS total,
           avg(http_response_time) AS avg_response_time,
           countIf(http_status = 200) AS responding_count,
           countIf(tranco_rank IS NOT NULL AND tranco_rank <= 100000) AS top_100k_count
-        FROM domains_fast
-        WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
+        FROM tech_index
+        WHERE tech = {t:String}
         -- JSON output quotes UInt64 by default, so count() arrived as "766890"
         -- (a string) and every consumer doing arithmetic on it broke. Scoped to
         -- this query: other call sites may rely on the string form.
         SETTINGS output_format_json_quote_64bit_integers = 0
         """,
-        @tech_stats_timeout
+        %{t: tech_name}
       )
     end)
   end
 
   def tech_language_distribution(tech_name) do
     LS.LandingCache.cached({:tech_language_distribution, tech_name}, @tech_dist_ttl, fn ->
-    query("""
-    SELECT http_language, count() AS cnt FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_language != ''
-    GROUP BY http_language ORDER BY cnt DESC LIMIT 10
-    """)
+      tech_distribution("http_language", tech_name)
     end)
   end
 
   def tech_hosting_distribution(tech_name) do
     LS.LandingCache.cached({:tech_hosting_distribution, tech_name}, @tech_dist_ttl, fn ->
-    query("""
-    SELECT bgp_asn_org, count() AS cnt FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND bgp_asn_org != ''
-    GROUP BY bgp_asn_org ORDER BY cnt DESC LIMIT 10
-    """)
+      tech_distribution("bgp_asn_org", tech_name)
     end)
   end
 
   def tech_registrar_distribution(tech_name) do
     LS.LandingCache.cached({:tech_registrar_distribution, tech_name}, @tech_dist_ttl, fn ->
-    query("""
-    SELECT rdap_registrar, count() AS cnt FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND rdap_registrar != ''
-    GROUP BY rdap_registrar ORDER BY cnt DESC LIMIT 10
-    """)
+      tech_distribution("rdap_registrar", tech_name)
     end)
+  end
+
+  def tech_country_distribution(tech_name), do: tech_distribution("country", tech_name)
+
+  # `column` is one of four literals above, never user input.
+  defp tech_distribution(column, tech_name) do
+    query(
+      """
+      SELECT #{column}, count() AS cnt FROM tech_index
+      WHERE tech = {t:String} AND #{column} != ''
+      GROUP BY #{column} ORDER BY cnt DESC LIMIT 10
+      """,
+      %{t: tech_name}
+    )
   end
 
   def tech_co_occurring(tech_name) do
     LS.LandingCache.cached({:tech_co_occurring, tech_name}, @tech_dist_ttl, fn ->
-    query("""
-    SELECT arrayJoin(splitByString('|', http_tech)) AS tech, count() AS cnt
-    FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND http_title != ''
-    GROUP BY tech HAVING tech != '#{escape(tech_name)}' AND cnt >= 2
-    ORDER BY cnt DESC LIMIT 20
-    """)
+      query(
+        """
+        SELECT arrayJoin(splitByChar('|', http_tech)) AS other, count() AS cnt
+        FROM tech_index
+        WHERE tech = {t:String}
+        GROUP BY other HAVING other != {t:String} AND cnt >= 2
+        ORDER BY cnt DESC LIMIT 20
+        """,
+        %{t: tech_name}
+      )
     end)
   end
 
@@ -355,12 +341,12 @@ defmodule LS.Clickhouse do
   @doc """
   Everything `/compare/a-vs-b` renders.
 
-  Every sub-query DEGRADES instead of raising. These are the heaviest scans on
-  the public site (~55s cold on a busy box), and each of the four below used to
-  be a hard `{:ok, x} = ...` match while `both_count` already fell back to 0 —
-  so a single ClickHouse timeout raised MatchError and Phoenix served 500 on a
-  public SEO page. Seen 2026-08-24 on /compare/klaviyo-vs-mailchimp whenever
-  the compactor was mid-pass. A page missing one panel beats a 500.
+  Every sub-query DEGRADES instead of raising. When these were full scans
+  (~55s cold on a busy box) each of the four below was a hard `{:ok, x} = ...`
+  match while `both_count` already fell back to 0, so a single ClickHouse
+  timeout raised MatchError and Phoenix served 500 on a public SEO page
+  (2026-08-24, /compare/klaviyo-vs-mailchimp mid-compaction). A page missing
+  one panel beats a 500, and the rule stays now that the reads are cheap.
 
   Sets `degraded: true` when anything fell back, so the caller can decline to
   cache a half-empty page for the profile's full TTL.
@@ -372,13 +358,16 @@ defmodule LS.Clickhouse do
                tech_country_distribution(tech_a), tech_country_distribution(tech_b)]
     [stores_a, stores_b, countries_a, countries_b] = Enum.map(results, &ok_or_empty/1)
     degraded? = Enum.any?(results, &(not match?({:ok, _}, &1)))
-    both_count = case query("""
-    SELECT count() FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_a)}%' AND http_tech LIKE '%#{escape(tech_b)}%'
-    """) do
-      {:ok, [[c]]} -> c
-      _ -> 0
-    end
+
+    both_count =
+      case query(
+             "SELECT count() FROM tech_index WHERE tech = {a:String} AND has(splitByChar('|', http_tech), {b:String})",
+             %{a: tech_a, b: tech_b}
+           ) do
+        {:ok, [[c]]} -> c
+        _ -> 0
+      end
+
     %{
       tech_a: %{name: tech_a, count: count_a, stores: stores_a, countries: countries_a},
       tech_b: %{name: tech_b, count: count_b, stores: stores_b, countries: countries_b},
@@ -391,30 +380,17 @@ defmodule LS.Clickhouse do
   def ok_or_empty({:ok, rows}), do: rows
   def ok_or_empty(_), do: []
 
-  def tech_country_distribution(tech_name) do
-    query("""
-    SELECT country, count() AS cnt FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND country != ''
-    GROUP BY country ORDER BY cnt DESC LIMIT 10
-    """)
-  end
-
   # ── Top / Ranking pages ──
 
-  # Cached: measured 2026-08-27 as the single most expensive query on the box,
-  # 160 calls in 6 hours at ~100s and 9.75 GiB each, about 0.75 of a core
-  # continuously. `domains_fast` is a VIEW with no sorting key, so every call
-  # re-scans the base table; there is nothing to index away. These are public
-  # ranking pages whose contents move far slower than the TTL, so the answer is
-  # to compute them once an hour instead of once a request.
+  # `tech = 'Shopify'` is the indexed form of `is_shopify = 1` (the column
+  # materialises `http_tech LIKE '%Shopify%'`, and Shopify is the only token
+  # containing that word: 1,198,500 rows either way on 2026-09-09).
   def top_stores_by_country(country_code, limit \\ 50) do
     LS.UICache.fetch(:top_page, {:country, country_code, limit}, fn ->
-      query("""
-      SELECT domain, http_title, http_tech, country, tranco_rank
-      FROM domains_fast
-      WHERE is_shopify = 1 AND country = '#{escape(country_code)}' AND http_title != ''
-      ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
-      """)
+      query(
+        "SELECT #{@store_cols} FROM tech_index WHERE tech = 'Shopify' AND country = {c:String} #{@by_rank} LIMIT #{int(limit)}",
+        %{c: country_code}
+      )
     end)
   end
 
@@ -423,36 +399,27 @@ defmodule LS.Clickhouse do
   end
 
   defp top_stores_using_tech_uncached(tech_name, limit) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank
-    FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND is_shopify = 1 AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
-    """)
+    query(
+      "SELECT #{@store_cols} FROM tech_index WHERE tech = {t:String} AND is_shopify = 1 #{@by_rank} LIMIT #{int(limit)}",
+      %{t: tech_name}
+    )
   end
 
   def top_stores_using_tech_in_country(tech_name, country_code, limit \\ 50) do
-    query("""
-    SELECT domain, http_title, http_tech, country, tranco_rank
-    FROM domains_fast
-    WHERE http_tech LIKE '%#{escape(tech_name)}%' AND is_shopify = 1
-      AND country = '#{escape(country_code)}' AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
-    """)
+    query(
+      "SELECT #{@store_cols} FROM tech_index WHERE tech = {t:String} AND is_shopify = 1 AND country = {c:String} #{@by_rank} LIMIT #{int(limit)}",
+      %{t: tech_name, c: country_code}
+    )
   end
 
   # ── Directory / Hub pages ──
 
   def tech_directory do
-    query("""
-    SELECT arrayJoin(splitByString('|', http_tech)) AS tech, count() AS cnt
-    FROM domains_fast WHERE http_tech != ''
-    GROUP BY tech HAVING cnt >= 5 ORDER BY cnt DESC LIMIT 500
-    """)
+    query("SELECT tech, count() AS cnt FROM tech_index GROUP BY tech HAVING cnt >= 5 ORDER BY cnt DESC LIMIT 500")
   end
 
-  # arrayJoin over every non-empty http_tech is a full scan, and both /tech/:slug
-  # and /compare/:slug need it on every request just to resolve their slug.
+  # /tech/:slug and /compare/:slug resolve their slug against this list on
+  # every request; a GROUP BY over the whole index is ~1s, so it caches.
   @tech_directory_ttl :timer.hours(1)
 
   def tech_directory_cached do
@@ -489,8 +456,8 @@ defmodule LS.Clickhouse do
     # thin countries (CM, LY, DZ...) were being emitted and 404ing for Google
     # — same contract as techs: never offer a URL the page cannot serve.
     query("""
-    SELECT country, count() AS cnt FROM domains_fast
-    WHERE is_shopify = 1 AND country != ''
+    SELECT country, count() AS cnt FROM tech_index
+    WHERE tech = 'Shopify' AND country != ''
     GROUP BY country
     HAVING cnt >= 10
     ORDER BY cnt DESC
@@ -500,11 +467,7 @@ defmodule LS.Clickhouse do
   # ── Sitemap ──
 
   def all_shopify_domains(limit \\ 49_000) do
-    query("""
-    SELECT domain FROM domains_fast
-    WHERE is_shopify = 1 AND http_title != ''
-    ORDER BY tranco_rank ASC NULLS LAST LIMIT #{limit}
-    """)
+    query("SELECT domain FROM tech_index WHERE tech = 'Shopify' #{@by_rank} LIMIT #{int(limit)}")
   end
 
   def scan_rate_per_minute do
@@ -555,22 +518,21 @@ defmodule LS.Clickhouse do
   the sitemap advertised 404s to Google. Same data-contract rule as the UI:
   never offer a link that matches no rows. `min` defaults to 3 so one
   misdetected store cannot resurrect a URL that will soon 404 again.
+
+  One pass over the index's `is_shopify` column (147M narrow rows, about a
+  second); cached because the sitemap and the cache warmer both ask.
   """
   def shopify_tech_names(min \\ 3) do
-    query("""
-    SELECT tech, count() AS n FROM (
-      SELECT arrayJoin(splitByChar('|', http_tech)) AS tech
-      FROM domains_fast
-      WHERE is_shopify = 1 AND http_title != '' AND http_tech != ''
-    )
-    WHERE tech != ''
-    GROUP BY tech
-    HAVING n >= #{max(1, min)}
-    ORDER BY n DESC
-    SETTINGS max_threads=2, max_bytes_before_external_group_by=1000000000
-    """)
+    LS.LandingCache.cached({:shopify_tech_names, min}, @tech_dist_ttl, fn ->
+      query("""
+      SELECT tech, count() AS n FROM tech_index
+      WHERE is_shopify = 1
+      GROUP BY tech
+      HAVING n >= #{int(max(1, min))}
+      ORDER BY n DESC
+      """)
+    end)
   end
-
 
   @doc """
   Latest observed changes for one domain (public store-page teaser).
@@ -810,36 +772,24 @@ defmodule LS.Clickhouse do
   defp segment_field(:model), do: "business_model"
 
   @doc """
-  Shopify-store counts per (tech, country) for the given techs, in ONE scan —
-  a per-tech loop would be N full scans of domains_fast on 3 cores. Returns
-  %{{tech, country} => count}; feeds the /top/shopify-stores-using-X-in-CC
+  Shopify-store counts per (tech, country) for the given techs, in ONE query.
+  Returns %{{tech, country} => count}; feeds the /top/shopify-stores-using-X-in-CC
   sitemap section, thresholded by the caller.
   """
   def tech_country_matrix(techs) when is_list(techs) and techs != [] do
     LS.LandingCache.cached({:tech_country_matrix, Enum.sort(techs)}, @trend_ttl, fn ->
-      cols =
-        techs
-        |> Enum.with_index()
-        |> Enum.map_join(", ", fn {t, i} ->
-          "countIf(http_tech LIKE '%#{escape(t)}%') AS t#{i}"
-        end)
-
-      query("""
-      SELECT country, #{cols} FROM domains_fast
-      WHERE is_shopify = 1 AND http_title != '' AND country != ''
-      GROUP BY country
-      """)
+      query(
+        """
+        SELECT tech, country, count() FROM tech_index
+        WHERE tech IN {techs:Array(String)} AND is_shopify = 1 AND country != ''
+        GROUP BY tech, country
+        """,
+        %{techs: array_param(techs)}
+      )
     end)
     |> case do
-      {:ok, rows} ->
-        for [country | counts] <- rows,
-            {count, i} <- Enum.with_index(counts),
-            reduce: %{} do
-          acc -> Map.put(acc, {Enum.at(techs, i), country}, count)
-        end
-
-      _ ->
-        %{}
+      {:ok, rows} -> Map.new(rows, fn [tech, country, count] -> {{tech, country}, count} end)
+      _ -> %{}
     end
   end
 
@@ -2058,7 +2008,7 @@ defmodule LS.Clickhouse do
         _ -> ""
       end
 
-    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1#{server_cap}"
+    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1#{server_cap}#{params_qs(opts[:params] || %{})}"
     case post(url, sql, finch: finch_for(opts), receive_timeout: receive_timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       # DDL / OPTIMIZE / statements with no result set return an empty 200 body.
@@ -2071,6 +2021,31 @@ defmodule LS.Clickhouse do
   end
 
   def escape_public(str), do: escape(str)
+
+  @doc """
+  Query-parameter suffix for a URL: `%{t: "Vue.js"}` becomes
+  `&param_t=Vue.js`. Names are our own atoms or strings; values are encoded,
+  so any text is safe. Public so the query builders and their tests share it.
+  """
+  @spec params_qs(map()) :: String.t()
+  def params_qs(params) when map_size(params) == 0, do: ""
+
+  def params_qs(params) do
+    Enum.map_join(params, "", fn {k, v} -> "&param_#{k}=#{URI.encode_www_form(to_string(v))}" end)
+  end
+
+  @doc """
+  A ClickHouse `Array(String)` parameter value: `['a','b']` with quotes and
+  backslashes escaped, the literal form the server parses for `{x:Array(String)}`.
+  """
+  @spec array_param([String.t()]) :: String.t()
+  def array_param(values) do
+    "[" <> Enum.map_join(values, ",", fn v -> "'" <> String.replace(to_string(v), ~r/['\\]/, "\\\\\\0") <> "'" end) <> "]"
+  end
+
+  # LIMITs and thresholds are interpolated as integers only.
+  defp int(n) when is_integer(n) and n >= 0, do: n
+  defp int(_), do: 0
 
   @doc """
   Run `sql` and return what it cost: `{:ok, %{elapsed_ms, rows_read, bytes_read, rows_returned}}`.
@@ -2106,14 +2081,18 @@ defmodule LS.Clickhouse do
 
   # ── Private ──
 
-  defp query(sql) do
+  # `params` are bound server-side as ClickHouse query parameters
+  # (`{name:String}` in the SQL, `param_name=` on the URL): the value never
+  # touches the SQL text, so it cannot break out of it (2026-09-09). Prefer
+  # this over `escape/1`, which strips quotes and changes what was searched.
+  defp query(sql, params \\ %{}) do
     # Same cancel-on-hangup guarantee as query_raw/3. This private helper backs
     # most of the public page queries (tech, top, compare, store, landing), and
     # it built its OWN url — so on 2026-08-24 those paths stayed unbounded while
     # query_raw was already fixed: 62 of 68 in-flight Explorer-shaped scans
     # carried no cap at all. Every read path must hang up together or the
     # pile-up simply moves to whichever one was missed.
-    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1"
+    url = "#{@ch_url}?database=#{@ch_db}&default_format=JSONCompact&cancel_http_readonly_queries_on_client_close=1#{params_qs(params)}"
     case post(url, sql, finch: LS.Finch.CH, receive_timeout: @timeout) do
       {:ok, %{status: 200, body: %{"data" => data}}} -> {:ok, data}
       {:ok, %{status: 200, body: body}} when is_binary(body) -> {:ok, body}

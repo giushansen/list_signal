@@ -362,19 +362,25 @@ defmodule LS.Explorer do
     # left is the contact list — the one genuinely 1:many field worth putting
     # in a CSV, flattened to a pipe-separated cell.
     sql = """
-    SELECT #{Enum.map_join(@detail_columns ++ @export_depth_columns, ", ", &"d.#{&1}")},
-           coalesce(c.emails, '') AS enriched_emails
-    FROM businesses AS d FINAL
-    LEFT JOIN (
-      SELECT domain, arrayStringConcat(groupArray(email), '|') AS emails
-      FROM biz_contact FINAL GROUP BY domain
-    ) c ON d.domain = c.domain
-    WHERE d.domain IN (
+    WITH exported AS (
       SELECT domain FROM businesses
       #{where}
       ORDER BY #{@order_by}
       LIMIT #{limit}
     )
+    SELECT #{Enum.map_join(@detail_columns ++ @export_depth_columns, ", ", &"d.#{&1}")},
+           coalesce(c.emails, '') AS enriched_emails
+    FROM businesses AS d FINAL
+    LEFT JOIN (
+      -- Scoped to the exported domains (2026-09-09): unscoped, this side
+      -- aggregated every contact row in the table with FINAL for every
+      -- export, whatever its size.
+      SELECT domain, arrayStringConcat(groupArray(email), '|') AS emails
+      FROM biz_contact FINAL
+      WHERE domain IN exported
+      GROUP BY domain
+    ) c ON d.domain = c.domain
+    WHERE d.domain IN exported
     #{where |> and_where() |> qualify_where()}
     ORDER BY #{qualified_order_by()}
     LIMIT #{limit}
@@ -401,7 +407,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT DISTINCT #{col_expr} AS #{col_alias}
-    FROM businesses FINAL
+    FROM businesses
     WHERE #{col_alias} != '' #{prefix_clause}
     ORDER BY #{col_alias} ASC
     LIMIT #{limit}
@@ -413,13 +419,17 @@ defmodule LS.Explorer do
     end
   end
 
+  # The option lists below read WITHOUT FINAL (2026-09-09). They return
+  # distinct values ordered by frequency; a 0.07% duplicate rate (the hourly
+  # optimizer's residue) cannot add a value or reorder one, and FINAL made
+  # each list a 0.7s, 500 MB sort instead of a 0.1s, 80 MB scan.
   @doc "Get distinct tech values (split by pipe separator)."
   def distinct_techs(prefix \\ "", limit \\ 50) do
     prefix_clause = if prefix != "", do: "HAVING lower(tech) LIKE '%#{esc(String.downcase(prefix))}%'", else: ""
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_tech)) AS tech
-    FROM businesses FINAL
+    FROM businesses
     WHERE http_tech != ''
     GROUP BY tech
     #{prefix_clause}
@@ -440,7 +450,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT arrayJoin(splitByChar('|', http_apps)) AS app
-    FROM businesses FINAL
+    FROM businesses
     WHERE http_apps != '' #{tech_clause}
     GROUP BY app
     #{prefix_clause}
@@ -462,7 +472,7 @@ defmodule LS.Explorer do
 
     sql = """
     SELECT #{expr} AS v
-    FROM businesses FINAL
+    FROM businesses
     WHERE #{expr} != ''
     GROUP BY v
     ORDER BY count() DESC

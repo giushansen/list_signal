@@ -3,6 +3,11 @@ defmodule LS.LandingCache do
   ETS-backed cache for landing page data.
   Refreshes from ClickHouse every 60 seconds for real-time numbers.
   All landing page views read from ETS in microseconds.
+
+  The two ranked samples (top Shopify stores, top online businesses) refresh
+  every 30 minutes instead (2026-09-09): each was a full sort of `businesses`
+  with FINAL, 3.3s and 3 GB, run every minute, 7,000 CPU-seconds a day for
+  ten rows that change by the day.
   """
   use GenServer
   require Logger
@@ -145,7 +150,13 @@ defmodule LS.LandingCache do
     end
   end
 
+  @sample_ttl_ms :timer.minutes(30)
+
   defp fetch_top_stores do
+    cached({:landing_sample, :stores}, @sample_ttl_ms, &fetch_top_stores_uncached/0)
+  end
+
+  defp fetch_top_stores_uncached do
     case LS.Clickhouse.sample_shopify_stores(10) do
       {:ok, rows} ->
         Enum.map(rows, fn row ->
@@ -161,6 +172,10 @@ defmodule LS.LandingCache do
   end
 
   defp fetch_top_businesses do
+    cached({:landing_sample, :businesses}, @sample_ttl_ms, &fetch_top_businesses_uncached/0)
+  end
+
+  defp fetch_top_businesses_uncached do
     case LS.Clickhouse.sample_online_businesses(10) do
       {:ok, rows} ->
         Enum.map(rows, fn row ->
