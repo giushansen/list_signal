@@ -27,8 +27,24 @@ defmodule LSWeb.PageController do
   # crawler that names itself must answer for itself: this page is what a
   # site owner (or an abuse desk) finds before deciding to block or report
   # us, so it stays plain, honest and short (2026-09-04, Vultr report #2).
+  # The fleet's public crawl addresses, published so an abuse desk or a site
+  # owner can tell our traffic from someone spoofing the User-Agent
+  # (security audit 2026-09-09, after three Vultr reports). The home node is
+  # deliberately absent: a residential address is not ours to publish. Keep
+  # in step with devops/listsignal/fleet.conf; LSWeb.BotPageTest checks the
+  # shape, and the reverse DNS names live in devops/listsignal/rdns.md.
+  @crawler_ips ~w(
+    139.180.191.194 149.28.180.28 108.61.94.33 207.246.126.235 95.179.216.41
+    64.177.122.55 45.76.25.165 45.77.42.191 45.32.147.41 45.76.59.43
+    45.32.206.187 144.202.62.245 207.148.19.32
+  )
+
+  @doc false
+  def crawler_ips, do: @crawler_ips
+
   def bot(conn, _params) do
     conn
+    |> assign(:crawler_ips, @crawler_ips)
     |> assign(:page_title, "About ListSignalBot")
     |> assign(:page_description, "What the ListSignal crawler does, how often it visits, and how to block it or opt out.")
     |> put_layout(html: {LSWeb.Layouts, :public})

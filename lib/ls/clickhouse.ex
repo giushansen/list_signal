@@ -2133,7 +2133,8 @@ defmodule LS.Clickhouse do
   # `params` are bound server-side as ClickHouse query parameters
   # (`{name:String}` in the SQL, `param_name=` on the URL): the value never
   # touches the SQL text, so it cannot break out of it (2026-09-09). Prefer
-  # this over `escape/1`, which strips quotes and changes what was searched.
+  # this over `escape/1` for anything a visitor typed; escape/1 is correct
+  # for quotes and backslashes but drops semicolons from the text.
   defp query(sql, params \\ %{}) do
     # Same cancel-on-hangup guarantee as query_raw/3. This private helper backs
     # most of the public page queries (tech, top, compare, store, landing), and

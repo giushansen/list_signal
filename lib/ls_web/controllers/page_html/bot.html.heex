@@ -10,6 +10,9 @@
       <li>Visits most sites about once a month.</li>
       <li>Never submits forms, never logs in, never downloads media.</li>
     </ul>
+    <h2 class="font-display text-lg font-semibold text-white pt-4">Where it comes from</h2>
+    <p>Every request from ListSignalBot comes from one of these addresses. If you see the User-Agent from any other address, it is not us.</p>
+    <pre class="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07] text-sm text-white/80 overflow-x-auto"><%= Enum.join(@crawler_ips, "\n") %></pre>
     <h2 class="font-display text-lg font-semibold text-white pt-4">How to block it</h2>
     <p>Add this to your robots.txt and ListSignalBot will not visit again:</p>
     <pre class="p-4 rounded-xl bg-white/[0.03] border border-white/[0.07] text-sm text-white/80 overflow-x-auto">User-agent: ListSignalBot

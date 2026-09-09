@@ -224,6 +224,10 @@ LS_ROLE=worker LS_MASTER=master@10.0.0.1 LS_DNS_CONCURRENCY=500 \
 | `LS_DNS_CONCURRENCY` | `500` | integer | Parallel DNS lookups per worker |
 | `LS_RDAP_CONCURRENCY` | `3` | integer | Parallel RDAP queries per worker |
 | `LS_RDAP_RATE` | `2` | integer | RDAP queries per second per server |
+| `LS_STATE_DIR` | `/var/lib/listsignal` (prod) | path | Durable node state: cache snapshots, crawl-gate blooms (`LS.State`) |
+| `LS_STABLE_REVISIT` | `true` | `true`, `false` | Change-aware revisits: a domain that came back unchanged waits 28-35 days (master) |
+| `CLICKHOUSE_USER` | `default` | user name | The app's ClickHouse user; production uses `ls_app` (SELECT/INSERT on `ls.*` only) |
+| `CLICKHOUSE_PASSWORD` | empty | secret | Password for `CLICKHOUSE_USER` |
 
 ---
 

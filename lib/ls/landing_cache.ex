@@ -99,13 +99,17 @@ defmodule LS.LandingCache do
       store_count: fetch_count("SELECT count() FROM businesses WHERE is_shopify = 1"),
       business_count: fetch_count("SELECT count() FROM businesses"),
       total_domains: fetch_count("SELECT count() FROM domains_current"),
-      tech_count: fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains_current WHERE http_tech != ''"),
-      app_count: fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains_current WHERE http_apps != ''"),
+      # Two arrayJoin scans of domains_current, ~10s each, and the recent-store
+      # scan below (~18s: is_shopify over 193M rows sorted by enriched_at) ran
+      # every minute for numbers that move by the day. Every 30 minutes now
+      # (2026-09-09, measured on prod as ls_app's slowest routine queries).
+      tech_count: slow(:tech_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains_current WHERE http_tech != ''") end),
+      app_count: slow(:app_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains_current WHERE http_apps != ''") end),
       scan_rate: insert_last_min,
       ch_insert_rate: insert_last_min,
       ctl_rate_per_sec: fetch_ctl_rate(),
       stores_last_hour: fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR"),
-      recent_stores: fetch_recent_stores(),
+      recent_stores: slow(:recent_stores, &fetch_recent_stores/0),
       top_stores: fetch_top_stores(),
       top_businesses: fetch_top_businesses(),
       refreshed_at: DateTime.utc_now()
@@ -151,6 +155,8 @@ defmodule LS.LandingCache do
   end
 
   @sample_ttl_ms :timer.minutes(30)
+
+  defp slow(key, fun), do: cached({:landing_slow, key}, @sample_ttl_ms, fun)
 
   defp fetch_top_stores do
     cached({:landing_sample, :stores}, @sample_ttl_ms, &fetch_top_stores_uncached/0)

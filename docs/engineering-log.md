@@ -50,8 +50,11 @@ documented in the migration: exact-token matching ("React" no longer counts
 "React Router", which the directory already did), and directory counts and
 per-tech distributions now count titled domains only, as the page's own
 total always did. Names are bound as ClickHouse query parameters
-(`{t:String}`), the first use of parameters in the codebase; `escape/1`
-strips quotes and changes what was searched, parameters do not.
+(`{t:String}`), the first use of parameters in the codebase. (The review
+said `escape/1` strips quotes; it does not: it escapes quotes and
+backslashes correctly and drops only semicolons. Parameters are still the
+better tool for visitor text, but the explorer's interpolations were not
+an injection hole.)
 Commit: see `git log --grep='tech_index'`.
 
 **Half the FINAL cost was two landing-page samples, and the hourly
