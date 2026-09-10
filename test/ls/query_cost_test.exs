@@ -17,11 +17,16 @@ defmodule LS.QueryCostTest do
     refute fun =~ "LEFT JOIN biz_enrichment",
            "a JOIN costs ~9x a single-table scan here; the semi-join is the same set at 8.2s vs 13.1s"
 
-    assert fun =~ "NOT IN (SELECT domain FROM biz_enrichment"
-
-    # As a WHERE predicate, not merely named in the comment explaining why.
-    refute fun =~ ~r/\bb\.depth_enriched_at\b/,
-           "depth_enriched_at is NULL for ~2.3M already-enriched domains — filtering on it re-crawls them"
+    # 2026-09-10: the 30-day NOT IN set (14M domains, 1.8 GiB) plus a sort of
+    # the wide row needed 4.6 GiB and the server refused it on every run for
+    # two days; pipeline 2 fell to a fifth. The narrow inner select reads the
+    # compiled depth_enriched_at for "done in the last 30 days" and keeps a
+    # 7-day NOT IN for failed attempts and compaction lag (1.9s, 534 MB).
+    assert fun =~ "NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 7 DAY)"
+    refute fun =~ "biz_enrichment WHERE enriched_at >= now() - INTERVAL 30 DAY", "the 30-day set is what could not fit in memory"
+    assert fun =~ "depth_enriched_at IS NULL OR i.depth_enriched_at < now() - INTERVAL 30 DAY"
+    assert fun =~ "WHERE b.domain IN (", "the wide columns must be read for the chosen domains only"
+    assert fun =~ "max_memory_usage = 2500000000", "fail this query, never the server"
 
     assert fun =~ "query_raw(sql, 90_000)",
            "the 25s default expired mid-scan and starved the enrichment nodes"

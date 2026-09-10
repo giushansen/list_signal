@@ -25,6 +25,31 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-10
+
+**Pipeline 2 ran at a fifth of its rate for two days: the HTTP-lane
+refill query no longer fit in memory.** `biz_enrichment` rows per day:
+~420K through 09-05, 306K on 09-06, 235K, 197K, 80K on 09-09, with the
+`http` engine down to 395 rows on 09-10 while camoufox kept going. The
+master's `[ENRICH] refilled` lines read `browser=N http=0` for 48 hours.
+query_log: `businesses_needing_enrichment` for the HTTP lane failed with
+"(total) memory limit exceeded: would use 4.6 GiB" on 101 of 251 runs on
+09-07 and 262 of 266 on 09-08, and on every run since. The query sorted
+the full 30-column row of every candidate and carried a 30-day NOT IN set
+over `biz_enrichment` that had grown to 14M domains (1.8 GiB on its own);
+next to the compactor's 1.7 GiB it crossed the server's 6.5 GiB total. The
+browser lane survived only because its filter matches far fewer rows.
+Fix: two phases (choose domains on narrow columns, then read the wide
+row for those), "done in the last 30 days" from the compiled
+`depth_enriched_at`, and a 7-day NOT IN for failed attempts and
+compaction lag. Measured on prod: 1.9s and 534 MB. Meaning change: a
+failed enrichment is retried after 7 days instead of 30. Found while
+answering "how is the data flowing"; nothing alerted, because the
+enrichment-rate alert watches `biz_enrichment` rows, which the browser
+lane kept above the floor.
+
+---
+
 ## 2026-09-09
 
 **Architecture review and security audit, shipped as one series.** The

@@ -882,36 +882,48 @@ defmodule LS.Clickhouse do
       b.business_model, b.industry, b.http_title, b.http_status, b.http_emails, b.http_schema_type,
       b.rdap_nameservers, b.dns_a, b.dns_cname
     FROM businesses b
-    -- Semi-join, not LEFT JOIN: identical result set (measured 2026-08-24 —
-    # 256,992 vs 257,158 distinct domains, the delta is concurrent writes) but
-    -- 8.2s instead of 13.1s, because a JOIN costs ~9x a single-table scan here.
-    -- NOT the folded depth-enrichment timestamp on businesses, tempting as it
-    -- looks: that column is NULL for
-    -- ~2.3M domains that biz_enrichment shows ARE enriched (the compactor only
-    -- folds non-failed render rows), so using it would re-crawl 2.3M sites we
-    -- already have — wasteful and impolite.
-    WHERE #{lane_filter}
-      AND b.dns_alive
-      AND b.domain NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 30 DAY)
-      -- A domain that rate-limited us is not worth retrying on the ordinary
-      -- cadence: it asked for patience, and re-asking daily is how a source
-      -- IP earns a permanent block. Give it a fortnight.
-      AND (b.last_http_status != 429 OR b.as_of < now() - INTERVAL 14 DAY)
-    -- Value-first ordering, not Tranco-only: only 5.4% of businesses carry a
-    -- Tranco rank (storeradar-shaped SMBs carry none), so pure tranco order
-    -- left 94% of the table in arbitrary order. Majestic (backlinks) is an
-    -- independent second rank, scaled 1M->4.2M; unranked businesses are then
-    -- ordered by commercial signals instead of nothing.
-    ORDER BY
-      least(coalesce(b.tranco_rank, 99999999), coalesce(b.majestic_rank * 4, 99999999)) ASC,
-      (b.http_emails != '') + (b.dns_mx != '') + (b.classification_confidence >= 0.6) DESC
-    -- businesses is read WITHOUT FINAL (a FINAL sort-scan of 6.7M rows every
-    -- 5 minutes is not worth it), so every compactor pass contributes another
-    -- version row per changed domain. Without this, each version became its
-    -- own queue entry — top domains appeared up to 9x and ~80% of enrichment
-    -- capacity was spent re-enriching the same businesses (2026-07-31).
+    WHERE b.domain IN (
+      -- Two phases (2026-09-10 incident): choose the domains on narrow
+      -- columns, then read the wide row for those only. Sorting the full
+      -- 30-column row for every candidate needed 4.6 GiB; next to the
+      -- compactor's 1.7 GiB the server's 6.5 GiB total refused this query on
+      -- every run from 09-08 (262 of 266 runs, "memory limit exceeded"), the
+      -- HTTP lane refilled nothing for two days and pipeline 2 fell from
+      -- ~400K rows a day to ~75K. The new form measured 1.9s and 534 MB.
+      --
+      -- "Not enriched in the last 30 days" reads businesses'
+      -- depth_enriched_at (the compactor's newest successful enrichment),
+      -- not a 14M-domain NOT IN set over biz_enrichment, which alone cost
+      -- 1.8 GiB. The 7-day set covers what the column cannot: attempts that
+      -- FAILED (never compiled into the column; 82K of 697K sampled
+      -- domains) and the minutes before a success is compiled. So a failed
+      -- attempt is retried after 7 days instead of 30, on purpose.
+      SELECT i.domain FROM businesses i
+      WHERE #{String.replace(lane_filter, "b.", "i.")}
+        AND i.dns_alive
+        AND (i.depth_enriched_at IS NULL OR i.depth_enriched_at < now() - INTERVAL 30 DAY)
+        AND i.domain NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 7 DAY)
+        -- A domain that rate-limited us is not worth retrying on the ordinary
+        -- cadence: it asked for patience, and re-asking daily is how a source
+        -- IP earns a permanent block. Give it a fortnight.
+        AND (i.last_http_status != 429 OR i.as_of < now() - INTERVAL 14 DAY)
+      -- Value-first ordering, not Tranco-only: only 5.4% of businesses carry a
+      -- Tranco rank (storeradar-shaped SMBs carry none), so pure tranco order
+      -- left 94% of the table in arbitrary order. Majestic (backlinks) is an
+      -- independent second rank, scaled 1M->4.2M; unranked businesses are then
+      -- ordered by commercial signals instead of nothing.
+      ORDER BY
+        least(coalesce(i.tranco_rank, 99999999), coalesce(i.majestic_rank * 4, 99999999)) ASC,
+        (i.http_emails != '') + (i.dns_mx != '') + (i.classification_confidence >= 0.6) DESC
+      -- businesses is read WITHOUT FINAL, so every compactor pass contributes
+      -- another version row per changed domain; without this each version
+      -- became its own queue entry (top domains up to 9x, 2026-07-31).
+      LIMIT 1 BY i.domain
+      LIMIT #{limit}
+    )
+    ORDER BY least(coalesce(b.tranco_rank, 99999999), coalesce(b.majestic_rank * 4, 99999999)) ASC
     LIMIT 1 BY b.domain
-    LIMIT #{limit}
+    SETTINGS max_threads = 2, max_memory_usage = 2500000000
     """
 
     # 90s, not the 25s default: this is a background refill on a 5-minute timer,
