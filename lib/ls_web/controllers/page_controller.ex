@@ -82,7 +82,7 @@ defmodule LSWeb.PageController do
       "offers" => [
         %{"@type" => "Offer", "price" => "0", "priceCurrency" => "USD", "name" => "Free"},
         %{"@type" => "Offer", "price" => "39", "priceCurrency" => "USD", "name" => "Starter"},
-        %{"@type" => "Offer", "price" => "99", "priceCurrency" => "USD", "name" => "Pro"}
+        %{"@type" => "Offer", "price" => "149", "priceCurrency" => "USD", "name" => "Pro"}
       ]
     })
   end
