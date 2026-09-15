@@ -157,6 +157,39 @@ so the move does not cost a cold start.
 
 ## 2026-09-15
 
+**INPI has never produced a row, because we ask for gzip and never inflate
+it.** Found while investigating the above. `HTTP.download/3` sends
+`accept-encoding: gzip` on every request, but a streamed download (`into:`
+with `decode_body: false`) writes the raw transport bytes and Req never
+inflates them. The INPI ratios CSV is served gzipped, so on 2026-08-19 we
+wrote 391 MB of gzip to a file named `ratios_inpi_bce.csv`; the line parser
+read binary, every row failed `Sirene.parse_ratio/2`, and the run finished
+`records: 0`, `status: ok`. That file is still on the box and still starts
+`1f 8b 08`; gunzipping it by hand gives exactly the header the parser
+expects, so the parser was never the problem. Companies House and Sirene
+were untouched only because their payloads are .zip, which servers do not
+gzip again.
+
+Cost: `verification_inpi_ratios` is the staging table Sirene reads to attach
+French revenue to a company. It has been empty for 27 days, so not one of
+Sirene's 136,035 facts has ever carried a revenue figure — the entire reason
+that file is downloaded.
+
+Two fixes. `HTTP.download/3` now inflates when the response declares
+`content-encoding: gzip`, streamed at 512 KB so a 391 MB → 900 MB payload is
+never held whole; the decision is on content-encoding, not magic bytes, so a
+source that deliberately fetches a .gz artifact still gets its bytes
+untouched. And `Store.effective_status/2` records a run that downloaded
+bytes and parsed zero records as an error rather than ok, so the existing
+`verify_error` alert fires: succeeding at nothing must not read as
+succeeding. Gated on `bytes > 0`, because wikidata and yc are API-backed and
+legitimately report zero bytes.
+
+No scheduler change was needed and none was made: INPI is step 1 of the
+Sirene run, so it already refreshes on Sirene's monthly cadence. It was
+broken, not unscheduled. The 09-18 run will exercise both fixes, and the
+zero-record guard means a repeat now emails instead of going quiet.
+
 **Verification looked dead, was on cadence, and nothing would have told us
 either way.** The owner read `verification_runs` by hand and found every
 registry source 27 days old. Checked: all five scheduled sources were inside

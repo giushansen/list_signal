@@ -58,9 +58,8 @@ defmodule LS.Verification.HTTP do
       end)
 
     case result do
-      {:ok, %{status: 200}} ->
-        File.rename!(part, path)
-        {:ok, File.stat!(path).size}
+      {:ok, %{status: 200} = resp} ->
+        finalize(part, path, resp)
 
       {:ok, %{status: s}} ->
         File.rm(part)
@@ -135,6 +134,69 @@ defmodule LS.Verification.HTTP do
   defp headers(opts) do
     [{"user-agent", LS.Verification.user_agent()}, {"accept-encoding", "gzip"}] ++
       Keyword.get(opts, :headers, [])
+  end
+
+  # INCIDENT 2026-09-15. We ask every server for `accept-encoding: gzip`, but
+  # a streamed download (`into:` with `decode_body: false`) hands us the raw
+  # transport bytes and Req never inflates them. The INPI ratios CSV is served
+  # gzipped, so on 2026-08-19 we wrote 391 MB of gzip to a file named .csv,
+  # the line parser read binary, every row failed `parse_ratio`, and the run
+  # was filed as `ok` with `records: 0`. `verification_inpi_ratios` has been
+  # empty ever since, so no Sirene fact has ever carried a French revenue
+  # figure. Companies House and Sirene were unaffected only because their
+  # payloads are .zip, which servers do not gzip again.
+  #
+  # Decompress on CONTENT-ENCODING, not on the magic bytes: a source that
+  # deliberately downloads a .gz artifact (content-type, no content-encoding)
+  # must still get its bytes untouched.
+  defp finalize(part, path, resp) do
+    if gzip_encoded?(resp) do
+      gunzip_file!(part, path)
+      File.rm(part)
+    else
+      File.rename!(part, path)
+    end
+
+    {:ok, File.stat!(path).size}
+  end
+
+  @doc false
+  # Req normalises headers to %{"name" => [values]}; older shapes are a list
+  # of tuples. Accept both rather than depend on the version.
+  def gzip_encoded?(%{headers: h}), do: gzip_encoded?(h)
+  def gzip_encoded?(h) when is_map(h), do: h |> Map.get("content-encoding", []) |> gzip_value?()
+
+  def gzip_encoded?(h) when is_list(h) do
+    h
+    |> Enum.filter(fn {k, _v} -> String.downcase(to_string(k)) == "content-encoding" end)
+    |> Enum.map(fn {_k, v} -> v end)
+    |> gzip_value?()
+  end
+
+  def gzip_encoded?(_), do: false
+
+  defp gzip_value?(v) do
+    v |> List.wrap() |> Enum.any?(&String.contains?(String.downcase(to_string(&1)), "gzip"))
+  end
+
+  @doc false
+  # Streamed inflate: the INPI file is 391 MB compressed and 900 MB out, on a
+  # box where ClickHouse already holds 6 GB. Never read either side whole.
+  # Public so a test can replay the 2026-08-19 file end to end.
+  def gunzip_file!(src, dest) do
+    z = :zlib.open()
+    :zlib.inflateInit(z, 31)
+    out = File.open!(dest, [:write, :binary])
+
+    try do
+      src
+      |> File.stream!([], 512 * 1024)
+      |> Enum.each(&IO.binwrite(out, :zlib.inflate(z, &1)))
+    after
+      File.close(out)
+      :zlib.inflateEnd(z)
+      :zlib.close(z)
+    end
   end
 
   # Retry only on transport errors and 5xx/429 — a 404 is an answer.

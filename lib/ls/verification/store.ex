@@ -43,14 +43,50 @@ defmodule LS.Verification.Store do
 
   @doc "Re-emit the run row as finished (newest `updated_at` wins)."
   def finish_run(source, started_at, status, stats) do
+    status = effective_status(status, stats)
+
+    error =
+      case {status, stats[:error]} do
+        {:error, nil} -> silent_zero_message(stats)
+        {:error, ""} -> silent_zero_message(stats)
+        {_, e} -> to_string(e || "")
+      end
+
     insert_json("verification_runs", [
       %{source: to_string(source), started_at: started_at, finished_at: now(), status: to_string(status),
         url: stats[:url] || "", snapshot: stats[:snapshot] || "", bytes: stats[:bytes] || 0,
         records: stats[:records] || 0, matched_website: stats[:matched_website] || 0,
         matched_name_country: stats[:matched_name_country] || 0,
-        error: String.slice(to_string(stats[:error] || ""), 0, 2000), updated_at: now()}
+        error: String.slice(error, 0, 2000), updated_at: now()}
     ])
   end
+
+  @doc """
+  A run that downloaded bytes and parsed nothing out of them is a failure,
+  whatever the source thought.
+
+  INCIDENT 2026-09-15. The INPI ratios download had been writing gzip to a
+  file named `.csv` since 2026-08-19, so every line failed to parse and the
+  run finished with `records: 0` and status `ok`. Filed as a success, it
+  raised no alert and emptied no table anyone was watching; the owner found
+  it a month later by reading the warehouse by hand. Succeeding at nothing
+  must not read as succeeding.
+
+  Gated on `bytes > 0` on purpose: an API-backed source reports `bytes: 0`
+  (wikidata queries SPARQL, yc scrapes JSON), and a genuinely empty upstream
+  is not the same failure.
+  """
+  @spec effective_status(atom(), keyword() | map()) :: atom()
+  def effective_status(:ok, stats) do
+    if (stats[:bytes] || 0) > 0 and (stats[:records] || 0) == 0, do: :error, else: :ok
+  end
+
+  def effective_status(status, _stats), do: status
+
+  defp silent_zero_message(stats),
+    do:
+      "downloaded #{stats[:bytes] || 0} bytes and parsed 0 records — the payload did not match the parser " <>
+        "(wrong encoding, or the upstream format changed)"
 
   # ── Records + facts ──
 
