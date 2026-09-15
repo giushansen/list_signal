@@ -80,6 +80,11 @@ defmodule LS.Alerts do
   @reputation_age_ceiling_h 50
   # a source stuck 'running' this long is wedged
   @verification_running_ceiling_h 8
+  # Grace on top of a source's own cadence before it counts as overdue. The
+  # scheduler ticks every 30 min and runs one source at a time, so real slip
+  # is minutes; two days is slack for a long pass and a restart, not a
+  # tolerance for the run being skipped.
+  @verify_grace_s 2 * 86_400
   @cooldown_hours 6
 
   @doc "Gather everything `evaluate/1` needs. Master-only; each field is independently safe."
@@ -98,6 +103,7 @@ defmodule LS.Alerts do
       reputation_ages: Metrics.reputation_ages(),
       backups: Metrics.backup_status(),
       verification: Metrics.verification(),
+      verification_freshness: Metrics.verification_freshness(),
       poller: Metrics.poller(),
       ctl_diff: LS.CTL.LogList.diff_current()
     }
@@ -124,6 +130,7 @@ defmodule LS.Alerts do
     |> reputation(m)
     |> backups(m)
     |> verification(m)
+    |> verification_overdue(m)
     |> ctl_sources(m)
     |> unmonitored(m)
     |> watchdog(m)
@@ -602,6 +609,64 @@ defmodule LS.Alerts do
   end
 
   defp verification(acc, _), do: acc
+
+  # INCIDENT 2026-09-15. The owner found every registry source 27 days stale
+  # by reading `verification_runs` by hand, and asked why no alert had fired.
+  # Because there was nothing to fire: `verify_error` needs a run that failed
+  # and `verify_stuck` needs a task still holding the scheduler, and a source
+  # that simply never gets scheduled produces neither. Nor did the data
+  # QUANTITY check cover it — its three streams are domains_current,
+  # businesses and biz_enrichment, so no verification table was watched at
+  # all. Silence read as health. This check alerts on the run that did not
+  # happen, measured against each source's own cadence.
+  defp verification_overdue(acc, %{verification_freshness: sources}) when is_list(sources) do
+    Enum.reduce(sources, acc, fn s, a ->
+      case verify_freshness_band(s.age_s, s.cadence_s) do
+        :ok ->
+          a
+
+        band ->
+          [
+            al(
+              if(band == :critical, do: :critical, else: :warning),
+              "verify_overdue:#{s.source}",
+              "Verification overdue: #{s.source}",
+              overdue_line(s)
+            )
+            | a
+          ]
+      end
+    end)
+  end
+
+  defp verification_overdue(acc, _), do: acc
+
+  defp overdue_line(%{age_s: nil, source: src}),
+    do: "#{src} has never completed a run, so nothing it contributes to `businesses` has ever been refreshed"
+
+  defp overdue_line(%{age_s: age, cadence_s: cadence, source: src}),
+    do: "#{src} last completed #{dur(age)} ago against a #{dur(cadence)} cadence; the scheduler should have run it by now"
+
+  @doc """
+  Band for one verification source against its own cadence.
+
+  `:ok` inside the cadence plus `@verify_grace_s`; `:warning` past that;
+  `:critical` at twice the cadence, or when the source has never completed a
+  run at all. A source the scheduler does not manage has no cadence and is
+  never banded — adding it to the schedule is a decision about bandwidth,
+  not something an alert should imply.
+  """
+  @spec verify_freshness_band(integer() | nil, pos_integer() | nil) :: :ok | :warning | :critical
+  def verify_freshness_band(age_s, cadence_s)
+  def verify_freshness_band(_age, nil), do: :ok
+  def verify_freshness_band(nil, _cadence), do: :critical
+  def verify_freshness_band(age, cadence) when age > cadence * 2, do: :critical
+  def verify_freshness_band(age, cadence) when age > cadence + @verify_grace_s, do: :warning
+  def verify_freshness_band(_age, _cadence), do: :ok
+
+  defp dur(s) when s >= 86_400, do: "#{div(s, 86_400)}d"
+  defp dur(s) when s >= 3600, do: "#{div(s, 3600)}h"
+  defp dur(s), do: "#{div(s, 60)}m"
 
   defp ctl_sources(acc, %{ctl_diff: %{new: new, retired: retired}}) do
     acc

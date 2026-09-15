@@ -1,5 +1,5 @@
 # Decision logic for protect-tests.sh; reads the hook payload on stdin.
-import json, os, re, sys
+import json, os, re, subprocess, sys
 root = sys.argv[1]
 try:
     payload = json.load(sys.stdin)
@@ -31,12 +31,31 @@ RULE = ("Existing tests are read-only for agents (CLAUDE.md, 'Tests are protecte
         "Add a NEW test file instead, or stop and ask the owner; the owner consents by "
         "running `touch .claude/tests-unlock`.")
 
+def tracked(rel):
+    """Is this file committed to git?
+
+    A test file git does not track is one the current session just wrote. It
+    is not part of the owner's suite, nobody has reviewed it, and the
+    pre-commit hook already lets new test files through (it refuses only
+    modify, delete and rename). Locking it would only stop an agent from
+    fixing a test it is halfway through writing, which protects nothing. The
+    moment it is committed it is locked like every other test.
+    """
+    try:
+        r = subprocess.run(["git", "ls-files", "--error-unmatch", "--", rel],
+                           cwd=root, capture_output=True, timeout=5)
+        return r.returncode == 0
+    except Exception:
+        return True  # fail closed: if git cannot answer, treat it as protected
+
+
 if tool in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
     path = inp.get("file_path") or inp.get("notebook_path") or ""
     if is_test(path):
         full = path if os.path.isabs(path) else os.path.join(root, path)
-        if os.path.exists(full):
-            deny(f"{tool} on an existing test file ({os.path.relpath(full, root)}) is blocked. " + RULE)
+        rel = os.path.relpath(full, root)
+        if os.path.exists(full) and tracked(rel):
+            deny(f"{tool} on a committed test file ({rel}) is blocked. " + RULE)
     sys.exit(0)
 
 if tool == "Bash":

@@ -24,6 +24,20 @@ defmodule LS.Verification.Scheduler do
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
+  @doc """
+  How often each source is due, in seconds. Public because the alerting
+  needs it: a source is only "overdue" relative to its own cadence, and
+  comparing against a number hard-coded somewhere else is how the two
+  silently drift apart. Returns nil for a source the scheduler does not
+  manage.
+  """
+  @spec cadence_s(atom()) :: pos_integer() | nil
+  def cadence_s(source), do: @every[source]
+
+  @doc "The whole cadence table, for the dashboard and the weekly report."
+  @spec cadence_s() :: %{atom() => pos_integer()}
+  def cadence_s, do: @every
+
   @doc "What is running, what ran last, and any error — for the dashboard."
   def stats, do: GenServer.call(__MODULE__, :stats)
 

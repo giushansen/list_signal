@@ -157,6 +157,45 @@ so the move does not cost a cold start.
 
 ## 2026-09-15
 
+**Verification looked dead, was on cadence, and nothing would have told us
+either way.** The owner read `verification_runs` by hand and found every
+registry source 27 days old. Checked: all five scheduled sources were inside
+their own cadence (wikidata and yc weekly, last run 09-09 and 09-08;
+sec_edgar, companies_house and sirene monthly, all last run 08-19, next due
+09-18). Nothing was stuck and nothing had failed. But the alerting could not
+have said so, and could not have said the opposite either: `verify_error`
+needs a run row with status "error" and `verify_stuck` needs a task still
+holding the scheduler, so a source that simply stops being scheduled emits
+neither. The data QUANTITY check does not cover it — its three streams are
+domains_current, businesses and biz_enrichment, and no verification table is
+watched at all, which is worth knowing because "quantity monitoring" is what
+the owner reasonably assumed covered this. The error path does work: the 13
+failed wikidata runs on 08-26 did email twice.
+
+Fix: `LS.Metrics.verification_freshness/0` reports each scheduled source's
+age against `Scheduler.cadence_s/1` (now public, so the cadence and the alert
+cannot drift apart), and `LS.Alerts.verify_freshness_band/2` bands it — `:ok`
+inside cadence plus a two-day grace, `:warning` past that, `:critical` at
+twice cadence or when a source has never completed a run at all. Replayed
+against today's real rows it stays silent with 2 to 5.5 days of slack per
+source, and would fire on 09-20 if the 09-18 monthly run never happens.
+
+Two things left for the owner to decide, not changed here: `inpi` and
+`companies_house_accounts` are not in `LS.Verification.sources/0`, so they
+ran once on 08-19 and can never refresh (verification_ch_accounts is frozen
+at 3.26M rows and verification_inpi_ratios is empty, so that ingest may never
+have produced anything); scheduling them starts month-scale downloads, which
+is a bandwidth and disk call.
+
+**The test guard now distinguishes committed tests from uncommitted ones.**
+Writing the test above hit the guard shipped this morning: it locked a file
+the same session had just created, so a test could not be iterated on while
+being written. An uncommitted test is not part of the owner's suite and
+`.githooks/pre-commit` already lets new test files through (it refuses only
+modify, delete and rename), so the PreToolUse hook now asks `git ls-files`
+and blocks only tracked files, failing closed if git cannot answer. Committed
+tests are as locked as they were.
+
 **The login page locked the email field for anyone whose browser still
 held a session.** The generated auth page made the email input read-only
 whenever `current_scope` existed and said only "Re-authenticate to

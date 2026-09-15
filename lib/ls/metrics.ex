@@ -156,6 +156,35 @@ defmodule LS.Metrics do
     |> Enum.map(fn [s, r, mt, b, lr] -> %{source: s, records: to_i(r), matched: to_i(mt), bytes: to_i(b), last_run: lr} end)
   end
 
+  @doc """
+  Age of the newest SUCCESSFUL run of each scheduled verification source,
+  in seconds, next to that source's own cadence. `age_s` is nil when the
+  source has never completed a run.
+
+  Exists because absence had no metric. A source that stops being scheduled
+  writes no error row and holds no running task, so both existing
+  verification alerts stay silent and the pipeline going quiet looks exactly
+  like the pipeline being healthy. On 2026-09-15 the five registry sources
+  were 27 days old and nothing had said a word.
+  """
+  @spec verification_freshness() :: [%{source: String.t(), age_s: integer() | nil, cadence_s: pos_integer() | nil}]
+  def verification_freshness do
+    ages =
+      ch_rows("""
+      SELECT source, dateDiff('second', max(finished_at), now())
+      FROM verification_runs WHERE status = 'ok' GROUP BY source
+      """)
+      |> Map.new(fn [src, secs] -> {to_string(src), to_i(secs)} end)
+
+    Enum.map(LS.Verification.sources(), fn source ->
+      %{
+        source: to_string(source),
+        age_s: Map.get(ages, to_string(source)),
+        cadence_s: LS.Verification.Scheduler.cadence_s(source)
+      }
+    end)
+  end
+
   @doc "Real-business yield of the crawl: how many domains carry MX + a classified model (the sellable signal), last `days`."
   def real_business_yield(days \\ 7) do
     case Clickhouse.query_raw("SELECT sum(cnt) FROM daily_real_businesses WHERE day > today() - #{i(days)}", 8_000) do
