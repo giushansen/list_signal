@@ -89,6 +89,27 @@ product start reading like a model again. The rest of the list is on you.
   Commits end with the `Co-Authored-By` trailer.
 - Run `mix test` (and `mix compile --warnings-as-errors`) before presenting work.
 
+## Tests are protected
+
+Existing tests are read-only for any AI agent, in any session, with no
+exceptions. Never edit, weaken, rename, move or delete a test that already
+exists. If a test fails because of your change, the change is wrong or the
+owner must decide: stop and ask. Adding a NEW test file is always allowed
+and expected.
+
+Consent is explicit and belongs to the owner alone: the owner runs
+`touch .claude/tests-unlock` in the project root for the duration of the
+change and removes it afterwards. An agent must never create that file,
+set `TESTS_CHANGE_OK`, or work around the guard through another tool.
+
+This is enforced twice, not just written down: `.claude/hooks/protect-tests.sh`
+(a Claude Code PreToolUse hook registered in `.claude/settings.json`) denies
+file-tool edits of existing test files and shell commands that could rewrite
+or delete them, and `.githooks/pre-commit` refuses to commit a modified,
+renamed or deleted test. Activate the git side once per clone with
+`git config core.hooksPath .githooks`. Added 2026-09-15 at the owner's
+request after agents rewrote test assertions to fit their own changes.
+
 ## Tests — every bug and every feature, no exceptions
 
 - **A bug is not fixed until a test would have caught it.** Write the failing

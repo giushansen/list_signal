@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Existing tests are read-only for agents (CLAUDE.md, "Tests are protected").
+# A commit that modifies, renames or deletes a file under test/ (or any
+# *_test.exs) is refused unless the owner has consented by creating
+# .claude/tests-unlock or exporting TESTS_CHANGE_OK=1 for that commit.
+# Adding a new test file is always allowed. Activated per clone with:
+#   git config core.hooksPath .githooks
+set -u
+if [ -e ".claude/tests-unlock" ] || [ "${TESTS_CHANGE_OK:-}" = "1" ]; then exit 0; fi
+blocked=$(git diff --cached --name-status -M | awk '
+  $1 ~ /^(M|D|T)/ && ($2 ~ /(^|\/)(test|tests)\// || $2 ~ /_test\.exs$/) { print $1 "\t" $2 }
+  $1 ~ /^R/ && ($2 ~ /(^|\/)(test|tests)\// || $2 ~ /_test\.exs$/ || $3 ~ /(^|\/)(test|tests)\// || $3 ~ /_test\.exs$/) { print $1 "\t" $2 " -> " $3 }
+')
+if [ -n "$blocked" ]; then
+  echo "pre-commit: existing tests are read-only for agents. Refusing to commit:" >&2
+  echo "$blocked" >&2
+  echo "The owner consents with: touch .claude/tests-unlock   (remove it afterwards)" >&2
+  echo "or, for one commit:      TESTS_CHANGE_OK=1 git commit ..." >&2
+  exit 1
+fi
+exit 0

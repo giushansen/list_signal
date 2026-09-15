@@ -155,6 +155,34 @@ so the move does not cost a cold start.
 
 ---
 
+## 2026-09-15
+
+**The login page locked the email field for anyone whose browser still
+held a session.** The generated auth page made the email input read-only
+whenever `current_scope` existed and said only "Re-authenticate to
+continue", so the owner, arriving with a stale session, saw a page where
+only the password could be typed and read it as a broken login. There was
+no earlier fix for this in git; the behaviour dates from the auth
+generator (04-06). Now the field is always editable (the session
+controller logs in whichever account the credentials belong to, so that
+is safe), and a signed-in visitor is told who they are with a dashboard
+link and a log-out link. Pinned in a new file,
+`login_signed_in_test.exs`; the existing sudo-mode test was left as it
+was and still passes.
+
+**Existing tests are now read-only for agents, enforced, not just
+written.** Owner's rule after agents rewrote test assertions to fit their
+own changes (including four in the 09-07 compaction work). Two layers:
+`.claude/hooks/protect-tests.sh` (PreToolUse, registered in
+`.claude/settings.json`) denies Edit/Write/MultiEdit/NotebookEdit on an
+existing test file and any shell command that could rewrite or delete one
+(rm, mv, sed -i, redirects, interpreters, git rm and friends), and
+`.githooks/pre-commit` refuses to commit a modified, renamed or deleted
+test (`git config core.hooksPath .githooks` per clone). New test files
+are always allowed. Consent is the owner creating `.claude/tests-unlock`
+(git-ignored) or `TESTS_CHANGE_OK=1` for one commit. Rule text in
+CLAUDE.md, "Tests are protected".
+
 ## 2026-09-07
 
 **Brand v1: the LS letter box is gone, the "Live list" mark is in.** The

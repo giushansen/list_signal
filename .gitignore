@@ -73,3 +73,6 @@ rel/*
 .secrets/
 .claude/worktrees/
 run_mac_worker.sh
+
+# Owner consent file for the test guard (see CLAUDE.md). Never committed.
+.claude/tests-unlock

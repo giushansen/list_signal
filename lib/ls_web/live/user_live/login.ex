@@ -1,5 +1,15 @@
 defmodule LSWeb.UserLive.Login do
-  @moduledoc "Magic-link login LiveView (phx.gen.auth)."
+  @moduledoc """
+  Magic-link login LiveView (phx.gen.auth).
+
+  The email field is always editable. The generator made it read-only
+  whenever a session already existed, with a one-line "re-authenticate"
+  hint, so an owner whose browser still held a session could not switch
+  accounts from this page and read it as a broken login (2026-09-15). A
+  signed-in visitor is now told who they are and given the dashboard and
+  a log-out link; the session controller logs in whichever account the
+  submitted credentials belong to, so an editable field is safe.
+  """
   use LSWeb, :live_view
 
   alias LS.Accounts
@@ -14,7 +24,12 @@ defmodule LSWeb.UserLive.Login do
           <h1 class="text-xl font-semibold text-white mt-2">Log in</h1>
           <p class="text-gray-400 text-sm mt-1">
             <%= if @current_scope do %>
-              Re-authenticate to continue.
+              You are signed in as <span class="text-white">{@current_scope.user.email}</span>.
+              Re-authenticate below,
+              <.link navigate={~p"/dashboard"} class="text-emerald-400 hover:underline">go to the dashboard</.link>,
+              or
+              <.link href={~p"/users/log-out"} method="delete" class="text-emerald-400 hover:underline">log out</.link>
+              to use another account.
             <% else %>
               Don't have an account?
               <.link navigate={~p"/users/register"} data-umami-event="signup_cta" data-umami-event-source="login_page" class="text-emerald-400 hover:underline">Sign up</.link>
@@ -40,7 +55,6 @@ defmodule LSWeb.UserLive.Login do
               <div>
                 <label class="block text-sm text-gray-400 mb-1">Email</label>
                 <input type="email" name={f[:email].name} value={f[:email].value}
-                  readonly={!!@current_scope}
                   class="w-full bg-[#0a0e17] border border-white/[0.07] rounded px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                   autocomplete="username" spellcheck="false" required phx-mounted={Phoenix.LiveView.JS.focus()} />
               </div>
@@ -67,7 +81,6 @@ defmodule LSWeb.UserLive.Login do
           >
             <div class="space-y-3">
               <input type="email" name={f[:email].name} value={f[:email].value}
-                readonly={!!@current_scope}
                 class="w-full bg-[#0a0e17] border border-white/[0.07] rounded px-3 py-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                 autocomplete="username" spellcheck="false" required />
               <input type="password" name={f[:password].name}
