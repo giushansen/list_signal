@@ -2,12 +2,12 @@
 -- ListSignal ClickHouse schema — AUTHORITATIVE, generated from production.
 --
 --   Regenerate:  bash clickhouse/dump_schema.sh > clickhouse/schema.sql
---   Last dumped: 2026-08-07
+--   Last dumped: 2026-09-17
 --   Source:      root@45.63.7.58
 --
 -- Read docs/pipelines.md for how these fit together. In short:
 --
---   PIPELINE 1 (discovery)   enrichments ──MV──> domains_current ──view──> domains_fast
+--   PIPELINE 1 (discovery)   domains_history ──MV──> domains_current ──view──> domains_fast
 --                            plus the persistent `platforms` registry
 --   PIPELINE 2 (enrichment)  biz_contact · biz_career · biz_pricing · biz_news
 --                            · biz_enrichment
@@ -21,6 +21,35 @@
 --
 -- Views are dumped too, so `v_business_export` appears here once created.
 -- ═══════════════════════════════════════════════════════════════════════════
+
+-- ═══ bf1_class ═══
+CREATE TABLE ls.bf1_class
+(
+    `domain` String,
+    `bm` String,
+    `conf` Float32
+)
+ENGINE = Join(ANY, LEFT, domain)
+;
+
+-- ═══ bf1_junk ═══
+CREATE TABLE ls.bf1_junk
+(
+    `domain` String,
+    `j` String
+)
+ENGINE = Join(ANY, LEFT, domain)
+;
+
+-- ═══ bf1_rev ═══
+CREATE TABLE ls.bf1_rev
+(
+    `domain` String,
+    `r` String,
+    `conf` Float32
+)
+ENGINE = Join(ANY, LEFT, domain)
+;
 
 -- ═══ mv_daily_blocked ═══
 CREATE MATERIALIZED VIEW ls.mv_daily_blocked TO ls.daily_blocked
@@ -223,6 +252,42 @@ AS SELECT
 FROM ls.domains_history
 ;
 
+-- ═══ tmp_exclude ═══
+CREATE TABLE ls.tmp_exclude
+(
+    `domain` String
+)
+ENGINE = Memory
+;
+
+-- ═══ tmp_sig_domains ═══
+CREATE TABLE ls.tmp_sig_domains
+(
+    `domain` String
+)
+ENGINE = Memory
+;
+
+-- ═══ api_request_log ═══
+CREATE TABLE ls.api_request_log
+(
+    `ts` DateTime DEFAULT now(),
+    `user_id` String,
+    `email` String,
+    `plan` LowCardinality(String),
+    `key_prefix` String,
+    `surface` LowCardinality(String),
+    `endpoint` LowCardinality(String),
+    `target` String,
+    `filters` String,
+    `result_count` UInt32 DEFAULT 0
+)
+ENGINE = MergeTree
+ORDER BY (ts)
+TTL ts + toIntervalYear(2)
+SETTINGS index_granularity = 8192
+;
+
 -- ═══ bak_nxfix_20260730 ═══
 CREATE TABLE ls.bak_nxfix_20260730
 (
@@ -269,11 +334,61 @@ CREATE TABLE ls.biz_enrichment_log
     `mission` String,
     `hq_location` String,
     `job_locations_top` String,
-    `positions_overview` String
+    `positions_overview` String,
+    `apps_deep` String DEFAULT '',
+    `shop_theme` LowCardinality(String) DEFAULT '',
+    `shop_theme_store_id` Nullable(UInt32),
+    `shop_currency` LowCardinality(String) DEFAULT '',
+    `shop_locales` Nullable(UInt8),
+    `shopify_plus` Nullable(UInt8),
+    `sitemap_urls` Nullable(UInt32),
+    `sitemap_products` Nullable(UInt32),
+    `sitemap_blog` Nullable(UInt32),
+    `sitemap_children` Nullable(UInt16),
+    `sitemap_lastmod` Nullable(DateTime),
+    `sitemap_hash` Nullable(UInt64),
+    `depth_estimated_revenue` LowCardinality(String) DEFAULT '',
+    `depth_estimated_employees` LowCardinality(String) DEFAULT '',
+    `depth_revenue_confidence` Nullable(Float32),
+    `depth_revenue_evidence` String DEFAULT '',
+    `pipeline_version` LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
 ORDER BY (domain, enriched_at)
 TTL enriched_at + toIntervalDay(365)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ biz_page_fetch ═══
+CREATE TABLE ls.biz_page_fetch
+(
+    `domain` String,
+    `page_kind` LowCardinality(String),
+    `path` String,
+    `outcome` LowCardinality(String),
+    `status` Int32 DEFAULT 0,
+    `elapsed_ms` UInt32 DEFAULT 0,
+    `seen_at` DateTime
+)
+ENGINE = MergeTree
+ORDER BY (domain, seen_at, page_kind)
+TTL seen_at + toIntervalDay(90)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ ctl_sightings ═══
+CREATE TABLE ls.ctl_sightings
+(
+    `domain` String,
+    `seen_at` DateTime,
+    `ctl_tld` LowCardinality(String),
+    `ctl_issuer` LowCardinality(String),
+    `ctl_subdomain_count` UInt16,
+    `ctl_subdomains` String
+)
+ENGINE = MergeTree
+ORDER BY (domain, seen_at)
+TTL seen_at + toIntervalDay(90)
 SETTINGS index_granularity = 8192
 ;
 
@@ -335,12 +450,98 @@ CREATE TABLE ls.domains_history
     `estimated_revenue` LowCardinality(String) DEFAULT '',
     `estimated_employees` LowCardinality(String) DEFAULT '',
     `revenue_confidence` Nullable(Float32),
-    `revenue_evidence` String DEFAULT ''
+    `revenue_evidence` String DEFAULT '',
+    `http_country_evidence` LowCardinality(String) DEFAULT '',
+    `http_country_evidence_src` LowCardinality(String) DEFAULT '',
+    `rdap_registrant_country` LowCardinality(String) DEFAULT '',
+    `dns_dmarc` LowCardinality(String) DEFAULT '',
+    `dns_bimi` String DEFAULT '',
+    `dns_dkim` LowCardinality(String) DEFAULT '',
+    `dns_ptr` String DEFAULT '',
+    `dns_ms_enterprise` LowCardinality(String) DEFAULT '',
+    `http_observed` UInt8 DEFAULT 1,
+    `http_fingerprint` String DEFAULT '',
+    `pipeline_version` LowCardinality(String) DEFAULT '',
+    `classification_source` LowCardinality(String) DEFAULT ''
 )
 ENGINE = MergeTree
 PARTITION BY toYYYYMM(enriched_at)
 ORDER BY (domain, enriched_at)
 TTL enriched_at + toIntervalDay(365)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ ops_email_log ═══
+CREATE TABLE ls.ops_email_log
+(
+    `key` LowCardinality(String),
+    `sent_at` DateTime,
+    `subject` String
+)
+ENGINE = MergeTree
+ORDER BY (key, sent_at)
+TTL sent_at + toIntervalDay(180)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ ops_memory_snapshots ═══
+CREATE TABLE ls.ops_memory_snapshots
+(
+    `node` LowCardinality(String),
+    `at` DateTime,
+    `self_rss_mb` UInt32,
+    `erlang_total_mb` UInt32,
+    `native_gap_mb` Int32,
+    `processes_mb` UInt32,
+    `ets_mb` UInt32,
+    `binary_mb` UInt32,
+    `top_ets` String,
+    `top_processes` String,
+    `alarm` UInt8
+)
+ENGINE = MergeTree
+ORDER BY (node, at)
+TTL at + toIntervalDay(14)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ tech_index ═══
+CREATE TABLE ls.tech_index
+(
+    `tech` LowCardinality(String),
+    `rank` UInt32,
+    `domain` String,
+    `http_title` String,
+    `http_tech` String,
+    `country` LowCardinality(String),
+    `tranco_rank` Nullable(Int32),
+    `majestic_rank` Nullable(Int32),
+    `is_shopify` UInt8,
+    `http_status` Nullable(Int32),
+    `http_response_time` Nullable(Int32),
+    `http_language` LowCardinality(String),
+    `rdap_registrar` LowCardinality(String),
+    `rdap_domain_created_at` Nullable(DateTime),
+    `bgp_asn_org` LowCardinality(String),
+    `dns_mx` String,
+    `http_emails` String,
+    `enriched_at` DateTime,
+    `built_at` DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+ORDER BY (tech, rank, domain)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ verification_domain_keys ═══
+CREATE TABLE ls.verification_domain_keys
+(
+    `name_key` String,
+    `country` LowCardinality(String),
+    `domain` String
+)
+ENGINE = MergeTree
+ORDER BY (name_key, country)
 SETTINGS index_granularity = 8192
 ;
 
@@ -382,7 +583,8 @@ CREATE TABLE ls.biz_contact
     `domain` String,
     `email` String,
     `source_page` LowCardinality(String),
-    `seen_at` DateTime
+    `seen_at` DateTime,
+    `on_domain` UInt8 DEFAULT 0
 )
 ENGINE = ReplacingMergeTree(seen_at)
 ORDER BY (domain, email)
@@ -421,7 +623,24 @@ CREATE TABLE ls.biz_enrichment
     `mission` String,
     `hq_location` String,
     `job_locations_top` String,
-    `positions_overview` String
+    `positions_overview` String,
+    `apps_deep` String DEFAULT '',
+    `shop_theme` LowCardinality(String) DEFAULT '',
+    `shop_theme_store_id` Nullable(UInt32),
+    `shop_currency` LowCardinality(String) DEFAULT '',
+    `shop_locales` Nullable(UInt8),
+    `shopify_plus` Nullable(UInt8),
+    `sitemap_urls` Nullable(UInt32),
+    `sitemap_products` Nullable(UInt32),
+    `sitemap_blog` Nullable(UInt32),
+    `sitemap_children` Nullable(UInt16),
+    `sitemap_lastmod` Nullable(DateTime),
+    `sitemap_hash` Nullable(UInt64),
+    `depth_estimated_revenue` LowCardinality(String) DEFAULT '',
+    `depth_estimated_employees` LowCardinality(String) DEFAULT '',
+    `depth_revenue_confidence` Nullable(Float32),
+    `depth_revenue_evidence` String DEFAULT '',
+    `pipeline_version` LowCardinality(String) DEFAULT ''
 )
 ENGINE = ReplacingMergeTree(enriched_at)
 ORDER BY domain
@@ -477,6 +696,21 @@ CREATE TABLE ls.biz_products
 )
 ENGINE = ReplacingMergeTree(seen_at)
 ORDER BY (domain, product_id)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ biz_signal ═══
+CREATE TABLE ls.biz_signal
+(
+    `kind` LowCardinality(String),
+    `value` String,
+    `domain` String,
+    `changed_at` DateTime,
+    INDEX idx_biz_signal_domain domain TYPE bloom_filter(0.01) GRANULARITY 1
+)
+ENGINE = ReplacingMergeTree
+ORDER BY (kind, value, domain, changed_at)
+TTL changed_at + toIntervalDay(730)
 SETTINGS index_granularity = 8192
 ;
 
@@ -573,6 +807,34 @@ CREATE TABLE ls.businesses
     `positions_overview` String,
     `news_count` Nullable(UInt16),
     `last_funding_usd` Nullable(UInt64),
+    `verified_revenue` LowCardinality(String) DEFAULT '',
+    `verified_revenue_source` LowCardinality(String) DEFAULT '',
+    `verified_employees` LowCardinality(String) DEFAULT '',
+    `verified_employees_source` LowCardinality(String) DEFAULT '',
+    `mission_summary` String DEFAULT '',
+    `is_shopify` UInt8 MATERIALIZED http_tech LIKE '%Shopify%',
+    `is_saas` UInt8 MATERIALIZED business_model = 'SaaS',
+    `http_country_evidence` LowCardinality(String) DEFAULT '',
+    `http_country_evidence_src` LowCardinality(String) DEFAULT '',
+    `rdap_registrant_country` LowCardinality(String) DEFAULT '',
+    `dns_dmarc` LowCardinality(String) DEFAULT '',
+    `dns_bimi` String DEFAULT '',
+    `dns_dkim` LowCardinality(String) DEFAULT '',
+    `shop_theme` LowCardinality(String) DEFAULT '',
+    `shop_theme_store_id` Nullable(UInt32),
+    `shop_currency` LowCardinality(String) DEFAULT '',
+    `shop_locales` Nullable(UInt8),
+    `shopify_plus` Nullable(UInt8),
+    `dns_ptr` String DEFAULT '',
+    `dns_ms_enterprise` LowCardinality(String) DEFAULT '',
+    `sitemap_urls` Nullable(UInt32),
+    `sitemap_products` Nullable(UInt32),
+    `sitemap_blog` Nullable(UInt32),
+    `sitemap_children` Nullable(UInt16),
+    `sitemap_lastmod` Nullable(DateTime),
+    `sitemap_hash` Nullable(UInt64),
+    `pipeline_version` LowCardinality(String) DEFAULT '',
+    `classification_source` LowCardinality(String) DEFAULT '',
     INDEX idx_product_count product_count TYPE minmax GRANULARITY 4,
     INDEX idx_job_count job_count TYPE minmax GRANULARITY 4,
     INDEX idx_seo_score seo_score TYPE minmax GRANULARITY 4
@@ -649,6 +911,43 @@ ORDER BY domain
 SETTINGS index_granularity = 8192
 ;
 
+-- ═══ hr_boards ═══
+CREATE TABLE ls.hr_boards
+(
+    `platform` LowCardinality(String),
+    `slug` String,
+    `domain` String,
+    `company` String,
+    `country` LowCardinality(String),
+    `first_seen` DateTime DEFAULT now(),
+    `last_synced` DateTime DEFAULT toDateTime(0),
+    `job_count` Int32 DEFAULT -1
+)
+ENGINE = ReplacingMergeTree(last_synced)
+ORDER BY (platform, slug)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ ml_teacher_labels ═══
+CREATE TABLE ls.ml_teacher_labels
+(
+    `domain` String,
+    `labeled_at` DateTime DEFAULT now(),
+    `teacher` LowCardinality(String),
+    `business_model` LowCardinality(String),
+    `industry` String,
+    `revenue_bracket` LowCardinality(String),
+    `employees_bracket` LowCardinality(String),
+    `confidence` Float32,
+    `source` String,
+    `verified` UInt8,
+    `dataset` LowCardinality(String)
+)
+ENGINE = ReplacingMergeTree(labeled_at)
+ORDER BY (dataset, domain, teacher)
+SETTINGS index_granularity = 8192
+;
+
 -- ═══ platforms ═══
 CREATE TABLE ls.platforms
 (
@@ -666,6 +965,103 @@ CREATE TABLE ls.platforms
 )
 ENGINE = ReplacingMergeTree(last_seen)
 ORDER BY domain
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ verification_ch_accounts ═══
+CREATE TABLE ls.verification_ch_accounts
+(
+    `company_number` String,
+    `period_end` Date,
+    `turnover` Nullable(Float64),
+    `employees` Nullable(UInt32),
+    `file` String,
+    `month` String,
+    `fetched_at` DateTime
+)
+ENGINE = ReplacingMergeTree(fetched_at)
+ORDER BY (company_number, period_end)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ verification_inpi_ratios ═══
+CREATE TABLE ls.verification_inpi_ratios
+(
+    `siren` String,
+    `closing` Date,
+    `revenue_eur` Float64,
+    `kind` LowCardinality(String),
+    `fetched_at` DateTime
+)
+ENGINE = ReplacingMergeTree(fetched_at)
+ORDER BY (siren, closing, kind)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ verification_runs ═══
+CREATE TABLE ls.verification_runs
+(
+    `source` LowCardinality(String),
+    `started_at` DateTime,
+    `finished_at` Nullable(DateTime),
+    `status` LowCardinality(String),
+    `url` String,
+    `snapshot` String,
+    `bytes` UInt64,
+    `records` UInt64,
+    `matched_website` UInt64,
+    `matched_name_country` UInt64,
+    `error` String,
+    `updated_at` DateTime
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (source, started_at)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ verified_facts ═══
+CREATE TABLE ls.verified_facts
+(
+    `domain` String,
+    `fact` LowCardinality(String),
+    `source_id` String,
+    `value` String,
+    `raw_value` String,
+    `period` String,
+    `source` LowCardinality(String),
+    `source_url` String,
+    `match_method` LowCardinality(String),
+    `fetched_at` DateTime
+)
+ENGINE = ReplacingMergeTree(fetched_at)
+ORDER BY (domain, fact, source, value)
+SETTINGS index_granularity = 8192
+;
+
+-- ═══ verified_source_records ═══
+CREATE TABLE ls.verified_source_records
+(
+    `source` LowCardinality(String),
+    `source_id` String,
+    `content_hash` String,
+    `name` String,
+    `name_key` String,
+    `country` LowCardinality(String),
+    `website` String,
+    `website_domain` String,
+    `revenue_usd` Nullable(Float64),
+    `revenue_raw` String,
+    `employees` Nullable(UInt32),
+    `employees_band` String,
+    `period` String,
+    `extra` String,
+    `matched_domain` String,
+    `match_method` LowCardinality(String),
+    `source_url` String,
+    `fetched_at` DateTime
+)
+ENGINE = ReplacingMergeTree(fetched_at)
+ORDER BY (source, source_id, content_hash)
 SETTINGS index_granularity = 8192
 ;
 
@@ -795,67 +1191,69 @@ AS SELECT
 FROM ls.domains_current
 ;
 
--- ═══ enrichments ═══
-CREATE VIEW ls.enrichments
+-- ═══ tmp_pool ═══
+CREATE VIEW ls.tmp_pool
 (
-    `enriched_at` DateTime,
-    `worker` LowCardinality(String),
     `domain` String,
-    `ctl_tld` LowCardinality(String),
-    `ctl_issuer` LowCardinality(String),
-    `ctl_subdomain_count` Nullable(Int32),
-    `ctl_subdomains` String,
-    `dns_a` String,
-    `dns_aaaa` String,
-    `dns_mx` String,
-    `dns_txt` String,
-    `dns_cname` String,
-    `http_status` Nullable(Int32),
-    `http_response_time` Nullable(Int32),
-    `http_blocked` LowCardinality(String),
-    `http_content_type` LowCardinality(String),
+    `tranco_rank` Nullable(Int32),
+    `business_model` String,
+    `industry` String,
+    `classification_confidence` Nullable(Float32),
+    `estimated_revenue` String,
+    `revenue_confidence` Nullable(Float32),
+    `is_shopify` UInt8,
+    `inferred_country` String,
+    `ctl_tld` String,
+    `verified_revenue` LowCardinality(String),
+    `verified_employees` LowCardinality(String),
     `http_tech` String,
     `http_apps` String,
-    `http_language` LowCardinality(String),
+    `dns_mx` String,
+    `dns_dmarc` LowCardinality(String),
+    `dns_dkim` LowCardinality(String),
     `http_title` String,
-    `http_meta_description` String,
-    `http_pages` String,
-    `http_emails` String,
-    `http_error` LowCardinality(String),
     `http_h1` String,
-    `http_body_snippet` String,
-    `business_model` LowCardinality(String),
-    `industry` LowCardinality(String),
-    `classification_confidence` Nullable(Float32),
-    `http_schema_type` LowCardinality(String),
-    `http_og_type` LowCardinality(String),
-    `bgp_ip` String,
-    `bgp_asn_number` LowCardinality(String),
-    `bgp_asn_org` LowCardinality(String),
-    `bgp_asn_country` LowCardinality(String),
-    `bgp_asn_prefix` String,
-    `inferred_country` LowCardinality(String),
-    `rdap_domain_created_at` Nullable(DateTime),
-    `rdap_domain_expires_at` Nullable(DateTime),
-    `rdap_domain_updated_at` Nullable(DateTime),
-    `rdap_registrar` LowCardinality(String),
-    `rdap_registrar_iana_id` LowCardinality(String),
-    `rdap_nameservers` String,
-    `rdap_status` String,
-    `rdap_error` LowCardinality(String),
-    `tranco_rank` Nullable(Int32),
-    `majestic_rank` Nullable(Int32),
-    `majestic_ref_subnets` Nullable(Int32),
-    `is_malware` LowCardinality(String),
-    `is_phishing` LowCardinality(String),
-    `is_disposable_email` LowCardinality(String),
-    `estimated_revenue` LowCardinality(String),
-    `estimated_employees` LowCardinality(String),
-    `revenue_confidence` Nullable(Float32),
-    `revenue_evidence` String
+    `http_meta_description` String,
+    `about_text` String,
+    `product_types` String,
+    `product_count` Nullable(UInt32),
+    `job_count` Nullable(UInt16),
+    `stratum` String,
+    `bigco` Nullable(UInt8)
 )
-AS SELECT *
-FROM ls.domains_history
+AS SELECT
+    domain,
+    tranco_rank,
+    business_model,
+    industry,
+    classification_confidence,
+    estimated_revenue,
+    revenue_confidence,
+    is_shopify,
+    inferred_country,
+    ctl_tld,
+    verified_revenue,
+    verified_employees,
+    http_tech,
+    http_apps,
+    dns_mx,
+    dns_dmarc,
+    dns_dkim,
+    http_title,
+    http_h1,
+    http_meta_description,
+    about_text,
+    product_types,
+    product_count,
+    job_count,
+    multiIf(is_shopify = 1, 'shopify', business_model = 'SaaS', 'saas', business_model = 'Ecommerce', 'ecommerce', (business_model IN ('Marketplace', 'Tool', 'Media', 'Newsletter', 'Community', 'Directory')), 'online', (business_model IN ('Agency', 'Consulting', 'LocalBusiness', 'Manufacturer', 'Education', 'Nonprofit', 'FinancialInstitution', 'Government')), 'offline', 'other') AS stratum,
+    ((verified_revenue IN ('$10M-$100M', '$100M-$1B', '$1B+')) OR (verified_employees IN ('501-5000', '5001+')) OR ((tranco_rank IS NOT NULL) AND (tranco_rank <= 50000))) AS bigco
+FROM ls.businesses
+FINAL
+WHERE (http_status = 200) AND (dns_alive = 1) AND (is_junk = '') AND (http_title != '') AND (domain NOT IN (
+    SELECT domain
+    FROM ls.tmp_exclude
+))
 ;
 
 -- ═══ v_business_export ═══
@@ -1085,303 +1483,3 @@ LEFT JOIN
 ) AS col ON b.domain = col.domain
 ;
 
--- ═══ v_business_unified ═══
-CREATE VIEW ls.v_business_unified
-(
-    `domain` String,
-    `first_seen` DateTime,
-    `as_of` DateTime,
-    `last_verified_at` DateTime,
-    `last_worker` String,
-    `crawlable` Nullable(UInt8),
-    `last_http_status` Nullable(Int32),
-    `last_http_error` String,
-    `last_http_blocked` String,
-    `dns_alive` UInt8,
-    `ctl_tld` String,
-    `ctl_issuer` String,
-    `ctl_subdomain_count` Nullable(Int32),
-    `ctl_subdomains` String,
-    `dns_a` String,
-    `dns_aaaa` String,
-    `dns_mx` String,
-    `dns_txt` String,
-    `dns_cname` String,
-    `http_status` Nullable(Int32),
-    `http_response_time` Nullable(Int32),
-    `http_blocked` String,
-    `http_content_type` String,
-    `http_tech` String,
-    `http_apps` String,
-    `http_language` String,
-    `http_title` String,
-    `http_meta_description` String,
-    `http_pages` String,
-    `http_emails` String,
-    `http_h1` String,
-    `business_model` String,
-    `industry` String,
-    `classification_confidence` Nullable(Float32),
-    `http_schema_type` String,
-    `http_og_type` String,
-    `bgp_ip` String,
-    `bgp_asn_number` String,
-    `bgp_asn_org` String,
-    `bgp_asn_country` String,
-    `bgp_asn_prefix` String,
-    `inferred_country` String,
-    `rdap_domain_created_at` Nullable(DateTime),
-    `rdap_domain_expires_at` Nullable(DateTime),
-    `rdap_domain_updated_at` Nullable(DateTime),
-    `rdap_registrar` String,
-    `rdap_registrar_iana_id` String,
-    `rdap_nameservers` String,
-    `rdap_status` String,
-    `tranco_rank` Nullable(Int32),
-    `majestic_rank` Nullable(Int32),
-    `majestic_ref_subnets` Nullable(Int32),
-    `is_disposable_email` String,
-    `estimated_revenue` String,
-    `estimated_employees` String,
-    `revenue_confidence` Nullable(Float32),
-    `revenue_evidence` String,
-    `product_count` Nullable(UInt32),
-    `price_min` Nullable(Float32),
-    `price_avg` Nullable(Float32),
-    `price_max` Nullable(Float32),
-    `new_products_30d` Nullable(UInt32),
-    `last_product_at` Nullable(DateTime),
-    `oos_ratio` Nullable(Float32),
-    `discount_depth` Nullable(Float32),
-    `vendor_count` Nullable(UInt32),
-    `catalog_age_days` Nullable(UInt32),
-    `product_types` String,
-    `job_count` Nullable(UInt16),
-    `ats_platform` LowCardinality(String),
-    `job_departments` String,
-    `job_locations` String,
-    `seo_score` Nullable(UInt8),
-    `seo_issues` String,
-    `seo_word_count` Nullable(UInt32),
-    `seo_alt_ratio` Nullable(Float32),
-    `perf_lcp_ms` Nullable(UInt32),
-    `perf_cls` Nullable(Float32),
-    `perf_ttfb_ms` Nullable(UInt32),
-    `render_engine` LowCardinality(String),
-    `depth_enriched_at` Nullable(DateTime),
-    `pricing_points` Nullable(UInt8),
-    `about_text` String,
-    `mission` String,
-    `hq_location` String,
-    `job_locations_top` String,
-    `positions_overview` String,
-    `news_count` Nullable(UInt16),
-    `last_funding_usd` Nullable(UInt64),
-    `contact_emails` Array(String),
-    `contact_count` UInt64,
-    `pricing_observed` Array(Float32),
-    `pricing_currencies` Array(String),
-    `career_titles` Array(String),
-    `career_locations` Array(String),
-    `catalog_titles` Array(String),
-    `catalog_rows` UInt64,
-    `collection_titles` Array(String),
-    `news_headlines` Array(String)
-)
-AS SELECT
-    b.domain AS domain,
-    b.first_seen AS first_seen,
-    b.as_of AS as_of,
-    b.last_verified_at AS last_verified_at,
-    b.last_worker AS last_worker,
-    b.crawlable AS crawlable,
-    b.last_http_status AS last_http_status,
-    b.last_http_error AS last_http_error,
-    b.last_http_blocked AS last_http_blocked,
-    b.dns_alive AS dns_alive,
-    b.ctl_tld AS ctl_tld,
-    b.ctl_issuer AS ctl_issuer,
-    b.ctl_subdomain_count AS ctl_subdomain_count,
-    b.ctl_subdomains AS ctl_subdomains,
-    b.dns_a AS dns_a,
-    b.dns_aaaa AS dns_aaaa,
-    b.dns_mx AS dns_mx,
-    b.dns_txt AS dns_txt,
-    b.dns_cname AS dns_cname,
-    b.http_status AS http_status,
-    b.http_response_time AS http_response_time,
-    b.http_blocked AS http_blocked,
-    b.http_content_type AS http_content_type,
-    b.http_tech AS http_tech,
-    b.http_apps AS http_apps,
-    b.http_language AS http_language,
-    b.http_title AS http_title,
-    b.http_meta_description AS http_meta_description,
-    b.http_pages AS http_pages,
-    b.http_emails AS http_emails,
-    b.http_h1 AS http_h1,
-    b.business_model AS business_model,
-    b.industry AS industry,
-    b.classification_confidence AS classification_confidence,
-    b.http_schema_type AS http_schema_type,
-    b.http_og_type AS http_og_type,
-    b.bgp_ip AS bgp_ip,
-    b.bgp_asn_number AS bgp_asn_number,
-    b.bgp_asn_org AS bgp_asn_org,
-    b.bgp_asn_country AS bgp_asn_country,
-    b.bgp_asn_prefix AS bgp_asn_prefix,
-    b.inferred_country AS inferred_country,
-    b.rdap_domain_created_at AS rdap_domain_created_at,
-    b.rdap_domain_expires_at AS rdap_domain_expires_at,
-    b.rdap_domain_updated_at AS rdap_domain_updated_at,
-    b.rdap_registrar AS rdap_registrar,
-    b.rdap_registrar_iana_id AS rdap_registrar_iana_id,
-    b.rdap_nameservers AS rdap_nameservers,
-    b.rdap_status AS rdap_status,
-    b.tranco_rank AS tranco_rank,
-    b.majestic_rank AS majestic_rank,
-    b.majestic_ref_subnets AS majestic_ref_subnets,
-    b.is_disposable_email AS is_disposable_email,
-    b.estimated_revenue AS estimated_revenue,
-    b.estimated_employees AS estimated_employees,
-    b.revenue_confidence AS revenue_confidence,
-    b.revenue_evidence AS revenue_evidence,
-    b.product_count AS product_count,
-    b.price_min AS price_min,
-    b.price_avg AS price_avg,
-    b.price_max AS price_max,
-    b.new_products_30d AS new_products_30d,
-    b.last_product_at AS last_product_at,
-    b.oos_ratio AS oos_ratio,
-    b.discount_depth AS discount_depth,
-    b.vendor_count AS vendor_count,
-    b.catalog_age_days AS catalog_age_days,
-    b.product_types AS product_types,
-    b.job_count AS job_count,
-    b.ats_platform AS ats_platform,
-    b.job_departments AS job_departments,
-    b.job_locations AS job_locations,
-    b.seo_score AS seo_score,
-    b.seo_issues AS seo_issues,
-    b.seo_word_count AS seo_word_count,
-    b.seo_alt_ratio AS seo_alt_ratio,
-    b.perf_lcp_ms AS perf_lcp_ms,
-    b.perf_cls AS perf_cls,
-    b.perf_ttfb_ms AS perf_ttfb_ms,
-    b.render_engine AS render_engine,
-    b.depth_enriched_at AS depth_enriched_at,
-    b.pricing_points AS pricing_points,
-    b.about_text AS about_text,
-    b.mission AS mission,
-    b.hq_location AS hq_location,
-    b.job_locations_top AS job_locations_top,
-    b.positions_overview AS positions_overview,
-    b.news_count AS news_count,
-    b.last_funding_usd AS last_funding_usd,
-    c.contact_emails,
-    c.contact_count,
-    p.pricing_observed,
-    p.pricing_currencies,
-    j.career_titles,
-    j.career_locations,
-    pr.catalog_titles,
-    pr.catalog_rows,
-    col.collection_titles,
-    n.news_headlines
-FROM
-(
-    SELECT *
-    FROM ls.businesses
-    FINAL
-    WHERE domain IN (
-        SELECT domain
-        FROM ls.biz_enrichment
-    )
-) AS b
-LEFT JOIN
-(
-    SELECT
-        domain,
-        groupArray(email) AS contact_emails,
-        count() AS contact_count
-    FROM ls.biz_contact
-    FINAL
-    GROUP BY domain
-) AS c ON b.domain = c.domain
-LEFT JOIN
-(
-    SELECT
-        domain,
-        arraySort(groupArray(price)) AS pricing_observed,
-        groupUniqArray(currency) AS pricing_currencies
-    FROM ls.biz_pricing
-    FINAL
-    GROUP BY domain
-) AS p ON b.domain = p.domain
-LEFT JOIN
-(
-    SELECT
-        domain,
-        groupArray(title) AS career_titles,
-        groupUniqArray(location) AS career_locations
-    FROM ls.biz_career
-    FINAL
-    GROUP BY domain
-) AS j ON b.domain = j.domain
-LEFT JOIN
-(
-    SELECT
-        domain,
-        arraySlice(groupArray(title), 1, 25) AS catalog_titles,
-        count() AS catalog_rows
-    FROM ls.biz_products
-    FINAL
-    GROUP BY domain
-) AS pr ON b.domain = pr.domain
-LEFT JOIN
-(
-    SELECT
-        domain,
-        arraySlice(groupArray(title), 1, 25) AS collection_titles
-    FROM ls.biz_collections
-    FINAL
-    GROUP BY domain
-) AS col ON b.domain = col.domain
-LEFT JOIN
-(
-    SELECT
-        domain,
-        groupArray(title) AS news_headlines
-    FROM ls.biz_news
-    FINAL
-    GROUP BY domain
-) AS n ON b.domain = n.domain
-;
-
-
--- ═══ tech_index (migration 024, 2026-09-09; rebuilt every 6h by LS.TechIndex) ═══
-CREATE TABLE ls.tech_index
-(
-    `tech` LowCardinality(String),
-    `rank` UInt32,
-    `domain` String,
-    `http_title` String,
-    `http_tech` String,
-    `country` LowCardinality(String),
-    `tranco_rank` Nullable(Int32),
-    `majestic_rank` Nullable(Int32),
-    `is_shopify` UInt8,
-    `http_status` Nullable(Int32),
-    `http_response_time` Nullable(Int32),
-    `http_language` LowCardinality(String),
-    `rdap_registrar` LowCardinality(String),
-    `rdap_domain_created_at` Nullable(DateTime),
-    `bgp_asn_org` LowCardinality(String),
-    `dns_mx` String,
-    `http_emails` String,
-    `enriched_at` DateTime,
-    `built_at` DateTime DEFAULT now()
-)
-ENGINE = MergeTree
-ORDER BY (tech, rank, domain)
-SETTINGS index_granularity = 8192;

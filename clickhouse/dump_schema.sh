@@ -22,7 +22,7 @@ cat <<HEADER
 --
 -- Read docs/pipelines.md for how these fit together. In short:
 --
---   PIPELINE 1 (discovery)   enrichments ──MV──> domains_current ──view──> domains_fast
+--   PIPELINE 1 (discovery)   domains_history ──MV──> domains_current ──view──> domains_fast
 --                            plus the persistent \`platforms\` registry
 --   PIPELINE 2 (enrichment)  biz_contact · biz_career · biz_pricing · biz_news
 --                            · biz_enrichment
