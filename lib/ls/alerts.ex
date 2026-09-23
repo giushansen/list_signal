@@ -102,6 +102,7 @@ defmodule LS.Alerts do
       data_check: LS.DataCheck.snapshot(),
       reputation_ages: Metrics.reputation_ages(),
       backups: Metrics.backup_status(),
+      enrichment_queue: Metrics.enrichment_queue(),
       verification: Metrics.verification(),
       verification_freshness: Metrics.verification_freshness(),
       poller: Metrics.poller(),
@@ -129,6 +130,8 @@ defmodule LS.Alerts do
     |> queue(m)
     |> reputation(m)
     |> backups(m)
+    |> backup_last_run(m)
+    |> enrichment_lane(m)
     |> verification(m)
     |> verification_overdue(m)
     |> ctl_sources(m)
@@ -543,6 +546,43 @@ defmodule LS.Alerts do
   end
 
   defp backups(acc, _), do: acc
+
+  # 2026-09-23: four failed nights in a row, each one taking the master's
+  # disk to 100% for sixteen minutes, and the age check above saw a
+  # three-day-old archive as fine. The run's own verdict is the signal.
+  defp backup_last_run(acc, %{backups: %{ch_last_run: result}}) when result in [:error, :skipped],
+    do: [
+      al(
+        :critical,
+        "backup_ch_run",
+        "ClickHouse backup #{if result == :error, do: "failed", else: "skipped"} last night",
+        "backup.sh's last [ch] run ended in #{result}; see /home/ls/backup.log and the disk (a failed dump fills it to 100% while it runs)"
+      )
+      | acc
+    ]
+
+  defp backup_last_run(acc, _), do: acc
+
+  # 2026-09-23: pipeline 2 ran at a third of its rate for two weeks while the
+  # row-count alert stayed quiet, because the browser lane kept the count
+  # above its floor. The HTTP lane's refill is the direct signal: a bucket
+  # with room that the refill cannot fill, six refills (30 minutes) running.
+  @lane_starved_streak 6
+
+  defp enrichment_lane(acc, %{enrichment_queue: %{http_starved_streak: n}})
+       when is_integer(n) and n >= @lane_starved_streak,
+       do: [
+         al(
+           :critical,
+           "enrichment_http_starved",
+           "Enrichment HTTP lane starved",
+           "#{n} refills in a row added under a quarter of what the HTTP bucket had room for; " <>
+             "see [ENRICH] refilled lines and businesses_needing_enrichment in query_log"
+         )
+         | acc
+       ]
+
+  defp enrichment_lane(acc, _), do: acc
 
   # One shape for all three tiers: missing entirely, or older than its cadence.
   defp stale_backup(acc, age, ceiling, severity, key, subject, what) do

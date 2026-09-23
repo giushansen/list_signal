@@ -69,7 +69,7 @@ defmodule LS.Cluster.EnrichmentQueue do
     send(self(), :refill)
     Process.send_after(self(), :check_inflight, 60_000)
     Logger.info("🔬 EnrichmentQueue started (target depth: #{@target_depth})")
-    {:ok, %{enqueued: 0, completed: 0, refills: 0}}
+    {:ok, %{enqueued: 0, completed: 0, refills: 0, http_starved_streak: 0}}
   end
 
   # Old agents (pre residential-affinity) send the 3-tuple: treat as datacenter.
@@ -124,12 +124,8 @@ defmodule LS.Cluster.EnrichmentQueue do
         browser_only: true
       )
 
-    normal_added =
-      fill_bucket(
-        @table,
-        max(@target_depth - @browser_target_depth - :ets.info(@table, :size), 0),
-        browser_only: false
-      )
+    http_missing = max(@target_depth - @browser_target_depth - :ets.info(@table, :size), 0)
+    normal_added = fill_bucket(@table, http_missing, browser_only: false)
 
     added = browser_added + normal_added
 
@@ -138,7 +134,14 @@ defmodule LS.Cluster.EnrichmentQueue do
     end
 
     Process.send_after(self(), :refill, @refill_interval_ms)
-    {:noreply, %{state | enqueued: state.enqueued + added, refills: state.refills + 1}}
+
+    {:noreply,
+     %{
+       state
+       | enqueued: state.enqueued + added,
+         refills: state.refills + 1,
+         http_starved_streak: starved_streak(Map.get(state, :http_starved_streak, 0), http_missing, normal_added)
+     }}
   end
 
   @impl true
@@ -171,6 +174,16 @@ defmodule LS.Cluster.EnrichmentQueue do
 
     Process.send_after(self(), :check_inflight, 60_000)
     {:noreply, state}
+  end
+
+  @doc false
+  # Pure. A refill is "starved" when the HTTP bucket had real room (1,000+
+  # slots) and the refill filled under a quarter of it: the candidate query
+  # is returning domains the queue then rejects, or nothing. Six in a row is
+  # the alert (LS.Alerts); 2026-09-23 this ran unnoticed for two weeks.
+  @starved_min_room 1_000
+  def starved_streak(streak, missing, added) do
+    if missing >= @starved_min_room and added < div(missing, 4), do: streak + 1, else: 0
   end
 
   defp fill_bucket(_table, 0, _opts), do: 0

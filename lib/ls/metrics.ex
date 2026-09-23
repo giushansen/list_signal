@@ -291,13 +291,26 @@ defmodule LS.Metrics do
           dir: dir,
           sqlite_age_h: newest_age_h(dir, files, ~r/^sqlite_.*\.db$/),
           product_age_h: newest_age_h(dir, files, ~r/^prod_.*\.tar$/),
-          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]_.*\.tar(\.gz)?$/)
+          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]_.*\.tar(\.gz)?$/),
+          # The last nightly run's own verdict (2026-09-23): an archive's age
+          # cannot show four failed nights in a row.
+          ch_last_run: backup_log_result(Path.join(Path.dirname(dir), "backup.log"))
         }
 
       _ ->
         %{dir: nil, sqlite_age_h: nil, product_age_h: nil, ch_age_h: nil}
     end
   end
+
+  defp backup_log_result(path) do
+    case File.read(path) do
+      {:ok, text} -> LS.Ops.BackupLog.last_ch_result(text)
+      _ -> nil
+    end
+  end
+
+  @doc "Enrichment queue counters, including the HTTP lane's starvation streak (2026-09-23)."
+  def enrichment_queue, do: safe_stats(LS.Cluster.EnrichmentQueue)
 
   @doc "The tier keys `backup_status/0` always reports. Pins the seam with `LS.Alerts`."
   def backup_tiers, do: [:sqlite_age_h, :product_age_h, :ch_age_h]
