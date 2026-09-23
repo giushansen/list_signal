@@ -156,11 +156,21 @@ defmodule LS.LandingCache do
 
   @sample_ttl_ms :timer.minutes(30)
 
-  defp slow(key, fun), do: cached({:landing_slow, key}, @sample_ttl_ms, fun)
-
-  defp fetch_top_stores do
-    cached({:landing_sample, :stores}, @sample_ttl_ms, &fetch_top_stores_uncached/0)
+  # `cached/3` stores only `{:ok, _}` results (a ClickHouse error must not be
+  # pinned for the TTL). The slow counters and the two samples return plain
+  # values, so the 09-10 change that put them on a 30-minute cadence never
+  # cached anything: query_log on 09-23 showed each of them still running 36
+  # times an hour, about half a core of ClickHouse for two weeks. Wrap and
+  # unwrap here so the value is cached and an error still is not.
+  @doc false
+  def slow(key, fun) do
+    case cached({:landing_slow, key}, @sample_ttl_ms, fn -> {:ok, fun.()} end) do
+      {:ok, value} -> value
+      _ -> fun.()
+    end
   end
+
+  defp fetch_top_stores, do: slow(:top_stores, &fetch_top_stores_uncached/0)
 
   defp fetch_top_stores_uncached do
     case LS.Clickhouse.sample_shopify_stores(10) do
@@ -177,9 +187,7 @@ defmodule LS.LandingCache do
     end
   end
 
-  defp fetch_top_businesses do
-    cached({:landing_sample, :businesses}, @sample_ttl_ms, &fetch_top_businesses_uncached/0)
-  end
+  defp fetch_top_businesses, do: slow(:top_businesses, &fetch_top_businesses_uncached/0)
 
   defp fetch_top_businesses_uncached do
     case LS.Clickhouse.sample_online_businesses(10) do

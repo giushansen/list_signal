@@ -26,6 +26,7 @@ defmodule LS.Cluster.EnrichmentWriter do
   @spec write([map()]) :: :ok
   def write([]), do: :ok
 
+
   def write(results) do
     insert("biz_contact", ~w(domain email source_page on_domain seen_at),
       Enum.flat_map(results, & &1[:contacts] || []))
@@ -88,6 +89,32 @@ defmodule LS.Cluster.EnrichmentWriter do
   end
 
   # ── insertion ──────────────────────────────────────────────────────────────
+
+  @doc """
+  One `render_engine = 'stranded'` row per domain whose batch never came
+  back (2026-09-23), so the refill query's 7-day exclusion sees the attempt.
+  Every other column takes its default; the compactor folds non-failed rows
+  only, so a stranded row never reaches `businesses`.
+  """
+  @spec write_stranded([String.t()]) :: :ok | {:error, term()}
+  def write_stranded([]), do: :ok
+
+  def write_stranded(domains) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
+    version = LS.Version.sha()
+
+    rows =
+      domains
+      |> Enum.filter(&(is_binary(&1) and &1 != ""))
+      |> Enum.map(&Enum.join([tsv(&1), now, "stranded", version], "\t"))
+
+    LS.Clickhouse.insert_raw(
+      "INSERT INTO biz_enrichment (domain, enriched_at, render_engine, pipeline_version) FORMAT TabSeparated",
+      Enum.join(rows, "\n")
+    )
+  end
+
+  defp tsv(s), do: s |> String.replace(["\t", "\n", "\\", "\r"], " ") |> String.slice(0, 253)
 
   defp insert(_table, _cols, []), do: :ok
 

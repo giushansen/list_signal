@@ -25,6 +25,46 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-23
+
+**Production check, three findings.** (1) The nightly ClickHouse dump
+(chw, 42G, domains_history only) failed with "No space left on device" on
+4 of the last 5 nights, and each attempt took the master's root disk to
+100% for ~16 minutes (03:15-03:31): ClickHouse refused inserts ("Cannot
+reserve 1.00 MiB", 23 errors on 09-23: 448 crawl rows and two enrichment
+batches lost) and "Disk almost full: master" went out every night at
+03:29. The dump needs its directory and its tar at once (2x) while the
+previous archive is kept, next to 157G of ClickHouse and 36G of product
+tars, on 361G. `backup.sh` now keeps two product tars (they ship to
+opsbloc every six hours anyway) and refuses to start a dump that cannot
+fit, removing the previous archive first if that is what stands in the
+way. Journald was also 4G against a 2G cap that had never been applied
+(vacuumed, journald restarted). Disk after: 74%, 91G free.
+
+(2) **The 09-10 landing-cache change never cached anything.** `cached/3`
+stores only `{:ok, _}` results; the slow counters and samples return
+plain values, so they kept running every minute: 36 runs an hour each,
+about half a ClickHouse core for two weeks. `slow/2` now wraps the value.
+Found by ranking query_log by CPU time; the master sat at load 10 with
+ClickHouse at 1.3 busy cores.
+
+(3) **Pipeline 2 ran at a third of its rate because stranded batches were
+requeued in a loop.** After the 09-10 refill fix, throughput settled at
+~200K rows a day, not the ~400K before 09-06. Cause: a batch that does
+not come back in 10 minutes was requeued straight into the bucket, past
+the SQL's 7-day exclusion (no row) and past the 24h cooldown (a direct
+ETS insert), so the same heavy sites (shopeemobile.com, meituan.com...)
+stranded batch after batch: 2,696 requeues a day, and 77% of the 5,000
+candidates each refill returned had been attempted in the last 24 hours
+with nothing written. The HTTP lane refilled 100 to 1,200 domains per
+five minutes instead of 3,500. A stranded item is now written down as a
+`render_engine = 'stranded'` row (excluded for seven days, never folded
+into businesses) and dropped; a worker that finishes late still writes
+its results. Also seen: h1 (home) offline since 09-22 06:38, the source of
+every "Worker down" and "no resources" alert; nothing to fix from here.
+
+---
+
 ## 2026-09-10
 
 **Pipeline 2 ran at a fifth of its rate for two days: the HTTP-lane

@@ -145,17 +145,30 @@ defmodule LS.Cluster.EnrichmentQueue do
   def handle_info(:check_inflight, state) do
     cutoff = System.system_time(:millisecond) - @batch_timeout_ms
 
-    requeued =
+    # Stranded items are written down as `render_engine = 'stranded'` rows
+    # and DROPPED, not requeued (2026-09-23). Requeueing put the batch's
+    # domains straight back into the bucket, past the SQL's 7-day exclusion
+    # (no biz_enrichment row) and past the 24h cooldown (a direct ETS
+    # insert), so the same heavy sites stranded batch after batch: 2,696
+    # requeues a day, and 77% of every refill's candidates were domains
+    # attempted in the last 24 hours with nothing written. The HTTP lane
+    # refilled 100-1,200 domains per five minutes instead of 3,500 and
+    # pipeline 2 ran at a third of its rate. A worker that finishes late
+    # still writes its results; a domain that never finishes is excluded
+    # for seven days by its stranded row and tried again after that.
+    stranded =
       :ets.tab2list(@inflight)
       |> Enum.filter(fn {_id, _items, started} -> started < cutoff end)
-      |> Enum.map(fn {id, items, _} ->
+      |> Enum.flat_map(fn {id, items, _} ->
         :ets.delete(@inflight, id)
-        Enum.each(items, &:ets.insert(bucket_for(&1), {:erlang.unique_integer([:monotonic, :positive]), &1}))
-        length(items)
+        Enum.map(items, & &1.domain)
       end)
-      |> Enum.sum()
 
-    if requeued > 0, do: Logger.warning("[ENRICH] requeued #{requeued} stranded items")
+    if stranded != [] do
+      Logger.warning("[ENRICH] #{length(stranded)} stranded items written down, not requeued")
+      LS.Cluster.EnrichmentWriter.write_stranded(stranded)
+    end
+
     Process.send_after(self(), :check_inflight, 60_000)
     {:noreply, state}
   end
@@ -209,17 +222,6 @@ defmodule LS.Cluster.EnrichmentQueue do
   end
 
   # WAF-blocked / auth-walled at discovery = the browser bucket.
-  defp bucket_for(item) do
-    # 429 deliberately absent: a rate limit is not a wall a browser gets past,
-    # it is a request to come back later. Sending those to the render path
-    # made them 83% of all failures (2026-08-02) while consuming the scarcest
-    # resource we have — and hammering a CDN that already said "slow down"
-    # is exactly how source IPs get blacklisted.
-    if item[:http_blocked] not in [nil, ""] or item[:last_http_status] in [401, 403],
-      do: @table_browser,
-      else: @table
-  end
-
   @doc """
   How many of `count` items a node of this class takes from the browser bucket
   before touching the HTTP bucket. Public because the split is a contract: get
