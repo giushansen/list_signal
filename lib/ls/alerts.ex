@@ -550,18 +550,23 @@ defmodule LS.Alerts do
   # 2026-09-23: four failed nights in a row, each one taking the master's
   # disk to 100% for sixteen minutes, and the age check above saw a
   # three-day-old archive as fine. The run's own verdict is the signal.
-  defp backup_last_run(acc, %{backups: %{ch_last_run: result}}) when result in [:error, :skipped],
+  # The key carries the run's date so one failed run is one email, not one
+  # per cooldown until the next run (three emails for the 09-23 failure).
+  defp backup_last_run(acc, %{backups: %{ch_last_run: result} = b}) when result in [:error, :skipped],
     do: [
       al(
         :critical,
-        "backup_ch_run",
+        backup_run_key(b[:ch_last_run_at]),
         "ClickHouse backup #{if result == :error, do: "failed", else: "skipped"} last night",
-        "backup.sh's last [ch] run ended in #{result}; see /home/ls/backup.log and the disk (a failed dump fills it to 100% while it runs)"
+        "backup.sh's [ch] run of #{b[:ch_last_run_at] || "unknown time"} ended in #{result}; see /home/ls/backup.log"
       )
       | acc
     ]
 
   defp backup_last_run(acc, _), do: acc
+
+  defp backup_run_key(at) when is_binary(at) and byte_size(at) >= 10, do: "backup_ch_run:" <> String.slice(at, 0, 10)
+  defp backup_run_key(_), do: "backup_ch_run"
 
   # 2026-09-23: pipeline 2 ran at a third of its rate for two weeks while the
   # row-count alert stayed quiet, because the browser lane kept the count

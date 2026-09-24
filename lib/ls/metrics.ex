@@ -294,7 +294,8 @@ defmodule LS.Metrics do
           ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]_.*\.tar(\.gz)?$/),
           # The last nightly run's own verdict (2026-09-23): an archive's age
           # cannot show four failed nights in a row.
-          ch_last_run: backup_log_result(Path.join(Path.dirname(dir), "backup.log"))
+          ch_last_run: backup_log_result(Path.join(Path.dirname(dir), "backup.log")),
+          ch_last_run_at: backup_log_started_at(Path.join(Path.dirname(dir), "backup.log"))
         }
 
       _ ->
@@ -302,10 +303,13 @@ defmodule LS.Metrics do
     end
   end
 
-  defp backup_log_result(path) do
+  defp backup_log_result(path), do: backup_log_run(path)[:result]
+  defp backup_log_started_at(path), do: backup_log_run(path)[:started_at]
+
+  defp backup_log_run(path) do
     case File.read(path) do
-      {:ok, text} -> LS.Ops.BackupLog.last_ch_result(text)
-      _ -> nil
+      {:ok, text} -> LS.Ops.BackupLog.last_ch_run(text) || %{}
+      _ -> %{}
     end
   end
 
@@ -388,8 +392,14 @@ defmodule LS.Metrics do
   def unmonitored_nodes do
     reporting = MapSet.new(node_resources(), fn {n, _} -> n end)
 
+    # A second, slower probe before a node is called unmonitored
+    # (2026-09-24): the first pass gives each node 3 s, and a 2-core worker
+    # mid-batch can miss that once. "1 node(s) report no resources" fired
+    # nine times in a week on nodes that answered the next tick, and the
+    # owner read each as a node in trouble.
     [Node.self() | Node.list()]
     |> Enum.reject(&MapSet.member?(reporting, &1))
+    |> Enum.reject(fn n -> is_map(safe(fn -> :erpc.call(n, LS.Ops.NodeResources, :local, [], 8_000) end, nil)) end)
   end
 
   # ── helpers ──

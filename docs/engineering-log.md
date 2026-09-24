@@ -25,6 +25,26 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-24
+
+**The emails after the 09-23 fixes, and what each one was.** "ClickHouse
+backup failed last night" arrived three times (08:12, 14:12, 20:27 UTC):
+the new alert was right about the 03:15 failure, which predates the fix,
+but its key had no date, so every cooldown re-sent the same fact. The key
+now carries the run's start date from `backup.sh`'s log: one failed run,
+one email. "Disk almost full: master" at 14:27 with the disk at 74% at
+rest: the 42G archive on the ClickHouse disk left so little headroom that
+a domains_history merge, the 13G tech_index shadow table and a third
+product tar mid-rotation together crossed 88%. The archive now lives
+offsite (opsbloc, one copy, weekly on Sundays instead of nightly) and is
+deleted here after a remote size check; the master rests at ~58%. "1
+node(s) report no resources" nine times in a week: the 3-second resource
+probe missing a 2-core worker mid-batch once; a second, 8-second probe
+now runs before a node is called unmonitored. h1 was back in the mesh
+from 07:56 UTC on its 09-07 build (the master holds no key for it).
+
+---
+
 ## 2026-09-23
 
 **Production check, three findings.** (1) The nightly ClickHouse dump
