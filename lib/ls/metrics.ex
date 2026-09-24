@@ -291,7 +291,9 @@ defmodule LS.Metrics do
           dir: dir,
           sqlite_age_h: newest_age_h(dir, files, ~r/^sqlite_.*\.db$/),
           product_age_h: newest_age_h(dir, files, ~r/^prod_.*\.tar$/),
-          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]_.*\.tar(\.gz)?$/),
+          # Local file if one exists; otherwise the log's last successful run
+          # (the archive ships offsite and is removed here, 2026-09-24).
+          ch_age_h: newest_age_h(dir, files, ~r/^ch[dw]_.*\.tar(\.gz)?$/) || log_ok_age_h(Path.join(Path.dirname(dir), "backup.log")),
           # The last nightly run's own verdict (2026-09-23): an archive's age
           # cannot show four failed nights in a row.
           ch_last_run: backup_log_result(Path.join(Path.dirname(dir), "backup.log")),
@@ -300,6 +302,16 @@ defmodule LS.Metrics do
 
       _ ->
         %{dir: nil, sqlite_age_h: nil, product_age_h: nil, ch_age_h: nil}
+    end
+  end
+
+  defp log_ok_age_h(path) do
+    with {:ok, text} <- File.read(path),
+         at when is_binary(at) <- LS.Ops.BackupLog.last_ch_ok_at(text),
+         {:ok, naive} <- NaiveDateTime.from_iso8601(at) do
+      div(NaiveDateTime.diff(NaiveDateTime.utc_now(), naive, :second), 3600)
+    else
+      _ -> nil
     end
   end
 

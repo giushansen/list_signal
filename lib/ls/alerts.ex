@@ -821,7 +821,10 @@ defmodule LS.Alerts do
   # after it happened (found 2026-08-30: one real restart, two identical
   # emails 6h9m apart). A genuinely new restart always gets a genuinely new
   # key, so "forever" costs nothing here.
-  @permanent_dedup_prefixes ["watchdog_restart:", "restart_reason:"]
+  # backup_ch_run:<date> (2026-09-24): one failed night stays the newest
+  # run until the next scheduled one, a week later; without this it would
+  # be re-sent every 6h for a week. The undated key keeps the cooldown.
+  @permanent_dedup_prefixes ["watchdog_restart:", "restart_reason:", "backup_ch_run:"]
 
   @doc false
   # Pure: is this alert key a single unrepeatable event that should dedup

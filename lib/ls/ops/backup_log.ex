@@ -54,4 +54,24 @@ defmodule LS.Ops.BackupLog do
   end
 
   def last_ch_run(_), do: nil
+
+  @doc """
+  Timestamp of the newest successful `[ch]` run ("clickhouse ok"), or nil.
+  Since 2026-09-24 the archive lives offsite and is deleted locally after
+  the ship, so the archive's file age no longer says when the last dump
+  succeeded; the log does.
+  """
+  @spec last_ch_ok_at(String.t()) :: String.t() | nil
+  def last_ch_ok_at(text) when is_binary(text) do
+    text
+    |> String.split("\n")
+    |> Enum.filter(&(String.contains?(&1, "[ch]") and String.contains?(&1, "clickhouse ok")))
+    |> List.last()
+    |> case do
+      nil -> nil
+      line -> String.slice(String.trim(line), 0, 19)
+    end
+  end
+
+  def last_ch_ok_at(_), do: nil
 end
