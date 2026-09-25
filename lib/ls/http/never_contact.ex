@@ -43,8 +43,22 @@ defmodule LS.HTTP.NeverContact do
               "shinhanlife.co.kr",
               "shinhansec.com",
               "shinhantrust.kr",
-              "shinhanbank.com"
+              "shinhanbank.com",
+              # 2026-09-25: the same CERT reported again, this time a browser
+              # render on ny2 loading something on one of their hosts on port
+              # 10243. Their brand sites outside the list above:
+              "shinhanlife.org",
+              "shinhancareer.co.kr",
+              "shinhandigitalforum.com",
+              "shinhanclub.com",
+              "shinhan.tech"
             ])
+
+  # 2026-09-25: a whole group, not a list of hosts. Any domain whose name
+  # contains one of these is off-limits; the handful of unrelated sites this
+  # also catches (a Japanese "kakushinhan.org") are worth nothing next to a
+  # third report from a bank's incident-response team.
+  @reported_words ["shinhan"]
 
   @doc """
   True when `domain` (or any parent of it) has filed an abuse report.
@@ -54,14 +68,15 @@ defmodule LS.HTTP.NeverContact do
   """
   @spec blocked?(term()) :: boolean()
   def blocked?(domain) when is_binary(domain) do
-    domain
-    |> String.downcase()
-    |> String.trim_trailing(".")
-    |> suffixes()
-    |> Enum.any?(&MapSet.member?(@reported, &1))
+    d = domain |> String.downcase() |> String.trim_trailing(".")
+    Enum.any?(suffixes(d), &MapSet.member?(@reported, &1)) or Enum.any?(@reported_words, &String.contains?(d, &1))
   end
 
   def blocked?(_), do: false
+
+  @doc "Words that block any domain containing them (see `@reported_words`)."
+  @spec words() :: [String.t()]
+  def words, do: @reported_words
 
   @doc "The current blocklist, for the admin dashboard and tests."
   @spec all() :: MapSet.t()

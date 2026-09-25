@@ -55,13 +55,20 @@ defmodule LS.Enrichment.Browser do
     end
   end
 
+  @doc false
+  def blocked_list, do: LS.HTTP.NeverContact.words() ++ Enum.to_list(LS.HTTP.NeverContact.all())
+
   defp render_via_sidecar(domain, path) do
     case url() do
       nil ->
         {:error, :not_configured}
 
       base ->
-        body = Jason.encode!(%{domain: domain, path: path})
+        # The sidecar gates every request the page triggers (scripts, frames,
+        # beacons) against this list and against non-standard ports
+        # (2026-09-25: a bank CERT reported a render's third-party load on
+        # port 10243). Words block by substring, exact entries by suffix.
+        body = Jason.encode!(%{domain: domain, path: path, blocked: blocked_list()})
 
         case Req.post("#{base}/render", body: body,
                headers: [{"content-type", "application/json"}], receive_timeout: @timeout) do

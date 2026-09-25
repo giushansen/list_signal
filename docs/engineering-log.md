@@ -25,6 +25,35 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-25
+
+**Third abuse report from the Shinhan Financial Group CERT, via Vultr:
+a connection from ny2 (207.246.126.235) to one of their hosts on port
+10243 at 07:32:40 UTC.** No Shinhan domain was crawled; the never-contact
+list held. Our HTTP client only ever opens port 443 and drops the port
+of any redirect, so it cannot have made that connection. The browser
+sidecar can: ny2's camoufox rendered abbotts.com (07:32:28 to 07:32:34)
+and abacedin.com.br (07:32:31 to 07:32:37), and a real browser loads
+every script, frame and beacon a page references, on whatever host and
+port the page names. One of those two pages referenced a resource on
+the bank's customer's host on port 10243; their IDS reads any hit on
+that port as an attack. The 09-07 fix covered our own requests by domain
+and said nothing about what a rendered page makes the browser request.
+
+Three rules now: (1) `browser_sidecar.py` gates every request a page
+triggers (only http/https on 80/443, never an IP literal or a private
+address, never a host on the never-contact list the app sends with each
+render) and logs what it blocks with host and port, so the next report
+can be traced to the page; shipped to all eleven dual nodes with a
+restart, h1 pending. (2) `LS.HTTP.NeverContact` blocks the whole group
+by the word "shinhan" and five more of their brand domains. (3)
+`LS.HTTP.Client.resolve_redirect/3` refuses a Location naming a
+non-standard port, an IP literal, or a blocked host. What this does not
+cover: a page on port 443 of a host that has never reported us and is
+not on any list; that is what a crawler is, and no rule removes it.
+
+---
+
 ## 2026-09-24
 
 **The emails after the 09-23 fixes, and what each one was.** "ClickHouse

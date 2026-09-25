@@ -390,9 +390,20 @@ defmodule LS.HTTP.Client do
   # Exposed (via @doc false) so the rule can be tested without a network.
   def resolve_redirect(current_host, current_path, location) do
     case URI.parse(location) do
-      # Absolute URL: take its host and its path.
+      # 2026-09-25: a redirect is a request we did not choose. One that names
+      # a port other than 80/443, an IP literal, or a site on the never-
+      # contact list is not followed; the client only ever connects to 443
+      # by design and that must hold across hops too.
+      %URI{host: host, port: port, scheme: scheme} = uri
+      when is_binary(host) and host != "" and
+             (port not in [nil, 80, 443] or scheme not in [nil, "http", "https"]) ->
+        _ = uri
+        :stop
+
       %URI{host: host, path: loc_path, query: q} when is_binary(host) and host != "" ->
-        {:ok, host, path_with_query(loc_path, q)}
+        if ip_literal?(host) or LS.HTTP.NeverContact.blocked?(host),
+          do: :stop,
+          else: {:ok, host, path_with_query(loc_path, q)}
 
       # Relative URL: same host, resolve the path against the current one.
       %URI{host: nil, path: loc_path, query: q} when is_binary(loc_path) and loc_path != "" ->
@@ -406,6 +417,8 @@ defmodule LS.HTTP.Client do
   rescue
     _ -> :stop
   end
+
+  defp ip_literal?(host), do: match?({:ok, _}, :inet.parse_address(String.to_charlist(String.trim(host, "[]"))))
 
   defp path_with_query(nil, q), do: path_with_query("/", q)
   defp path_with_query("", q), do: path_with_query("/", q)
