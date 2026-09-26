@@ -25,6 +25,30 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-09-26
+
+**dal1 quarantined for twelve hours over a poisoned BGP cache; the guard
+now releases a recovered node by itself.** "Worker(s) quarantined" and
+"Worker down: lsdal1" from 18:24 UTC on 09-25. dal1 was healthy: DNS,
+egress, HTTP, RDAP all fine, and its rows scored 94% on the guard's
+metric while every other node scored 100%. The missing 6% were all
+domains resolving to two AWS parking addresses (13.223.25.84 and
+54.243.117.197, thousands of domains each). One Team Cymru batch had
+failed around 17:33, and `LS.BGP.Resolver` cached the nil answers for
+its 14-day TTL: 45 poisoned entries on dal1, none on any other node. The
+rolling window dipped to 89.97% against a 90% floor and the Inserter
+quarantined the node, dropping 265K rows that carried real data. A
+second bug in the same function: the failure counter was computed by
+running the whole Cymru batch a second time, so every batch was sent
+twice and the counter read zero forever. Fixed: a nil answer is never
+cached (`Resolver.cacheable?/1`), failures are counted from the batches
+actually run, and the guard keeps scoring the rows it drops and releases
+a worker whose next full window scores above the floor (h1's 0.000 in
+2026-07 would never release). Two new test files; the existing guard
+tests pass unchanged.
+
+---
+
 ## 2026-09-25
 
 **Third abuse report from the Shinhan Financial Group CERT, via Vultr:

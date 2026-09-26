@@ -287,11 +287,36 @@ defmodule LS.Cluster.Inserter do
                                                    quarantined: false, dropped: 0})
 
       if health.quarantined do
-        health = %{health | dropped: health.dropped + length(wrows)}
-        if rem(health.dropped, 50_000) < length(wrows) do
-          Logger.error("[GUARD] #{worker} still QUARANTINED — #{health.dropped} rows dropped. " <>
-                       "Fix the node, then LS.Cluster.Inserter.release_worker(#{inspect(worker)})")
-        end
+        # The dropped rows are still scored (2026-09-26). A quarantine used
+        # to be permanent until a human ran release_worker/1: dal1 sat
+        # quarantined for twelve hours over a poisoned BGP cache, dropping
+        # 265K rows, while every one of its rows had HTTP and RDAP data. A
+        # node whose next full window scores above the floor is released
+        # by itself; a node that stays hollow (h1's 0.000 for 686 hours)
+        # never is. The dropped count is kept as the record of what was lost.
+        eligible = Enum.count(wrows, &(Map.get(&1, :dns_a, "") != ""))
+        good = Enum.count(wrows, &enriched_beyond_dns?/1)
+        health = %{health | dropped: health.dropped + length(wrows), seen: health.seen + eligible, good: health.good + good}
+
+        health =
+          if health.seen >= @guard_min_sample do
+            ratio = health.good / health.seen
+
+            if ratio >= @guard_min_ratio do
+              Logger.warning("[GUARD] #{worker} AUTO-RELEASED — #{Float.round(ratio * 100, 1)}% of its last " <>
+                             "#{health.seen} DNS-resolved rows were enriched beyond DNS (#{health.dropped} rows were dropped while quarantined)")
+              %{health | quarantined: false, ratio: ratio, seen: 0, good: 0}
+            else
+              if rem(health.dropped, 50_000) < length(wrows) do
+                Logger.error("[GUARD] #{worker} still QUARANTINED — #{health.dropped} rows dropped, last window " <>
+                             "#{Float.round(ratio * 100, 1)}%. Fix the node; it is released by itself once a window scores #{@guard_min_ratio * 100}%")
+              end
+              %{health | ratio: ratio, seen: 0, good: 0}
+            end
+          else
+            health
+          end
+
         {kept, put_health(st, worker, health)}
       else
         eligible = Enum.count(wrows, &(Map.get(&1, :dns_a, "") != ""))

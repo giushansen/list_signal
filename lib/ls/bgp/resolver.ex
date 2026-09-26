@@ -116,7 +116,7 @@ defmodule LS.BGP.Resolver do
         case query_cymru([ip]) do
           {:ok, results} ->
             result = Map.get(results, ip, %{asn: nil, org: nil, country: nil, prefix: nil})
-            put_in_cache(ip, result)
+            if cacheable?(result), do: put_in_cache(ip, result)
 
             new_state = %{state |
               total_queries: state.total_queries + 1,
@@ -158,40 +158,37 @@ defmodule LS.BGP.Resolver do
     queried_results = if uncached == [] do
       %{}
     else
-      case query_cymru_batched(uncached) do
-        {:ok, results} ->
-          # Cache the results
-          Enum.each(results, fn {ip, result} ->
-            put_in_cache(ip, result)
-          end)
-          results
-
-        {:error, :timeout} ->
-          Logger.warning("⏱️  Team Cymru batch timeout (#{length(uncached)} IPs)")
-          # Return empty results for timeout - pipeline will handle as failures
-          Enum.reduce(uncached, %{}, fn ip, acc ->
-            Map.put(acc, ip, %{asn: nil, org: nil, country: nil, prefix: nil})
-          end)
-
-        {:error, _reason} ->
-          # Return empty results for errors
-          Enum.reduce(uncached, %{}, fn ip, acc ->
-            Map.put(acc, ip, %{asn: nil, org: nil, country: nil, prefix: nil})
-          end)
-      end
+      # A Cymru batch that fails (timeout, reset, partial reply) comes back as
+      # nil answers for its IPs. Those are NOT cached (2026-09-26): dal1
+      # cached 45 of them for 14 days, two of which were AWS parking
+      # addresses shared by thousands of domains, so every such domain lost
+      # its BGP data, the Inserter's quality guard read that as a hollow
+      # worker and quarantined dal1 for twelve hours. A miss is retried on
+      # the next batch; a nil is never remembered.
+      {results, failed} = query_cymru_batched(uncached)
+      Enum.each(results, fn {ip, result} -> if cacheable?(result), do: put_in_cache(ip, result) end)
+      {results, failed}
     end
+
+    {queried_results, failed_batches} =
+      case queried_results do
+        {r, f} -> {r, f}
+        r when is_map(r) -> {r, 0}
+      end
 
     # Merge cached and queried results
     all_results = Map.merge(cached, queried_results)
 
-    timeout_count = if match?({:error, :timeout}, query_cymru_batched(uncached)), do: 1, else: 0
-
+    # The failure count comes from the batches just run. This used to call
+    # query_cymru_batched a SECOND time to ask whether it had timed out:
+    # every batch was sent to Team Cymru twice, and since the batched form
+    # never returns {:error, :timeout} the counter stayed at zero forever.
     new_state = %{state |
       total_queries: state.total_queries + length(ips),
       cache_hits: state.cache_hits + map_size(cached),
       cache_misses: state.cache_misses + length(uncached),
       batch_count: state.batch_count + div(length(uncached) + @batch_size - 1, @batch_size),
-      timeouts: state.timeouts + timeout_count
+      timeouts: state.timeouts + failed_batches
     }
 
     {:reply, {:ok, all_results}, new_state}
@@ -309,35 +306,40 @@ defmodule LS.BGP.Resolver do
     end
   end
 
+  # `{results, failed_batches}`: a failed batch yields nil answers for its
+  # IPs (the pipeline treats them as "no BGP this time") and is counted.
   defp query_cymru_batched(ips) do
     ips
     |> Enum.chunk_every(@batch_size)
-    |> Enum.reduce({:ok, %{}}, fn batch, {:ok, acc} ->
+    |> Enum.reduce({%{}, 0}, fn batch, {acc, failed} ->
       case query_cymru(batch) do
         {:ok, results} ->
           Process.sleep(@batch_delay)
-          {:ok, Map.merge(acc, results)}
-
-        {:error, :timeout} ->
-          Logger.warning("⏱️  Team Cymru batch timeout (#{length(batch)} IPs)")
-          # Continue processing, just mark these as failed
-          empty_results = Enum.reduce(batch, %{}, fn ip, map_acc ->
-            Map.put(map_acc, ip, %{asn: nil, org: nil, country: nil, prefix: nil})
-          end)
-          Process.sleep(@batch_delay)
-          {:ok, Map.merge(acc, empty_results)}
+          {Map.merge(acc, results), failed}
 
         {:error, reason} ->
-          Logger.warning("⚠️  BGP batch query failed: #{inspect(reason)}")
-          # Continue processing, mark as failed
+          if reason == :timeout,
+            do: Logger.warning("⏱️  Team Cymru batch timeout (#{length(batch)} IPs)"),
+            else: Logger.warning("⚠️  BGP batch query failed: #{inspect(reason)}")
+
           empty_results = Enum.reduce(batch, %{}, fn ip, map_acc ->
             Map.put(map_acc, ip, %{asn: nil, org: nil, country: nil, prefix: nil})
           end)
           Process.sleep(@batch_delay)
-          {:ok, Map.merge(acc, empty_results)}
+          {Map.merge(acc, empty_results), failed + 1}
       end
     end)
   end
+
+  @doc """
+  Whether a Cymru answer is worth remembering: only one that names an ASN.
+  A nil answer means the query failed or Cymru had no line for the IP; caching
+  it turns one bad batch into 14 days of missing data for every domain on
+  that address (2026-09-26, dal1). Pure, tested.
+  """
+  @spec cacheable?(map() | nil) :: boolean()
+  def cacheable?(%{asn: asn}) when is_binary(asn) and asn != "", do: true
+  def cacheable?(_), do: false
 
   defp receive_response(socket, acc) do
     case :gen_tcp.recv(socket, 0, @socket_timeout) do
