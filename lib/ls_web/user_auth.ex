@@ -243,7 +243,7 @@ defmodule LSWeb.UserAuth do
       socket =
         socket
         |> Phoenix.LiveView.put_flash(:error, "You must re-authenticate to access this page.")
-        |> Phoenix.LiveView.redirect(to: ~p"/users/log-in")
+        |> Phoenix.LiveView.redirect(to: ~p"/users/log-in?reauth=1")
 
       {:halt, socket}
     end

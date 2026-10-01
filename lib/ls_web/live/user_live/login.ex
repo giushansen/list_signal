@@ -99,11 +99,37 @@ defmodule LSWeb.UserLive.Login do
   end
 
   @impl true
-  def mount(_params, _session, socket) do
-    email =
-      Phoenix.Flash.get(socket.assigns.flash, :email) ||
-        get_in(socket.assigns, [:current_scope, Access.key(:user), Access.key(:email)])
+  def mount(params, _session, socket) do
+    # A signed-in visitor has nothing to do here, so send them to the
+    # dashboard, which is where the log-out link lives (2026-09-15, owner's
+    # call). Landing on a login page while already logged in is a dead end:
+    # the owner's browser held a customer's session and the page offered no
+    # way out of it, which is what "I can't log in as another user" turned
+    # out to mean. Log out from the dashboard, then this page works normally.
+    #
+    # The one reason to show the form to someone signed in is `:require_sudo_mode`
+    # bouncing them here to re-authenticate, and it says so with ?reauth=1.
+    if socket.assigns[:current_scope] && params["reauth"] not in ["1", "true"] do
+      {:ok, Phoenix.LiveView.redirect(socket, to: ~p"/dashboard")}
+    else
+      mount_form(socket)
+    end
+  end
 
+  defp mount_form(socket) do
+    # Prefill ONLY from the flash, which carries back the address someone just
+    # typed after a wrong password. Never from the session.
+    #
+    # It used to fall back to `current_scope.user.email`, which pinned the
+    # field: the value is server-rendered, so every LiveView patch — a
+    # reconnect, a flash change, any re-render — put the signed-in user's
+    # address back and threw away what was being typed. Removing `readonly`
+    # on 2026-09-15 made the field editable but not typeable, and the owner,
+    # whose browser held a customer's session, could not replace that
+    # customer's address no matter how many times the page was reloaded.
+    # Whose session it is belongs in the sentence above the form, not welded
+    # into the input.
+    email = Phoenix.Flash.get(socket.assigns.flash, :email)
     form = to_form(%{"email" => email}, as: "user")
 
     {:ok, assign(socket, form: form, trigger_submit: false)}
