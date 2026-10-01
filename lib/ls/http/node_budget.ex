@@ -24,9 +24,10 @@ defmodule LS.HTTP.NodeBudget do
   # line is as long as the batch's HTTP candidates at one slot each: 350
   # candidates at 140/min is 150 s, and the HTTP stage await is sized for
   # it (LS.Cluster.WorkerAgent.http_stage_timeout/2). A 45 s cap refused
-  # 19% of fetches in the first paced hour (2026-10-02); five minutes
-  # covers the largest batch and still refuses a runaway line.
-  @max_wait_ms 300_000
+  # 19% of fetches in the first paced hour (2026-10-02) and a 300 s cap still
+  # 10%: a batch can carry 700 candidates (300 s). Seven minutes covers it
+  # and still refuses a runaway line; the batch in-flight limit is ten.
+  @max_wait_ms 420_000
 
   @doc "Create the counter table. Idempotent."
   def init do

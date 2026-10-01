@@ -440,8 +440,12 @@ defmodule LS.Cluster.WorkerAgent do
       end,
       # Homepage budget + up to 2 best-effort secondary fetches (login/pricing),
       # each ≤10s plus per-IP rate-limiter spacing. Raised so a secondary fetch can
-      # never time out the task and drop the (sacred) homepage row.
-      max_concurrency: conc, timeout: @http_timeout + 35_000,
+      # never time out the task and drop the (sacred) homepage row. Since the
+      # node budget (2026-10-02) a task also sleeps until its reserved slot,
+      # up to the whole paced stage: a per-task timeout shorter than that
+      # killed sleeping tasks and wrote hollow rows (33.6% of rows in the
+      # first half hour), so the per-task bound is the stage bound.
+      max_concurrency: conc, timeout: max(@http_timeout + 35_000, http_stage_timeout(length(cands))),
       on_timeout: :kill_task, ordered: false
     )
     |> Enum.reduce(%{}, fn

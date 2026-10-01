@@ -35,10 +35,10 @@ defmodule LS.HTTP.NodeBudgetTest do
     assert ms <= 10
   end
 
-  test "a line longer than five minutes refuses instead of queueing; a batch-sized line does not" do
-    for _ <- 1..200, do: NodeBudget.take(60)
-    assert {:wait, _} = NodeBudget.take(60), "200 s of line is a normal batch"
-    for _ <- 1..101, do: NodeBudget.take(60)
+  test "a line longer than seven minutes refuses instead of queueing; a batch-sized line does not" do
+    for _ <- 1..300, do: NodeBudget.take(60)
+    assert {:wait, _} = NodeBudget.take(60), "300 s of line is a large batch"
+    for _ <- 1..121, do: NodeBudget.take(60)
     assert NodeBudget.take(60) == :overloaded
   end
 
