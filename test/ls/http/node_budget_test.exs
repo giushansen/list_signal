@@ -6,7 +6,7 @@ defmodule LS.HTTP.NodeBudgetTest do
   envelope of 130 to 160. The first cap counted per wall-clock minute and
   100 concurrent tasks spent it in the first seconds, so 12.9% of fetches
   gave up; slots are now spaced evenly and reserved, never refused unless
-  the line is 45 s long.
+  the line is five minutes long.
   """
   use ExUnit.Case, async: false
 
@@ -35,8 +35,10 @@ defmodule LS.HTTP.NodeBudgetTest do
     assert ms <= 10
   end
 
-  test "a line longer than 45 seconds refuses instead of queueing" do
-    for _ <- 1..46, do: NodeBudget.take(60)
+  test "a line longer than five minutes refuses instead of queueing; a batch-sized line does not" do
+    for _ <- 1..200, do: NodeBudget.take(60)
+    assert {:wait, _} = NodeBudget.take(60), "200 s of line is a normal batch"
+    for _ <- 1..101, do: NodeBudget.take(60)
     assert NodeBudget.take(60) == :overloaded
   end
 

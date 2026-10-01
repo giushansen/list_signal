@@ -20,9 +20,13 @@ defmodule LS.HTTP.NodeBudget do
 
   @table :http_node_budget
   @default_per_min 140
-  # A reservation further out than this means the node is overloaded:
-  # refuse rather than queue fetches a minute into the future.
-  @max_wait_ms 45_000
+  # A reservation further out than this means the node is overloaded. The
+  # line is as long as the batch's HTTP candidates at one slot each: 350
+  # candidates at 140/min is 150 s, and the HTTP stage await is sized for
+  # it (LS.Cluster.WorkerAgent.http_stage_timeout/2). A 45 s cap refused
+  # 19% of fetches in the first paced hour (2026-10-02); five minutes
+  # covers the largest batch and still refuses a runaway line.
+  @max_wait_ms 300_000
 
   @doc "Create the counter table. Idempotent."
   def init do
