@@ -25,6 +25,36 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-01 (evening) to 2026-10-02
+
+**A per-node fetch budget, done twice.** After the crawl-gate change workers
+averaged 119 fetch attempts a minute with one-minute peaks of 355, against
+the 130-160 envelope in docs/crawl-capacity.md (the per-IP limiter never
+capped our own source address). The first budget counted per wall-clock
+minute: 100 concurrent tasks spent it in the first seconds, 12.9% of
+fetches gave up as rate_limited, and the HTTP stage, legitimately 150 s
+for 350 paced candidates, overran its fixed 120 s await and lost whole
+batches of pages. The second version reserves evenly spaced slots
+(`LS.HTTP.NodeBudget`, 140/min, `LS_FETCH_PER_MIN`) and the stage await
+scales with candidates. Note that enrich_log's `enriched_at` is the batch
+merge time, so per-minute counts from it are batch artifacts; the real
+per-source rate is batch HTTP candidates over cycle time.
+
+**par2's resolver served a parking address.** The deploy's git clone failed
+with "certificate subject name (domainblip.com) does not match github.com":
+par2's local unbound (cache-max-ttl 86400) held a poisoned entry. 961 of
+par2's 154K rows that day resolved to 173.236.243.45 (DreamHost, a
+DomainBlip parking page), 0 on the previous ten days, 0.02% fleet-wide.
+Flushed the cache, re-queued the 961 domains with force. Same family as
+the h1 resolver incident (docs/recovery-h1-resolver-2026-07.md): a
+sentinel check comparing each worker's share of the top parking IPs
+against the fleet is owed.
+
+**par1 and par2 crash-looped on BGP for two hours** because
+whois.cymru.com:43 is unreachable from Paris and the resolver's
+GenServer.call exit killed the batch task (4029eb1 fails soft). Cymru TCP
+from Paris is still blocked; those rows lack BGP fields until it returns.
+
 ## 2026-10-01 (afternoon)
 
 **Cost and quality pass after the v2 morning, from measurements.** Rows:
