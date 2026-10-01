@@ -145,7 +145,7 @@ defmodule LS.HTTP.RobotsTest do
 
       [lanes | _] = String.split(src, "def enrichment_lane_filter(opts)") |> Enum.drop(1)
       [lanes | _] = String.split(lanes, "\n  end\n")
-      assert length(String.split(lanes, "b.last_http_error != 'robots_disallow'")) == 3,
+      assert length(String.split(lanes, "b.http_error != 'robots_disallow'")) == 3,
              "both the browser lane and the HTTP lane must exclude robots_disallow"
     end
 

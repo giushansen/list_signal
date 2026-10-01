@@ -92,14 +92,14 @@ defmodule LS.Verification.HRBoards do
     SELECT '#{platform}', slug, any(domain), '', ''
     FROM (
       SELECT #{expr} AS slug, domain
-      FROM biz_career
+      FROM hr_jobs
       WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
     )
     WHERE slug != ''
       AND domain IN (
         SELECT domain FROM (
           SELECT domain, uniqExact(#{expr}) AS fanout
-          FROM biz_career
+          FROM hr_jobs
           WHERE url != '' AND positionCaseInsensitive(url, '#{platform_host(platform)}') > 0
           GROUP BY domain
         ) WHERE fanout <= 2
@@ -163,7 +163,7 @@ defmodule LS.Verification.HRBoards do
              /* linked_domain, not AS domain: aliasing over the source column
                 makes HAVING read the aggregate and CH rejects the nesting. */
              SELECT name_key, any(domain) AS linked_domain
-             FROM verification_domain_keys
+             FROM verified_keys
              GROUP BY name_key
              HAVING uniqExact(domain) = 1
            ) AS k ON replaceAll(replaceAll(
@@ -523,7 +523,7 @@ defmodule LS.Verification.HRBoards do
 
       if rows != "" do
         Clickhouse.query_raw(
-          "INSERT INTO biz_career (domain, job_id, title, location, url, posted_at, seen_at) FORMAT TabSeparated\n" <>
+          "INSERT INTO hr_jobs (domain, job_id, title, location, url, posted_at, seen_at) FORMAT TabSeparated\n" <>
             rows
         )
       end
@@ -535,7 +535,7 @@ defmodule LS.Verification.HRBoards do
         jobs |> Enum.map(& &1.title) |> LS.JobCategories.summarize() |> Clickhouse.escape_public()
 
       Clickhouse.query_raw("""
-      INSERT INTO biz_enrichment_log (domain, enriched_at, render_engine, job_count, ats_platform, positions_overview)
+      INSERT INTO http_deep_log (domain, enriched_at, render_engine, job_count, ats_platform, positions_overview)
       VALUES ('#{Clickhouse.escape_public(domain)}', now(), 'board_sync', #{length(jobs)}, '#{platform}', '#{overview}')
       """)
     end

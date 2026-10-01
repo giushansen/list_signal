@@ -58,9 +58,13 @@ defmodule LS.ProvenanceTest do
     assert "pipeline_version" in LS.Cluster.EnrichmentWriter.summary_columns()
     assert "classification_source" in LS.Clickhouse.history_cols()
     assert "pipeline_version" in LS.Clickhouse.history_cols()
-    src = File.read!("lib/ls/clickhouse.ex")
+    src = File.read!("lib/ls/clickhouse/compact.ex")
     assert src =~ "argMaxIf(s_classification_source, s_enriched_at, s_business_model != '') AS classification_source"
-    assert src =~ ~r/INSERT INTO businesses \([^)]*\bclassification_source\b[^)]*\bpipeline_version\b/
+    # The product names them estimated_business_model_evidence and
+    # estimated_version (data model v2, 2026-10-01).
+    sql = LS.Clickhouse.compact_sql_for_test(1_700_000_000)
+    assert sql =~ "h.classification_source AS estimated_business_model_evidence"
+    assert sql =~ "h.pipeline_version AS estimated_version"
     sql = File.read!("clickhouse/migrations/023_provenance.sql")
     for c <- ~w(http_fingerprint pipeline_version classification_source), do: assert(sql =~ c)
   end

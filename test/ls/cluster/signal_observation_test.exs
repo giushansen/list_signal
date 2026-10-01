@@ -13,7 +13,7 @@ defmodule LS.Cluster.SignalObservationTest do
   definition of "observed".
   """
 
-  @src File.read!("lib/ls/clickhouse.ex")
+  @src File.read!("lib/ls/clickhouse/compact.ex")
 
   test "the predicate reads the stored flag, never the 500-byte snippet (compaction stayed under its ceiling)" do
     sql = LS.Clickhouse.observed_sql()
@@ -57,12 +57,13 @@ defmodule LS.Cluster.SignalObservationTest do
     end
   end
 
-  test "record_signals, the backfill and the compactor fold all use it" do
-    [signals | _] = String.split(@src, "def record_signals") |> Enum.drop(1)
-    [signals | _] = String.split(signals, "def backfill_signals_shard")
-    assert signals =~ "AND \#{observed_sql()} AND http_tech != ''"
+  test "the stable check, the backfill and the compactor fold all use it" do
+    # Change detection itself compares compiled rows (LS.Schema.Changes,
+    # 2026-10-01), so a stub crawl can never reach it: the fold below is
+    # where "observed" is enforced for technology state.
+    assert LS.Clickhouse.stable_domains_sql(1, 2) =~ "AND (http_status BETWEEN 200 AND 399 AND http_observed = 1)"
 
-    [backfill | _] = String.split(@src, "def backfill_signals_shard") |> Enum.drop(1)
+    [backfill | _] = String.split(@src, "def backfill_changes_shard") |> Enum.drop(1)
     [backfill | _] = String.split(backfill, "\n  end\n")
     assert backfill =~ "\#{observed_sql()}"
 

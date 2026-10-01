@@ -22,11 +22,16 @@ defmodule LSWeb.UserLive.LoginSignedInTest do
     refute Enum.any?(inputs, &(&1 =~ "readonly")), "email field must never be read-only"
   end
 
-  test "a signed-in visitor is told who they are and can leave, and the email stays editable", %{conn: conn} do
+  # Owner's call, 2026-09-15 (third diagnosis): a signed-in visitor goes
+  # straight to the dashboard, where the log-out link lives. The form is
+  # still reachable for re-authentication through ?reauth=1.
+  test "a signed-in visitor is sent to the dashboard; the re-auth form says who they are and stays editable", %{conn: conn} do
     user = user_fixture()
     conn = log_in_user(conn, user)
 
-    {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+    assert {:error, {:redirect, %{to: "/dashboard"}}} = live(conn, ~p"/users/log-in")
+
+    {:ok, _lv, html} = live(conn, ~p"/users/log-in?reauth=1")
 
     assert html =~ "You are signed in as"
     assert html =~ user.email
@@ -43,7 +48,7 @@ defmodule LSWeb.UserLive.LoginSignedInTest do
     other = user_fixture() |> set_password()
     conn = log_in_user(conn, first)
 
-    {:ok, lv, _html} = live(conn, ~p"/users/log-in")
+    {:ok, lv, _html} = live(conn, ~p"/users/log-in?reauth=1")
 
     form =
       form(lv, "#login_form_password",

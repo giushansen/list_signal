@@ -53,7 +53,17 @@ defmodule LS.Enrichment.DeepAppsTest do
     src = File.read!("lib/ls/clickhouse.ex")
     cols = LS.Clickhouse.estimator_columns()
     assert length(cols) == 27
-    for c <- cols, do: assert(src =~ "b.#{c}", "#{c} missing from businesses_needing_enrichment")
+    # Columns the product table no longer carries as such are read from the
+    # log (x.) or flattened from arrays (data model v2, 2026-10-01).
+    sources = %{
+      "dns_txt" => "x.dns_txt", "dns_ptr" => "x.dns_ptr", "dns_cname" => "x.dns_cname", "dns_ms_enterprise" => "x.dns_ms_enterprise",
+      "dns_mx" => "arrayStringConcat(b.dns_mx, '|')", "ctl_subdomains" => "arrayStringConcat(b.ctl_subdomains, '|')",
+      "rdap_domain_created_at" => "b.rdap_created_at", "bgp_asn_number" => "b.bgp_asn",
+      "business_model" => "b.estimated_business_model", "industry" => "b.estimated_industry",
+      "http_emails" => "arrayStringConcat(b.http_emails, '|')", "rdap_nameservers" => "arrayStringConcat(b.rdap_nameservers, '|')",
+      "dns_a" => "arrayStringConcat(b.dns_a, '|')"
+    }
+    for c <- cols, do: assert(src =~ Map.get(sources, to_string(c), "b.#{c}"), "#{c} missing from businesses_needing_enrichment")
     assert src =~ "[d, pages, tech, blocked, status, country, tier | est]"
   end
 

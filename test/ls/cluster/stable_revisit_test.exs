@@ -114,7 +114,9 @@ defmodule LS.Cluster.StableRevisitTest do
     test "the query compares the four shown fields, requires an observed 2xx/3xx crawl and spares the top 100K" do
       sql = LS.Clickhouse.stable_domains_sql(1_700_000_000, 1_700_000_300)
       assert sql =~ "argMax(http_title, enriched_at)"
-      assert sql =~ "n.title = o.http_title AND n.tech = o.http_tech AND n.apps = o.http_apps AND n.status = o.http_status"
+      # The window's raw list goes through the catalog map and is compared
+      # with the compiled array (data model v2, 2026-10-01).
+      assert sql =~ "n.title = o.http_title AND n.tech = o.tech_sorted AND n.status = o.http_status"
       assert sql =~ "http_observed = 1", "a bot wall served as 200 must never mark a site as unchanged"
       assert sql =~ "tranco_rank IS NULL OR o.tranco_rank > 100000", "what customers look at keeps the weekly cadence"
       assert sql =~ "max_execution_time = 115", "dies with the compactor's client like the signals query"

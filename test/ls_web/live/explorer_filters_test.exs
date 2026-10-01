@@ -92,7 +92,7 @@ defmodule LSWeb.ExplorerFiltersTest do
       # http_tech LIKE '%Shopify%' is true for a church with a merch button, an
       # AI consultancy and a recruiting site (real examples, 2026-08-24).
       # product_count > 0 means /products.json actually answered.
-      assert Explorer.where_sql(has_catalog: "true") == "WHERE product_count > 0"
+      assert Explorer.where_sql(has_catalog: "true") == "WHERE shop_product_count > 0"
       assert Explorer.where_sql(has_catalog: "") == ""
     end
 
@@ -101,12 +101,12 @@ defmodule LSWeb.ExplorerFiltersTest do
       # as_of (last re-crawl) and matched 3.2M rows on prod; discovered is
       # first_seen and matched 955k. Selling the former as the latter would
       # overstate a new-store list by ~3x.
-      assert Explorer.where_sql(discovered: "7d") == "WHERE first_seen >= now() - INTERVAL 7 DAY"
-      assert Explorer.where_sql(freshness: "7d") == "WHERE as_of >= now() - INTERVAL 7 DAY"
+      assert Explorer.where_sql(discovered: "7d") == "WHERE ctl_first_seen_at >= now() - INTERVAL 7 DAY"
+      assert Explorer.where_sql(freshness: "7d") == "WHERE http_last_checked_at >= now() - INTERVAL 7 DAY"
       refute Explorer.where_sql(discovered: "7d") == Explorer.where_sql(freshness: "7d")
 
       for window <- ~w(24h 7d 30d) do
-        assert Explorer.where_sql(discovered: window) =~ "first_seen >="
+        assert Explorer.where_sql(discovered: window) =~ "ctl_first_seen_at >="
       end
 
       assert Explorer.where_sql(discovered: "") == ""
@@ -123,16 +123,15 @@ defmodule LSWeb.ExplorerFiltersTest do
 
       # A multi-select still has to use the real column.
       assert Explorer.where_sql(business_model: "SaaS,Agency") =~ "business_model IN"
-      assert Explorer.where_sql(business_model: "Agency") == "WHERE business_model = 'Agency'"
+      assert Explorer.where_sql(business_model: "Agency") == "WHERE estimated_business_model = 'Agency'"
     end
 
     test "empty filters produce no WHERE clause" do
       assert Explorer.where_sql(revenue: "", employees: "", tech: "") == ""
     end
 
-    test "tech filters match case-insensitively anywhere in the pipe-joined column" do
-      assert Explorer.where_sql(tech: "Klaviyo") ==
-               "WHERE (positionCaseInsensitive(http_tech, 'Klaviyo') > 0)"
+    test "tech filters are exact catalog names on the array (data model v2, 2026-10-01)" do
+      assert Explorer.where_sql(tech: "Klaviyo") == "WHERE hasAll(http_tech, ['Klaviyo'])"
     end
 
     test "multiple filters are ANDed" do

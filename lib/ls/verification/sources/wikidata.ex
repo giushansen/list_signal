@@ -149,7 +149,7 @@ defmodule LS.Verification.Sources.Wikidata do
   defp values(qids), do: Enum.map_join(qids, " ", &"wd:#{&1}")
 
   defp recently_fetched do
-    case LS.Clickhouse.query_raw("SELECT DISTINCT source_id FROM verified_source_records WHERE source = 'wikidata' AND fetched_at > now() - INTERVAL 7 DAY", 120_000) do
+    case LS.Clickhouse.query_raw("SELECT DISTINCT source_id FROM verified_log WHERE source = 'wikidata' AND fetched_at > now() - INTERVAL 7 DAY", 120_000) do
       {:ok, rows} -> MapSet.new(rows, &hd/1)
       _ -> MapSet.new()
     end

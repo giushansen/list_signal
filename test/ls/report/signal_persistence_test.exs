@@ -20,7 +20,8 @@ defmodule LS.Report.SignalPersistenceTest do
     [q | _] = String.split(src, "def signal_persistence") |> Enum.drop(1)
     [q | _] = String.split(q, "\n  end\n")
     assert q =~ "INTERVAL 63 DAY" and q =~ "INTERVAL 56 DAY"
-    for k <- ~w(tech_added tech_removed app_added app_removed started_hiring stopped_hiring), do: assert(q =~ k)
+    # changes_log kinds (data model v2): field + change.
+    for k <- ["http_tech added", "http_tech removed", "hr_job_count started", "hr_job_count stopped"], do: assert(q =~ k)
     assert q =~ "businesses FINAL"
     assert q =~ "max_execution_time = 240"
   end

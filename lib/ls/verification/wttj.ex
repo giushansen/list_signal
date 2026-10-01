@@ -289,7 +289,7 @@ defmodule LS.Verification.WTTJ do
          FROM hr_boards AS b FINAL
          INNER JOIN (
            SELECT name_key, any(domain) AS domain
-           FROM verification_domain_keys
+           FROM verified_keys
            WHERE country = 'FR'
            GROUP BY name_key
          ) AS k ON replaceAll(b.slug, '-', '') = k.name_key

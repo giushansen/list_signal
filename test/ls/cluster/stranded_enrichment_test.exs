@@ -42,7 +42,7 @@ defmodule LS.Cluster.StrandedEnrichmentTest do
     {:noreply, _} = LS.Cluster.EnrichmentQueue.handle_info(:check_inflight, %{})
 
     assert_received {:insert, query, body}
-    assert query =~ "INSERT INTO biz_enrichment (domain, enriched_at, render_engine, pipeline_version)"
+    assert query =~ "INSERT INTO http_deep_state (domain, enriched_at, render_engine, pipeline_version)"
     assert body =~ "heavy.example\t"
     assert body =~ "\tstranded\t"
     assert body =~ "walled.example\t"
@@ -70,6 +70,6 @@ defmodule LS.Cluster.StrandedEnrichmentTest do
   test "the refill SQL excludes anything attempted in the last seven days, stranded rows included" do
     src = File.read!("lib/ls/clickhouse.ex")
     [fun | _] = src |> String.split("def businesses_needing_enrichment") |> Enum.at(1) |> String.split("\n  end\n")
-    assert fun =~ "NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 7 DAY)"
+    assert fun =~ "NOT IN (SELECT domain FROM \#{LS.Schema.Tables.http_deep_state()} WHERE enriched_at >= now() - INTERVAL 7 DAY)"
   end
 end

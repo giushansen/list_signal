@@ -8,14 +8,18 @@ defmodule LS.Cluster.CompactorColumnsTest do
   country was dead for a month, see migration 018).
   """
 
-  @src File.read!("lib/ls/clickhouse.ex")
+  # The fold lives in LS.Clickhouse.Compact and the product columns come from
+  # the spec since data model v2 (2026-10-01); the generated SQL is checked
+  # as text, like before, through compact_sql_for_test/1.
+  @src File.read!("lib/ls/clickhouse/compact.ex")
+  @sql LS.Clickhouse.compact_sql_for_test(1_700_000_000, 1_700_000_300)
 
-  test "email-auth columns travel from domains_history to businesses" do
+  test "email-auth columns travel from the enrichment log to businesses" do
     for col <- ~w(dns_dmarc dns_bimi dns_dkim) do
       assert col in LS.Clickhouse.history_cols(), "#{col} missing from the history subselect"
       assert @src =~ "AS #{col},", "#{col} missing from the argMaxIf fold"
-      assert @src =~ "h.#{col}", "#{col} missing from the businesses select"
-      assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
+      assert @sql =~ "h.#{col} AS #{col}", "#{col} missing from the businesses select"
+      assert @sql =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
     end
   end
 
@@ -25,49 +29,53 @@ defmodule LS.Cluster.CompactorColumnsTest do
     assert @src =~ "argMaxIf(s_dns_dmarc, s_enriched_at, s_dns_mx != '')"
   end
 
-  test "depth apps are unioned into http_apps, never replace it" do
-    assert @src =~ "arrayConcat(splitByChar('|', h.http_apps), splitByChar('|', ifNull(s.apps_deep, '')))"
+  test "depth apps are unioned into http_tech with the homepage list, never replace it" do
+    assert @sql =~ "arrayConcat(splitByChar('|', h.http_tech), splitByChar('|', h.http_apps), splitByChar('|', ifNull(s.apps_deep, '')))"
   end
 
-  test "store shape columns travel from biz_enrichment to businesses" do
-    for col <- ~w(shop_theme shop_theme_store_id shop_currency shop_locales shopify_plus) do
+  test "store shape columns travel from the deep log to businesses" do
+    for {col, product} <- [{"shop_theme", "shop_theme"}, {"shop_theme_store_id", "shop_theme_store_id"}, {"shop_currency", "shop_currency"}, {"shop_locales", "shop_locales"}, {"shopify_plus", "shop_plus"}] do
       assert @src =~ "AS #{col},", "#{col} missing from the enrichment fold"
-      assert @src =~ "s.#{col}", "#{col} missing from the businesses select"
-      assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
+      assert @sql =~ "s.#{col}", "#{col} missing from the businesses select"
+      assert @sql =~ ~r/INSERT INTO businesses \([^)]*\b#{product}\b/, "#{product} missing from the INSERT list"
     end
 
     assert ~w(apps_deep shop_theme shop_theme_store_id shop_currency shop_locales shopify_plus) --
              LS.Cluster.EnrichmentWriter.summary_columns() == []
   end
 
-  test "sitemap snapshot and the depth estimate travel from biz_enrichment to businesses (2026-09-06)" do
+  test "sitemap snapshot and the depth estimate travel from the deep log to businesses (2026-09-06)" do
     for col <- ~w(sitemap_urls sitemap_products sitemap_blog sitemap_children sitemap_lastmod sitemap_hash) do
       assert @src =~ "AS #{col},", "#{col} missing from the enrichment fold"
-      assert @src =~ "s.#{col}", "#{col} missing from the businesses select"
-      assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/, "#{col} missing from the INSERT list"
+      assert @sql =~ "s.#{col} AS http_deep_#{col}", "#{col} missing from the businesses select"
+      assert @sql =~ ~r/INSERT INTO businesses \([^)]*\bhttp_deep_#{col}\b/, "#{col} missing from the INSERT list"
     end
 
-    assert @src =~ "if(ifNull(s.d_est_revenue, '') != '', s.d_est_revenue, h.estimated_revenue) AS estimated_revenue"
+    assert @sql =~ "if(ifNull(s.d_est_revenue, '') != '', s.d_est_revenue, h.estimated_revenue) AS estimated_revenue"
     assert @src =~ "argMaxIf(depth_revenue_evidence, enriched_at, depth_estimated_revenue != '') AS d_rev_evidence"
 
     assert ~w(sitemap_urls sitemap_hash depth_estimated_revenue depth_revenue_evidence) --
              LS.Cluster.EnrichmentWriter.summary_columns() == []
   end
 
-  test "infrastructure DNS columns travel to businesses (2026-09-06)" do
+  test "infrastructure DNS columns are folded and reach the product as the mailbox provider (2026-10-01)" do
     for col <- ~w(dns_ptr dns_ms_enterprise) do
       assert col in LS.Clickhouse.history_cols()
       assert @src =~ "AS #{col},"
-      assert @src =~ "h.#{col}"
-      assert @src =~ ~r/INSERT INTO businesses \([^)]*\b#{col}\b/
     end
+
+    # dns_ms_enterprise and the raw MX fold into one scalar, dns_email_provider;
+    # dns_ptr stays in the log (data model v2).
+    assert @sql =~ "AS dns_email_provider"
+    assert @sql =~ ~r/INSERT INTO businesses \([^)]*\bdns_email_provider\b/
+    refute @sql =~ ~r/INSERT INTO businesses \([^)]*\bdns_ptr\b/
   end
 
   test "subdomains are a union across certificates and suppressed sightings, capped" do
     assert @src =~ "arrayFlatten(groupArray(splitByChar('|', s_ctl_subdomains))))), 1, 300) AS _subs_hist"
-    assert @src =~ "FROM ctl_sightings\#{join_scope}"
-    assert length(String.split(@src, "arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300)")) == 3,
-           "the union must feed BOTH ctl_subdomain_count and ctl_subdomains"
+    assert @src =~ "FROM \#{Tables.ctl_log()}\#{join_scope}"
+    assert @sql =~ "arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300) AS ctl_subdomains"
+    assert @sql =~ "length(ctl_subdomains) AS ctl_subdomain_count", "the count follows the union"
   end
 
   describe "verified facts (google.com was a 3-person company, 2026-09-06)" do
@@ -77,11 +85,11 @@ defmodule LS.Cluster.CompactorColumnsTest do
 
     test "a fact that contradicts the Tranco rank is blanked, source included, tiered by rank" do
       # google.com (rank 1) kept "51-500 employees" under a flat top-10K rule (2026-09-07).
-      assert @src =~ "(h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))"
-      assert @src =~ "(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue) AS verified_revenue"
-      assert @src =~ "(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue_source) AS verified_revenue_source"
-      assert @src =~ "(h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))"
-      assert @src =~ "(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50')), '', v.verified_employees) AS verified_employees"
+      assert @sql =~ "(h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))"
+      assert @sql =~ "(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'))), '', v.verified_revenue) AS verified_revenue"
+      assert @sql =~ "(h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M'))), '', v.verified_revenue_source) AS verified_revenue_evidence"
+      assert @sql =~ "(h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))"
+      assert @sql =~ "(h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50'))), '', v.verified_employees) AS verified_employees"
     end
   end
 
@@ -92,7 +100,7 @@ defmodule LS.Cluster.CompactorColumnsTest do
       assert sql =~ col
     end
 
-    assert sql =~ "CREATE TABLE IF NOT EXISTS ls.ctl_sightings"
+    assert sql =~ "CREATE TABLE IF NOT EXISTS ls.ctl_sightings", "the table was renamed ctl_log on 2026-10-01; the migration keeps its original name"
     assert sql =~ "TTL seen_at + INTERVAL 90 DAY"
   end
 end

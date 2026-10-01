@@ -47,7 +47,7 @@ defmodule LS.Verification.Sources.CompaniesHouse do
 
   defp ensure_staging do
     {:ok, _} = Clickhouse.query_raw("""
-    CREATE TABLE IF NOT EXISTS verification_ch_accounts
+    CREATE TABLE IF NOT EXISTS verified_ch_accounts
     (company_number String, period_end Date, turnover Nullable(Float64), employees Nullable(UInt32),
      file String, month String, fetched_at DateTime)
     ENGINE = ReplacingMergeTree(fetched_at) ORDER BY (company_number, period_end)
@@ -66,7 +66,7 @@ defmodule LS.Verification.Sources.CompaniesHouse do
   defp shift_months(date, n) when n < 0, do: date |> Date.beginning_of_month() |> Date.add(-1) |> shift_months(n + 1)
 
   defp staged_months do
-    {:ok, rows} = Clickhouse.query_raw("SELECT DISTINCT snapshot FROM verification_runs WHERE source = 'companies_house_accounts' AND status = 'ok'")
+    {:ok, rows} = Clickhouse.query_raw("SELECT DISTINCT snapshot FROM verified_runs WHERE source = 'companies_house_accounts' AND status = 'ok'")
     MapSet.new(rows, &hd/1)
   end
 
@@ -130,7 +130,7 @@ defmodule LS.Verification.Sources.CompaniesHouse do
 
   defp flush(rows, _month, _started) do
     body = Enum.map_join(rows, "\n", &Jason.encode!(%{&1 | fetched_at: NaiveDateTime.to_string(&1.fetched_at)}))
-    :ok = Clickhouse.insert_raw("INSERT INTO verification_ch_accounts FORMAT JSONEachRow", body)
+    :ok = Clickhouse.insert_raw("INSERT INTO verified_ch_accounts FORMAT JSONEachRow", body)
   end
 
   @doc "`Prod223_2373_00123456_20240331.html` → `{:ok, \"00123456\", \"2024-03-31\"}` (pure)."
@@ -198,7 +198,7 @@ defmodule LS.Verification.Sources.CompaniesHouse do
     list = Enum.map_join(rows, ",", &"'#{Clickhouse.escape_public(&1.number)}'")
     {:ok, found} = Clickhouse.query_raw("""
     SELECT company_number, argMax(turnover, period_end), argMax(employees, period_end), max(period_end)
-    FROM verification_ch_accounts WHERE company_number IN (#{list}) GROUP BY company_number
+    FROM verified_ch_accounts WHERE company_number IN (#{list}) GROUP BY company_number
     """, 120_000)
     facts = Map.new(found, fn [n, t, e, p] -> {n, {t, e, p}} end)
 

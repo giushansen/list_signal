@@ -17,13 +17,15 @@ defmodule LS.TechIndexTest do
     [_, fill] = String.split(migration, "INSERT INTO ls.tech_index")
     from_migration = "INSERT INTO tech_index" <> fill
 
-    norm = fn sql -> sql |> String.replace(~r/--[^\n]*/, "") |> String.replace(~r/\s+/, " ") |> String.replace("ls.", "") |> String.trim() |> String.trim_trailing(";") end
+    # domains_current became `domains` on 2026-10-01 (data model v2); the
+    # migration file keeps the name it was written with.
+    norm = fn sql -> sql |> String.replace(~r/--[^\n]*/, "") |> String.replace(~r/\s+/, " ") |> String.replace("ls.", "") |> String.replace("domains_current", "domains") |> String.trim() |> String.trim_trailing(";") end
     assert norm.(TechIndex.build_sql("tech_index")) == norm.(from_migration)
   end
 
   test "the build dedups the source, explodes exact tokens and is bounded server-side" do
     sql = TechIndex.build_sql()
-    assert sql =~ "FROM domains_current FINAL"
+    assert sql =~ "FROM domains FINAL"
     assert sql =~ "ARRAY JOIN splitByChar('|', http_tech) AS tech"
     assert sql =~ "http_title != ''"
     assert sql =~ "max_execution_time = 1700"

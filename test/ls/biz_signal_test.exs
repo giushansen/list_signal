@@ -1,13 +1,16 @@
 defmodule LS.BizSignalTest do
   @moduledoc """
-  biz_signal sells displacement: "who dropped Klaviyo last month" is the
+  changes_log sells displacement: "who dropped Klaviyo last month" is the
   highest-intent technographic signal we hold. The invariants that keep it
-  honest, each pinned here:
+  honest, each pinned here against a real ClickHouse (data model v2,
+  2026-10-01: detection compares the freshly compiled row with the current
+  one inside the compaction pass):
 
-    * a failed or blind crawl emits NOTHING — "removed" must always mean
+    * a failed or blind crawl emits NOTHING: "removed" must always mean
       "observed gone", never "could not look";
-    * a domain's first crawl emits nothing — "added everything" is noise;
-    * a retried compaction slice re-emitting identical signals dedups.
+    * a domain's first crawl emits nothing: "added everything" is noise;
+    * a retried compaction slice re-emitting identical changes dedups;
+    * hiring transitions come from the deep pass, as started / stopped.
 
   Runs against the local ClickHouse harness; skips without it.
   """
@@ -18,23 +21,47 @@ defmodule LS.BizSignalTest do
   @moduletag :data_contract
 
   @d "biz-signal-test.internal"
+  @snippet String.duplicate("x", 300)
 
   defp ch_up?, do: match?({:ok, _}, Clickhouse.query_raw("SELECT 1"))
   defp q(sql), do: Clickhouse.query_raw(sql)
 
   defp clean do
-    # mutations_sync: an async DELETE races the next test's reads when the
-    # full suite has ClickHouse busy — flaked 2026-08-26 with rows from the
-    # previous test still visible.
-    for t <- ~w(businesses biz_signal domains_history biz_enrichment_log) do
+    for t <- ~w(businesses changes_log enrich_log http_deep_log) do
       q("ALTER TABLE #{t} DELETE WHERE domain = '#{@d}' SETTINGS mutations_sync = 1")
     end
   end
 
-  defp signals do
-    {:ok, rows} = q("SELECT kind, value FROM biz_signal FINAL WHERE domain = '#{@d}' ORDER BY kind, value")
+  defp changes do
+    {:ok, rows} = q("SELECT field, change, value FROM changes_log FINAL WHERE domain = '#{@d}' ORDER BY field, change, value")
     rows
   end
+
+  # A compiled v2 row as the pass would have left it 30 days ago.
+  defp business!(tech, jobs \\ nil) do
+    arr = tech |> Enum.map(&"'#{&1}'") |> Enum.join(",")
+    jobs_sql = if jobs, do: "#{jobs}", else: "NULL"
+
+    q("""
+    INSERT INTO businesses (domain, ctl_first_seen_at, compiled_at, http_last_checked_at, http_last_seen_at, http_crawlable,
+                            http_status, http_tech, estimated_business_model, estimated_business_model_confidence, hr_job_count, dns_a)
+    VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 1,
+            200, [#{arr}], 'Ecommerce', 0.9, #{jobs_sql}, ['1.2.3.4'])
+    """)
+  end
+
+  defp crawl!(status, tech, opts \\ []) do
+    at = Keyword.get(opts, :at, "now()")
+    observed = Keyword.get(opts, :observed, 1)
+    title = Keyword.get(opts, :title, "Acme store")
+
+    q("""
+    INSERT INTO enrich_log (domain, enriched_at, http_status, http_tech, http_title, http_body_snippet, http_observed, business_model, classification_confidence, dns_a)
+    VALUES ('#{@d}', #{at}, #{status}, '#{tech}', '#{title}', '#{@snippet}', #{observed}, 'Ecommerce', 0.9, '1.2.3.4')
+    """)
+  end
+
+  defp compact!(now), do: assert({:ok, _} = Clickhouse.compact_businesses(now - 300, now + 60))
 
   setup do
     if ch_up?() do
@@ -51,82 +78,88 @@ defmodule LS.BizSignalTest do
   test "a successful recrawl emits adds, removes, and hiring transitions" do
     with_ch(fn ->
       now = System.system_time(:second)
+      business!(["Shopify", "Klaviyo"], 0)
+      crawl!(200, "Shopify|Gorgias")
+      q("INSERT INTO http_deep_log (domain, enriched_at, render_engine, job_count) VALUES ('#{@d}', now(), 'http', 5)")
 
-      q("INSERT INTO businesses (domain, first_seen, as_of, http_tech, http_apps, job_count) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify|Klaviyo', 'ReCharge', 0)")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_apps, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Shopify|Gorgias', 'ReCharge|Judge.me', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
-      q("INSERT INTO biz_enrichment_log (domain, enriched_at, render_engine, job_count) VALUES ('#{@d}', now(), 'http', 5)")
+      compact!(now)
 
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-
-      assert signals() == [
-               ["app_added", "Judge.me"],
-               ["started_hiring", "5"],
-               ["tech_added", "Gorgias"],
-               ["tech_removed", "Klaviyo"]
+      assert changes() == [
+               ["hr_job_count", "started", "5"],
+               ["http_tech", "added", "Gorgias"],
+               ["http_tech", "removed", "Klaviyo"]
              ]
     end)
   end
 
-  test "a failed crawl emits nothing — removed means observed gone" do
+  test "a failed crawl emits nothing: removed means observed gone" do
     with_ch(fn ->
       now = System.system_time(:second)
+      business!(["Shopify", "Klaviyo"])
+      crawl!(403, "", observed: 0)
 
-      q("INSERT INTO businesses (domain, first_seen, as_of, http_tech) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify|Klaviyo')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech) VALUES ('#{@d}', now(), 403, '')")
-
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-      assert signals() == []
+      compact!(now)
+      assert changes() == []
     end)
   end
 
-  test "a first-ever crawl emits nothing — everything-added is noise" do
+  test "a first-ever crawl emits nothing: everything-added is noise" do
     with_ch(fn ->
       now = System.system_time(:second)
-
       # No businesses row at all: the domain is new to us.
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Shopify|Klaviyo', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
+      crawl!(200, "Shopify|Klaviyo")
 
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-      assert signals() == []
+      compact!(now)
+      assert changes() == []
+      {:ok, [[n]]} = q("SELECT count() FROM businesses WHERE domain = '#{@d}'")
+      assert n in [1, "1"], "the first crawl still compiles the row"
     end)
   end
 
   test "a retried slice dedups instead of duplicating" do
     with_ch(fn ->
       now = System.system_time(:second)
+      business!(["Shopify"])
+      crawl!(200, "Shopify|Gorgias")
 
-      q("INSERT INTO businesses (domain, first_seen, as_of, http_tech) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now(), 200, 'Shopify|Gorgias', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
+      compact!(now)
+      compact!(now)
 
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-
-      {:ok, [[n]]} = q("SELECT count() FROM biz_signal FINAL WHERE domain = '#{@d}'")
+      {:ok, [[n]]} = q("SELECT count() FROM changes_log FINAL WHERE domain = '#{@d}'")
       assert n in [1, "1"]
+    end)
+  end
+
+  test "an unknown handle never becomes a change: only catalog names are published" do
+    with_ch(fn ->
+      now = System.system_time(:second)
+      business!(["Shopify"])
+      crawl!(200, "Shopify|Notify Me Ninja Htn|Judgeme")
+
+      compact!(now)
+      # Judgeme is an alias of Judge.me; the handle is dropped.
+      assert changes() == [["http_tech", "added", "Judge.me"]]
     end)
   end
 
   test "the history backfill finds the same change a live diff would" do
     with_ch(fn ->
-      q("INSERT INTO businesses (domain, first_seen, as_of, http_tech) VALUES ('#{@d}', now() - INTERVAL 60 DAY, now(), 'Shopify|Gorgias')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now() - INTERVAL 40 DAY, 200, 'Shopify|Klaviyo', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now() - INTERVAL 10 DAY, 200, 'Shopify|Gorgias', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
+      business!(["Shopify", "Gorgias"])
+      crawl!(200, "Shopify|Klaviyo", at: "now() - INTERVAL 40 DAY")
+      crawl!(200, "Shopify|Gorgias", at: "now() - INTERVAL 10 DAY")
 
-      # Run ONLY the shard this domain hashes into, out of a large shard count.
-      # Running 8 shards over a full local domains_history means a
-      # production-scale window-function walk per shard — the test timed out
-      # at 60s. Ask ClickHouse which shard owns the domain and do that one.
       total = 4096
       {:ok, [[shard]]} = q("SELECT cityHash64('#{@d}') % #{total}")
       shard = if is_binary(shard), do: String.to_integer(shard), else: shard
 
-      assert {:ok, _} = Clickhouse.backfill_signals_shard(shard, total)
+      assert {:ok, _} = Clickhouse.backfill_changes_shard(shard, total)
 
-      kinds = signals() |> Enum.map(&hd/1) |> Enum.sort()
-      assert "tech_added" in kinds
-      assert "tech_removed" in kinds
+      kinds = changes() |> Enum.map(&Enum.at(&1, 1)) |> Enum.sort()
+      assert "added" in kinds
+      assert "removed" in kinds
     end)
   end
+
   test "an unobserved crawl neither removes nor re-adds (2026-09-06)" do
     # 13.3% of "started showing" and 16.6% of "stopped showing" events in a
     # 3,000-event sample came from a stub crawl (bot wall served as 200,
@@ -135,15 +168,15 @@ defmodule LS.BizSignalTest do
     # emit fake re-adoptions of everything the stub lacked.
     with_ch(fn ->
       now = System.system_time(:second)
-      q("INSERT INTO businesses (domain, first_seen, as_of, http_tech, http_apps, job_count) VALUES ('#{@d}', now() - INTERVAL 30 DAY, now() - INTERVAL 30 DAY, 'Shopify|Klaviyo', '', 0)")
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_title, http_observed) VALUES ('#{@d}', now(), 200, 'Cloudflare', 'Just a moment...', 0)")
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-      assert signals() == [], "a bot wall served as 200 must not emit tech_removed"
+      business!(["Shopify", "Klaviyo"], 0)
+      crawl!(200, "Cloudflare", observed: 0, title: "Just a moment...")
 
-      q("INSERT INTO domains_history (domain, enriched_at, http_status, http_tech, http_body_snippet) VALUES ('#{@d}', now() + INTERVAL 1 SECOND, 200, 'Shopify|Klaviyo', 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx')")
-      assert :ok = Clickhouse.record_signals(now - 300, now + 60)
-      assert signals() == [], "the real crawl after a bot wall must not re-add what the wall hid"
+      compact!(now)
+      assert changes() == [], "a bot wall served as 200 must not emit a removal"
+
+      crawl!(200, "Shopify|Klaviyo", at: "now() + INTERVAL 1 SECOND")
+      compact!(now)
+      assert changes() == [], "the real crawl after a bot wall must not re-add what the wall hid"
     end)
   end
-
 end

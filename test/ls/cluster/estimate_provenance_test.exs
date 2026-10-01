@@ -27,7 +27,7 @@ defmodule LS.Cluster.EstimateProvenanceTest do
   end
 
   test "the compactor keeps the best-evidenced estimate, newest on ties" do
-    src = File.read!("lib/ls/clickhouse.ex")
+    src = File.read!("lib/ls/clickhouse/compact.ex")
     for col <- ~w(estimated_revenue estimated_employees revenue_confidence revenue_evidence) do
       assert src =~ "argMaxIf(s_#{col}, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS #{col}"
     end

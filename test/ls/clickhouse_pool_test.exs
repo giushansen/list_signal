@@ -40,15 +40,17 @@ defmodule LS.ClickhousePoolTest do
   end
 
   describe "the long-running callers are on the background pool" do
-    @source File.read!("lib/ls/clickhouse.ex")
+    # Compaction moved to LS.Clickhouse.Compact (data model v2, 2026-10-01).
+    @source File.read!("lib/ls/clickhouse/compact.ex")
     @optimizer File.read!("lib/ls/cluster/optimizer.ex")
 
     test "every compaction entry point passes background: true" do
       # These are the calls measured at 105-110s in the outage window.
       for fragment <- [
-            "compact_sql(since_unix, until_unix), 1_200_000, background: true",
+            "scratch_sql(scratch, since_unix, until_unix), 1_200_000, background: true",
             "compact_sql(0, nil, 1790), 30 * 60_000, background: true",
-            "compact_sql_shard(shard, total_shards), 1_200_000, background: true"
+            "compact_sql_shard(shard, total_shards), 1_200_000, background: true",
+            "move_sql(scratch), 600_000, background: true"
           ] do
         assert @source =~ fragment,
                "a compaction call reverted to the shared pool: #{fragment}"

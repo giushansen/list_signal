@@ -124,6 +124,7 @@ defmodule LSWeb.ApiV1Test do
       spec = Jason.decode!(conn.resp_body)
 
       assert Map.keys(spec["paths"]) |> Enum.sort() == [
+               "/api/v1/changes",
                "/api/v1/company/{domain}",
                "/api/v1/search",
                "/api/v1/stats",

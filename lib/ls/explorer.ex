@@ -472,6 +472,13 @@ defmodule LS.Explorer do
 
   @doc "Distinct values of a low-cardinality column ordered by frequency (for dropdown options)."
   def distinct_by_count(column, limit \\ 300)
+
+  # v1 names still arrive from older callers for one release; they map to
+  # the v2 column (data model v2, 2026-10-01).
+  def distinct_by_count(column, limit) when column in ~w(inferred_country business_model industry),
+    do: distinct_by_count(Map.fetch!(LS.Schema.Columns.legacy_map(), column), limit)
+
+  def distinct_by_count(column, limit)
       when column in ~w(estimated_country http_language estimated_business_model estimated_industry dns_email_provider) do
     # Collapse language region subtags (en-US / en-us -> en) so values match the curated list.
     expr = if column == "http_language", do: "splitByChar('-', lower(http_language))[1]", else: column

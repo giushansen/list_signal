@@ -94,12 +94,17 @@ defmodule LSWeb.UserLive.LoginTest do
       %{user: user, conn: log_in_user(conn, user)}
     end
 
-    test "shows login page with email filled in", %{conn: conn, user: user} do
-      {:ok, _lv, html} = live(conn, ~p"/users/log-in")
+    test "shows the re-auth form, with the address in the prose and the field free to type in", %{conn: conn, user: user} do
+      # 2026-09-15: a plain /users/log-in with a session goes to the
+      # dashboard; sudo mode marks its bounce with ?reauth=1. The address is
+      # never welded into the input (LiveView patched it back on every
+      # render and the owner could not type another one).
+      {:ok, _lv, html} = live(conn, ~p"/users/log-in?reauth=1")
 
       assert html =~ "Re-authenticate"
       refute html =~ "Sign up"
       assert html =~ user.email
+      refute html =~ ~s(value="#{user.email}")
     end
   end
 end

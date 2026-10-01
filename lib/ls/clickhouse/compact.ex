@@ -361,13 +361,16 @@ defmodule LS.Clickhouse.Compact do
         argMaxIf(s_http_apps, s_enriched_at, #{observed_sql("s_")}) AS http_apps,
         argMaxIf(s_http_fingerprint, s_enriched_at, #{observed_sql("s_")} AND s_http_fingerprint != '') AS http_fingerprint,
         argMaxIf(s_http_shopify_app_handles, s_enriched_at, #{observed_sql("s_")}) AS http_shopify_app_handles,
-        argMaxIf(s_http_language, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_language,
-        argMaxIf(s_http_title, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_title,
-        argMaxIf(s_http_meta_description, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_meta_description,
-        argMaxIf(s_http_pages, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_pages,
-        argMaxIf(s_http_h1, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_h1,
-        argMaxIf(s_http_schema_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_schema_type,
-        argMaxIf(s_http_og_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_og_type,
+        /* Every page fact takes the observed guard (data model v2): a bot
+           wall served as 200 carried "Just a moment..." into http_title and
+           the next real crawl then recorded a title change. */
+        argMaxIf(s_http_language, s_enriched_at, #{observed_sql("s_")}) AS http_language,
+        argMaxIf(s_http_title, s_enriched_at, #{observed_sql("s_")}) AS http_title,
+        argMaxIf(s_http_meta_description, s_enriched_at, #{observed_sql("s_")}) AS http_meta_description,
+        argMaxIf(s_http_pages, s_enriched_at, #{observed_sql("s_")}) AS http_pages,
+        argMaxIf(s_http_h1, s_enriched_at, #{observed_sql("s_")}) AS http_h1,
+        argMaxIf(s_http_schema_type, s_enriched_at, #{observed_sql("s_")}) AS http_schema_type,
+        argMaxIf(s_http_og_type, s_enriched_at, #{observed_sql("s_")}) AS http_og_type,
         argMaxIf(s_http_phone, s_enriched_at, s_http_phone != '') AS http_phone,
         argMaxIf(s_http_address, s_enriched_at, s_http_address != '') AS http_address,
         argMaxIf(s_http_company_id, s_enriched_at, s_http_company_id != '') AS http_company_id,

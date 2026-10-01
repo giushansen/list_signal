@@ -59,7 +59,7 @@ defmodule LS.Verification.Sources.Sirene do
 
   defp ensure_staging do
     {:ok, _} = Clickhouse.query_raw("""
-    CREATE TABLE IF NOT EXISTS verification_inpi_ratios
+    CREATE TABLE IF NOT EXISTS verified_inpi_ratios
     (siren String, closing Date, revenue_eur Float64, kind LowCardinality(String), fetched_at DateTime)
     ENGINE = ReplacingMergeTree(fetched_at) ORDER BY (siren, closing, kind)
     """)
@@ -81,7 +81,7 @@ defmodule LS.Verification.Sources.Sirene do
         |> Stream.chunk_every(Store.chunk_size())
         |> Enum.reduce(0, fn rows, n ->
           body = Enum.map_join(rows, "\n", &Jason.encode!(Map.put(&1, :fetched_at, NaiveDateTime.to_string(started))))
-          :ok = Clickhouse.insert_raw("INSERT INTO verification_inpi_ratios FORMAT JSONEachRow", body)
+          :ok = Clickhouse.insert_raw("INSERT INTO verified_inpi_ratios FORMAT JSONEachRow", body)
           n + length(rows)
         end)
 
@@ -147,7 +147,7 @@ defmodule LS.Verification.Sources.Sirene do
     list = Enum.map_join(units, ",", &"'#{&1.siren}'")
     {:ok, rows} = Clickhouse.query_raw("""
     SELECT siren, argMax(revenue_eur, (closing, kind != 'K')), max(closing)
-    FROM verification_inpi_ratios WHERE siren IN (#{list}) GROUP BY siren
+    FROM verified_inpi_ratios WHERE siren IN (#{list}) GROUP BY siren
     """, 120_000)
     rev = Map.new(rows, fn [s, ca, c] -> {s, {ca, c}} end)
 

@@ -97,7 +97,7 @@ defmodule LS.Verification.Scheduler do
   @doc false
   def stale_source do
     last_ok =
-      case Clickhouse.query_raw("SELECT source, max(finished_at) FROM verification_runs WHERE status = 'ok' GROUP BY source") do
+      case Clickhouse.query_raw("SELECT source, max(finished_at) FROM verified_runs WHERE status = 'ok' GROUP BY source") do
         {:ok, rows} -> Map.new(rows, fn [src, at] -> {src, at} end)
         _ -> %{}
       end

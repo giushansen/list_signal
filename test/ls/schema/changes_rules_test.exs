@@ -41,9 +41,10 @@ defmodule LS.Schema.ChangesRulesTest do
     assert sql =~ "ifNull(n.http_deep_last_seen_at, n.http_last_checked_at)"
   end
 
-  test "a website is down when a 2xx becomes a measured non-2xx, never when the fetch did not happen" do
+  test "a website is down on a measured outage, never on a bot wall or a fetch that did not happen" do
     sql = Changes.rule_sql({"http_status", :down_back, "Nullable(Int32)"})
-    assert sql =~ "(o.http_status BETWEEN 200 AND 399) AND n.http_status IS NOT NULL AND NOT (n.http_status BETWEEN 200 AND 399)"
+    assert sql =~ "(o.http_status BETWEEN 200 AND 399) AND n.http_status IN (404, 410, 500, 502, 504, 521, 522, 523, 524, 525, 526)"
+    refute sql =~ "403", "a WAF challenge is a fact about the crawl, not the business"
     assert sql =~ "'back'"
   end
 

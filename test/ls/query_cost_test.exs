@@ -12,9 +12,9 @@ defmodule LS.QueryCostTest do
   defp ch, do: File.read!("lib/ls/clickhouse.ex")
 
   test "the enrichment refill uses a semi-join and a background-sized timeout" do
-    fun = ch() |> String.split("def businesses_needing_enrichment") |> Enum.at(1) |> String.slice(0, 6000)
+    fun = ch() |> String.split("def businesses_needing_enrichment") |> Enum.at(1) |> String.slice(0, 12_000)
 
-    refute fun =~ "LEFT JOIN biz_enrichment",
+    refute fun =~ "LEFT JOIN \#{LS.Schema.Tables.http_deep_state()}",
            "a JOIN costs ~9x a single-table scan here; the semi-join is the same set at 8.2s vs 13.1s"
 
     # 2026-09-10: the 30-day NOT IN set (14M domains, 1.8 GiB) plus a sort of
@@ -22,9 +22,9 @@ defmodule LS.QueryCostTest do
     # two days; pipeline 2 fell to a fifth. The narrow inner select reads the
     # compiled depth_enriched_at for "done in the last 30 days" and keeps a
     # 7-day NOT IN for failed attempts and compaction lag (1.9s, 534 MB).
-    assert fun =~ "NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 7 DAY)"
+    assert fun =~ "NOT IN (SELECT domain FROM \#{LS.Schema.Tables.http_deep_state()} WHERE enriched_at >= now() - INTERVAL 7 DAY)"
     refute fun =~ "biz_enrichment WHERE enriched_at >= now() - INTERVAL 30 DAY", "the 30-day set is what could not fit in memory"
-    assert fun =~ "depth_enriched_at IS NULL OR i.depth_enriched_at < now() - INTERVAL 30 DAY"
+    assert fun =~ "http_deep_last_seen_at IS NULL OR i.http_deep_last_seen_at < now() - INTERVAL 30 DAY"
     assert fun =~ "WHERE b.domain IN (", "the wide columns must be read for the chosen domains only"
     assert fun =~ "max_memory_usage = 2500000000", "fail this query, never the server"
 

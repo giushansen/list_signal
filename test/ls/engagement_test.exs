@@ -27,7 +27,7 @@ defmodule LS.EngagementTest do
   # does not make these tests indeterminate.
   defp seed_fresh_business! do
     d = "digest-probe.test"
-    LS.Clickhouse.query_raw("INSERT INTO businesses (domain, first_seen, as_of, http_tech) VALUES ('#{d}', now(), now(), 'Shopify')")
+    LS.Clickhouse.query_raw("INSERT INTO businesses (domain, ctl_first_seen_at, compiled_at, http_last_checked_at, http_tech) VALUES ('#{d}', now(), now(), now(), ['Shopify'])")
     on_exit(fn -> LS.Clickhouse.query_raw("ALTER TABLE businesses DELETE WHERE domain = '#{d}'") end)
     :ok
   end

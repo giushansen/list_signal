@@ -6,7 +6,7 @@ defmodule LS.Signals do
 
   A change is `{field, change, value, prev_value, changed_at}`: "Klaviyo
   added", "Yoast SEO removed", "revenue from $1M-$10M to $10M-$100M",
-  "started hiring (12 roles)", "website down (503)". Which columns are
+  "started hiring (12 roles)", "website down (502)". Which columns are
   tracked and by which rule is declared on the column spec
   (`LS.Schema.Columns.tracked/0`).
 

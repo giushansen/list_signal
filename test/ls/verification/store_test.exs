@@ -53,7 +53,7 @@ defmodule LS.Verification.StoreTest do
       assert sql =~ "source = 'wikidata', 1"
       assert sql =~ "source = 'yc', 4"
       compact = LS.Clickhouse.compact_sql_for_test(1_700_000_000)
-      assert compact =~ "verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary"
+      assert compact =~ "verified_revenue, verified_revenue_evidence, verified_employees, verified_employees_evidence, verified_industry, verified_founded_year, verified_at"
       assert compact =~ "SELECT domain FROM verified_facts WHERE fetched_at >="
       refute compact =~ "estimated_revenue = v.", "estimated_* must never be written by pipeline 3"
     end

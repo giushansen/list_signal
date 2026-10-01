@@ -12,7 +12,7 @@ defmodule LSWeb.StoreRowShapeTest do
 
   test "a ClickHouse store row is a map keyed by the table's own columns" do
     if match?({:ok, _}, LS.Clickhouse.query_raw("SELECT 1")) do
-      {:ok, [[d]]} = LS.Clickhouse.query_raw("SELECT domain FROM domains_current WHERE http_title != '' LIMIT 1")
+      {:ok, [[d]]} = LS.Clickhouse.query_raw("SELECT domain FROM domains WHERE http_title != '' LIMIT 1")
       {:ok, [row]} = LS.Clickhouse.get_store(d)
       assert is_map(row)
       assert is_binary(row[:http_title]) and row[:http_title] != ""

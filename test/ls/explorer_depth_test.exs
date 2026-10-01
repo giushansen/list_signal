@@ -128,12 +128,12 @@ defmodule LS.ExplorerDepthTest do
   describe "sorting" do
     test "sortable columns actually change the order" do
       with_ch(fn ->
-        {:ok, desc} = Explorer.list(%{min_products: "1"}, per_page: 5, sort: "product_count", dir: "desc")
-        {:ok, asc} = Explorer.list(%{min_products: "1"}, per_page: 5, sort: "product_count", dir: "asc")
+        {:ok, desc} = Explorer.list(%{min_products: "1"}, per_page: 5, sort: "shop_product_count", dir: "desc")
+        {:ok, asc} = Explorer.list(%{min_products: "1"}, per_page: 5, sort: "shop_product_count", dir: "asc")
 
         if desc != [] and asc != [] do
-          top_desc = hd(desc)["product_count"]
-          top_asc = hd(asc)["product_count"]
+          top_desc = hd(desc)["shop_product_count"]
+          top_asc = hd(asc)["shop_product_count"]
           assert to_string(top_desc) != to_string(top_asc)
         end
       end)
@@ -198,7 +198,7 @@ defmodule LS.ExplorerDepthTest do
         {:ok, rows} = Explorer.list(%{max_seo_score: "49"}, per_page: 20)
 
         for row <- rows do
-          refute row["seo_score"] in [nil, ""],
+          refute row["http_deep_seo_score"] in [nil, ""],
                  "#{row["domain"]} has no SEO score but appears in the weak-SEO segment"
         end
       end)
@@ -233,7 +233,7 @@ defmodule LS.ExplorerDepthTest do
       with_ch(fn ->
         {:ok, {columns, _rows}} = Explorer.export_rows(%{}, 5)
 
-        for column <- ~w(product_count price_avg job_count seo_score enriched_emails hq_location) do
+        for column <- ~w(shop_product_count shop_price_avg hr_job_count http_deep_seo_score http_emails estimated_hq_location) do
           assert column in columns, "#{column} missing from the export — the buyer paid for depth"
         end
       end)

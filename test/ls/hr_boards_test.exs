@@ -1,7 +1,7 @@
 defmodule LS.Verification.HRBoardsTest do
   @moduledoc """
   Boards are standing assets; the invariants are about not corrupting them.
-  Slug extraction must match the URL shapes actually stored in biz_career
+  Slug extraction must match the URL shapes actually stored in hr_jobs
   (checked against real samples), sync must mark vanished boards as gone
   rather than erroring forever, and WTTJ slug extraction must survive the
   rendered page's real markup.
@@ -12,7 +12,7 @@ defmodule LS.Verification.HRBoardsTest do
 
   @moduletag :data_contract
 
-  # Real URL shapes captured from prod biz_career on 2026-08-25. If a platform
+  # Real URL shapes captured from prod hr_jobs on 2026-08-25. If a platform
   # changes its URL layout, this fails before the harvest silently misses.
   @real_urls %{
     "greenhouse" => "https://job-boards.greenhouse.io/12twenty/jobs/4710612005",
@@ -181,7 +181,7 @@ defmodule LS.Verification.HRBoardsTest do
     assert WTTJ.parse_cursor("a:b:c") == {0, 1}
   end
 
-  test "a live greenhouse board syncs end to end into biz_career" do
+  test "a live greenhouse board syncs end to end into hr_jobs" do
     # Network + local ClickHouse: the whole point of the module is that the
     # public JSON really is public. Skips cleanly when CH is down.
     case LS.Clickhouse.query_raw("SELECT 1") do
@@ -189,7 +189,7 @@ defmodule LS.Verification.HRBoardsTest do
         d = "hrboards-probe.test"
 
         clean = fn ->
-          for t <- ~w(biz_career hr_boards biz_enrichment_log) do
+          for t <- ~w(hr_jobs hr_boards biz_enrichment_log) do
             LS.Clickhouse.query_raw(
               "ALTER TABLE #{t} DELETE WHERE domain = '#{d}' SETTINGS mutations_sync = 1"
             )
@@ -204,7 +204,7 @@ defmodule LS.Verification.HRBoardsTest do
             assert n > 0, "airbnb's board is public and never empty"
 
             {:ok, [[stored]]} =
-              LS.Clickhouse.query_raw("SELECT uniqExact(job_id) FROM biz_career WHERE domain = '#{d}'")
+              LS.Clickhouse.query_raw("SELECT uniqExact(job_id) FROM hr_jobs WHERE domain = '#{d}'")
 
             # 2026-08-26: this failed with 0 stored while n=188 — now_s() was
             # emitting microseconds, which the DateTime TSV parser rejects,

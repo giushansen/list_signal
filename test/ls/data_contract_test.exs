@@ -53,7 +53,7 @@ defmodule LS.DataContractTest do
   end
 
   defp column_counts(column) do
-    # `businesses`, not domains_current: the explorer moved to the compacted
+    # `businesses`, not domains: the explorer moved to the compacted
     # table and this helper did not follow, so the "truth set" came from a
     # table the dropdowns and filters no longer query. It flagged CF — a real
     # business present in `businesses` — as a dead option. A contract test
@@ -80,7 +80,9 @@ defmodule LS.DataContractTest do
         {:ok, [[d]]} = Clickhouse.query_raw("SELECT domain FROM businesses LIMIT 1")
         assert {:ok, _} = Clickhouse.compact_domains([d, "not-a-real-domain.invalid"])
         sql = Clickhouse.compact_sql_domains([d])
-        assert length(String.split(sql, "domain IN ('#{d}')")) == 6, "all five table sources must carry the guard"
+        # enrich_log, the deep log, prices, news, verified facts, certificate
+        # sightings and contacts (data model v2): seven guarded sources.
+        assert length(String.split(sql, "domain IN ('#{d}')")) == 8, "all seven table sources must carry the guard"
       end)
     end
 
@@ -146,8 +148,8 @@ defmodule LS.DataContractTest do
 
         counts =
           value_counts("""
-          SELECT arrayJoin(splitByChar('|', http_tech)) AS v, count()
-          FROM domains_current WHERE http_tech != '' GROUP BY v
+          SELECT arrayJoin(http_tech) AS v, count()
+          FROM businesses WHERE notEmpty(http_tech) GROUP BY v
           """)
 
         assert_all_offered_values_match(:tech, offered, counts)
@@ -157,9 +159,9 @@ defmodule LS.DataContractTest do
     test "every data-derived dropdown (country, language, business model, industry)" do
       with_clickhouse(fn ->
         for {field, column} <- [
-              {:country, "inferred_country"},
-              {:business_model, "business_model"},
-              {:industry, "industry"}
+              {:country, "estimated_country"},
+              {:business_model, "estimated_business_model"},
+              {:industry, "estimated_industry"}
             ] do
           {:ok, offered} = Explorer.distinct_by_count(column, 300)
           assert_all_offered_values_match(field, offered, column_counts(column))
@@ -237,12 +239,12 @@ defmodule LS.DataContractTest do
       with_clickhouse(fn ->
         {:ok, [[total, _, _, _]]} = Clickhouse.Tech.tech_stats("Klaviyo")
 
-        # tech_index (2026-09-09) is rebuilt from domains_current every six
+        # tech_index (2026-09-09) is rebuilt from domains every six
         # hours; the truth it must track is the exact-token count of titled
         # domains. Up to seven hours of inflow separates the two.
         {:ok, [[direct]]} =
           Clickhouse.query_raw("""
-          SELECT count() FROM domains_current FINAL
+          SELECT count() FROM domains FINAL
           WHERE has(splitByChar('|', http_tech), 'Klaviyo') AND http_title != ''
           SETTINGS output_format_json_quote_64bit_integers = 0
           """)
@@ -271,7 +273,7 @@ defmodule LS.DataContractTest do
     test "tech = 'Shopify' on the index means what is_shopify meant on the source" do
       with_clickhouse(fn ->
         {:ok, [[via_index]]} = Clickhouse.query_raw("SELECT toUInt64(count()) FROM tech_index WHERE tech = 'Shopify' SETTINGS output_format_json_quote_64bit_integers = 0")
-        {:ok, [[via_source]]} = Clickhouse.query_raw("SELECT toUInt64(count()) FROM domains_current FINAL WHERE is_shopify = 1 AND http_title != '' SETTINGS output_format_json_quote_64bit_integers = 0")
+        {:ok, [[via_source]]} = Clickhouse.query_raw("SELECT toUInt64(count()) FROM domains FINAL WHERE is_shopify = 1 AND http_title != '' SETTINGS output_format_json_quote_64bit_integers = 0")
         assert_in_delta via_index, via_source, max(via_source * 0.05, 100)
       end)
     end
@@ -324,22 +326,22 @@ defmodule LS.DataContractTest do
       if is_binary(n), do: String.to_integer(n), else: n
     end
 
-    test "neither match tier ever links a domain that is not in domains_current" do
+    test "neither match tier ever links a domain that is not in domains" do
       # The whole point of "website → exact join" and "name + country → unique
       # match": a verified fact must land on a domain we hold. A fact on a
       # domain we do not have would be an invented row in the product.
       # Sampled and index-friendly on purpose: `NOT IN (SELECT domain FROM
-      # domains_current)` materialises a 143M-row set and would blow the
+      # domains)` materialises a 143M-row set and would blow the
       # shared master's ClickHouse cap; a `domain IN (list)` is a key read.
       with_verification(fn ->
-        for {table, col} <- [{"verified_facts", "domain"}, {"verified_source_records", "matched_domain"}] do
+        for {table, col} <- [{"verified_facts", "domain"}, {"verified_log", "matched_domain"}] do
           {:ok, rows} = Clickhouse.query_raw("SELECT DISTINCT #{col} FROM #{table} WHERE #{col} != '' ORDER BY cityHash64(#{col}) LIMIT 5000", 120_000)
           linked = Enum.map(rows, &hd/1)
 
           if linked != [] do
             list = Enum.map_join(linked, ",", &"'#{Clickhouse.escape_public(&1)}'")
-            found = count("SELECT uniqExact(domain) FROM domains_current WHERE domain IN (#{list})")
-            assert found == length(linked), "#{table}.#{col}: #{length(linked) - found} of #{length(linked)} sampled links point outside domains_current"
+            found = count("SELECT uniqExact(domain) FROM domains WHERE domain IN (#{list})")
+            assert found == length(linked), "#{table}.#{col}: #{length(linked) - found} of #{length(linked)} sampled links point outside domains"
           end
         end
       end)
@@ -348,7 +350,7 @@ defmodule LS.DataContractTest do
     test "every match carries a method, and only the two allowed ones" do
       with_verification(fn ->
         assert count("SELECT count() FROM verified_facts WHERE match_method NOT IN ('website', 'name_country')") == 0
-        assert count("SELECT count() FROM verified_source_records WHERE (matched_domain = '') != (match_method = '')") == 0
+        assert count("SELECT count() FROM verified_log WHERE (matched_domain = '') != (match_method = '')") == 0
       end)
     end
 
@@ -357,7 +359,7 @@ defmodule LS.DataContractTest do
         assert count("""
                SELECT count() FROM (
                  SELECT source, name_key, country, uniqExact(matched_domain) AS d
-                 FROM verified_source_records FINAL WHERE match_method = 'name_country'
+                 FROM verified_log FINAL WHERE match_method = 'name_country'
                  GROUP BY source, name_key, country HAVING d > 1)
                """) == 0
       end)
@@ -383,7 +385,7 @@ defmodule LS.DataContractTest do
         assert count("""
                SELECT count() FROM businesses b
                WHERE b.verified_revenue != '' AND b.estimated_revenue = ''
-                 AND b.domain IN (SELECT domain FROM domains_history WHERE estimated_revenue != '')
+                 AND b.domain IN (SELECT domain FROM enrich_log WHERE estimated_revenue != '')
                """) == 0
       end)
     end
@@ -426,8 +428,8 @@ defmodule LS.DataContractTest do
       with_clickhouse(fn ->
         {:ok, [[tech, catalog]]} =
           Clickhouse.query_raw("""
-          SELECT countIf(positionCaseInsensitive(http_tech,'Shopify') > 0),
-                 countIf(positionCaseInsensitive(http_tech,'Shopify') > 0 AND product_count > 0)
+          SELECT countIf(is_shopify = 1),
+                 countIf(is_shopify = 1 AND shop_product_count > 0)
           FROM businesses
           """, 30_000)
 
@@ -517,8 +519,8 @@ defmodule LS.DataContractTest do
   describe "admin enrichment coverage metric" do
     test "the businesses_enriched figure matches distinct enriched domains within 5%" do
       with_clickhouse(fn ->
-        assert {:ok, [[shown]]} = Clickhouse.query_raw("SELECT uniq(domain) FROM biz_enrichment")
-        assert {:ok, [[truth]]} = Clickhouse.query_raw("SELECT uniqExact(domain) FROM biz_enrichment")
+        assert {:ok, [[shown]]} = Clickhouse.query_raw("SELECT uniq(domain) FROM http_deep_state")
+        assert {:ok, [[truth]]} = Clickhouse.query_raw("SELECT uniqExact(domain) FROM http_deep_state")
 
         shown = to_int(shown)
         truth = to_int(truth)
@@ -539,7 +541,7 @@ defmodule LS.DataContractTest do
   # ==========================================================================
   # INCIDENT 2026-08-27. Three columns were added to the compaction INSERT and
   # to the country recompute expression. The `h` relation is an aggregate over
-  # an ALIASED subquery of domains_history, so `h.http_country_evidence` did
+  # an ALIASED subquery of enrich_log, so `h.http_country_evidence` did
   # not resolve and EVERY compaction pass failed in production with
   # "Identifier cannot be resolved from subquery with name h".
   #

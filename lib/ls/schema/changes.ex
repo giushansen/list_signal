@@ -146,13 +146,19 @@ defmodule LS.Schema.Changes do
     """
   end
 
+  # "Down" is a measured outage: a 404/410 or a 5xx that is not a WAF
+  # challenge (a bot wall answers 401/403/429/503 to a plain client, and the
+  # browser lane reads the site fine; that is a fact about the crawl, not
+  # the business). Cloudflare 52x means the origin is unreachable.
+  @down_statuses "(404, 410, 500, 502, 504, 521, 522, 523, 524, 525, 526)"
+
   def rule_sql({f, :down_back, _type}) do
     ok = fn side -> "(#{side}.#{f} BETWEEN 200 AND 399)" end
 
     """
     arrayConcat(
-          arrayFilter(x -> #{ok.("o")} AND n.#{f} IS NOT NULL AND NOT #{ok.("n")}, [#{tuple(f, "down", "toString(n.#{f})", "toString(o.#{f})", at(f))}]),
-          arrayFilter(x -> o.#{f} IS NOT NULL AND NOT #{ok.("o")} AND #{ok.("n")}, [#{tuple(f, "back", "toString(n.#{f})", "toString(o.#{f})", at(f))}]))\
+          arrayFilter(x -> #{ok.("o")} AND n.#{f} IN #{@down_statuses}, [#{tuple(f, "down", "toString(n.#{f})", "toString(o.#{f})", at(f))}]),
+          arrayFilter(x -> o.#{f} IN #{@down_statuses} AND #{ok.("n")}, [#{tuple(f, "back", "toString(n.#{f})", "toString(o.#{f})", at(f))}]))\
     """
   end
 

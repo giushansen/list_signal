@@ -22,28 +22,32 @@ defmodule LS.HTTP.AppDetectorTest do
   <script>window.HubSpotConversations = {};</script>
   """
 
-  test "extension handles are read from asset URLs and humanised" do
+  test "extension handles are read from asset URLs; only catalog names are published (2026-10-01)" do
     assert AppDetector.extension_handles(@page) == ["judgeme-core", "klaviyo-onsite"]
-    apps = AppDetector.detect(@page).apps
-    assert "Judgeme Core" in apps
-    assert "Klaviyo Onsite" in apps
-    refute "Shopify" in apps, "Shopify's own runtime bundles are not merchant apps"
+    result = AppDetector.detect(@page)
+    # Humanised handles ("Judgeme Core", "Klaviyo Onsite") produced 7,304
+    # distinct "apps" in production, 6,262 on fewer than 100 stores. They are
+    # kept raw and only names in LS.Tech.Catalog reach the product.
+    assert result.handles == ["judgeme-core", "klaviyo-onsite"]
+    refute "Judgeme Core" in result.apps
+    refute "Klaviyo Onsite" in result.apps
+    refute "Shopify" in result.apps, "Shopify's own runtime bundles are not merchant apps"
+    assert Enum.all?(result.apps, &LS.Tech.Catalog.known?/1)
   end
 
-  test "app proxies name the storefront-served app pages" do
+  test "app proxy paths are still read, and their generic names stay out of the product" do
     assert AppDetector.app_proxy_paths(@page) == ["wishlist", "rewards", "size-chart"]
     apps = AppDetector.detect(@page).apps
-    assert "Wishlist App Proxy" in apps
-    assert "Loyalty App Proxy" in apps
-    assert "Size Chart App Proxy" in apps
+    refute "Wishlist App Proxy" in apps, "a function name is not a vendor"
   end
 
-  test "HubSpot hubs are detected from their loaders" do
+  test "HubSpot hubs are detected from their loaders, tracking folds into HubSpot itself" do
     apps = AppDetector.detect(@page).apps
-    assert "HubSpot Tracking" in apps
+    assert "HubSpot" in apps
     assert "HubSpot Forms" in apps
     assert "HubSpot Chat" in apps
     refute "HubSpot Meetings" in apps
+    refute "HubSpot Tracking" in apps
   end
 
   test "the signature list still works alongside" do

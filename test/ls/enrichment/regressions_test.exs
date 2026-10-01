@@ -56,14 +56,14 @@ defmodule LS.Enrichment.RegressionsTest do
       browser = LS.Clickhouse.enrichment_lane_filter(browser_only: true)
       http = LS.Clickhouse.enrichment_lane_filter(browser_only: false)
 
-      assert browser =~ "last_http_blocked != ''"
+      assert browser =~ "http_blocked != ''"
       # 429 is deliberately NOT here — see the "429 is not a wall" describe.
       # 503 IS here since 2026-09-04: a WAF challenge page answers 503 to a
       # plain client, and re-asking over HTTP became Vultr abuse report #2.
       assert browser =~ "401, 403, 503"
       # the HTTP lane must EXCLUDE everything the browser lane claims
-      assert http =~ "b.crawlable"
-      assert http =~ "last_http_blocked = ''"
+      assert http =~ "b.http_crawlable"
+      assert http =~ "http_blocked = ''"
       assert http =~ "NOT IN (401, 403, 503)"
     end
   end

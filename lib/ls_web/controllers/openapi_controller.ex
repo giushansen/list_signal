@@ -83,7 +83,7 @@ defmodule LSWeb.OpenapiController do
             operationId: "listChanges",
             summary: "The change feed: what moved on which business, newest first",
             description:
-              "One row per change of one tracked field on one business, with a one-line `summary` (\"Klaviyo added\", \"from $1M-$10M to $10M-$100M\", \"started hiring (12 roles)\", \"website down (503)\"). Filter by field, change kind, exact value, domain, country, business model and period. Tracked fields are listed by /stats.",
+              "One row per change of one tracked field on one business, with a one-line `summary` (\"Klaviyo added\", \"from $1M-$10M to $10M-$100M\", \"started hiring (12 roles)\", \"website down (502)\"). Filter by field, change kind, exact value, domain, country, business model and period. Tracked fields are listed by /stats.",
             parameters: [
               qp("field", "A tracked field, e.g. http_tech, hr_job_count, estimated_revenue, http_status"),
               qp("change", "added, removed, changed, started, stopped, down, back"),
