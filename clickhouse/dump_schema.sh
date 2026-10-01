@@ -20,13 +20,17 @@ cat <<HEADER
 --   Last dumped: $(date -u +%Y-%m-%d)
 --   Source:      $HOST
 --
--- Read docs/pipelines.md for how these fit together. In short:
+-- Read docs/data-model-standards.md for the naming rules and
+-- docs/architecture.md for how the tables fit together. In short:
 --
---   PIPELINE 1 (discovery)   domains_history ──MV──> domains_current ──view──> domains_fast
+--   LOGS (append-only)       enrich_log ──MV──> domains ──view──> domains_fast
+--                            http_deep_log · ctl_log · verified_log · http_pages
 --                            plus the persistent \`platforms\` registry
---   PIPELINE 2 (enrichment)  biz_contact · biz_career · biz_pricing · biz_news
---                            · biz_enrichment
---   COMPACTED PRODUCT        businesses          (built from both, every 5 min)
+--   CURRENT STATE            http_deep_state · http_contacts · hr_jobs
+--                            · http_deep_prices · shop_products · shop_collections
+--                            · news_items · tech_catalog
+--   COMPACTED PRODUCT        businesses          (folded every 5 min)
+--   CHANGES                  changes_log         (one row per change of a tracked column)
 --   ANALYTICS                daily_* + their mv_daily_* triggers
 --
 -- This file DOCUMENTS the live schema; it is not applied on deploy. Pending
@@ -34,7 +38,8 @@ cat <<HEADER
 -- window, then dumped back here. If a migration listed there is absent from
 -- this dump, it has not been applied to production yet.
 --
--- Views are dumped too, so \`v_business_export\` appears here once created.
+-- Views are dumped too. bak_* tables are migration safety copies awaiting the
+-- owner's drop decision.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 HEADER

@@ -40,6 +40,15 @@ fi
 if [ "$($CH -q "SELECT count() FROM system.tables WHERE database='ls' AND name='enrich_log'")" != "0" ]; then
   echo "enrich_log already exists: the rename already happened."; exit 1
 fi
+# The web watchdog cron restarts a stopped master after 5 minutes. On the
+# 2026-10-01 run it brought the v1 release back at 08:08, mid-rename, and 17
+# minutes of inserts 404'd. The flag below silences it (see watchdog_web.sh).
+if [ ! -e /run/listsignal_maintenance ]; then
+  echo "touch /run/listsignal_maintenance, then systemctl stop listsignal@master, before running this"; exit 1
+fi
+if systemctl is-active --quiet listsignal@master; then
+  echo "listsignal@master is still running: stop it first"; exit 1
+fi
 FREE_GB=$($CH -q "SELECT intDiv(free_space, 1073741824) FROM system.disks WHERE name='default'")
 if [ "$FREE_GB" -lt "$MIN_FREE_GB" ]; then echo "only ${FREE_GB}G free, need ${MIN_FREE_GB}G for the transform"; exit 1; fi
 log "preflight ok (${FREE_GB}G free)"
@@ -103,7 +112,10 @@ done
 
 VIEWS=$($CH -q "SELECT name FROM system.tables WHERE database='ls' AND engine IN ('MaterializedView','View') AND (create_table_query LIKE '%domains_history%' OR create_table_query LIKE '%domains_current%' OR create_table_query LIKE '%biz_%' OR create_table_query LIKE '%ctl_sightings%' OR create_table_query LIKE '%verified_source_records%' OR create_table_query LIKE '%verification_%') FORMAT TSV")
 for v in $VIEWS; do
-  create=$($CH -q "SHOW CREATE TABLE $v" | sed 's/\\n/\n/g' | substitute)
+  # TSVRaw: the default TSV output escapes quotes and newlines in the
+  # statement, which broke on mv_daily_blocked's '' literal in the prod run
+  # (the six views were then recreated by hand from clickhouse/schema.sql).
+  create=$($CH --format=TSVRaw -q "SHOW CREATE TABLE $v" | substitute)
   newname=$(echo "$v" | sed 's/^mv_domains_current$/mv_domains/')
   $CH -q "DROP TABLE IF EXISTS $v"
   echo "$create" | $CH --multiquery
@@ -115,4 +127,4 @@ log "businesses rows after: $($CH -q "SELECT count() FROM businesses") (before: 
 log "changes_log rows: $($CH -q "SELECT count() FROM changes_log")"
 log "tech_catalog rows: $($CH -q "SELECT count() FROM tech_catalog")"
 log "http_tech non-empty: $($CH -q "SELECT countIf(notEmpty(http_tech)) FROM businesses")"
-log "done. Deploy the v2 release now; drop bak_businesses_v1 and biz_signal after validation."
+log "done. Deploy the v2 release now, then rm /run/listsignal_maintenance; drop bak_businesses_v1 and biz_signal after validation."

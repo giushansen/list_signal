@@ -59,6 +59,24 @@ Signals tab with its own CSV on the same quota; `/api/v1/changes` and the
 data dictionary on /developers are generated from the spec. The limiter
 keys Shopify, Wix and Squarespace edges as one client each.
 
+**The production run (2026-10-01, 08:05 to 08:26 UTC).** Backup verified
+first (product tier 10.4 GB, businesses.native.zst decodes, copy offsite).
+Migration SQL took 15 min 16 s, renames 4 s, product table swapped with v1
+kept as `bak_businesses_v1`; the MV recreate step of the runbook failed on
+TSV-escaped quotes and the six views were recreated from `schema.sql` by
+hand (runbook now dumps with TSVRaw). Two surprises worth keeping: the web
+watchdog cron restarted the stopped v1 release at 08:08, so for 17 minutes
+every Inserter and enrichment batch 404'd against renamed tables (the
+discovery rows re-enter through CTL, the enrichment batches are recrawled
+by cadence; fixed with `/run/listsignal_maintenance`, which the runbook now
+requires); and the app user lacked `ALTER DELETE` on `tech_catalog`, so the
+first catalog sync logged a failure after a successful insert (prune is
+now a soft step, the grant is the owner's to apply). First v2 pass on the
+new master: 1,142 businesses refolded in 28 s, 698 changes written. Counts
+after: 23.60M businesses, 6.72M changes (6.70M imported from `biz_signal`),
+506 catalog names. `bak_businesses_v1`, `biz_signal`, `bak_nxfix_20260730`
+and the `http_body_snippet` columns await the owner's drop.
+
 Migration: `clickhouse/migrations/025_data_model_v2.sh`, additive first,
 one atomic product-table swap, v1 kept as `bak_businesses_v1`. Twenty-two
 committed test files pinned the v1 names and need the owner's unlock.
