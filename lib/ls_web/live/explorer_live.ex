@@ -377,7 +377,7 @@ defmodule LSWeb.ExplorerLive do
   defp fetch_dropdown_options("revenue", _q), do: LS.Revenue.Estimator.revenue_labels()
   defp fetch_dropdown_options("employees", _q), do: LS.Revenue.Estimator.employee_labels()
   defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
-  defp fetch_dropdown_options("realness", _q), do: ["0.8+", "0.6+", "0.4+"]
+  defp fetch_dropdown_options("realness", _q), do: ["0.7+", "0.5+", "0.3+"]
   defp fetch_dropdown_options("discovered", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 

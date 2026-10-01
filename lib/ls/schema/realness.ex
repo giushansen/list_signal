@@ -16,9 +16,16 @@ defmodule LS.Schema.Realness do
   and in a backfill over `businesses` (over column names). A junk verdict
   zeroes the score: a parked domain with MX is still parked.
 
-  Weights are a first cut to be scored against golden v5 before any gate
-  depends on them; the evidence string is what makes that scoring
-  possible. Sum of weights is capped at 1.
+  Weights were set from the first backfill over 23.6M rows (2026-10-01):
+  with equal-ish weights the median business sat at 0.28 and only 131K
+  rows reached 0.6, because the rare facts (company number, address,
+  business schema.org type) carried as much as the common ones. Now the
+  three facts almost every operating business has (MX 0.20, a contact
+  0.20, 90 days of certificates 0.15) sum to 0.55, so 0.5+ reads "mail,
+  a way to reach them, and it has been around", and traffic, a catalogue
+  or jobs, a registry match and a company number lift the strong ones to
+  0.7+. Still to be scored against golden v5 before anything gates on it;
+  the evidence string is what makes that possible. Sum capped at 1.
   """
 
   @business_schema ~w(Organization LocalBusiness Corporation Store OnlineStore ProfessionalService
@@ -31,13 +38,13 @@ defmodule LS.Schema.Realness do
   # resolver's SQL for that column. A plain list so it can be data, and the
   # template keeps the module attribute free of functions.
   @facts [
-    {"mx", 0.15, "notEmpty({dns_mx})"},
+    {"mx", 0.20, "notEmpty({dns_mx})"},
     {"dmarc", 0.05, "{dns_dmarc} != ''"},
-    {"contact", 0.15, "(notEmpty({http_emails}) OR {http_phone} != '')"},
+    {"contact", 0.20, "(notEmpty({http_emails}) OR {http_phone} != '')"},
     {"address", 0.05, "{http_address} != ''"},
-    {"company_id", 0.15, "{http_company_id} != ''"},
-    {"schema_org", 0.10, "{http_schema_type} IN (" <> Enum.map_join(@business_schema, ", ", &"'#{&1}'") <> ")"},
-    {"age_90d", 0.10, "{ctl_first_seen_at} < now() - INTERVAL 90 DAY"},
+    {"company_id", 0.10, "{http_company_id} != ''"},
+    {"schema_org", 0.05, "{http_schema_type} IN (" <> Enum.map_join(@business_schema, ", ", &"'#{&1}'") <> ")"},
+    {"age_90d", 0.15, "{ctl_first_seen_at} < now() - INTERVAL 90 DAY"},
     {"activity", 0.10, "(coalesce({shop_product_count}, 0) > 0 OR coalesce({hr_job_count}, 0) > 0)"},
     {"traffic", 0.10, "({tranco_rank} IS NOT NULL OR {majestic_rank} IS NOT NULL)"},
     {"social", 0.05, "notEmpty({http_social_links})"},

@@ -355,7 +355,7 @@ a registry match), zero for junk. `LS.Schema.Realness` generates the SQL
 for the fold, the v1 transform and the backfill from one list. Weights are
 a first cut to be scored against the golden set before anything gates on
 them; the evidence string is what makes that scoring possible. The
-dashboard filters on a band (0.8+, 0.6+, 0.4+), the API on `min_realness`.
+dashboard filters on a band (0.7+, 0.5+, 0.3+), the API on `min_realness`.
 
 Three internal capture columns, stored at fetch time and folded as the
 newest observed value: `http_etag` and `http_last_modified` (the validators
