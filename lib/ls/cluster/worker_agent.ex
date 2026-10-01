@@ -451,7 +451,7 @@ defmodule LS.Cluster.WorkerAgent do
         max_concurrency: conc, timeout: bound, on_timeout: :kill_task, ordered: false
       )
 
-    {res, cut} = collect_until(stream, deadline)
+    {res, cut} = collect_until(stream, deadline, length(cands))
     if cut > 0, do: Logger.warning("http stage deadline: #{cut} of #{length(cands)} candidates not fetched, #{map_size(res)} kept")
     res
   end
@@ -463,7 +463,7 @@ defmodule LS.Cluster.WorkerAgent do
   # budget pacing fetches, 3 to 4 stages an hour per worker overran and 41%
   # of rows were hollow. Halting the stream shuts the pending tasks down;
   # the ones that finished are returned. Returns {results, not_finished}.
-  def collect_until(stream, deadline_ms) do
+  def collect_until(stream, deadline_ms, total) do
     {res, n} =
       Enum.reduce_while(stream, {%{}, 0}, fn item, {acc, n} ->
         acc =
@@ -475,12 +475,8 @@ defmodule LS.Cluster.WorkerAgent do
         if System.monotonic_time(:millisecond) >= deadline_ms, do: {:halt, {acc, n + 1}}, else: {:cont, {acc, n + 1}}
       end)
 
-    {res, max(stream_size(stream) - n, 0)}
+    {res, max(total - n, 0)}
   end
-
-  defp stream_size(%Stream{enum: enum}) when is_list(enum), do: length(enum)
-  defp stream_size(%Stream{enum: enum}), do: Enum.count(enum)
-  defp stream_size(_), do: 0
 
   defp do_http(domain, ip), do: LS.Pipeline.http(domain, ip)
 

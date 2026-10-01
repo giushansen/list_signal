@@ -63,7 +63,7 @@ defmodule LS.Cluster.WorkerCollectUntilTest do
       Task.async_stream([10, 20, 400, 450], fn ms -> Process.sleep(ms); {"d#{ms}", ms} end,
         max_concurrency: 4, timeout: 5_000, ordered: false)
 
-    {res, cut} = LS.Cluster.WorkerAgent.collect_until(stream, System.monotonic_time(:millisecond) + 150)
+    {res, cut} = LS.Cluster.WorkerAgent.collect_until(stream, System.monotonic_time(:millisecond) + 150, 4)
     # d400 arrived after the deadline but it did finish: kept. d450 never arrived: cut.
     assert Map.keys(res) |> Enum.sort() == ["d10", "d20", "d400"]
     assert cut == 1
@@ -71,7 +71,7 @@ defmodule LS.Cluster.WorkerCollectUntilTest do
 
   test "a stage that finishes in time loses nothing" do
     stream = Task.async_stream([1, 2, 3], fn i -> {"d#{i}", i} end, timeout: 5_000, ordered: false)
-    {res, cut} = LS.Cluster.WorkerAgent.collect_until(stream, System.monotonic_time(:millisecond) + 5_000)
+    {res, cut} = LS.Cluster.WorkerAgent.collect_until(stream, System.monotonic_time(:millisecond) + 5_000, 3)
     assert map_size(res) == 3 and cut == 0
   end
 
