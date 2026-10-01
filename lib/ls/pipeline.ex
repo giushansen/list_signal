@@ -356,7 +356,8 @@ defmodule LS.Pipeline do
       # Junk detection only: the "empty" rule must not fire on a failed fetch
       # or a JS-rendered shell (see docs/data-quality.md).
       http_status: http[:http_status],
-      is_js_site: http[:_is_js_site] == true
+      is_js_site: http[:_is_js_site] == true,
+      rdap_nameservers: rdap[:nameservers] || ""
     }
 
     classify_result = BusinessClassifier.classify(classify_signals)

@@ -33,6 +33,10 @@ defmodule LS.HTTP.BusinessClassifier do
   """
   def junk_reason(signals) when is_map(signals) do
     cond do
+      # The registry says who serves the domain; a parking operator's
+      # nameservers beat whatever the parking page looks like (2026-10-01:
+      # 132K unflagged businesses on Sedo, Bodis, Dovendi and friends).
+      LS.DNS.Parking.parked_ns?(signals[:rdap_nameservers]) -> "parked"
       parking_page?(signals) -> "parked"
       default_shopify_page?(signals) -> "placeholder"
       generic_placeholder?(signals) -> "placeholder"

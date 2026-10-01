@@ -84,7 +84,7 @@ defmodule LS.Schema.Changes do
   freshly compiled rows (`n`) and the current `businesses` rows (`o`).
   """
   def detect_sql(scratch, businesses \\ Tables.businesses(), changes \\ Tables.changes_log()) do
-    rules = Enum.map_join(Columns.tracked(), ",\n        ", &rule_sql/1)
+    rules = Enum.map_join(Columns.tracked_rules(), ",\n        ", &rule_sql/1)
     cols = Columns.tracked() |> Enum.map(&elem(&1, 0))
 
     """
@@ -92,7 +92,7 @@ defmodule LS.Schema.Changes do
     SELECT n.domain, ch.1, ch.2, ch.3, ch.4, ch.5
     FROM #{scratch} AS n
     INNER JOIN (
-      SELECT domain, #{Enum.join(cols, ", ")}
+      SELECT domain, http_last_seen_at, #{Enum.join(cols, ", ")}
       FROM #{businesses}
       WHERE domain IN (SELECT domain FROM #{scratch})
       ORDER BY compiled_at DESC
@@ -116,6 +116,26 @@ defmodule LS.Schema.Changes do
   end
 
   defp tuple(field, change, value, prev, at), do: "('#{field}', '#{change}', #{value}, #{prev}, #{at})"
+
+  @doc """
+  A rule with its options. `since` gates on the old row's observation time:
+  a column introduced at T cannot have changed before T. `ignore` drops
+  events whose value is on the column's noise list.
+  """
+  def rule_sql({f, rule, type, opts}) do
+    base = rule_sql({f, rule, type})
+
+    base =
+      case Keyword.get(opts, :ignore, []) do
+        [] -> base
+        vals -> "arrayFilter(t -> t.3 NOT IN (#{Enum.map_join(vals, ", ", &"'#{String.replace(&1, "'", "\\'")}'")}), #{base})"
+      end
+
+    case Keyword.get(opts, :since) do
+      nil -> base
+      at -> "if(ifNull(o.http_last_seen_at, toDateTime(0)) >= toDateTime('#{at}'), #{base}, [])"
+    end
+  end
 
   @doc false
   def rule_sql({f, :set, _type}) do

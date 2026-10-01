@@ -274,7 +274,19 @@ defmodule LS.Cluster.Inserter do
       end)
 
     if pages != [] do
-      body = Enum.map_join(pages, "\n", &Jason.encode!/1) <> "\n"
+      # One page with a byte the encoder refuses must not take the batch
+      # with it (2026-10-01: it did, see LS.HTTP.PageBlocks.scrub/1). The
+      # worker scrubs; this is the belt for rows from an older release.
+      {encoded, bad} =
+        Enum.reduce(pages, {[], 0}, fn p, {acc, bad} ->
+          case Jason.encode(p) do
+            {:ok, json} -> {[json | acc], bad}
+            {:error, _} -> {acc, bad + 1}
+          end
+        end)
+
+      if bad > 0, do: Logger.warning("[PAGES] #{bad} page(s) dropped: not encodable as JSON")
+      body = encoded |> Enum.reverse() |> Enum.join("\n") |> Kernel.<>("\n")
       query = "INSERT INTO #{@ch_db}.#{@pages_table} FORMAT JSONEachRow"
       url = "#{@ch_url}?query=#{URI.encode(query)}"
 

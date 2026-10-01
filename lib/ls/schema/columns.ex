@@ -85,12 +85,33 @@ defmodule LS.Schema.Columns do
       v1: Keyword.get(opts, :v1, Keyword.get(opts, :legacy) && "b.#{Keyword.get(opts, :legacy)}") || "b.#{name}",
       family: Keyword.get(opts, :family, :fact),
       signal: Keyword.get(opts, :signal),
+      # since: the column could not have been filled before this instant, so an
+      # old row observed earlier is a first fill, not a change (2026-10-01:
+      # 19,399 "social link added" rows on the first v2 morning were exactly that).
+      since: Keyword.get(opts, :since),
+      # ignore: values that are infrastructure, never a business event.
+      ignore: Keyword.get(opts, :ignore, []),
       api: Keyword.get(opts, :api, []),
       export: Keyword.get(opts, :export, false),
       internal: Keyword.get(opts, :internal, false),
       doc: Keyword.get(opts, :doc, "")
     }
   end
+
+  # Subdomain labels a certificate carries for mail, hosting panels and
+  # device enrolment. 2026-10-01, first v2 passes: www alone was 15,602 of
+  # 54,219 subdomain events, the labels below together about half of them.
+  # app., shop., api., careers. stay: those are the expansion signals.
+  @infra_subdomains ~w(www mail webmail webdisk cpanel cpcalendars cpcontacts autodiscover autoconfig
+                       m smtp mta-sts email imap pop pop3 ftp ns ns1 ns2 ns3 mx mx1 mx2 localhost whm
+                       server host vpn remote owa exchange _dmarc _domainkey sip lyncdiscover
+                       enterpriseregistration enterpriseenrollment msoid wildcard * cdn static assets
+                       img images mailserver secure www2 ww1 ipv4 ipv6 relay bounce newsletter mta)
+
+  @doc "Subdomain labels the change feed ignores."
+  def infra_subdomains, do: @infra_subdomains
+
+  @v2_at "2026-10-01 08:25:00"
 
   defp build do
     [
@@ -122,7 +143,7 @@ defmodule LS.Schema.Columns do
     c("estimated_hq_location_evidence", "String", default: "''", select: "multiIf(ifNull(v.hq, '') != '', 'registry', ifNull(s.hq_location, '') != '', 'about page', '')", v1: "if(b.hq_location != '', 'about page', '')", family: :estimated, api: [:company], doc: "registry or about page."),
     c("estimated_summary", "String", default: "''", select: "if(ifNull(v.mission_summary, '') != '', v.mission_summary, ifNull(s.mission, ''))", v1: "if(b.mission_summary != '', b.mission_summary, b.mission)", family: :estimated, api: [:company], export: true, doc: "One-line description of what the business does."),
     c("estimated_summary_evidence", "String", default: "''", select: "multiIf(ifNull(v.mission_summary, '') != '', 'registry', ifNull(s.mission, '') != '', 'about page', '')", v1: "multiIf(b.mission_summary != '', 'registry', b.mission != '', 'about page', '')", family: :estimated, api: [:company], doc: "registry or about page."),
-    c("estimated_junk", "LowCardinality(String)", default: "''", legacy: "is_junk", select: "h.is_junk", family: :estimated, signal: :changed, api: [:company], export: true, doc: "Empty when the site looks like a real business; parked or placeholder otherwise. Follows the newest successful fetch."),
+    c("estimated_junk", "LowCardinality(String)", default: "''", legacy: "is_junk", select: :junk, family: :estimated, signal: :changed, api: [:company], export: true, doc: "Empty when the site looks like a real business; parked or placeholder otherwise. Follows the newest successful fetch."),
     c("estimated_at", "Nullable(DateTime)", select: "if(#{@deep_est}, s.enriched_at_newest, h.as_of)", v1: "if(b.depth_enriched_at IS NOT NULL, b.depth_enriched_at, b.as_of)", family: :estimated, api: [:company], doc: "When the estimates were last produced."),
     c("estimated_version", "LowCardinality(String)", default: "''", legacy: "pipeline_version", select: "h.pipeline_version", family: :estimated, internal: true, doc: "Build that produced the estimates."),
 
@@ -139,7 +160,7 @@ defmodule LS.Schema.Columns do
     c("http_emails_evidence", "String", default: "''", select: "arrayStringConcat(arrayDistinct(arrayConcat(if(h.http_emails != '', ['homepage'], []), ifNull(ct.pages, []))), '|')", v1: "if(b.http_emails != '', 'homepage', '')", api: [:company], doc: "Which pages the addresses came from."),
     c("http_phone", "String", default: "''", select: "h.http_phone", v1: "''", api: [:company], export: true, doc: "Phone number from the footer or JSON-LD."),
     c("http_address", "String", default: "''", select: "h.http_address", v1: "''", api: [:company], export: true, doc: "Postal address from the footer or JSON-LD."),
-    c("http_social_links", "Array(String)", select: "arraySlice(h.http_social_links, 1, 20)", v1: "[]", signal: :set_added, api: [:company], export: true, doc: "Social profile URLs linked from the site."),
+    c("http_social_links", "Array(String)", select: "arraySlice(h.http_social_links, 1, 20)", v1: "[]", signal: :set_added, since: @v2_at, api: [:company], export: true, doc: "Social profile URLs linked from the site."),
     c("http_company_id", "String", default: "''", select: "h.http_company_id", v1: "''", api: [:company], export: true, doc: "Company registration or VAT number printed on the site, the key into public registries."),
     c("http_nav_links", "Array(String)", select: "arraySlice(h.http_nav_links_arr, 1, 60)", v1: "[]", api: [:company], doc: "Main navigation link texts."),
 
@@ -196,8 +217,8 @@ defmodule LS.Schema.Columns do
     c("shop_product_types", "Array(LowCardinality(String))", legacy: "product_types", select: split_nullable("s.product_types"), v1: "arrayFilter(x -> x != '', splitByChar('|', b.product_types))", api: [:company], export: true, doc: "Product types in the catalog."),
     c("shop_theme", "LowCardinality(String)", default: "''", select: "ifNull(s.shop_theme, '')", signal: :changed, api: [:company], export: true, doc: "Shopify theme name."),
     c("shop_theme_store_id", "Nullable(UInt32)", select: "s.shop_theme_store_id", api: [:company], doc: "Theme store id, 0 for a custom theme."),
-    c("shop_currency", "LowCardinality(String)", default: "''", select: "ifNull(s.shop_currency, '')", api: [:company], export: true, doc: "Shop currency."),
-    c("shop_locales", "Nullable(UInt8)", select: "s.shop_locales", api: [:company], doc: "Storefront locales."),
+    c("shop_currency", "LowCardinality(String)", default: "''", select: "ifNull(s.shop_currency, '')", signal: :changed, api: [:company], export: true, doc: "Shop currency."),
+    c("shop_locales", "Nullable(UInt8)", select: "s.shop_locales", signal: :changed, api: [:company], doc: "Storefront locales."),
     c("shop_plus", "Nullable(UInt8)", legacy: "shopify_plus", select: "s.shopify_plus", signal: :changed, api: [:company, :search], export: true, doc: "1 on Shopify Plus."),
     c("shop_last_seen_at", "Nullable(DateTime)", select: "s.shop_at", v1: "if(b.product_count IS NOT NULL, b.depth_enriched_at, NULL)", api: [:company], doc: "Last successful catalog read."),
 
@@ -222,7 +243,7 @@ defmodule LS.Schema.Columns do
     c("ctl_tld", "LowCardinality(String)", default: "''", select: "h.ctl_tld", api: [:company], doc: "Top-level domain."),
     c("ctl_issuer", "LowCardinality(String)", default: "''", select: "h.ctl_issuer", api: [:company], doc: "Certificate authority of the newest certificate."),
     c("ctl_subdomain_count", "Nullable(Int32)", select: "length(ctl_subdomains)", v1: "b.ctl_subdomain_count", api: [:company], export: true, doc: "Distinct hosts seen in certificates."),
-    c("ctl_subdomains", "Array(String)", select: "arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300)", v1: "arrayFilter(x -> x != '', splitByChar('|', b.ctl_subdomains))", signal: :set_added, api: [:company], doc: "Hosts seen in certificates: app, api, shop, careers and the like."),
+    c("ctl_subdomains", "Array(String)", select: "arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300)", v1: "arrayFilter(x -> x != '', splitByChar('|', b.ctl_subdomains))", signal: :set_added, ignore: @infra_subdomains, api: [:company], doc: "Hosts seen in certificates: app, api, shop, careers and the like."),
 
     # ── registration ────────────────────────────────────────────────────
     c("rdap_created_at", "Nullable(DateTime)", legacy: "rdap_domain_created_at", select: "h.rdap_domain_created_at", api: [:company], export: true, doc: "Domain registration date."),
@@ -282,6 +303,10 @@ defmodule LS.Schema.Columns do
   @doc "Columns a change on which is recorded in changes_log, with the rule."
   def tracked, do: for(%{signal: r} = col <- all(), r != nil, do: {col.name, r, col.type})
 
+  @doc "Tracked columns with their rule options (`since`, `ignore`), as the detector consumes them."
+  def tracked_rules,
+    do: for(%{signal: r} = col <- all(), r != nil, do: {col.name, r, col.type, [since: col.since, ignore: col.ignore]})
+
   @doc "Columns shown by the given API surface, in order."
   def api_columns(surface) when surface in [:company, :search],
     do: for(col <- all(), surface in col.api, do: col.name)
@@ -313,6 +338,13 @@ defmodule LS.Schema.Columns do
 
   def fold_expr(%{select: :apps_legacy}),
     do: "arrayStringConcat(arrayFilter(x -> has(_apps_catalog, x), #{catalog_filter(@tech_list)}), '|')"
+
+  # Junk follows the newest successful fetch, and a parking nameserver wins
+  # over whatever page the parker served (2026-10-01: 132K businesses sat on
+  # Sedo, Bodis, Dovendi and friends with an empty junk flag, 64K of them
+  # with "tech" detected on the parking page).
+  def fold_expr(%{select: :junk}),
+    do: "if(#{LS.DNS.Parking.sql("splitByChar('|', h.rdap_nameservers)")}, 'parked', h.is_junk)"
 
   def fold_expr(%{select: :dns_tech}), do: LS.DNS.Vendors.tech_sql("h.dns_mx", "h.dns_txt", "h.dns_cname")
   def fold_expr(%{select: :dns_email_provider}), do: LS.DNS.Vendors.email_provider_sql("h.dns_mx")

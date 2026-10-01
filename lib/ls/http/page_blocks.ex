@@ -101,7 +101,7 @@ defmodule LS.HTTP.PageBlocks do
       http_body_texts: Enum.map(parts.body, &elem(&1, 1)),
       http_footer_tags: Enum.map(parts.footer, &elem(&1, 0)),
       http_footer_texts: Enum.map(parts.footer, &elem(&1, 1)),
-      http_jsonld: parts.jsonld
+      http_jsonld: scrub(parts.jsonld)
     }
   end
 
@@ -306,10 +306,28 @@ defmodule LS.HTTP.PageBlocks do
 
   defp clean(t) do
     t
+    |> scrub()
     |> decode_entities()
     |> String.replace(@ws_re, " ")
     |> String.trim()
   end
+
+  @doc """
+  Drop invalid UTF-8 from a text, keeping every valid run.
+
+  Pages declare one charset and serve another, so a block can carry bytes
+  like 0xF6 (Latin-1 "o umlaut"). JSON encoding of such a block raised on
+  the master and the whole batch of pages was lost: on the first v2 morning
+  (2026-10-01) only 45% of eligible domains had a page row, per worker
+  anywhere from 11% to 90%, with "[PAGES] insert crashed: invalid byte"
+  in the log. Every string that reaches a page row goes through here.
+  """
+  @spec scrub(term()) :: String.t()
+  def scrub(t) when is_binary(t) do
+    if String.valid?(t), do: t, else: t |> String.chunk(:valid) |> Enum.filter(&String.valid?/1) |> Enum.join()
+  end
+
+  def scrub(_), do: ""
 
   defp decode_entities(t) do
     t
