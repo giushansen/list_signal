@@ -761,10 +761,10 @@ defmodule LSWeb.DashboardLive do
   defp collect_table_counts do
     sql = """
     SELECT
-      (SELECT count() FROM domains_current)                   AS domains,
-      (SELECT count() FROM domains_history)                   AS domain_rows,
+      (SELECT count() FROM domains)                   AS domains,
+      (SELECT count() FROM enrich_log)                   AS domain_rows,
       (SELECT count() FROM businesses FINAL)                  AS businesses,
-      (SELECT countIf(depth_enriched_at IS NOT NULL) FROM businesses FINAL) AS businesses_enriched
+      (SELECT countIf(http_deep_last_seen_at IS NOT NULL) FROM businesses FINAL) AS businesses_enriched
     """
 
     case LS.Clickhouse.query_raw(sql, 5_000) do
@@ -814,16 +814,16 @@ defmodule LSWeb.DashboardLive do
   defp enrichment_output do
     sql = """
     SELECT
-      (SELECT count() FROM biz_enrichment) AS enriched,
-      (SELECT count() FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 1 MINUTE) AS per_min,
-      (SELECT count() FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 1 HOUR) AS last_hour,
-      (SELECT count() FROM biz_contact) AS contacts,
-      (SELECT count() FROM biz_career) AS jobs,
-      (SELECT count() FROM biz_pricing) AS pricing,
-      (SELECT count() FROM biz_news) AS news,
-      (SELECT countIf(seo_score IS NOT NULL) FROM biz_enrichment) AS with_seo,
-      (SELECT countIf(product_count IS NOT NULL) FROM biz_enrichment) AS with_catalog,
-      (SELECT countIf(render_engine = 'camoufox') FROM biz_enrichment) AS via_browser,
+      (SELECT count() FROM http_deep_state) AS enriched,
+      (SELECT count() FROM http_deep_state WHERE enriched_at >= now() - INTERVAL 1 MINUTE) AS per_min,
+      (SELECT count() FROM http_deep_state WHERE enriched_at >= now() - INTERVAL 1 HOUR) AS last_hour,
+      (SELECT count() FROM http_contacts) AS contacts,
+      (SELECT count() FROM hr_jobs) AS jobs,
+      (SELECT count() FROM http_deep_prices) AS pricing,
+      (SELECT count() FROM news_items) AS news,
+      (SELECT countIf(seo_score IS NOT NULL) FROM http_deep_state) AS with_seo,
+      (SELECT countIf(product_count IS NOT NULL) FROM http_deep_state) AS with_catalog,
+      (SELECT countIf(render_engine = 'camoufox') FROM http_deep_state) AS via_browser,
       (SELECT uniq(domain) FROM businesses) AS businesses,
       -- uniq over biz_enrichment, NOT depth_enriched_at on businesses: that
       -- column only the newer depth pass sets, so it is NULL for the ~2-3M
@@ -832,7 +832,7 @@ defmodule LSWeb.DashboardLive do
       -- (owner chased it on 2026-08-25). uniq() is approximate (~1% error)
       -- which is fine for a dashboard pair; the data-contract suite holds
       -- this metric to the truth within 5%.
-      (SELECT uniq(domain) FROM biz_enrichment) AS businesses_enriched
+      (SELECT uniq(domain) FROM http_deep_state) AS businesses_enriched
     """
 
     case LS.Clickhouse.query_raw(sql, 5_000) do

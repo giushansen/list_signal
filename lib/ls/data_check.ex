@@ -52,18 +52,19 @@ defmodule LS.DataCheck do
 
   # Quantity streams: {label, table, time column}.
   @streams [
-    {"discovery rows", "domains_current", "enriched_at"},
-    {"new businesses", "businesses", "first_seen"},
-    {"enrichment rows", "biz_enrichment", "enriched_at"}
+    {"discovery rows", "domains", "enriched_at"},
+    {"new businesses", "businesses", "ctl_first_seen_at"},
+    {"enrichment rows", "http_deep_state", "enriched_at"},
+    {"changes recorded", "changes_log", "changed_at"}
   ]
 
   # Speed probes: {label, sql, warn_ms, error_ms}. Thresholds are absolute:
   # these numbers are what a USER experiences, so they must not drift with a
   # degrading baseline the way the quality bands are allowed to.
   @speed_probes [
-    {"domain point lookup", "SELECT domain FROM domains_current FINAL WHERE domain = 'google.com' LIMIT 1", 500, 2_500},
+    {"domain point lookup", "SELECT domain FROM domains FINAL WHERE domain = 'google.com' LIMIT 1", 500, 2_500},
     {"shopify filter count", "SELECT count() FROM businesses WHERE is_shopify = 1", 1_000, 4_000},
-    {"signal history lookup", "SELECT count() FROM biz_signal WHERE domain = 'google.com'", 500, 2_500}
+    {"signal history lookup", "SELECT count() FROM changes_log WHERE domain = 'google.com'", 500, 2_500}
   ]
 
   # ── snapshot (cached) ──────────────────────────────────────────────────
@@ -112,7 +113,7 @@ defmodule LS.DataCheck do
     FROM (SELECT http_title, http_status, inferred_country, http_tech, dns_mx,
                  bgp_asn_org, http_error, is_junk,
                  enriched_at >= now() - INTERVAL 1 HOUR AS recent
-          FROM domains_current WHERE enriched_at >= now() - INTERVAL 25 HOUR)
+          FROM domains WHERE enriched_at >= now() - INTERVAL 25 HOUR)
     """
 
     case Clickhouse.query_raw(sql, 60_000, background: true) do

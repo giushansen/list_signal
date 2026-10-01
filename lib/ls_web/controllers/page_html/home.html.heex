@@ -222,6 +222,56 @@
   </section>
 <% end %>
 
+<section class="py-20 border-t border-white/[0.07]" id="api-example">
+  <div class="mx-auto max-w-[1200px] px-6">
+    <div class="text-center max-w-[640px] mx-auto mb-10 anim">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3.5">One call, the whole record</div>
+      <h2 class="font-display text-[clamp(28px,3.2vw,40px)] font-bold tracking-tight leading-[1.15] mb-3.5">Every business, every change,<br/>one API</h2>
+      <p class="text-base text-white/60">Ask for a domain and get what it is, what it runs, what it sells, what it earns, and what changed last. Same field names in the dashboard, the CSV and the API.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5 anim">
+      <div class="rounded-2xl border border-white/[0.07] bg-[#0C1429] overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
+          <span class="text-[11px] uppercase tracking-wider text-white/40 font-semibold">The call</span>
+          <span class="text-[11px] text-white/30">REST or MCP</span>
+        </div>
+        <pre class="p-5 text-[13px] leading-relaxed text-emerald-200/90 overflow-x-auto"><code>curl https://listsignal.com/api/v1/company/gymshark.com \
+  -H "Authorization: Bearer ls_YOUR_KEY"
+
+
+curl "https://listsignal.com/api/v1/changes?field=http_tech&value=Klaviyo&change=added&period=7d" \
+  -H "Authorization: Bearer ls_YOUR_KEY"</code></pre>
+        <div class="px-5 pb-5 text-[13px] text-white/50">
+          Free key, 1,000 lookups a month. <a href="/developers" class="text-accent hover:underline">Read the docs and the data dictionary</a>.
+        </div>
+      </div>
+      <div class="rounded-2xl border border-white/[0.07] bg-[#0C1429] overflow-hidden">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-white/[0.06]">
+          <span class="text-[11px] uppercase tracking-wider text-white/40 font-semibold">What comes back</span>
+          <span class="text-[11px] text-white/30">abridged</span>
+        </div>
+        <pre phx-no-curly-interpolation class="p-5 text-[13px] leading-relaxed text-sky-200/90 overflow-x-auto"><code>{
+  "domain": "gymshark.com",
+  "estimated_business_model": "Ecommerce",
+  "estimated_revenue": "$100M-$1B",
+  "estimated_revenue_confidence": 0.91,
+  "estimated_employees": "501-5000",
+  "estimated_country": "GB",
+  "http_tech": ["Shopify", "Klaviyo", "Gorgias", "Cloudflare"],
+  "dns_email_provider": "Google Workspace",
+  "shop_product_count": 1840,
+  "hr_job_count": 42,
+  "http_emails": ["press@gymshark.com"],
+  "changes": [
+    {"summary": "Gorgias added", "changed_at": "2026-09-28"},
+    {"summary": "started hiring (42 roles)", "changed_at": "2026-09-20"}
+  ]
+}</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="py-20 bg-[#0C1429]">
   <div class="mx-auto max-w-[1200px] px-6">
     <div class="text-center max-w-[600px] mx-auto mb-12 anim">

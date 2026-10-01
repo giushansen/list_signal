@@ -1,3 +1,6 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- New Shopify stores discovered in the last 24h, best-ranked first.
 SELECT
     domain,
@@ -7,7 +10,7 @@ SELECT
     tranco_rank,
     estimated_revenue,
     enriched_at
-FROM domains_history
+FROM enrich_log
 WHERE enriched_at >= now() - INTERVAL 24 HOUR
   AND http_tech LIKE '%Shopify%'
 ORDER BY coalesce(tranco_rank, 99999999) ASC, enriched_at DESC

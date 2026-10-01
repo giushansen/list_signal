@@ -1,3 +1,6 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- BAD / suspicious domains per day.
 --   flagged_*        blocklist hits (malware / phishing / disposable-email)
 --   dead_dns         CT-log cert but domain doesn't resolve at all
@@ -16,7 +19,7 @@ SELECT
               / nullIf(uniq(domain), 0), 2)                                    AS dead_dns_pct,
     uniqIf(domain, dns_a != '' AND dns_mx = '' AND http_title = ''
                    AND (http_status IS NULL OR http_status >= 400))            AS parked_hint
-FROM domains_history
+FROM enrich_log
 WHERE enriched_at >= now() - INTERVAL 90 DAY
 GROUP BY day
 ORDER BY day

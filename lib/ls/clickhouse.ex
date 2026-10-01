@@ -26,12 +26,12 @@ defmodule LS.Clickhouse do
   # populated, not dashes.
   def sample_shopify_stores(limit \\ 6) do
     query("""
-    SELECT domain, http_title, inferred_country, tranco_rank,
-           estimated_revenue, business_model, product_count, price_avg,
-           job_count, seo_score, http_emails != '' AS has_contact
+    SELECT domain, http_title, estimated_country, tranco_rank,
+           estimated_revenue, estimated_business_model, shop_product_count, shop_price_avg,
+           hr_job_count, http_deep_seo_score, notEmpty(http_emails) AS has_contact
     FROM businesses
-    WHERE positionCaseInsensitive(http_tech, 'shopify') > 0
-      AND http_title != '' AND depth_enriched_at IS NOT NULL
+    WHERE is_shopify = 1
+      AND http_title != '' AND http_deep_last_seen_at IS NOT NULL
       AND estimated_revenue != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT 1 BY domain
@@ -54,12 +54,12 @@ defmodule LS.Clickhouse do
   """
   def sample_online_businesses(limit \\ 6) do
     query("""
-    SELECT domain, http_title, inferred_country, tranco_rank,
-           estimated_revenue, business_model, industry,
-           job_count, seo_score, http_emails != '' AS has_contact, http_tech
+    SELECT domain, http_title, estimated_country, tranco_rank,
+           estimated_revenue, estimated_business_model, estimated_industry,
+           hr_job_count, http_deep_seo_score, notEmpty(http_emails) AS has_contact, arrayStringConcat(http_tech, '|')
     FROM businesses
-    WHERE business_model IN ('SaaS', 'Agency', 'Marketplace', 'Tool', 'Media')
-      AND http_title != '' AND depth_enriched_at IS NOT NULL
+    WHERE estimated_business_model IN ('SaaS', 'Agency', 'Marketplace', 'Tool', 'Media')
+      AND http_title != '' AND http_deep_last_seen_at IS NOT NULL
       AND estimated_revenue != ''
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT 1 BY domain
@@ -74,13 +74,13 @@ defmodule LS.Clickhouse do
   """
   def hiring_overview do
     with {:ok, [[companies, roles]]} <-
-           query("SELECT countIf(job_count > 0), toUInt64(sum(job_count)) FROM businesses FINAL SETTINGS max_threads=2"),
+           query("SELECT countIf(hr_job_count > 0), toUInt64(sum(hr_job_count)) FROM businesses FINAL SETTINGS max_threads=2"),
          {:ok, depts} <-
            query("""
            SELECT dept, count() AS companies FROM (
-             SELECT arrayJoin(splitByChar('|', job_departments)) AS dept
+             SELECT arrayJoin(hr_departments) AS dept
              FROM businesses FINAL
-             WHERE job_count > 0 AND job_departments != ''
+             WHERE hr_job_count > 0 AND notEmpty(hr_departments)
            )
            WHERE dept != ''
            GROUP BY dept ORDER BY companies DESC LIMIT 12
@@ -126,8 +126,8 @@ defmodule LS.Clickhouse do
   @spec verified_for(String.t()) :: map()
   def verified_for(domain) do
     case query("""
-         SELECT verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary
-         FROM businesses WHERE domain = '#{escape(domain)}' ORDER BY as_of DESC LIMIT 1
+         SELECT verified_revenue, verified_revenue_evidence, verified_employees, verified_employees_evidence, estimated_summary
+         FROM businesses WHERE domain = '#{escape(domain)}' ORDER BY compiled_at DESC LIMIT 1
          """) do
       {:ok, [[rev, rev_src, emp, emp_src, mission]]} ->
         %{revenue: rev, revenue_source: rev_src, employees: emp, employees_source: emp_src, mission_summary: mission}
@@ -145,7 +145,7 @@ defmodule LS.Clickhouse do
   per window. nil only when the page cannot be fetched at all.
   """
   def get_seo_score(domain) do
-    case query("SELECT seo_score FROM businesses WHERE domain = '#{escape(domain)}' LIMIT 1") do
+    case query("SELECT http_deep_seo_score FROM businesses WHERE domain = '#{escape(domain)}' LIMIT 1") do
       {:ok, [[n]]} when is_number(n) and n > 0 ->
         round(n)
 
@@ -177,11 +177,11 @@ defmodule LS.Clickhouse do
     list = models |> Enum.map(&"'#{escape(&1)}'") |> Enum.join(",")
 
     query("""
-    SELECT domain, inferred_country, http_title, http_tech, as_of
+    SELECT domain, estimated_country, http_title, arrayStringConcat(http_tech, '|'), compiled_at
     FROM businesses
-    WHERE business_model IN (#{list}) AND is_junk = '' AND http_title != ''
-      AND classification_confidence >= 0.5 AND #{not_challenge_sql("http_title")}
-    ORDER BY as_of DESC
+    WHERE estimated_business_model IN (#{list}) AND estimated_junk = '' AND http_title != ''
+      AND estimated_business_model_confidence >= 0.5 AND #{not_challenge_sql("http_title")}
+    ORDER BY compiled_at DESC
     LIMIT #{limit}
     """)
   end
@@ -197,7 +197,7 @@ defmodule LS.Clickhouse do
   # float hit decode_html/1 (104 FunctionClauseErrors in ten minutes,
   # reported by the other session). A row is now self-describing.
   def get_store(domain) when is_binary(domain) do
-    case query("SELECT * FROM domains_current FINAL WHERE domain = '#{escape(domain)}' LIMIT 1") do
+    case query("SELECT * FROM #{LS.Schema.Tables.domains()} FINAL WHERE domain = '#{escape(domain)}' LIMIT 1") do
       {:ok, rows} -> {:ok, Enum.map(rows, &(domains_current_columns() |> Enum.zip(&1) |> Map.new()))}
       err -> err
     end
@@ -215,7 +215,7 @@ defmodule LS.Clickhouse do
         cols
 
       nil ->
-        case query_raw("SELECT name FROM system.columns WHERE database = currentDatabase() AND table = 'domains_current' ORDER BY position", 5_000) do
+        case query_raw("SELECT name FROM system.columns WHERE database = currentDatabase() AND table = '#{LS.Schema.Tables.domains()}' ORDER BY position", 5_000) do
           {:ok, [_ | _] = rows} ->
             cols = Enum.map(rows, fn [n] -> String.to_atom(n) end)
             :persistent_term.put({__MODULE__, :domains_current_columns}, cols)
@@ -230,21 +230,21 @@ defmodule LS.Clickhouse do
   # ── Sitemap ──
 
   def scan_rate_per_minute do
-    case query("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
+    case query("SELECT count() FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
   end
 
   def scan_rate_per_second do
-    case query("SELECT count() / 60.0 FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
+    case query("SELECT count() / 60.0 FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 MINUTE") do
       {:ok, [[rate]]} when is_number(rate) -> Float.round(rate / 1.0, 1)
       _ -> nil
     end
   end
 
   def stores_last_hour do
-    case query("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR") do
+    case query("SELECT count() FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 HOUR") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
@@ -255,7 +255,7 @@ defmodule LS.Clickhouse do
     # inner table) — on the raw domains_history log we must use the expression it
     # materializes. The previous version queried `is_shopify` here, got
     # UNKNOWN_IDENTIFIER on every call, and silently returned nil.
-    case query("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR AND http_tech LIKE '%Shopify%'") do
+    case query("SELECT count() FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 HOUR AND http_tech LIKE '%Shopify%'") do
       {:ok, [[count]]} when is_integer(count) -> count
       _ -> nil
     end
@@ -267,7 +267,10 @@ defmodule LS.Clickhouse do
   """
   def recent_signals(domain, limit \\ 5) do
     query("""
-    SELECT kind, value, changed_at FROM biz_signal
+    SELECT concat(replaceAll(field, '_', ' '), ' ', change) AS kind,
+           if(prev_value != '', concat(prev_value, ' to ', value), value) AS value,
+           changed_at
+    FROM changes_log
     WHERE domain = '#{escape(domain)}'
     ORDER BY changed_at DESC LIMIT #{limit}
     """)
@@ -277,8 +280,8 @@ defmodule LS.Clickhouse do
   def count_similar(business_model, country) when business_model != "" do
     query("""
     SELECT count() FROM businesses
-    WHERE business_model = '#{escape(business_model)}'
-      AND inferred_country = '#{escape(country)}' AND is_junk = ''
+    WHERE estimated_business_model = '#{escape(business_model)}'
+      AND estimated_country = '#{escape(country)}' AND estimated_junk = ''
     """)
   end
 
@@ -337,18 +340,18 @@ defmodule LS.Clickhouse do
           {"AND tranco_rank > 0 AND tranco_rank <= #{r}", "ORDER BY tranco_rank DESC", band}
 
         _ ->
-          {"", "ORDER BY as_of DESC", :unranked}
+          {"", "ORDER BY compiled_at DESC", :unranked}
       end
 
     LS.LandingCache.cached({:similar_stores, business_model, country, tier, bucket}, @similar_stores_ttl, fn ->
       query("""
       SELECT domain, http_title, tranco_rank, is_shopify
       FROM businesses
-      WHERE business_model = '#{escape(business_model)}'
-        AND inferred_country = '#{escape(country)}'
+      WHERE estimated_business_model = '#{escape(business_model)}'
+        AND estimated_country = '#{escape(country)}'
         AND estimated_revenue IN (#{tier_sql})
-        AND classification_confidence >= 0.5
-        AND is_junk = '' AND http_title != ''
+        AND estimated_business_model_confidence >= 0.5
+        AND estimated_junk = '' AND http_title != ''
       #{rank_where}
       #{order}
       LIMIT #{limit + 4}
@@ -382,12 +385,12 @@ defmodule LS.Clickhouse do
   def tech_trends(tech) do
     LS.LandingCache.cached({:tech_trends, tech}, @trend_ttl, fn ->
       query("""
-      SELECT countIf(kind='tech_added'   AND changed_at >= now() - INTERVAL 7 DAY),
-             countIf(kind='tech_removed' AND changed_at >= now() - INTERVAL 7 DAY),
-             countIf(kind='tech_added'   AND changed_at >= now() - INTERVAL 30 DAY),
-             countIf(kind='tech_removed' AND changed_at >= now() - INTERVAL 30 DAY)
-      FROM biz_signal
-      WHERE value = '#{escape(tech)}' AND kind IN ('tech_added','tech_removed')
+      SELECT countIf(change='added'   AND changed_at >= now() - INTERVAL 7 DAY),
+             countIf(change='removed' AND changed_at >= now() - INTERVAL 7 DAY),
+             countIf(change='added'   AND changed_at >= now() - INTERVAL 30 DAY),
+             countIf(change='removed' AND changed_at >= now() - INTERVAL 30 DAY)
+      FROM changes_log
+      WHERE field = 'http_tech' AND value = '#{escape(tech)}' AND change IN ('added','removed')
       """)
     end)
     |> case do
@@ -400,9 +403,9 @@ defmodule LS.Clickhouse do
   def tech_movers(limit \\ 25) do
     LS.LandingCache.cached({:tech_movers, limit}, @trend_ttl, fn ->
       query("""
-      SELECT value, countIf(kind='tech_added') AS adds, countIf(kind='tech_removed') AS drops
-      FROM biz_signal
-      WHERE changed_at >= now() - INTERVAL 30 DAY AND kind IN ('tech_added','tech_removed')
+      SELECT value, countIf(change='added') AS adds, countIf(change='removed') AS drops
+      FROM changes_log
+      WHERE field = 'http_tech' AND changed_at >= now() - INTERVAL 30 DAY AND change IN ('added','removed')
       GROUP BY value HAVING adds >= 50
       ORDER BY adds DESC LIMIT #{limit}
       """)
@@ -417,8 +420,8 @@ defmodule LS.Clickhouse do
   def recent_adopters(tech, limit \\ 6) do
     LS.LandingCache.cached({:recent_adopters, tech}, @trend_ttl, fn ->
       query("""
-      SELECT domain, max(changed_at) AS at FROM biz_signal
-      WHERE kind = 'tech_added' AND value = '#{escape(tech)}'
+      SELECT domain, max(changed_at) AS at FROM changes_log
+      WHERE field = 'http_tech' AND change = 'added' AND value = '#{escape(tech)}'
         AND changed_at >= now() - INTERVAL 30 DAY
       GROUP BY domain ORDER BY at DESC LIMIT #{limit}
       """)
@@ -437,13 +440,13 @@ defmodule LS.Clickhouse do
   def switchers(from, to, days \\ 90) do
     LS.LandingCache.cached({:switchers, from, to, days}, @trend_ttl, fn ->
       query("""
-      SELECT domain, max(changed_at) AS at FROM biz_signal
-      WHERE changed_at >= now() - INTERVAL #{days} DAY
-        AND ((kind='tech_removed' AND value='#{escape(from)}')
-          OR (kind='tech_added'  AND value='#{escape(to)}'))
+      SELECT domain, max(changed_at) AS at FROM changes_log
+      WHERE field = 'http_tech' AND changed_at >= now() - INTERVAL #{days} DAY
+        AND ((change='removed' AND value='#{escape(from)}')
+          OR (change='added'  AND value='#{escape(to)}'))
       GROUP BY domain
-      HAVING countIf(kind='tech_removed' AND value='#{escape(from)}') > 0
-         AND countIf(kind='tech_added'  AND value='#{escape(to)}') > 0
+      HAVING countIf(change='removed' AND value='#{escape(from)}') > 0
+         AND countIf(change='added'  AND value='#{escape(to)}') > 0
       ORDER BY at DESC LIMIT 500
       """)
     end)
@@ -462,17 +465,17 @@ defmodule LS.Clickhouse do
   def top_by_segment(kind, name, limit \\ 50) do
     where =
       case kind do
-        :industry -> "industry = '#{escape(name)}'"
-        :model -> "business_model = '#{escape(name)}'"
+        :industry -> "estimated_industry = '#{escape(name)}'"
+        :model -> "estimated_business_model = '#{escape(name)}'"
         # /top/shopify — a platform, not a model, so match the tech stack
-        :tech -> "http_tech LIKE '%#{escape(name)}%'"
+        :tech -> "has(http_tech, '#{escape(name)}')"
       end
 
     LS.LandingCache.cached({:top_segment, kind, name}, @trend_ttl, fn ->
       query("""
-      SELECT domain, http_title, http_tech, inferred_country, tranco_rank
+      SELECT domain, http_title, arrayStringConcat(http_tech, '|'), estimated_country, tranco_rank
       FROM businesses
-      WHERE is_junk = '' AND http_title != '' AND #{where}
+      WHERE estimated_junk = '' AND http_title != '' AND #{where}
       ORDER BY coalesce(tranco_rank, 99999999) ASC LIMIT #{limit}
       """)
     end)
@@ -485,7 +488,7 @@ defmodule LS.Clickhouse do
     LS.LandingCache.cached({:segment_counts, kind}, @trend_ttl, fn ->
       query("""
       SELECT #{field}, count() FROM businesses
-      WHERE is_junk = '' AND http_title != '' AND #{field} != ''
+      WHERE estimated_junk = '' AND http_title != '' AND #{field} != ''
       GROUP BY #{field}
       """)
     end)
@@ -495,202 +498,17 @@ defmodule LS.Clickhouse do
     end
   end
 
-  defp segment_field(:industry), do: "industry"
-  defp segment_field(:model), do: "business_model"
+  defp segment_field(:industry), do: "estimated_industry"
+  defp segment_field(:model), do: "estimated_business_model"
 
-  # ── biz_signal: observed business changes ──
+  # ── changes_log, stable domains: see LS.Clickhouse.Compact ──
 
-  @doc """
-  SQL predicate: this crawl row actually OBSERVED the site (2026-09-06).
+  alias LS.Clickhouse.Compact
 
-  A change event is only as true as the two crawls it compares. Measured on
-  2,000 sampled "started showing" events and 1,000 "stopped showing" events
-  from the last 90 days: 13.3% of additions had a BEFORE crawl that was a
-  stub (bot wall served as 200, redirect shell, empty body: 224 of 267 had
-  under 200 characters of visible text) and 16.6% of removals had an AFTER
-  crawl of the same kind. Those are "not observed", recorded as "not
-  present", and they produce a fake adoption on the next real crawl and a
-  fake removal on the next stub.
-
-  The rule itself lives in `LS.Pipeline.observed?/1` and is stored per row
-  as `http_observed` (migration 022, DEFAULT 1 for rows crawled before it).
-  It was first written here in SQL over `http_body_snippet`; reading that
-  column for every history row of every touched domain pushed the
-  compaction pass past its ceiling on every run, so the flag is computed
-  once at insert time and this predicate reads one byte.
-
-  Used by record_signals/2, backfill_signals_shard/2 and the compactor's
-  http_tech/http_apps fold, so `businesses` and `biz_signal` agree on what
-  counts as an observation.
-  """
-  def observed_sql(prefix \\ "") do
-    "(#{prefix}http_status BETWEEN 200 AND 399 AND #{prefix}http_observed = 1)"
-  end
-
-  @doc """
-  Domains whose newest crawl in the window looks exactly like the compiled
-  business row we already had: same title, technologies, apps and status.
-  Feeds `LS.Cluster.CrawlDedup.mark_stable/1` (2026-09-09). Runs BEFORE the
-  pass compiles the window, like `record_signals/2`, because the comparison
-  needs the previous state.
-
-  Measured on 2% of domains over 45 days: 88.9% of revisits at least 7 days
-  apart returned an unchanged tuple, and 73.9% of all crawls in a week are
-  revisits. A domain marked stable is not refetched for 28-35 days instead
-  of 7; a change on it is noticed within five weeks instead of one.
-  Top-100K domains are never marked: they are what customers look at and
-  they keep the weekly cadence. Only observed 2xx/3xx crawls count, so a
-  bot wall or a redirect shell can never mark a site as unchanged.
-  """
-  def stable_domains(since_unix, until_unix) do
-    case query_raw(stable_domains_sql(since_unix, until_unix), 120_000, background: true) do
-      {:ok, rows} -> {:ok, Enum.map(rows, fn [d] -> d end)}
-      err -> err
-    end
-  end
-
-  @doc false
-  def stable_domains_sql(since_unix, until_unix) do
-    window = "enriched_at >= toDateTime(#{int(since_unix)}) AND enriched_at < toDateTime(#{int(until_unix)})"
-
-    """
-    SELECT n.domain
-    FROM (
-      SELECT domain,
-             argMax(http_title, enriched_at) AS title,
-             argMax(http_tech, enriched_at) AS tech,
-             argMax(http_apps, enriched_at) AS apps,
-             argMax(http_status, enriched_at) AS status
-      FROM domains_history
-      WHERE #{window} AND #{observed_sql("")}
-      GROUP BY domain
-    ) AS n
-    INNER JOIN (
-      SELECT domain, http_title, http_tech, http_apps, http_status, tranco_rank
-      FROM businesses
-      WHERE domain IN (SELECT domain FROM domains_history WHERE #{window})
-    ) AS o USING (domain)
-    WHERE n.title = o.http_title AND n.tech = o.http_tech AND n.apps = o.http_apps AND n.status = o.http_status
-      AND (o.tranco_rank IS NULL OR o.tranco_rank > 100000)
-    SETTINGS max_execution_time = 115, max_threads = 2
-    """
-  end
-
-  @doc """
-  Emit change signals for the slice `[since, until)` by comparing the newest
-  SUCCESSFUL crawl state in the slice against the current `businesses` row.
-
-  Must run BEFORE `compact_businesses/2` for the same slice: the diff needs
-  the OLD state, and compaction overwrites it. Failure here never blocks
-  compaction — signals are derived data.
-
-  Signal semantics (the part that keeps them honest):
-    * only crawls with http_status 200-399 AND non-empty tech count — a
-      failed or blind crawl is a fact about the crawl, not the business;
-    * domains must already exist in `businesses` with non-empty tech —
-      a first crawl "adds" everything and means nothing;
-    * biz_signal is a ReplacingMergeTree on the full row, so a retried
-      slice re-emitting identical signals dedups instead of duplicating.
-  """
-  def record_signals(since_unix, until_unix) do
-    window = "enriched_at >= toDateTime(#{since_unix}) AND enriched_at < toDateTime(#{until_unix})"
-
-    new_state = """
-    SELECT domain,
-           max(enriched_at) AS at,
-           argMax(http_tech, enriched_at) AS new_tech,
-           argMax(http_apps, enriched_at) AS new_apps
-    FROM domains_history
-    WHERE #{window} AND #{observed_sql()} AND http_tech != ''
-    GROUP BY domain
-    """
-
-    tech_sql = """
-    INSERT INTO biz_signal (kind, value, domain, changed_at)
-    SELECT sig.1 AS kind, sig.2 AS value, n.domain, n.at
-    FROM (#{new_state}) n
-    INNER JOIN (
-      SELECT domain, http_tech, http_apps FROM businesses
-      WHERE http_tech != '' AND domain IN (
-        SELECT domain FROM domains_history WHERE #{window}
-      )
-    ) b ON n.domain = b.domain
-    ARRAY JOIN arrayConcat(
-      arrayMap(x -> ('tech_added', x),
-        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', b.http_tech), x), splitByChar('|', n.new_tech))),
-      arrayMap(x -> ('tech_removed', x),
-        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', n.new_tech), x), splitByChar('|', b.http_tech))),
-      arrayMap(x -> ('app_added', x),
-        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', b.http_apps), x), splitByChar('|', n.new_apps))),
-      arrayMap(x -> ('app_removed', x),
-        arrayFilter(x -> x != '' AND NOT has(splitByChar('|', n.new_apps), x), splitByChar('|', b.http_apps)))
-    ) AS sig
-    SETTINGS join_use_nulls = 0, max_threads = 2, max_execution_time = 115
-    """
-
-    hiring_sql = """
-    INSERT INTO biz_signal (kind, value, domain, changed_at)
-    SELECT if(new_jobs > 0, 'started_hiring', 'stopped_hiring') AS kind,
-           toString(new_jobs) AS value, n.domain, n.at
-    FROM (
-      SELECT domain, max(enriched_at) AS at,
-             argMaxIf(job_count, enriched_at, job_count IS NOT NULL) AS new_jobs
-      FROM biz_enrichment_log
-      WHERE #{window} AND render_engine != 'failed'
-      GROUP BY domain
-      HAVING new_jobs IS NOT NULL
-    ) n
-    INNER JOIN (
-      SELECT domain, job_count FROM businesses
-      WHERE domain IN (SELECT domain FROM biz_enrichment_log WHERE #{window})
-    ) b ON n.domain = b.domain
-    WHERE (coalesce(b.job_count, 0) = 0 AND new_jobs > 0)
-       OR (coalesce(b.job_count, 0) > 0 AND new_jobs = 0)
-    SETTINGS join_use_nulls = 1, max_threads = 2, max_execution_time = 115
-    """
-
-    with {:ok, _} <- query_raw(tech_sql, 120_000, background: true),
-         {:ok, _} <- query_raw(hiring_sql, 120_000, background: true) do
-      :ok
-    end
-  end
-
-  @doc """
-  Backfill one hash-shard of biz_signal from crawl history (window function
-  over consecutive successful crawls per domain). Same 256-shard pattern as
-  the country backfill; run only when the box is otherwise quiet.
-  """
-  def backfill_signals_shard(shard, total) do
-    guard = "cityHash64(domain) % #{total} = #{shard}"
-
-    sql = """
-    INSERT INTO biz_signal (kind, value, domain, changed_at)
-    SELECT sig.1, sig.2, domain, at FROM (
-      SELECT domain, enriched_at AS at,
-             splitByChar('|', http_tech) AS cur_t,
-             splitByChar('|', lagInFrame(http_tech, 1, '') OVER w) AS prev_t,
-             splitByChar('|', http_apps) AS cur_a,
-             splitByChar('|', lagInFrame(http_apps, 1, '') OVER w) AS prev_a,
-             lagInFrame(http_tech, 1, '') OVER w AS prev_raw
-      FROM domains_history
-      WHERE #{guard} AND #{observed_sql()} AND http_tech != ''
-        AND domain IN (SELECT domain FROM businesses WHERE #{guard})
-      WINDOW w AS (PARTITION BY domain ORDER BY enriched_at ROWS BETWEEN 1 PRECEDING AND 1 PRECEDING)
-    )
-    ARRAY JOIN arrayConcat(
-      arrayMap(x -> ('tech_added', x),   arrayFilter(x -> x != '' AND NOT has(prev_t, x), cur_t)),
-      arrayMap(x -> ('tech_removed', x), arrayFilter(x -> x != '' AND NOT has(cur_t, x), prev_t)),
-      arrayMap(x -> ('app_added', x),    arrayFilter(x -> x != '' AND NOT has(prev_a, x), cur_a)),
-      arrayMap(x -> ('app_removed', x),  arrayFilter(x -> x != '' AND NOT has(cur_a, x), prev_a))
-    ) AS sig
-    WHERE prev_raw != ''
-    SETTINGS max_threads = 2, max_bytes_before_external_group_by = 1000000000
-    """
-
-    query_raw(sql, 300_000)
-  end
-
-  # ── Engagement digests ──
+  defdelegate observed_sql(prefix \\ ""), to: Compact
+  defdelegate stable_domains(since_unix, until_unix), to: Compact
+  defdelegate stable_domains_sql(since_unix, until_unix), to: Compact
+  defdelegate backfill_changes_shard(shard, total), to: Compact
 
   @doc """
   Count businesses matching a saved dashboard search, optionally only those
@@ -706,8 +524,8 @@ defmodule LS.Clickhouse do
     sql =
       cond do
         is_nil(days) -> base
-        String.contains?(base, "WHERE") -> base <> " AND first_seen > now() - INTERVAL #{days} DAY"
-        true -> base <> " WHERE first_seen > now() - INTERVAL #{days} DAY"
+        String.contains?(base, "WHERE") -> base <> " AND ctl_first_seen_at > now() - INTERVAL #{days} DAY"
+        true -> base <> " WHERE ctl_first_seen_at > now() - INTERVAL #{days} DAY"
       end
 
     case query_raw(sql) do
@@ -719,10 +537,9 @@ defmodule LS.Clickhouse do
   @doc "Added/removed counts for one tech over `days` — the digest's signal line."
   def signal_counts_for(tech, days) do
     sql = """
-    SELECT countIf(kind = 'tech_added' OR kind = 'app_added') AS added,
-           countIf(kind = 'tech_removed' OR kind = 'app_removed') AS removed
-    FROM biz_signal
-    WHERE value = '#{escape(tech)}' AND changed_at > now() - INTERVAL #{days} DAY
+    SELECT countIf(change = 'added') AS added, countIf(change = 'removed') AS removed
+    FROM changes_log
+    WHERE field = 'http_tech' AND value = '#{escape(tech)}' AND changed_at > now() - INTERVAL #{days} DAY
     """
 
     case query_raw(sql) do
@@ -740,9 +557,9 @@ defmodule LS.Clickhouse do
   def fresh_contactable_shopify(days \\ 7) do
     sql = """
     SELECT count() FROM businesses
-    WHERE positionCaseInsensitive(http_tech, 'shopify') > 0
-      AND http_emails != ''
-      AND first_seen > now() - INTERVAL #{days} DAY
+    WHERE is_shopify = 1
+      AND notEmpty(http_emails)
+      AND ctl_first_seen_at > now() - INTERVAL #{days} DAY
     SETTINGS max_threads = 2
     """
 
@@ -786,7 +603,7 @@ defmodule LS.Clickhouse do
     # exactly that (2026-08-02: treating 429 as a wall drowned the browser
     # lane; the same mistake here would silently lose 388K domains).
     sql = """
-    SELECT domain FROM domains_current FINAL
+    SELECT domain FROM #{LS.Schema.Tables.domains()} FINAL
     WHERE (
       (business_model IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{weekly_days} DAY)
       OR
@@ -824,11 +641,11 @@ defmodule LS.Clickhouse do
     # A robots.txt opt-out (2026-09-06) leaves BOTH lanes: the browser lane
     # is not a way around a Disallow, it is the same bot with a renderer.
     if Keyword.get(opts, :browser_only, false) do
-      "(b.last_http_blocked != '' OR b.last_http_status IN (401, 403, 503)) " <>
-        "AND b.last_http_error != 'robots_disallow'"
+      "(b.http_blocked != '' OR b.http_status IN (401, 403, 503)) " <>
+        "AND b.http_error != 'robots_disallow'"
     else
-      "b.crawlable AND b.last_http_blocked = '' AND b.last_http_error != 'robots_disallow' AND " <>
-        "(b.last_http_status IS NULL OR b.last_http_status NOT IN (401, 403, 503))"
+      "b.http_crawlable AND b.http_blocked = '' AND b.http_error != 'robots_disallow' AND " <>
+        "(b.http_status IS NULL OR b.http_status NOT IN (401, 403, 503))"
     end
   end
 
@@ -854,35 +671,11 @@ defmodule LS.Clickhouse do
 
     lane_filter = enrichment_lane_filter(opts)
 
-    sql = """
-    SELECT b.domain, b.http_pages, b.http_tech, b.last_http_blocked, b.last_http_status,
-      -- inferred_country is load-bearing for phone extraction, not decoration:
-      -- a number printed "030 12345678" cannot be normalised to E.164 without
-      -- it, and guessing a country prefix mints a number that dials a real
-      -- stranger. With the country known every phone found on the German
-      -- sample normalised; without it, 55% did (2026-08-27).
-      b.inferred_country,
-      -- Depth tier from signals we already hold. FULL treatment for businesses
-      -- worth the extra pages: any rank, any email, a mail server plus solid
-      -- classification, or a commerce fingerprint (catalog data pays). The
-      -- rest get the LIGHT pass — homepage + contact only, no browser
-      -- fallback — at roughly a third of the cost. Nothing is excluded;
-      -- the tail is just crawled proportionally to its value.
-      if(b.tranco_rank IS NOT NULL OR b.majestic_rank IS NOT NULL
-         OR b.http_emails != ''
-         OR (b.dns_mx != '' AND b.classification_confidence >= 0.6)
-         OR positionCaseInsensitive(concat(b.http_tech, b.http_apps), 'shopify') > 0,
-         'full', 'light') AS tier,
-      -- Everything the revenue estimator reads (2026-09-06): the depth pass
-      -- re-estimates with catalog, apps, sitemap and jobs on top of these,
-      -- and carrying them in the queue item beats a point query per business.
-      b.tranco_rank, b.majestic_rank, b.majestic_ref_subnets, b.rdap_registrar, b.ctl_issuer,
-      b.dns_mx, b.dns_txt, b.dns_dmarc, b.dns_bimi, b.dns_dkim, b.dns_ptr, b.dns_ms_enterprise,
-      b.http_apps, b.ctl_subdomain_count, b.ctl_subdomains, b.rdap_domain_created_at, b.bgp_asn_org, b.bgp_asn_number,
-      b.business_model, b.industry, b.http_title, b.http_status, b.http_emails, b.http_schema_type,
-      b.rdap_nameservers, b.dns_a, b.dns_cname
-    FROM businesses b
-    WHERE b.domain IN (
+    # The candidate set, chosen on narrow columns first (2026-09-10 incident:
+    # sorting the full wide row for every candidate needed 4.6 GiB). It is
+    # interpolated twice below, once for the raw-DNS join side and once for
+    # the main WHERE: a few hundred to a few thousand domains, cheap either way.
+    picked = """
       -- Two phases (2026-09-10 incident): choose the domains on narrow
       -- columns, then read the wide row for those only. Sorting the full
       -- 30-column row for every candidate needed 4.6 GiB; next to the
@@ -900,13 +693,13 @@ defmodule LS.Clickhouse do
       -- attempt is retried after 7 days instead of 30, on purpose.
       SELECT i.domain FROM businesses i
       WHERE #{String.replace(lane_filter, "b.", "i.")}
-        AND i.dns_alive
-        AND (i.depth_enriched_at IS NULL OR i.depth_enriched_at < now() - INTERVAL 30 DAY)
-        AND i.domain NOT IN (SELECT domain FROM biz_enrichment WHERE enriched_at >= now() - INTERVAL 7 DAY)
+        AND notEmpty(i.dns_a)
+        AND (i.http_deep_last_seen_at IS NULL OR i.http_deep_last_seen_at < now() - INTERVAL 30 DAY)
+        AND i.domain NOT IN (SELECT domain FROM #{LS.Schema.Tables.http_deep_state()} WHERE enriched_at >= now() - INTERVAL 7 DAY)
         -- A domain that rate-limited us is not worth retrying on the ordinary
         -- cadence: it asked for patience, and re-asking daily is how a source
         -- IP earns a permanent block. Give it a fortnight.
-        AND (i.last_http_status != 429 OR i.as_of < now() - INTERVAL 14 DAY)
+        AND (i.http_status != 429 OR i.compiled_at < now() - INTERVAL 14 DAY)
       -- Value-first ordering, not Tranco-only: only 5.4% of businesses carry a
       -- Tranco rank (storeradar-shaped SMBs carry none), so pure tranco order
       -- left 94% of the table in arbitrary order. Majestic (backlinks) is an
@@ -914,16 +707,58 @@ defmodule LS.Clickhouse do
       -- ordered by commercial signals instead of nothing.
       ORDER BY
         least(coalesce(i.tranco_rank, 99999999), coalesce(i.majestic_rank * 4, 99999999)) ASC,
-        (i.http_emails != '') + (i.dns_mx != '') + (i.classification_confidence >= 0.6) DESC
+        notEmpty(i.http_emails) + notEmpty(i.dns_mx) + (i.estimated_business_model_confidence >= 0.6) DESC
       -- businesses is read WITHOUT FINAL, so every compactor pass contributes
       -- another version row per changed domain; without this each version
       -- became its own queue entry (top domains up to 9x, 2026-07-31).
       LIMIT 1 BY i.domain
       LIMIT #{limit}
+    """
+
+    sql = """
+    SELECT b.domain, arrayStringConcat(b.http_pages_found, '|'), arrayStringConcat(b.http_tech, '|'), b.http_blocked, b.http_status,
+      -- inferred_country is load-bearing for phone extraction, not decoration:
+      -- a number printed "030 12345678" cannot be normalised to E.164 without
+      -- it, and guessing a country prefix mints a number that dials a real
+      -- stranger. With the country known every phone found on the German
+      -- sample normalised; without it, 55% did (2026-08-27).
+      b.estimated_country,
+      -- Depth tier from signals we already hold. FULL treatment for businesses
+      -- worth the extra pages: any rank, any email, a mail server plus solid
+      -- classification, or a commerce fingerprint (catalog data pays). The
+      -- rest get the LIGHT pass — homepage + contact only, no browser
+      -- fallback — at roughly a third of the cost. Nothing is excluded;
+      -- the tail is just crawled proportionally to its value.
+      if(b.tranco_rank IS NOT NULL OR b.majestic_rank IS NOT NULL
+         OR notEmpty(b.http_emails)
+         OR (notEmpty(b.dns_mx) AND b.estimated_business_model_confidence >= 0.6)
+         OR has(b.http_tech, 'Shopify'),
+         'full', 'light') AS tier,
+      -- Everything the revenue estimator reads (2026-09-06): the depth pass
+      -- re-estimates with catalog, apps, sitemap and jobs on top of these,
+      -- and carrying them in the queue item beats a point query per business.
+      b.tranco_rank, b.majestic_rank, b.majestic_ref_subnets, b.rdap_registrar, b.ctl_issuer,
+      arrayStringConcat(b.dns_mx, '|'), x.dns_txt, b.dns_dmarc, b.dns_bimi, b.dns_dkim, x.dns_ptr, x.dns_ms_enterprise,
+      b.http_apps, b.ctl_subdomain_count, arrayStringConcat(b.ctl_subdomains, '|'), b.rdap_created_at, b.bgp_asn_org, b.bgp_asn,
+      b.estimated_business_model, b.estimated_industry, b.http_title, b.http_status, arrayStringConcat(b.http_emails, '|'), b.http_schema_type,
+      arrayStringConcat(b.rdap_nameservers, '|'), arrayStringConcat(b.dns_a, '|'), x.dns_cname
+    FROM businesses b
+    -- The raw DNS strings the estimator reads (TXT, PTR, CNAME, the Microsoft
+    -- tenant flag) live in the log's current row, not in the product table
+    -- (data model v2): a point read on the same primary-key set.
+    LEFT JOIN (
+      SELECT domain, dns_txt, dns_ptr, dns_cname, dns_ms_enterprise
+      FROM #{LS.Schema.Tables.domains()}
+      WHERE domain IN (#{picked})
+      ORDER BY enriched_at DESC
+      LIMIT 1 BY domain
+    ) AS x ON b.domain = x.domain
+    WHERE b.domain IN (
+#{picked}
     )
     ORDER BY least(coalesce(b.tranco_rank, 99999999), coalesce(b.majestic_rank * 4, 99999999)) ASC
     LIMIT 1 BY b.domain
-    SETTINGS max_threads = 2, max_memory_usage = 2500000000
+    SETTINGS max_threads = 2, max_memory_usage = 2500000000, join_use_nulls = 0
     """
 
     # 90s, not the 25s default: this is a background refill on a 5-minute timer,
@@ -954,41 +789,18 @@ defmodule LS.Clickhouse do
            business_model industry http_title http_status http_emails http_schema_type
            rdap_nameservers dns_a dns_cname)a
 
-  @doc """
-  Refresh `businesses` rows for domains touched in `[since_unix, until_unix)`.
+  # ── compaction: see LS.Clickhouse.Compact (data model v2, 2026-10-01) ──
 
-  Coalesces "last non-empty per signal unit" from `domains_history` and folds
-  in `biz_enrichment`. Insert-only: `businesses` is a ReplacingMergeTree keyed
-  on domain, so a fresh row supersedes the old one at merge time.
-  Returns `{:ok, rows_written}`.
-
-  `until_unix` exists because of the 2026-08-05 death spiral: the window was
-  open-ended ("everything since the last success"), so once one pass timed
-  out, every retry faced a strictly larger batch and compaction never
-  succeeded again — 50 straight failures while `businesses` went 19h stale.
-  A bounded slice makes each attempt the same size no matter how long the
-  compactor has been down.
-  """
-  @spec compact_businesses(integer(), integer() | nil) :: {:ok, non_neg_integer()} | {:error, term()}
-  def compact_businesses(since_unix, until_unix \\ nil) do
-    # 1200s client / 1190s server ceiling. The ceiling's job is to kill a
-    # query the client abandoned; the client waits 1200s. It was raised
-    # from 300/290 and 600/590 on 2026-09-06 while every pass still read
-    # the whole history table (190-570 s). Since 2026-09-07 a pass folds the
-    # window into the compiled rows (history_rows_sql/2) and the ceiling is
-    # headroom, not a working limit: lower it once a week of passes has
-    # shown the new steady state. The interval stays 5 minutes; a pass that
-    # runs long simply delays the next one.
-    with {:ok, _} <- query_raw(compact_sql(since_unix, until_unix), 1_200_000, background: true),
-         {:ok, [[n]]} <- query("SELECT count() FROM businesses WHERE as_of >= toDateTime(#{since_unix})") do
-      # ClickHouse JSON quotes UInt64 by default, so count() can arrive as a
-      # string — which would crash the compactor's stats arithmetic.
-      {:ok, to_count(n)}
-    else
-      {:ok, _} -> {:ok, 0}
-      err -> err
-    end
-  end
+  defdelegate compact_businesses(since_unix, until_unix \\ nil), to: Compact
+  defdelegate rebuild_businesses_full(), to: Compact
+  defdelegate compact_shard(shard, total_shards), to: Compact
+  defdelegate compact_sql_shard_preview(shard \\ 0, total \\ 256), to: Compact
+  defdelegate compact_domains(domains), to: Compact
+  defdelegate compact_sql_domains(domains), to: Compact
+  defdelegate verified_sql(join_scope), to: Compact
+  defdelegate compact_sql_for_test(since_unix, until_unix \\ nil), to: Compact
+  defdelegate history_cols(), to: Compact
+  defdelegate history_rows_sql(since_unix, until_unix \\ nil), to: Compact
 
   defp to_count(n) when is_integer(n), do: n
 
@@ -1001,698 +813,6 @@ defmodule LS.Clickhouse do
 
   defp to_count(_), do: 0
 
-  @doc "Full `businesses` rebuild — repair tool. See `LS.Cluster.Compactor`."
-  def rebuild_businesses_full, do: query_raw(compact_sql(0, nil, 1790), 30 * 60_000, background: true)
-
-  @doc """
-  Rebuild one hash-shard of `businesses` — the memory-safe backfill unit.
-
-  A full rebuild in one query no longer fits the shared box (the unscoped
-  joins are the same memory bomb the compactor hit on 2026-08-05). Sharding
-  by domain hash keeps each pass slice-sized; 256 shards of ~37K domains run
-  ~1-2 min each and the whole table backfills in hours without touching the
-  6.5G cap.
-  """
-  def compact_shard(shard, total_shards) do
-    query_raw(compact_sql_shard(shard, total_shards), 1_200_000, background: true)
-  end
-
-  @doc """
-  The compaction SQL for one shard, without running it.
-
-  Public so a data-contract test can EXPLAIN it against the real schema.
-  On 2026-08-27 three new columns were added to the INSERT and to the
-  recompute expression, but the `h` relation is an aggregate over an
-  ALIASED subquery, so `h.http_country_evidence` did not resolve and every
-  compaction pass failed in production. 999 unit tests passed throughout:
-  nothing executed this query against a real table.
-  """
-  def compact_sql_shard_preview(shard \\ 0, total \\ 256), do: compact_sql_shard(shard, total)
-
-  @doc """
-  Recompact an explicit list of domains now, outside the time window
-  (2026-09-06). The incremental pass only revisits a domain when a new
-  crawl, enrichment or verified fact touches it, so a rule change in the
-  compactor (the verified-fact plausibility guard, the subdomain union)
-  reaches an untouched domain only at its next crawl, weeks later for a
-  monthly-tier site. google.com kept "<$1M, 51-500 employees" from a
-  mis-linked Wikidata item for two days after the guard shipped because
-  nothing had crawled it since. Bounded: at most `@compact_domains_max`
-  domains per call, so a literal IN list stays well under the parser's
-  query-size limit.
-  """
-  @compact_domains_max 2_000
-  @spec compact_domains([String.t()]) :: {:ok, term()} | {:error, term()}
-  def compact_domains(domains) when is_list(domains) do
-    domains =
-      domains
-      |> Enum.filter(&(is_binary(&1) and &1 != "" and not String.contains?(&1, ["'", "\\", "\n"])))
-      |> Enum.uniq()
-      |> Enum.take(@compact_domains_max)
-
-    case domains do
-      [] -> {:ok, 0}
-      _ -> query_raw(compact_sql_domains(domains), 1_200_000, background: true)
-    end
-  end
-
-  @doc false
-  def compact_sql_domains(domains) do
-    lit = domains |> Enum.map(&"'#{&1}'") |> Enum.join(",")
-    compact_sql_guarded("domain IN (#{lit})")
-  end
-
-  # The same five table sources as the shard form, each carrying the guard.
-  defp compact_sql_guarded(guard) do
-    compact_sql(0)
-    |> String.replace("FROM domains_history)", "FROM domains_history WHERE #{guard})")
-    |> String.replace(
-      "FROM biz_enrichment_log WHERE render_engine != 'failed'",
-      "FROM biz_enrichment_log WHERE #{guard} AND render_engine != 'failed'"
-    )
-    |> String.replace("FROM biz_pricing GROUP BY", "FROM biz_pricing WHERE #{guard} GROUP BY")
-    |> String.replace("FROM biz_news GROUP BY", "FROM biz_news WHERE #{guard} GROUP BY")
-    |> String.replace("FROM verified_facts\n", "FROM verified_facts WHERE #{guard}\n")
-  end
-
-  defp compact_sql_shard(shard, total) do
-    # The shard is a set of DOMAINS, not a raw hash predicate on every table.
-    # domains_history is sorted by (domain, enriched_at), so `domain IN (set)`
-    # granule-prunes the read; a bare cityHash64(domain) predicate forced a
-    # FULL scan of the 100M-row table per shard — 256 full scans, which is
-    # why the first backfill attempt sat silent for 20 minutes doing nothing
-    # visible. Membership in `businesses` also bounds the set to real
-    # businesses (9.6M) rather than every domain ever seen.
-    set = "SELECT domain FROM businesses WHERE cityHash64(domain) % #{total} = #{shard}"
-
-    # Every table read carries the guard — one unsharded side is the whole
-    # memory problem back.
-    compact_sql_guarded("domain IN (#{set})")
-  end
-
-  # Pipeline 3's contribution to a `businesses` row: one verified revenue and
-  # one verified employees value per domain, chosen by source PRECEDENCE
-  # (audited filings beat registries beat crowd data), never by recency —
-  # a fresher Wikidata edit must not displace a 10-K. Values arrive as the
-  # normalised strings `verified_facts` stores (USD integer / head-count /
-  # bracket label) and leave as the estimator's bracket labels, so
-  # `verified_revenue` filters and renders exactly like `estimated_revenue`.
-  # `SELECT ... FINAL` on a slice-sized domain set is cheap; unscoped it is
-  # what the sharded rebuild guards (see compact_sql_shard/2).
-  @doc false
-  def verified_sql(join_scope) do
-    rev = Enum.with_index(LS.Verification.revenue_precedence(), 1)
-    emp = Enum.with_index(LS.Verification.employees_precedence(), 1)
-    prio = fn pairs -> Enum.map_join(pairs, ", ", fn {src, i} -> "source = '#{src}', #{i}" end) end
-
-    """
-    SELECT domain,
-      argMinIf(rev_bracket, rev_prio, fact = 'revenue_usd' AND rev_bracket != '') AS verified_revenue,
-      argMinIf(source, rev_prio, fact = 'revenue_usd' AND rev_bracket != '') AS verified_revenue_source,
-      argMinIf(emp_bracket, emp_prio, fact IN ('employees', 'employees_band') AND emp_bracket != '') AS verified_employees,
-      argMinIf(source, emp_prio, fact IN ('employees', 'employees_band') AND emp_bracket != '') AS verified_employees_source,
-      argMaxIf(value, fetched_at, fact = 'mission') AS mission_summary
-    FROM (
-      SELECT domain, fact, source, value, fetched_at,
-        multiIf(#{prio.(rev)}, 99) AS rev_prio,
-        multiIf(#{prio.(emp)}, 99) AS emp_prio,
-        multiIf(fact != 'revenue_usd', '',
-                toFloat64OrZero(value) < 1e6, '<$1M', toFloat64OrZero(value) < 1e7, '$1M-$10M',
-                toFloat64OrZero(value) < 1e8, '$10M-$100M', toFloat64OrZero(value) < 1e9, '$100M-$1B', '$1B+') AS rev_bracket,
-        multiIf(fact = 'employees_band', value,
-                fact != 'employees' OR toUInt32OrZero(value) = 0, '',
-                toUInt32OrZero(value) <= 10, '1-10', toUInt32OrZero(value) <= 50, '11-50',
-                toUInt32OrZero(value) <= 500, '51-500', toUInt32OrZero(value) <= 5000, '501-5000', '5001+') AS emp_bracket
-      FROM (
-        /* newest value per (domain, fact, source): facts are keyed on their
-           value so a new fiscal year sits next to the old one as history.
-           LIMIT 1 BY, not GROUP BY+argMax — an inner max(fetched_at) that the
-           outer argMaxIf(value, fetched_at, ...) also reads is a nested
-           aggregate ClickHouse rejects (Code 184), which silently failed
-           EVERY compaction pass and froze `businesses` for 12h on 2026-08-19. */
-        SELECT domain, fact, source, value, fetched_at
-        FROM verified_facts#{join_scope}
-        /* Same fetch, several entities (a parent company, its products and
-           subsidiaries all list the parent's website): the largest wins.
-           A subsidiary is never bigger than its parent, and the arbitrary
-           pick this used to make is how google.com became a 3-person
-           company (2026-09-06). */
-        ORDER BY fetched_at DESC, toFloat64OrZero(value) DESC
-        LIMIT 1 BY domain, fact, source
-      )
-    )
-    GROUP BY domain
-    """
-  end
-
-  # One statement, two sources. `argMaxIf(col, ts, <unit populated>)` is the
-  # anti-erasure rule: a later empty row cannot overwrite an earlier good value.
-  @doc false
-  def compact_sql_for_test(since_unix, until_unix \\ nil), do: compact_sql(since_unix, until_unix)
-
-  # `max_s` is the SERVER-side execution ceiling, sized just under each
-  # caller's client timeout. Without it, a pass the client abandons keeps
-  # running on ClickHouse: on 2026-09-05 one such orphaned INSERT ran for 32
-  # minutes holding 2 GiB while the compactor retried on top of it, until
-  # the whole server hit MEMORY_LIMIT_EXCEEDED and "new businesses" halved
-  # for two hours (caught by the DataCheck quantity alert). Client gives up
-  # and server keeps paying is the worst of both; now they die together.
-  # Hard bound on the older-history leg of an incremental pass. Beyond it a
-  # newly qualifying blocked domain is compiled from its window rows alone
-  # (DNS, certificate, registry and mail data from the blocked crawl) and
-  # picks up nothing from crawls before the window.
-  @candidates_per_pass 500
-
-  # The history columns the fold reads, in the order the aggregate above
-  # names them (`s_<col>`). One list, three sources: see history_rows_sql/2.
-  @history_cols ~w(enriched_at worker domain ctl_tld ctl_issuer ctl_subdomain_count ctl_subdomains
-    dns_a dns_aaaa dns_mx dns_txt dns_cname dns_dmarc dns_bimi dns_dkim dns_ptr dns_ms_enterprise
-    http_status http_response_time http_blocked http_content_type http_tech http_apps http_language
-    http_title http_meta_description http_pages http_emails http_error http_h1 http_observed
-    business_model industry classification_confidence http_schema_type http_og_type
-    bgp_ip bgp_asn_number bgp_asn_org bgp_asn_country bgp_asn_prefix inferred_country
-    http_country_evidence http_country_evidence_src rdap_registrant_country
-    rdap_domain_created_at rdap_domain_expires_at rdap_domain_updated_at
-    rdap_registrar rdap_registrar_iana_id rdap_nameservers rdap_status
-    tranco_rank majestic_rank majestic_ref_subnets is_malware is_phishing is_disposable_email is_junk
-    estimated_revenue estimated_employees revenue_confidence revenue_evidence
-    classification_source pipeline_version)
-
-  # Nullable history columns and their inner type: an "absent" value on a
-  # synthetic row must be a typed NULL, not '', or the fold's `IS NOT NULL`
-  # rules would take it for a measurement.
-  @history_nullable %{
-    "ctl_subdomain_count" => "Int32", "http_status" => "Int32", "http_response_time" => "Int32",
-    "classification_confidence" => "Float32", "revenue_confidence" => "Float32",
-    "rdap_domain_created_at" => "DateTime", "rdap_domain_expires_at" => "DateTime",
-    "rdap_domain_updated_at" => "DateTime",
-    "tranco_rank" => "Int32", "majestic_rank" => "Int32", "majestic_ref_subnets" => "Int32"
-  }
-
-  # Columns only a crawl that reached the site (2xx-3xx) can fill. They live
-  # on the "verified" synthetic row; the "latest" row leaves them blank so
-  # `argMaxIf(col, ts, status BETWEEN 200 AND 399)` cannot pick it.
-  @verified_cols ~w(http_status http_response_time http_blocked http_content_type http_tech http_apps
-    http_language http_title http_meta_description http_pages http_h1 http_schema_type http_og_type is_junk)
-
-  @doc false
-  def history_cols, do: @history_cols
-
-  @doc """
-  The rows the fold aggregates for one pass, as `s_*` columns.
-
-  A full rebuild (`since_unix == 0`) reads `domains_history` whole: that is
-  the point of a rebuild. An incremental pass used to do the same thing in
-  disguise: `domain IN (touched)` on a table ordered by domain, with ~20K
-  touched domains spread over its 47K granules, prunes nothing, so every
-  five-minute pass read all 378M rows / 80 GB and took 190-570 s on a box
-  with 4 cores (2026-09-07, `system.query_log`). Growth alone had pushed
-  the mean from 218 s (09-01) to 327 s (09-07) and past every ceiling.
-
-  Now a pass folds the WINDOW's new rows into what `businesses` already
-  holds, three sources under one UNION ALL:
-
-    1. the window's rows from `domains_history`: the partition key is
-       toYYYYMM(enriched_at), so a time predicate reads only the parts the
-       window touched (~20K rows, ~40 ms measured for 30 minutes);
-    2. each touched business's current row (newest version, one read),
-       replayed as two synthetic history rows so the unchanged `argMaxIf`
-       rules fold it exactly as they folded the crawls it was compiled from: a "verified" row at
-       `last_verified_at` carrying the 2xx-only columns (marked observed),
-       and a "latest" row at `as_of` carrying everything else, with the
-       status masked to NULL when it was 2xx-3xx so the verified row alone
-       answers the 2xx rules. `first_seen` and `dns_alive` are carried as
-       their own columns because min(time) and "newest row had an A record"
-       are not recoverable from a compiled row otherwise;
-    3. the whole history of `_candidates`: window domains without a
-       `businesses` row that could qualify one only through a block or a
-       401/403/429, with no classified crawl in the window, at most
-       `@candidates_per_pass` of them. A classified 2xx crawl in the window
-       carries every field a row needs, so it folds from the window alone;
-       a blocked crawl carries only DNS, certificate, registry and mail
-       data, and the older 2xx crawl that may hold its title and stack is
-       worth one primary-key read. A window domain that is neither a
-       business nor a candidate cannot qualify from older rows alone (a
-       classification implies a 2xx crawl, which would have compiled it),
-       so its window rows fold on their own and the HAVING drops it.
-
-  Existing rows therefore change only by what the window adds, which is the
-  "never blank another writer's data" rule stated as a query. Measured
-  alone on the master (2026-09-07): a five-minute window in 32 s, 100M
-  rows / 12.8 GB read, 2.4 GB peak, where the old form took 190-570 s,
-  398M rows / 80 GB and 3-7 GB for the same window. The shard rebuild
-  keeps rewriting `FROM domains_history)` on the full form, so that string
-  must stay the tail of the `since_unix == 0` branch.
-  """
-  def history_rows_sql(since_unix, until_unix \\ nil)
-
-  def history_rows_sql(0, _), do: history_leg("domains_history")
-
-  def history_rows_sql(since_unix, until_unix) do
-    upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
-    window = "enriched_at >= toDateTime(#{since_unix})#{upper}"
-
-    Enum.join(
-      [
-        history_leg("domains_history WHERE #{window}"),
-        history_leg("domains_history WHERE domain IN (SELECT arrayJoin(_candidates)) AND enriched_at < toDateTime(#{since_unix})"),
-        synthetic_leg()
-      ],
-      "\n      UNION ALL\n      "
-    )
-  end
-
-  # A real history leg: every column as itself plus the two carried values.
-  defp history_leg(from) do
-    cols = Enum.map_join(@history_cols, ", ", &"#{&1} AS s_#{&1}")
-    "SELECT #{cols}, enriched_at AS s_first_seen, (dns_a != '' OR dns_cname != '') AS s_dns_alive FROM #{from}"
-  end
-
-  # The compiled rows, replayed as history. One read of `businesses` for the
-  # touched set (every touched domain lands in a different granule, so the
-  # read is the whole table either way: 13 GB, 10 s without FINAL and 33 s
-  # with it), then ARRAY JOIN fans each row out into its verified row (leg
-  # 1, crawlable rows only) and its latest row (leg 2). Not FINAL: over
-  # 18.6M rows it merged the whole table per pass (966 s, 7 GB, killed on
-  # the server cap, 2026-09-07). The ordered LIMIT 1 BY picks the newest
-  # as_of; two versions with the same as_of and different content occur
-  # in 8 of 186,558 sampled domains, and the newest crawl settles them.
-  defp synthetic_leg do
-    # `domain` is the group key: blank it on either row and that row folds
-    # into an empty-string group instead of its business (2,082 businesses
-    # silently dropped from one probe pass, 2026-09-07).
-    verified = %{
-      "enriched_at" => "last_verified_at",
-      "worker" => "last_worker",
-      "domain" => "domain",
-      "http_observed" => "1"
-    }
-
-    latest = %{
-      "enriched_at" => "as_of",
-      "worker" => "last_worker",
-      "http_status" => "if(last_http_status BETWEEN 200 AND 399, NULL, last_http_status)",
-      "http_error" => "last_http_error",
-      "http_blocked" => "last_http_blocked",
-      "http_observed" => "0",
-      "is_malware" => "''",
-      "is_phishing" => "''"
-    }
-
-    cols =
-      Enum.map_join(@history_cols, ", ", fn col ->
-        v = Map.get_lazy(verified, col, fn -> if(col in @verified_cols, do: col, else: blank(col)) end)
-        l = Map.get_lazy(latest, col, fn -> if(col in @verified_cols, do: blank(col), else: col) end)
-        expr = if v == l, do: v, else: "if(leg = 1, #{v}, #{l})"
-        "#{expr} AS s_#{col}"
-      end)
-
-    """
-    SELECT #{cols}, first_seen AS s_first_seen, dns_alive AS s_dns_alive
-      FROM (SELECT * FROM businesses WHERE domain IN (SELECT arrayJoin(_touched)) ORDER BY as_of DESC LIMIT 1 BY domain)
-      ARRAY JOIN if(crawlable = 1, [1, 2], [2]) AS leg
-    """
-  end
-
-  defp blank("http_observed"), do: "0"
-
-  defp blank(col) do
-    case Map.fetch(@history_nullable, col) do
-      {:ok, t} -> "CAST(NULL, 'Nullable(#{t})')"
-      :error -> "''"
-    end
-  end
-
-  defp compact_sql(since_unix, until_unix \\ nil, max_s \\ 1190) do
-    upper = if until_unix, do: " AND enriched_at < toDateTime(#{until_unix})", else: ""
-
-    # The same bounded domain set scopes BOTH sides of every join. The
-    # 2026-08-05 MEMORY_LIMIT_EXCEEDED failures came from the join sides
-    # being unscoped: `SELECT * FROM biz_enrichment FINAL` materialised the
-    # whole table (2.6M wide rows) as a hash table before joining — a cost
-    # that grew with the product until it crossed the shared box's 6.5G cap.
-    # Scoped, every join is ~slice-sized (10K rows) and stays that way at
-    # 10M businesses or 100M.
-    domain_set =
-      """
-      SELECT domain FROM domains_history WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
-      UNION DISTINCT
-      SELECT domain FROM biz_enrichment WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
-      UNION DISTINCT
-      SELECT domain FROM verified_facts WHERE fetched_at >= toDateTime(#{since_unix})#{String.replace(upper, "enriched_at", "fetched_at")}
-      """
-
-    # The set is evaluated ONCE (2026-09-06). It used to be inlined at every
-    # reference (the history side, biz_enrichment_log, verified_facts,
-    # biz_pricing, biz_news, and from today ctl_sightings): six copies of a
-    # three-way UNION whose first leg is a full scan of the current
-    # domains_history partition, because that table is ordered by domain,
-    # not by enriched_at. Adding the sightings join was the copy that took
-    # every pass past the 590s ceiling. A scalar subquery is computed once
-    # and cached for the query; `IN (SELECT arrayJoin(_touched))` turns the
-    # array back into a set so the primary key index still applies.
-    # Two scalar sets, computed once per pass:
-    #   _touched    every domain any pipeline wrote in the window (scopes the
-    #               joins and the businesses fold below);
-    #   _candidates window domains with no `businesses` row yet that could
-    #               qualify one only through a block or a 401/403/429, with
-    #               no classified crawl in the window (see history_rows_sql/2
-    #               for why a classified crawl needs no older history). The
-    #               "no row yet" test reads `businesses` scoped to the
-    #               window's domains: unscoped, NOT IN builds a hash set of
-    #               all 18.6M business domains, 3.3 GB on a server capped at
-    #               6 GB (measured 2026-09-07); scoped it is a few thousand.
-    #               Capped per pass: this leg is the pass's variable cost
-    #               (989 candidates on a live window against 349 on the
-    #               probe window took a pass from 2.4 GB to 5.3 GB); the
-    #               rest fold from their window rows alone.
-    touched =
-      if since_unix > 0 do
-        """
-        WITH (SELECT groupUniqArray(domain) FROM (#{domain_set})) AS _touched,
-             (SELECT groupUniqArray(domain) FROM (
-               SELECT domain FROM domains_history
-               WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
-                 AND domain NOT IN (SELECT domain FROM businesses
-                                    WHERE domain IN (SELECT domain FROM domains_history
-                                                     WHERE enriched_at >= toDateTime(#{since_unix})#{upper}))
-               GROUP BY domain
-               HAVING max(business_model != '') = 0
-                  AND max(http_blocked != '' OR http_status IN (401, 403, 429)) = 1
-               LIMIT #{@candidates_per_pass})) AS _candidates
-        """
-      else
-        ""
-      end
-
-    scope = ""
-
-    # A rebuild aggregates whole tables and must be allowed to spill. The
-    # incremental fold aggregates ~100K rows; what its tracker counts is
-    # read buffers, not state, and spilling on that wrote 628 files for
-    # 36 MB and took the pass from 44 s to 165 s (measured 2026-09-07).
-    spill = if since_unix > 0, do: 0, else: 1_500_000_000
-    # The byte threshold alone does not switch spilling off: the server
-    # default max_bytes_ratio_before_external_group_by = 0.5 spills once the
-    # query passes half the memory limit, and the first live passes of the
-    # fold wrote 749 spill files that way (2026-09-07 05:54). Both off for
-    # the incremental form; both at their defaults for a rebuild.
-    spill_ratio = if since_unix > 0, do: 0, else: 0.5
-    join_scope = if since_unix > 0, do: " WHERE domain IN (SELECT arrayJoin(_touched))", else: ""
-
-    # The depth side reads only SUCCESSFUL enrichment rows. Without this, the
-    # newest row wins even when it is a failed attempt: a business enriched
-    # fully in July whose August recrawl hits a WAF would have its catalogue,
-    # SEO and jobs blanked by an empty "failed" row. Found 2026-08-06, three
-    # weeks before the first 30-day re-enrichment wave would have made it
-    # real at ~30% of all recrawls. A failed attempt is a fact about the
-    # CRAWL, not about the business — it must never erase what a successful
-    # crawl proved.
-    depth_scope =
-      if since_unix > 0 do
-        "WHERE render_engine != 'failed' AND domain IN (SELECT arrayJoin(_touched))"
-      else
-        "WHERE render_engine != 'failed'"
-      end
-
-    """
-    INSERT INTO businesses (domain, first_seen, as_of, last_verified_at, last_worker, crawlable, last_http_status, last_http_error, last_http_blocked, dns_alive, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains, dns_a, dns_aaaa, dns_mx, dns_txt, dns_cname, dns_dmarc, dns_bimi, dns_dkim, dns_ptr, dns_ms_enterprise, classification_source, pipeline_version, http_status, http_response_time, http_blocked, http_content_type, http_tech, http_apps, http_language, http_title, http_meta_description, http_pages, http_emails, http_h1, business_model, industry, classification_confidence, http_schema_type, http_og_type, bgp_ip, bgp_asn_number, bgp_asn_org, bgp_asn_country, bgp_asn_prefix, inferred_country, http_country_evidence, http_country_evidence_src, rdap_registrant_country, rdap_domain_created_at, rdap_domain_expires_at, rdap_domain_updated_at, rdap_registrar, rdap_registrar_iana_id, rdap_nameservers, rdap_status, tranco_rank, majestic_rank, majestic_ref_subnets, is_disposable_email, is_junk, estimated_revenue, estimated_employees, revenue_confidence, revenue_evidence, product_count, price_min, price_avg, price_max, new_products_30d, last_product_at, oos_ratio, discount_depth, vendor_count, catalog_age_days, product_types, job_count, ats_platform, job_departments, job_locations, seo_score, seo_issues, seo_word_count, seo_alt_ratio, perf_lcp_ms, perf_cls, perf_ttfb_ms, render_engine, depth_enriched_at, about_text, mission, hq_location, job_locations_top, positions_overview, pricing_points, news_count, last_funding_usd, shop_theme, shop_theme_store_id, shop_currency, shop_locales, shopify_plus, sitemap_urls, sitemap_products, sitemap_blog, sitemap_children, sitemap_lastmod, sitemap_hash, verified_revenue, verified_revenue_source, verified_employees, verified_employees_source, mission_summary)
-    #{touched}SELECT
-      h.domain AS domain,
-      h.first_seen, h.as_of, h.last_verified_at, h.last_worker, h.crawlable,
-      h.last_http_status, h.last_http_error,
-      -- `last_http_blocked` means "outstanding: nothing has reached this site
-      -- since the block". A camoufox render that succeeded AFTER the block was
-      -- recorded is a success, so the flag clears — otherwise a WAF that
-      -- rejects plain HTTP keeps a business marked blocked forever even though
-      -- the browser lane reads it fine. (s.* are NULL when no enrichment row
-      -- exists — join_use_nulls — so the condition is false and h wins.)
-      if(s.render_engine = 'camoufox' AND s.enriched_at_newest > h._blk_at,
-         '', h.last_http_blocked) AS last_http_blocked,
-      h.dns_alive,
-      h.ctl_tld, h.ctl_issuer,
-      -- Union of every certificate's SANs (h._subs_hist) and the suppressed
-      -- sightings (c.subs), 2026-09-06. Written twice on purpose: an alias
-      -- column would break the positional INSERT list.
-      length(arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300)) AS ctl_subdomain_count,
-      arrayStringConcat(arraySlice(arrayDistinct(arrayConcat(h._subs_hist, ifNull(c.subs, []))), 1, 300), '|') AS ctl_subdomains,
-      h.dns_a, h.dns_aaaa, h.dns_mx, h.dns_txt, h.dns_cname,
-      h.dns_dmarc, h.dns_bimi, h.dns_dkim, h.dns_ptr, h.dns_ms_enterprise,
-      h.classification_source, h.pipeline_version,
-      h.http_status, h.http_response_time, h.http_blocked, h.http_content_type,
-      h.http_tech,
-      -- Apps seen on the homepage at discovery, unioned with what the depth
-      -- pass found on the product/collection pages (2026-09-06: theme app
-      -- extensions, app proxies, HubSpot hubs). s.apps_deep is NULL without
-      -- an enrichment row (join_use_nulls), hence the ifNull.
-      arrayStringConcat(arrayDistinct(arrayFilter(x -> x != '',
-        arrayConcat(splitByChar('|', h.http_apps), splitByChar('|', ifNull(s.apps_deep, ''))))), '|') AS http_apps,
-      h.http_language, h.http_title,
-      h.http_meta_description, h.http_pages, h.http_emails, h.http_h1,
-      h.business_model, h.industry, h.classification_confidence,
-      h.http_schema_type, h.http_og_type,
-      h.bgp_ip, h.bgp_asn_number, h.bgp_asn_org, h.bgp_asn_country, h.bgp_asn_prefix,
-      /* Recomputed from the surviving signals rather than copied from
-         history: the stored value was fabricated for CDN-fronted English
-         .coms (en->US default, Shopify-ASN->CA), which is how India lost
-         39K stores to the US bucket. Recomputing here is also what lets a
-         rules fix backfill 9.6M rows without recrawling anything. */
-      #{LS.CountryInferrer.sql_expr("h.ctl_tld", "h.http_language", "h.bgp_asn_country", "h.bgp_asn_org", "h.http_country_evidence", "h.rdap_registrant_country")} AS inferred_country,
-      h.http_country_evidence, h.http_country_evidence_src, h.rdap_registrant_country,
-      h.rdap_domain_created_at, h.rdap_domain_expires_at, h.rdap_domain_updated_at,
-      h.rdap_registrar, h.rdap_registrar_iana_id, h.rdap_nameservers, h.rdap_status,
-      h.tranco_rank, h.majestic_rank, h.majestic_ref_subnets,
-      h.is_disposable_email, h.is_junk,
-      -- The depth pass re-runs the estimator with catalog, apps, sitemap,
-      -- jobs and DNS on top of the discovery row (2026-09-06); when it has,
-      -- that estimate is the better one. s.* are NULL without an enrichment
-      -- row (join_use_nulls), so ifNull keeps h's value then.
-      -- (aliases d_* on the fold side: an alias equal to the source column
-      -- name inside another argMaxIf condition is a nested aggregate to
-      -- ClickHouse, Code 184, the 2026-08-19 compaction freeze.)
-      if(ifNull(s.d_est_revenue, '') != '', s.d_est_revenue, h.estimated_revenue) AS estimated_revenue,
-      if(ifNull(s.d_est_revenue, '') != '', s.d_est_employees, h.estimated_employees) AS estimated_employees,
-      if(ifNull(s.d_est_revenue, '') != '', s.d_rev_confidence, h.revenue_confidence) AS revenue_confidence,
-      if(ifNull(s.d_est_revenue, '') != '', s.d_rev_evidence, h.revenue_evidence) AS revenue_evidence,
-      s.product_count, s.price_min, s.price_avg, s.price_max, s.new_products_30d,
-      s.last_product_at, s.oos_ratio, s.discount_depth, s.vendor_count,
-      s.catalog_age_days, s.product_types,
-      s.job_count, s.ats_platform, s.job_departments, s.job_locations,
-      s.seo_score, s.seo_issues, s.seo_word_count, s.seo_alt_ratio,
-      s.perf_lcp_ms, s.perf_cls, s.perf_ttfb_ms,
-      s.render_engine, s.enriched_at_newest AS depth_enriched_at,
-      s.about_text, s.mission, s.hq_location, s.job_locations_top, s.positions_overview,
-      p.pricing_points, n.news_count, n.last_funding_usd,
-      s.shop_theme, s.shop_theme_store_id, s.shop_currency, s.shop_locales, s.shopify_plus,
-      s.sitemap_urls, s.sitemap_products, s.sitemap_blog, s.sitemap_children, s.sitemap_lastmod, s.sitemap_hash,
-      -- A verified fact that contradicts observed traffic is a wrong entity,
-      -- not a fact (2026-09-06: google.com carried "<$1M / 51-500" from a
-      -- Wikidata item whose official website is google.com; several such
-      -- items exist and the pick was arbitrary). A Tranco top-10K site is
-      -- not a company under $10M or under 50 people; blank the fact and let
-      -- the estimator, which reads the rank, speak.
-      -- Tiered (2026-09-07): a Tranco top-1K site is one of the thousand
-      -- most visited on earth; anything under $100M or 500 people there is
-      -- a mis-linked entity (google.com kept "51-500 employees" from a
-      -- school's Wikidata item under the flat rule). Top-10K keeps the
-      -- looser bar: a mid-size SaaS can legitimately sit there.
-      if((h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))
-         OR (h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue) AS verified_revenue,
-      if((h.tranco_rank <= 1000 AND v.verified_revenue NOT IN ('$100M-$1B', '$1B+'))
-         OR (h.tranco_rank <= 10000 AND v.verified_revenue IN ('<$1M', '$1M-$10M')), '', v.verified_revenue_source) AS verified_revenue_source,
-      if((h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))
-         OR (h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50')), '', v.verified_employees) AS verified_employees,
-      if((h.tranco_rank <= 1000 AND v.verified_employees NOT IN ('501-5000', '5001+'))
-         OR (h.tranco_rank <= 10000 AND v.verified_employees IN ('1-10', '11-50')), '', v.verified_employees_source) AS verified_employees_source,
-      v.mission_summary
-    FROM (
-      SELECT s_domain AS domain,
-        min(s_first_seen) AS first_seen,
-        max(s_enriched_at) AS as_of,
-        maxIf(s_enriched_at, s_http_status BETWEEN 200 AND 399) AS last_verified_at,
-        argMax(s_worker, s_enriched_at) AS last_worker,
-        max(s_http_status BETWEEN 200 AND 399) AS crawlable,
-        argMaxIf(s_http_status, s_enriched_at, s_http_status IS NOT NULL) AS last_http_status,
-        maxIf(s_enriched_at, s_http_error != '') AS _err_at,
-        if(_err_at > last_verified_at,
-           argMaxIf(s_http_error, s_enriched_at, s_http_error != ''), '') AS last_http_error,
-        maxIf(s_enriched_at, s_http_blocked != '') AS _blk_at,
-        if(_blk_at > last_verified_at,
-           argMaxIf(s_http_blocked, s_enriched_at, s_http_blocked != ''), '') AS last_http_blocked,
-        argMax(s_dns_alive, s_enriched_at) AS dns_alive,
-        argMaxIf(s_http_status, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_status,
-        argMaxIf(s_http_response_time, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_response_time,
-        argMaxIf(s_http_blocked, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_blocked,
-        argMaxIf(s_http_content_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_content_type,
-        /* Only crawls that observed the site (observed_sql/1): a bot wall
-           served as 200 used to replace a real 40-technology list with
-           "Cloudflare", and the next real crawl then emitted 40 fake
-           adoptions (2026-09-06). */
-        argMaxIf(s_http_tech, s_enriched_at, #{observed_sql("s_")}) AS http_tech,
-        argMaxIf(s_http_apps, s_enriched_at, #{observed_sql("s_")}) AS http_apps,
-        argMaxIf(s_http_language, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_language,
-        argMaxIf(s_http_title, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_title,
-        argMaxIf(s_http_meta_description, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_meta_description,
-        argMaxIf(s_http_pages, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_pages,
-        argMaxIf(s_http_h1, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_h1,
-        argMaxIf(s_http_schema_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_schema_type,
-        argMaxIf(s_http_og_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_og_type,
-        argMaxIf(s_business_model, s_enriched_at, s_business_model != '') AS business_model,
-        argMaxIf(s_industry, s_enriched_at, s_business_model != '') AS industry,
-        argMaxIf(s_classification_confidence, s_enriched_at, s_business_model != '') AS classification_confidence,
-        argMaxIf(s_bgp_ip, s_enriched_at, s_bgp_asn_number != '') AS bgp_ip,
-        argMaxIf(s_bgp_asn_number, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_number,
-        argMaxIf(s_bgp_asn_org, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_org,
-        argMaxIf(s_bgp_asn_country, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_country,
-        argMaxIf(s_bgp_asn_prefix, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_prefix,
-        argMaxIf(s_rdap_domain_created_at, s_enriched_at, s_rdap_registrar != '') AS rdap_domain_created_at,
-        argMaxIf(s_rdap_domain_expires_at, s_enriched_at, s_rdap_registrar != '') AS rdap_domain_expires_at,
-        argMaxIf(s_rdap_domain_updated_at, s_enriched_at, s_rdap_registrar != '') AS rdap_domain_updated_at,
-        argMaxIf(s_rdap_registrar, s_enriched_at, s_rdap_registrar != '') AS rdap_registrar,
-        argMaxIf(s_rdap_registrar_iana_id, s_enriched_at, s_rdap_registrar != '') AS rdap_registrar_iana_id,
-        argMaxIf(s_rdap_nameservers, s_enriched_at, s_rdap_registrar != '') AS rdap_nameservers,
-        argMaxIf(s_rdap_status, s_enriched_at, s_rdap_registrar != '') AS rdap_status,
-        argMaxIf(s_ctl_tld, s_enriched_at, s_ctl_issuer != '') AS ctl_tld,
-        argMaxIf(s_ctl_issuer, s_enriched_at, s_ctl_issuer != '') AS ctl_issuer,
-        /* Subdomains are a UNION over every certificate we have seen for the
-           domain, not the newest certificate's list (2026-09-06): each cert
-           names a few SANs, and the interesting hosts (api., app., staging.)
-           are spread across them. ctl_subdomain_count follows the union.
-           Capped at 300 names so one wildcard-happy CDN cannot bloat a row. */
-        arraySlice(arrayDistinct(arrayFilter(x -> x != '',
-          arrayFlatten(groupArray(splitByChar('|', s_ctl_subdomains))))), 1, 300) AS _subs_hist,
-        /* The BEST-EVIDENCED estimate wins, newest on ties (2026-09-07), not
-           the newest: a recrawl whose RDAP and rank lookups were cache hits
-           carries a sparse row, and its lower-confidence estimate used to
-           replace a rich earlier one (google.com: "$1B+" at 0.95 replaced by
-           "$10M-$100M" from mail records and a cookie banner). Confidence
-           grows with evidence count, so it is the right key. */
-        argMaxIf(s_estimated_revenue, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS estimated_revenue,
-        argMaxIf(s_estimated_employees, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS estimated_employees,
-        argMaxIf(s_revenue_confidence, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS revenue_confidence,
-        argMaxIf(s_revenue_evidence, (s_revenue_confidence, s_enriched_at), s_estimated_revenue != '') AS revenue_evidence,
-        argMaxIf(s_dns_a, s_enriched_at, s_dns_a != '') AS dns_a,
-        argMaxIf(s_dns_aaaa, s_enriched_at, s_dns_aaaa != '') AS dns_aaaa,
-        argMaxIf(s_dns_mx, s_enriched_at, s_dns_mx != '') AS dns_mx,
-        argMaxIf(s_dns_txt, s_enriched_at, s_dns_txt != '') AS dns_txt,
-        argMaxIf(s_dns_cname, s_enriched_at, s_dns_cname != '') AS dns_cname,
-        argMaxIf(s_dns_dmarc, s_enriched_at, s_dns_mx != '') AS dns_dmarc,
-        argMaxIf(s_dns_bimi, s_enriched_at, s_dns_mx != '') AS dns_bimi,
-        argMaxIf(s_dns_dkim, s_enriched_at, s_dns_mx != '') AS dns_dkim,
-        argMaxIf(s_dns_ptr, s_enriched_at, s_dns_ptr != '') AS dns_ptr,
-        argMaxIf(s_dns_ms_enterprise, s_enriched_at, s_dns_mx != '') AS dns_ms_enterprise,
-        -- Provenance (2026-09-06): the tier that chose the shipped model,
-        -- and the build of the newest crawl.
-        argMaxIf(s_classification_source, s_enriched_at, s_business_model != '') AS classification_source,
-        argMaxIf(s_pipeline_version, s_enriched_at, s_pipeline_version != '') AS pipeline_version,
-        argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
-        argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
-        argMaxIf(s_http_country_evidence, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence,
-        argMaxIf(s_http_country_evidence_src, s_enriched_at, s_http_country_evidence != '') AS http_country_evidence_src,
-        argMaxIf(s_rdap_registrant_country, s_enriched_at, s_rdap_registrant_country != '') AS rdap_registrant_country,
-        argMaxIf(s_tranco_rank, s_enriched_at, s_tranco_rank IS NOT NULL) AS tranco_rank,
-        argMaxIf(s_majestic_rank, s_enriched_at, s_majestic_rank IS NOT NULL) AS majestic_rank,
-        argMaxIf(s_majestic_ref_subnets, s_enriched_at, s_majestic_ref_subnets IS NOT NULL) AS majestic_ref_subnets,
-        if(max(s_is_malware = 'true'), 'true', '') AS is_malware,
-        if(max(s_is_phishing = 'true'), 'true', '') AS is_phishing,
-        if(max(s_is_disposable_email = 'true'), 'true', '') AS is_disposable_email,
-        -- Junk follows the NEWEST successful fetch, unlike the sticky flags
-        -- above: a parked domain that comes back to life must clear the flag,
-        -- and a real site that dies into a parking page must gain it.
-        argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
-      FROM (#{history_rows_sql(since_unix, until_unix)})
-      #{scope}
-      GROUP BY s_domain
-      HAVING (is_malware = '' AND is_phishing = '')
-         AND ((business_model != '' AND crawlable)
-              OR ((last_http_blocked != '' OR last_http_status IN (401, 403, 429)) AND dns_mx != ''))
-    ) h
-    LEFT JOIN (
-      SELECT
-        domain,
-        max(enriched_at) AS enriched_at_newest,
-        argMax(render_engine, enriched_at) AS render_engine,
-        /* Numerics are Nullable BY DESIGN: NULL = "could not look" (sub-fetch
-           failed inside an otherwise-successful crawl), 0 = "looked, found
-           none". argMaxIf(col, ts, col IS NOT NULL) keeps the last MEASURED
-           value — so a real newer measurement (including a genuine zero)
-           replaces, and a blind spot never erases. Same philosophy as the
-           h-side's 50 argMaxIfs, applied to depth. */
-        argMaxIf(product_count, enriched_at, product_count IS NOT NULL) AS product_count,
-        argMaxIf(price_min, enriched_at, price_min IS NOT NULL) AS price_min,
-        argMaxIf(price_avg, enriched_at, price_avg IS NOT NULL) AS price_avg,
-        argMaxIf(price_max, enriched_at, price_max IS NOT NULL) AS price_max,
-        argMaxIf(new_products_30d, enriched_at, new_products_30d IS NOT NULL) AS new_products_30d,
-        argMaxIf(last_product_at, enriched_at, last_product_at IS NOT NULL) AS last_product_at,
-        argMaxIf(oos_ratio, enriched_at, oos_ratio IS NOT NULL) AS oos_ratio,
-        argMaxIf(discount_depth, enriched_at, discount_depth IS NOT NULL) AS discount_depth,
-        argMaxIf(vendor_count, enriched_at, vendor_count IS NOT NULL) AS vendor_count,
-        argMaxIf(catalog_age_days, enriched_at, catalog_age_days IS NOT NULL) AS catalog_age_days,
-        argMaxIf(job_count, enriched_at, job_count IS NOT NULL) AS job_count,
-        argMaxIf(seo_score, enriched_at, seo_score IS NOT NULL) AS seo_score,
-        argMaxIf(seo_word_count, enriched_at, seo_word_count IS NOT NULL) AS seo_word_count,
-        argMaxIf(seo_alt_ratio, enriched_at, seo_alt_ratio IS NOT NULL) AS seo_alt_ratio,
-        argMaxIf(perf_lcp_ms, enriched_at, perf_lcp_ms IS NOT NULL) AS perf_lcp_ms,
-        argMaxIf(perf_cls, enriched_at, perf_cls IS NOT NULL) AS perf_cls,
-        argMaxIf(perf_ttfb_ms, enriched_at, perf_ttfb_ms IS NOT NULL) AS perf_ttfb_ms,
-        /* Strings use '' for both "none" and "could not look" (the writers
-           cannot tell them apart), so last non-empty wins. Trade-off: a store
-           that genuinely removes its about page keeps the old text until the
-           next full crawl that finds a replacement. Cheap next to the numeric
-           columns, which are what buyers filter on. */
-        argMaxIf(product_types, enriched_at, product_types != '') AS product_types,
-        argMaxIf(apps_deep, enriched_at, apps_deep != '') AS apps_deep,
-        argMaxIf(shop_theme, enriched_at, shop_theme != '') AS shop_theme,
-        argMaxIf(shop_theme_store_id, enriched_at, shop_theme_store_id IS NOT NULL) AS shop_theme_store_id,
-        argMaxIf(shop_currency, enriched_at, shop_currency != '') AS shop_currency,
-        argMaxIf(shop_locales, enriched_at, shop_locales IS NOT NULL) AS shop_locales,
-        argMaxIf(shopify_plus, enriched_at, shopify_plus IS NOT NULL) AS shopify_plus,
-        argMaxIf(sitemap_urls, enriched_at, sitemap_urls IS NOT NULL) AS sitemap_urls,
-        argMaxIf(sitemap_products, enriched_at, sitemap_products IS NOT NULL) AS sitemap_products,
-        argMaxIf(sitemap_blog, enriched_at, sitemap_blog IS NOT NULL) AS sitemap_blog,
-        argMaxIf(sitemap_children, enriched_at, sitemap_children IS NOT NULL) AS sitemap_children,
-        argMaxIf(sitemap_lastmod, enriched_at, sitemap_lastmod IS NOT NULL) AS sitemap_lastmod,
-        argMaxIf(sitemap_hash, enriched_at, sitemap_hash IS NOT NULL) AS sitemap_hash,
-        argMaxIf(depth_estimated_revenue, enriched_at, depth_estimated_revenue != '') AS d_est_revenue,
-        argMaxIf(depth_estimated_employees, enriched_at, depth_estimated_revenue != '') AS d_est_employees,
-        argMaxIf(depth_revenue_confidence, enriched_at, depth_estimated_revenue != '') AS d_rev_confidence,
-        argMaxIf(depth_revenue_evidence, enriched_at, depth_estimated_revenue != '') AS d_rev_evidence,
-        argMaxIf(ats_platform, enriched_at, ats_platform != '') AS ats_platform,
-        argMaxIf(job_departments, enriched_at, job_departments != '') AS job_departments,
-        argMaxIf(job_locations, enriched_at, job_locations != '') AS job_locations,
-        argMaxIf(seo_issues, enriched_at, seo_issues != '') AS seo_issues,
-        argMaxIf(about_text, enriched_at, about_text != '') AS about_text,
-        argMaxIf(mission, enriched_at, mission != '') AS mission,
-        argMaxIf(hq_location, enriched_at, hq_location != '') AS hq_location,
-        argMaxIf(job_locations_top, enriched_at, job_locations_top != '') AS job_locations_top,
-        argMaxIf(positions_overview, enriched_at, positions_overview != '') AS positions_overview
-      FROM (SELECT * FROM biz_enrichment_log #{depth_scope})
-      GROUP BY domain
-    ) s ON h.domain = s.domain
-    LEFT JOIN (SELECT domain, count() AS pricing_points FROM biz_pricing#{join_scope} GROUP BY domain) p
-           ON h.domain = p.domain
-    LEFT JOIN (SELECT domain, count() AS news_count,
-                      max(amount_usd) AS last_funding_usd
-               FROM biz_news#{join_scope} GROUP BY domain) n ON h.domain = n.domain
-    LEFT JOIN (#{verified_sql(join_scope)}) v ON h.domain = v.domain
-    LEFT JOIN (
-      /* Certificates the 7-day gate suppressed (LS.Cluster.CrawlDedup):
-         their subdomains join the union too. 90-day TTL table, scoped to
-         this pass's domains, so the join stays small. */
-      SELECT domain,
-        arraySlice(arrayDistinct(arrayFilter(x -> x != '',
-          arrayFlatten(groupArray(splitByChar('|', ctl_subdomains))))), 1, 300) AS subs
-      FROM ctl_sightings#{join_scope}
-      GROUP BY domain
-    ) c ON h.domain = c.domain
-    SETTINGS max_bytes_before_external_group_by = #{spill}, max_bytes_ratio_before_external_group_by = #{spill_ratio},
-             max_threads = 2, join_use_nulls = 1, max_execution_time = #{max_s}
-    """
-  end
-
-  # ── Raw + Public ──
-
-  @doc "POST a prepared INSERT (`sql`) with a TabSeparated `body`. Used by the enrichment writer."
   @spec insert_raw(String.t(), String.t()) :: :ok | {:error, term()}
   def insert_raw(sql, body) do
     # A trailing newline after "FORMAT TabSeparated" in the query param makes
@@ -1810,8 +930,6 @@ defmodule LS.Clickhouse do
   end
 
   # LIMITs and thresholds are interpolated as integers only.
-  defp int(n) when is_integer(n) and n >= 0, do: n
-  defp int(_), do: 0
 
   @doc """
   Run `sql` and return what it cost: `{:ok, %{elapsed_ms, rows_read, bytes_read, rows_returned}}`.

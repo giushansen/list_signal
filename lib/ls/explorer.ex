@@ -33,34 +33,20 @@ defmodule LS.Explorer do
   @dedupe "LIMIT 1 BY domain"
   @dedupe_slack 100
 
-  # `as_of AS enriched_at` keeps the alias the templates already use while
-  # reading the column `businesses` actually has (the compactor's "newest
-  # data we hold for this domain"). Depth columns ride along so the results
-  # table can show and sort on what pipeline 2 found.
-  @columns_raw [
-    "domain", "http_title", "http_tech", "http_apps", "business_model", "industry",
-    "estimated_revenue", "estimated_employees", "http_language", "as_of AS enriched_at",
-    "verified_revenue", "verified_revenue_source", "verified_employees", "verified_employees_source",
-    "tranco_rank", "majestic_rank", "http_response_time",
-    "product_count", "price_avg", "job_count", "seo_score", "pricing_points",
-    "depth_enriched_at"
-  ]
-
-  # The SELECT carries "as_of AS enriched_at"; the map keys must be the alias.
+  # The results table's columns, by their v2 names (data model v2,
+  # 2026-10-01). `http_tech` is an Array: platforms, vendors, plugins and
+  # apps together, canonical names from the tech catalog.
   @column_names ~w(
-    domain http_title http_tech http_apps business_model industry
-    estimated_revenue estimated_employees http_language enriched_at
-    verified_revenue verified_revenue_source verified_employees verified_employees_source
-    tranco_rank majestic_rank http_response_time
-    product_count price_avg job_count seo_score pricing_points
-    depth_enriched_at
+    domain http_title http_tech estimated_business_model estimated_industry
+    estimated_revenue estimated_employees http_language http_last_checked_at
+    verified_revenue verified_revenue_evidence verified_employees verified_employees_evidence
+    tranco_rank majestic_rank http_response_ms
+    shop_product_count shop_price_avg hr_job_count http_deep_seo_score http_deep_pricing_points
+    http_deep_last_seen_at estimated_country dns_email_provider
   )
 
-  defp columns_sql do
-    Enum.join(@columns_raw ++ ["inferred_country"], ", ")
-  end
-
-  defp column_names, do: @column_names ++ ["inferred_country"]
+  defp columns_sql, do: Enum.join(@column_names, ", ")
+  defp column_names, do: @column_names
 
   # Revenue/employees filters match what the reader SEES: the verified value
   # when pipeline 3 has one, else the estimate (same bracket vocabulary — the
@@ -80,22 +66,11 @@ defmodule LS.Explorer do
   # always empty and migration 003 removed them. The card's Reputation section
   # no longer renders, which is correct: a flagged domain never reaches this
   # table at all.
-  @detail_columns ~w(
-    domain http_title http_tech http_apps http_status http_response_time
-    http_language http_emails http_content_type http_meta_description
-    http_h1 http_schema_type http_og_type http_pages
-    bgp_ip bgp_asn_number bgp_asn_org bgp_asn_country bgp_asn_prefix
-    dns_a dns_aaaa dns_mx dns_txt dns_cname
-    rdap_registrar rdap_registrar_iana_id rdap_nameservers
-    rdap_domain_created_at rdap_domain_expires_at rdap_domain_updated_at rdap_status
-    ctl_tld ctl_issuer ctl_subdomains ctl_subdomain_count
-    tranco_rank majestic_rank majestic_ref_subnets
-    business_model industry classification_confidence
-    estimated_revenue estimated_employees revenue_confidence revenue_evidence
-    verified_revenue verified_revenue_source verified_employees verified_employees_source mission_summary
-    is_disposable_email
-    as_of last_verified_at crawlable dns_alive last_http_status last_http_blocked
-  )
+  # The detail panel reads every customer-facing column of the product table
+  # (the spec is the list); the raw DNS strings the panel's SPF/DKIM parsers
+  # want come from the log's current row (`domains`) by primary key.
+  @detail_columns LS.Schema.Columns.names()
+  @log_detail_columns ~w(dns_aaaa dns_txt dns_cname dns_ptr http_content_type)
 
   # Business-model and industry options are derived from the live data (distinct_by_count/2),
   # not a hardcoded list — the classifier's categories are the source of truth, so the dropdowns
@@ -154,15 +129,15 @@ defmodule LS.Explorer do
   @sortable %{
     "domain" => "domain",
     "tranco_rank" => "tranco_rank",
-    "product_count" => "product_count",
-    "price_avg" => "price_avg",
-    "job_count" => "job_count",
-    "seo_score" => "seo_score",
-    "new_products_30d" => "new_products_30d",
-    "pricing_points" => "pricing_points",
+    "shop_product_count" => "shop_product_count",
+    "shop_price_avg" => "shop_price_avg",
+    "hr_job_count" => "hr_job_count",
+    "http_deep_seo_score" => "http_deep_seo_score",
+    "shop_new_products_30d" => "shop_new_products_30d",
+    "http_deep_pricing_points" => "http_deep_pricing_points",
     "estimated_revenue" => "estimated_revenue",
-    "depth_enriched_at" => "depth_enriched_at",
-    "last_verified_at" => "last_verified_at"
+    "http_deep_last_seen_at" => "http_deep_last_seen_at",
+    "http_last_seen_at" => "http_last_seen_at"
   }
 
   @doc "Columns the UI may offer as sortable headers."
@@ -261,7 +236,12 @@ defmodule LS.Explorer do
 
     case Clickhouse.query_raw(sql) do
       {:ok, [row]} ->
-        {:ok, row |> row_to_map(@detail_columns) |> Map.merge(depth_detail(domain))}
+        {:ok,
+         row
+         |> row_to_map(@detail_columns)
+         |> Map.merge(log_detail(domain))
+         |> Map.merge(depth_detail(domain))
+         |> Map.merge(%{"changes" => recent_changes(domain)})}
 
       {:ok, []} ->
         {:ok, nil}
@@ -269,6 +249,36 @@ defmodule LS.Explorer do
       err ->
         err
     end
+  end
+
+  # The raw records the product table no longer carries, read from the
+  # log's current row (one primary-key read).
+  defp log_detail(domain) do
+    sql = """
+    SELECT #{Enum.join(@log_detail_columns, ", ")}
+    FROM #{LS.Schema.Tables.domains()}
+    WHERE domain = '#{Clickhouse.escape_public(domain)}'
+    ORDER BY enriched_at DESC
+    LIMIT 1
+    """
+
+    case Clickhouse.query_raw(sql) do
+      {:ok, [row]} -> row_to_map(row, @log_detail_columns)
+      _ -> %{}
+    end
+  end
+
+  @doc "The last 20 recorded changes for one domain, newest first."
+  def recent_changes(domain, limit \\ 20) do
+    sql = """
+    SELECT field, change, value, prev_value, toString(changed_at) AS changed_at
+    FROM #{LS.Schema.Tables.changes_log()}
+    WHERE domain = '#{Clickhouse.escape_public(domain)}'
+    ORDER BY changed_at DESC
+    LIMIT #{limit}
+    """
+
+    child_rows(sql, ~w(field change value prev_value changed_at))
   end
 
   # Pipeline 2's contribution to the detail card: the 1:1 depth signals plus
@@ -285,23 +295,23 @@ defmodule LS.Explorer do
 
     %{
       "depth" => depth_summary(d),
-      "contacts" => child_rows("SELECT email, source_page, seen_at FROM biz_contact FINAL WHERE domain = '#{d}' ORDER BY email LIMIT 50", ~w(email source_page seen_at)),
-      "pricing" => child_rows("SELECT price, currency, seen_at FROM biz_pricing FINAL WHERE domain = '#{d}' ORDER BY price LIMIT 50", ~w(price currency seen_at)),
-      "jobs" => child_rows("SELECT title, location, url, posted_at FROM biz_career FINAL WHERE domain = '#{d}' ORDER BY title LIMIT 100", ~w(title location url posted_at)),
-      "products" => child_rows("SELECT title, price, vendor, product_type, available FROM biz_products FINAL WHERE domain = '#{d}' ORDER BY price DESC LIMIT 100", ~w(title price vendor product_type available)),
-      "collections" => child_rows("SELECT title, products_count FROM biz_collections FINAL WHERE domain = '#{d}' ORDER BY products_count DESC LIMIT 50", ~w(title products_count))
+      "contacts" => child_rows("SELECT email, source_page, seen_at FROM #{LS.Schema.Tables.http_contacts()} FINAL WHERE domain = '#{d}' ORDER BY email LIMIT 50", ~w(email source_page seen_at)),
+      "pricing" => child_rows("SELECT price, currency, seen_at FROM #{LS.Schema.Tables.http_deep_prices()} FINAL WHERE domain = '#{d}' ORDER BY price LIMIT 50", ~w(price currency seen_at)),
+      "jobs" => child_rows("SELECT title, location, url, posted_at FROM #{LS.Schema.Tables.hr_jobs()} FINAL WHERE domain = '#{d}' ORDER BY title LIMIT 100", ~w(title location url posted_at)),
+      "products" => child_rows("SELECT title, price, vendor, product_type, available FROM #{LS.Schema.Tables.shop_products()} FINAL WHERE domain = '#{d}' ORDER BY price DESC LIMIT 100", ~w(title price vendor product_type available)),
+      "collections" => child_rows("SELECT title, products_count FROM #{LS.Schema.Tables.shop_collections()} FINAL WHERE domain = '#{d}' ORDER BY products_count DESC LIMIT 50", ~w(title products_count))
     }
   end
 
   @depth_columns ~w(
-    render_engine depth_enriched_at
-    product_count price_min price_avg price_max new_products_30d oos_ratio
-    discount_depth vendor_count catalog_age_days product_types
-    job_count ats_platform job_departments job_locations
-    seo_score seo_issues seo_word_count seo_alt_ratio
-    perf_lcp_ms perf_cls perf_ttfb_ms
-    about_text mission hq_location positions_overview
-    pricing_points news_count last_funding_usd
+    http_deep_render_engine http_deep_last_seen_at
+    shop_product_count shop_price_min shop_price_avg shop_price_max shop_new_products_30d shop_oos_ratio
+    shop_discount_depth shop_vendor_count shop_catalog_age_days shop_product_types
+    hr_job_count hr_ats hr_departments hr_locations
+    http_deep_seo_score http_deep_seo_issues http_deep_word_count http_deep_alt_ratio
+    http_deep_lcp_ms http_deep_cls http_deep_ttfb_ms
+    estimated_summary estimated_hq_location
+    http_deep_pricing_points news_count news_last_funding_usd
   )
 
   defp depth_summary(escaped_domain) do
@@ -330,20 +340,12 @@ defmodule LS.Explorer do
   # 400 rows breaks every "one row per company" assumption a buyer has. The
   # 1:many data is therefore SUMMARISED here (counts, ranges, top values) and
   # the full lists stay in the app and the API.
-  @export_depth_columns ~w(
-    product_count price_min price_avg price_max new_products_30d vendor_count
-    job_count ats_platform job_departments
-    seo_score perf_lcp_ms
-    hq_location mission
-    pricing_points depth_enriched_at
-  )
+  # The CSV carries every column the spec marks exportable, in spec order:
+  # one row per company, lists flattened to pipe-separated cells.
+  @export_columns LS.Schema.Columns.export_columns()
 
   # `businesses` carries tranco_rank too, so an unqualified ORDER BY is
   # ambiguous once the join is in play.
-
-  # In the aliased export query the re-applied clause must reference d.*;
-  # only `domain` collides with the contacts join, the rest pass through.
-  defp qualify_where(clause), do: String.replace(clause, ~r/(?<![\w.])domain\b/, "d.domain")
 
   # Re-attach a WHERE clause as a conjunction after "WHERE domain IN (...)".
   defp and_where(""), do: ""
@@ -358,9 +360,21 @@ defmodule LS.Explorer do
   def export_rows(filters, limit) do
     where = build_where(filters)
 
-    # `businesses` already holds both pipelines' columns, so the only join
-    # left is the contact list — the one genuinely 1:many field worth putting
-    # in a CSV, flattened to a pipe-separated cell.
+    # `businesses` holds every pipeline's columns including the contact
+    # addresses (data model v2: http_emails is the union of homepage and
+    # contact-page addresses), so the export is one table, no join. Arrays
+    # go out as pipe-separated cells so the file stays one row per company.
+    cols =
+      Enum.map_join(@export_columns, ", ", fn col ->
+        if LS.Schema.Columns.array?(LS.Schema.Columns.get(col)),
+          do: "arrayStringConcat(arrayMap(x -> toString(x), d.#{col}), '|') AS #{col}",
+          else: "d.#{col}"
+      end)
+
+    # The filter is re-applied INSIDE the subquery, on the raw columns: the
+    # outer SELECT aliases the flattened arrays by their own names, and a
+    # `hasAll(http_tech, ...)` at that level would resolve to the String
+    # alias, not the array (Code 43, found on the local harness 2026-10-01).
     sql = """
     WITH exported AS (
       SELECT domain FROM businesses
@@ -368,37 +382,29 @@ defmodule LS.Explorer do
       ORDER BY #{@order_by}
       LIMIT #{limit}
     )
-    SELECT #{Enum.map_join(@detail_columns ++ @export_depth_columns, ", ", &"d.#{&1}")},
-           coalesce(c.emails, '') AS enriched_emails
-    FROM businesses AS d FINAL
-    LEFT JOIN (
-      -- Scoped to the exported domains (2026-09-09): unscoped, this side
-      -- aggregated every contact row in the table with FINAL for every
-      -- export, whatever its size.
-      SELECT domain, arrayStringConcat(groupArray(email), '|') AS emails
-      FROM biz_contact FINAL
+    SELECT #{cols}
+    FROM (
+      SELECT * FROM businesses FINAL
       WHERE domain IN exported
-      GROUP BY domain
-    ) c ON d.domain = c.domain
-    WHERE d.domain IN exported
-    #{where |> and_where() |> qualify_where()}
+      #{and_where(where)}
+    ) AS d
     ORDER BY #{qualified_order_by()}
     LIMIT #{limit}
-    SETTINGS join_use_nulls = 1
     """
 
-    columns = @detail_columns ++ @export_depth_columns ++ ["enriched_emails"]
-
     case Clickhouse.query_raw(sql, @export_timeout) do
-      {:ok, rows} -> {:ok, {columns, rows}}
+      {:ok, rows} -> {:ok, {@export_columns, rows}}
       err -> err
     end
   end
 
+  @doc "The export's column list, for tests and the docs page."
+  def export_columns, do: @export_columns
+
   @doc "Get distinct values for a column, optionally filtered by prefix. For typeahead filters."
-  def distinct_values(column, prefix \\ "", limit \\ 50) when column in ~w(http_tech country http_language) do
+  def distinct_values(column, prefix \\ "", limit \\ 50) when column in ~w(country http_language) do
     {col_expr, col_alias} = if column == "country" do
-      {"inferred_country", "country"}
+      {"estimated_country", "country"}
     else
       {column, column}
     end
@@ -428,9 +434,9 @@ defmodule LS.Explorer do
     prefix_clause = if prefix != "", do: "HAVING lower(tech) LIKE '%#{esc(String.downcase(prefix))}%'", else: ""
 
     sql = """
-    SELECT arrayJoin(splitByChar('|', http_tech)) AS tech
+    SELECT arrayJoin(http_tech) AS tech
     FROM businesses
-    WHERE http_tech != ''
+    WHERE notEmpty(http_tech)
     GROUP BY tech
     #{prefix_clause}
     ORDER BY count() DESC
@@ -443,15 +449,15 @@ defmodule LS.Explorer do
     end
   end
 
-  @doc "Get distinct app values (split by pipe separator)."
-  def distinct_apps(prefix \\ "", limit \\ 50, opts \\ []) do
+  @doc "Distinct Shopify app names in use, by frequency: the catalog's shopify ecosystem, counted on Shopify stores."
+  def distinct_apps(prefix \\ "", limit \\ 50, _opts \\ []) do
     prefix_clause = if prefix != "", do: "HAVING lower(app) LIKE '%#{esc(String.downcase(prefix))}%'", else: ""
-    tech_clause = if opts[:shopify_only], do: "AND lower(http_tech) LIKE '%shopify%'", else: ""
+    names = LS.Tech.Catalog.names_in("shopify") |> Enum.map_join(", ", &"'#{esc(&1)}'")
 
     sql = """
-    SELECT arrayJoin(splitByChar('|', http_apps)) AS app
+    SELECT arrayJoin(arrayFilter(x -> x IN (#{names}), http_tech)) AS app
     FROM businesses
-    WHERE http_apps != '' #{tech_clause}
+    WHERE is_shopify = 1
     GROUP BY app
     #{prefix_clause}
     ORDER BY count() DESC
@@ -466,7 +472,7 @@ defmodule LS.Explorer do
 
   @doc "Distinct values of a low-cardinality column ordered by frequency (for dropdown options)."
   def distinct_by_count(column, limit \\ 300)
-      when column in ~w(inferred_country http_language business_model industry) do
+      when column in ~w(estimated_country http_language estimated_business_model estimated_industry dns_email_provider) do
     # Collapse language region subtags (en-US / en-us -> en) so values match the curated list.
     expr = if column == "http_language", do: "splitByChar('-', lower(http_language))[1]", else: column
 
@@ -509,20 +515,26 @@ defmodule LS.Explorer do
   # Multi-value filter support: "US,GB,FR" → IN ('US','GB','FR')
   defp filter_clause({:tech, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    conditions = Enum.map(values, fn val -> "positionCaseInsensitive(http_tech, '#{esc(val)}') > 0" end)
-    ["(" <> Enum.join(conditions, " AND ") <> ")"]
+    # Exact names: the array holds canonical catalog names (2026-10-01), so a
+    # substring match would only add false positives ("Shopify" inside
+    # "Shopify Product Reviews"). `hasAll` is one pass over the array.
+    ["hasAll(http_tech, [#{Enum.map_join(values, ", ", &"'#{esc(&1)}'")}])"]
   end
 
   defp filter_clause({:shopify_app, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    conditions = Enum.map(values, fn val -> "positionCaseInsensitive(http_apps, '#{esc(val)}') > 0" end)
-    ["(" <> Enum.join(conditions, " AND ") <> ")"]
+    ["hasAll(http_tech, [#{Enum.map_join(values, ", ", &"'#{esc(&1)}'")}])"]
+  end
+
+  defp filter_clause({:dns_email_provider, v}) when is_binary(v) and v != "" do
+    values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
+    ["dns_email_provider IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})"]
   end
 
   defp filter_clause({:country, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["inferred_country = '#{esc(hd(values))}'"],
-    else: ["inferred_country IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    if length(values) == 1, do: ["estimated_country = '#{esc(hd(values))}'"],
+    else: ["estimated_country IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
   defp filter_clause({:business_model, v}) when is_binary(v) and v != "" do
@@ -540,8 +552,8 @@ defmodule LS.Explorer do
         # LowCardinality: 529ms -> 67ms. Only for the single-value case; a
         # multi-select still needs the IN over the real column.
         ["SaaS"] -> clauses ++ ["is_saas = 1"]
-        [single] -> clauses ++ ["business_model = '#{esc(single)}'"]
-        many -> clauses ++ ["business_model IN (#{Enum.map_join(many, ",", &"'#{esc(&1)}'")})" ]
+        [single] -> clauses ++ ["estimated_business_model = '#{esc(single)}'"]
+        many -> clauses ++ ["estimated_business_model IN (#{Enum.map_join(many, ",", &"'#{esc(&1)}'")})" ]
       end
 
     clauses =
@@ -563,8 +575,8 @@ defmodule LS.Explorer do
 
   defp filter_clause({:industry, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    if length(values) == 1, do: ["industry = '#{esc(hd(values))}'"],
-    else: ["industry IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
+    if length(values) == 1, do: ["estimated_industry = '#{esc(hd(values))}'"],
+    else: ["estimated_industry IN (#{Enum.map_join(values, ",", &"'#{esc(&1)}'")})" ]
   end
 
   # ── Segment-specific filters (pipeline-2 depth data) ───────────────────────
@@ -574,39 +586,39 @@ defmodule LS.Explorer do
   # the block that fits the chosen segment (see `segment_filters/1`), but the
   # SQL is the same flat scan either way — no joins, so latency stays flat.
 
-  defp filter_clause({:min_products, v}), do: numeric_gte("product_count", v)
-  defp filter_clause({:max_products, v}), do: numeric_lte("product_count", v)
-  defp filter_clause({:min_price_avg, v}), do: numeric_gte("price_avg", v)
-  defp filter_clause({:max_price_avg, v}), do: numeric_lte("price_avg", v)
-  defp filter_clause({:min_new_products_30d, v}), do: numeric_gte("new_products_30d", v)
-  defp filter_clause({:min_job_count, v}), do: numeric_gte("job_count", v)
-  defp filter_clause({:min_seo_score, v}), do: numeric_gte("seo_score", v)
+  defp filter_clause({:min_products, v}), do: numeric_gte("shop_product_count", v)
+  defp filter_clause({:max_products, v}), do: numeric_lte("shop_product_count", v)
+  defp filter_clause({:min_price_avg, v}), do: numeric_gte("shop_price_avg", v)
+  defp filter_clause({:max_price_avg, v}), do: numeric_lte("shop_price_avg", v)
+  defp filter_clause({:min_new_products_30d, v}), do: numeric_gte("shop_new_products_30d", v)
+  defp filter_clause({:min_job_count, v}), do: numeric_gte("hr_job_count", v)
+  defp filter_clause({:min_seo_score, v}), do: numeric_gte("http_deep_seo_score", v)
   # The "weak SEO" pitch list needs an upper bound, and it must exclude
   # businesses we never scored: NULL seo_score is "unknown", not "bad".
   defp filter_clause({:max_seo_score, v}) do
-    case numeric_lte("seo_score", v) do
-      [clause] -> ["(#{clause} AND seo_score IS NOT NULL)"]
+    case numeric_lte("http_deep_seo_score", v) do
+      [clause] -> ["(#{clause} AND http_deep_seo_score IS NOT NULL)"]
       other -> other
     end
   end
 
   defp filter_clause({:ats_platform, v}) when is_binary(v) and v != "",
-    do: ["ats_platform = '#{esc(v)}'"]
+    do: ["hr_ats = '#{esc(v)}'"]
 
   # Parked domains / default storefronts (see BusinessClassifier.junk_reason/1).
   # Kept opt-in for now: measure the junk rate with the golden set first, flip
   # to exclude-by-default once the detector's precision is verified.
-  defp filter_clause({:exclude_junk, "true"}), do: ["is_junk = ''"]
+  defp filter_clause({:exclude_junk, "true"}), do: ["estimated_junk = ''"]
   # "With catalogue" — the difference between a real store and a site that
   # merely loads a Shopify script. `is_shopify`/http_tech only says the page
   # mentions Shopify, which is also true of a church with a merch button, an
   # AI consultancy and a recruiting site (all real examples, 2026-08-24).
   # product_count > 0 means we successfully read /products.json: an actual
   # storefront with actual products.
-  defp filter_clause({:has_catalog, "true"}), do: ["product_count > 0"]
-  defp filter_clause({:has_pricing, "true"}), do: ["pricing_points > 0"]
-  defp filter_clause({:has_email, "true"}), do: ["http_emails != ''"]
-  defp filter_clause({:hiring, "true"}), do: ["job_count > 0"]
+  defp filter_clause({:has_catalog, "true"}), do: ["shop_product_count > 0"]
+  defp filter_clause({:has_pricing, "true"}), do: ["http_deep_pricing_points > 0"]
+  defp filter_clause({:has_email, "true"}), do: ["notEmpty(http_emails)"]
+  defp filter_clause({:hiring, "true"}), do: ["hr_job_count > 0"]
 
 
   defp filter_clause({:revenue, v}) when is_binary(v) and v != "" do
@@ -643,21 +655,13 @@ defmodule LS.Explorer do
   # which is as_of (when we last re-crawled a row we already had). Confusing
   # the two overstates a new-store list by ~3x: on 2026-08-24, freshness=7d
   # matched 3,195,733 rows while first_seen within 7d matched 955,774.
-  defp filter_clause({:discovered, "24h"}), do: ["first_seen >= now() - INTERVAL 1 DAY"]
-  defp filter_clause({:discovered, "7d"}), do: ["first_seen >= now() - INTERVAL 7 DAY"]
-  defp filter_clause({:discovered, "30d"}), do: ["first_seen >= now() - INTERVAL 30 DAY"]
+  defp filter_clause({:discovered, "24h"}), do: ["ctl_first_seen_at >= now() - INTERVAL 1 DAY"]
+  defp filter_clause({:discovered, "7d"}), do: ["ctl_first_seen_at >= now() - INTERVAL 7 DAY"]
+  defp filter_clause({:discovered, "30d"}), do: ["ctl_first_seen_at >= now() - INTERVAL 30 DAY"]
 
-  defp filter_clause({:freshness, "24h"}) do
-    ["as_of >= now() - INTERVAL 1 DAY"]
-  end
-
-  defp filter_clause({:freshness, "7d"}) do
-    ["as_of >= now() - INTERVAL 7 DAY"]
-  end
-
-  defp filter_clause({:freshness, "30d"}) do
-    ["as_of >= now() - INTERVAL 30 DAY"]
-  end
+  defp filter_clause({:freshness, "24h"}), do: ["http_last_checked_at >= now() - INTERVAL 1 DAY"]
+  defp filter_clause({:freshness, "7d"}), do: ["http_last_checked_at >= now() - INTERVAL 7 DAY"]
+  defp filter_clause({:freshness, "30d"}), do: ["http_last_checked_at >= now() - INTERVAL 30 DAY"]
 
   defp filter_clause(_), do: []
 

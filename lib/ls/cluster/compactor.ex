@@ -134,15 +134,9 @@ defmodule LS.Cluster.Compactor do
     until = slice_until(s.since, now)
     behind? = until < now - 120
 
-    # Signals BEFORE compaction: the diff needs the old `businesses` state
-    # and compaction overwrites it. A signal failure is logged, never fatal —
-    # derived data must not block product freshness. Idempotent on retry:
-    # biz_signal dedups identical rows.
-    case Clickhouse.record_signals(s.since - @lookback_slack_s, until) do
-      :ok -> :ok
-      err -> Logger.warning("[SIGNAL] emit failed (compaction continues): #{inspect(err) |> String.slice(0, 200)}")
-    end
-
+    # Change detection runs inside compact_businesses/2 (data model v2,
+    # 2026-10-01): the pass lands in a scratch table, changes_log is written
+    # from the scratch-vs-current diff, then the rows move into businesses.
     # Also before compaction: which touched domains came back unchanged. They
     # go into the crawl gate's stable ring (28-35 days, see CrawlDedup).
     mark_stable(s.since - @lookback_slack_s, until)

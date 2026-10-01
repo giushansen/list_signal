@@ -1,9 +1,12 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- GOOD domains per day: real businesses we ingested.
 -- "Good" = has real MX records + crawled with a 2xx/3xx + not flagged
 -- malware/phishing. Segment %s are among good domains that day.
 -- leadgen_sales definition: Agency/Consulting business model in the
 -- 'Marketing' industry label (closest labels the classifier emits).
--- Window: 90d (domains_history TTL). Domain-level (uniq), not row-level.
+-- Window: 90d (enrich_log TTL). Domain-level (uniq), not row-level.
 SELECT
     toDate(enriched_at)                                                        AS day,
     uniq(domain)                                                               AS domains_seen,
@@ -34,7 +37,7 @@ SELECT
                    AND business_model IN ('Agency', 'Consulting')
                    AND industry = 'Marketing')
               / nullIf(good_domains, 0), 1)                                    AS pct_leadgen_sales
-FROM domains_history
+FROM enrich_log
 WHERE enriched_at >= now() - INTERVAL 90 DAY
 GROUP BY day
 ORDER BY day

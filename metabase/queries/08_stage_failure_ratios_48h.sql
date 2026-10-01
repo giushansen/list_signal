@@ -1,3 +1,6 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- Silent-failure detector: per-stage failure rates, hourly, last 48h.
 --
 -- IMPORTANT: each ratio is measured against the population where that stage
@@ -35,7 +38,7 @@ SELECT
     -- of RDAP lookups actually attempted
     round(avgIf(rdap_error != '',
                 rdap_registrar != '' OR rdap_error != ''), 3)           AS rdap_fail_of_attempted
-FROM domains_history
+FROM enrich_log
 WHERE enriched_at >= now() - INTERVAL 48 HOUR
 GROUP BY hour
 ORDER BY hour

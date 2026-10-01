@@ -1,6 +1,6 @@
 defmodule LS.Cluster.EnrichmentWriter do
   @moduledoc """
-  Writes enrichment-lane results into the `biz_*` child tables. Master-only.
+  Writes deep-pass results into the child tables (`http_contacts`, `hr_jobs`, `shop_products`, ...). Master-only.
 
   This module is the *only* writer of those tables, and it writes nothing
   else — in particular it never touches `domains_history` or `domains_current`.
@@ -28,7 +28,7 @@ defmodule LS.Cluster.EnrichmentWriter do
 
 
   def write(results) do
-    insert("biz_contact", ~w(domain email source_page on_domain seen_at),
+    insert(LS.Schema.Tables.http_contacts(), ~w(domain email source_page on_domain seen_at),
       Enum.flat_map(results, & &1[:contacts] || []))
 
     # One row per attempted page fetch, homepage included (migration 016).
@@ -36,7 +36,7 @@ defmodule LS.Cluster.EnrichmentWriter do
     # `%{html: nil, source: "failed"}` and nothing was stored, so the redirect
     # bug that cost 68% of secondary-page failures could only be found by
     # re-crawling a sample by hand.
-    insert("biz_page_fetch", ~w(domain page_kind path outcome status elapsed_ms seen_at),
+    insert("http_deep_fetch_log", ~w(domain page_kind path outcome status elapsed_ms seen_at),
       Enum.flat_map(results, & &1[:page_fetches] || []))
 
     # The agent stamps :seen_at on every job row (crawl time). The put_new is
@@ -45,30 +45,30 @@ defmodule LS.Cluster.EnrichmentWriter do
     # batch's DateTime parse, which is why prod biz_career stayed at 0 rows.
     now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
 
-    insert("biz_career", ~w(domain job_id title location url posted_at seen_at),
+    insert(LS.Schema.Tables.hr_jobs(), ~w(domain job_id title location url posted_at seen_at),
       results |> Enum.flat_map(& &1[:jobs] || []) |> Enum.map(&Map.put_new(&1, :seen_at, now)))
 
-    insert("biz_pricing", ~w(domain price currency seen_at),
+    insert(LS.Schema.Tables.http_deep_prices(), ~w(domain price currency seen_at),
       Enum.flat_map(results, & &1[:pricing] || []))
 
-    insert("biz_products",
+    insert(LS.Schema.Tables.shop_products(),
       ~w(domain product_id title handle vendor product_type price available
          variant_count image_count created_at seen_at),
       Enum.flat_map(results, & &1[:products] || []))
 
-    insert("biz_collections",
+    insert(LS.Schema.Tables.shop_collections(),
       ~w(domain collection_id title handle products_count updated_at seen_at),
       Enum.flat_map(results, & &1[:collections] || []))
 
     summaries = results |> Enum.map(& &1[:summary]) |> Enum.reject(&(&1 in [nil, %{}]))
 
-    insert("biz_enrichment", summary_columns(), summaries)
+    insert(LS.Schema.Tables.http_deep_state(), summary_columns(), summaries)
 
     # Same rows, second destination: biz_enrichment_log is the append-only
     # history (migration 004). biz_enrichment keeps only the LATEST row per
     # domain (ReplacingMergeTree), which made depth trends — product_count,
     # job_count, prices over time — unanswerable at the business level.
-    insert("biz_enrichment_log", summary_columns(), summaries)
+    insert(LS.Schema.Tables.http_deep_log(), summary_columns(), summaries)
 
     :ok
   end
@@ -109,7 +109,7 @@ defmodule LS.Cluster.EnrichmentWriter do
       |> Enum.map(&Enum.join([tsv(&1), now, "stranded", version], "\t"))
 
     LS.Clickhouse.insert_raw(
-      "INSERT INTO biz_enrichment (domain, enriched_at, render_engine, pipeline_version) FORMAT TabSeparated",
+      "INSERT INTO #{LS.Schema.Tables.http_deep_state()} (domain, enriched_at, render_engine, pipeline_version) FORMAT TabSeparated",
       Enum.join(rows, "\n")
     )
   end

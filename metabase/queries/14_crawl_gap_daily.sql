@@ -1,3 +1,6 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- CRAWL GAP on LEGIT domains, per day.
 -- Legit = Tranco-ranked OR has real MX records — a domain we *know* matters.
 -- Splits the ones we don't have content for into:
@@ -25,7 +28,7 @@ SELECT
     uniqIf(domain, (tranco_rank IS NOT NULL OR dns_mx != '')
                    AND http_status >= 400)                                     AS http_4xx_5xx,
     round(100 * (attempted - crawl_ok) / nullIf(attempted, 0), 1)              AS need_better_crawler_pct
-FROM domains_history
+FROM enrich_log
 WHERE enriched_at >= now() - INTERVAL 90 DAY
 GROUP BY day
 ORDER BY day

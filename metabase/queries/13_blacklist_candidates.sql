@@ -1,3 +1,6 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- BLACKLIST candidates: domains we keep re-enriching that have never shown
 -- any business value — no MX, no Tranco/Majestic rank, never returned 2xx/3xx.
 -- Every row spent on these is pure waste; feed the worst into a skip-list.
@@ -12,7 +15,7 @@ SELECT
     any(ctl_tld)                                   AS tld,
     anyIf(http_error, http_error != '')            AS sample_error,
     countIf(is_malware = 'true' OR is_phishing = 'true') > 0 AS flagged
-FROM domains_history
+FROM enrich_log
 WHERE enriched_at >= now() - INTERVAL 30 DAY
   AND dns_mx = ''
   AND tranco_rank IS NULL

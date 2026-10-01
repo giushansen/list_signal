@@ -33,7 +33,7 @@ defmodule LS.Verification.Store do
   @doc "Record the start of a run; returns the `started_at` key of its row."
   def start_run(source, url, snapshot) do
     started = now()
-    insert_json("verification_runs", [
+    insert_json(LS.Schema.Tables.verified_runs(), [
       %{source: to_string(source), started_at: started, finished_at: nil, status: "running",
         url: url, snapshot: snapshot, bytes: 0, records: 0, matched_website: 0,
         matched_name_country: 0, error: "", updated_at: started}
@@ -52,7 +52,7 @@ defmodule LS.Verification.Store do
         {_, e} -> to_string(e || "")
       end
 
-    insert_json("verification_runs", [
+    insert_json(LS.Schema.Tables.verified_runs(), [
       %{source: to_string(source), started_at: started_at, finished_at: now(), status: to_string(status),
         url: stats[:url] || "", snapshot: stats[:snapshot] || "", bytes: stats[:bytes] || 0,
         records: stats[:records] || 0, matched_website: stats[:matched_website] || 0,
@@ -99,7 +99,7 @@ defmodule LS.Verification.Store do
     rows = Enum.map(records, &record_row(&1, fetched_at))
     known = existing_hashes(rows)
     fresh = Enum.reject(rows, &MapSet.member?(known, {&1.source_id, &1.content_hash}))
-    if fresh != [], do: :ok = insert_json("verified_source_records", fresh)
+    if fresh != [], do: :ok = insert_json(LS.Schema.Tables.verified_log(), fresh)
     facts = fresh |> Enum.filter(&(&1.matched_domain != "")) |> Enum.flat_map(&facts_for(&1, fetched_at))
     if facts != [], do: :ok = insert_json("verified_facts", facts)
     {length(fresh), length(facts)}
@@ -113,7 +113,7 @@ defmodule LS.Verification.Store do
   defp existing_hashes([%{source: source} | _] = rows) do
     ids = Enum.map_join(rows, ",", &"'#{Clickhouse.escape_public(&1.source_id)}'")
     {:ok, found} = Clickhouse.query_raw("""
-    SELECT source_id, content_hash FROM verified_source_records
+    SELECT source_id, content_hash FROM verified_log
     WHERE source = '#{Clickhouse.escape_public(source)}' AND source_id IN (#{ids})
     """, 120_000)
     MapSet.new(found, fn [id, h] -> {id, h} end)
@@ -192,7 +192,7 @@ defmodule LS.Verification.Store do
     |> Enum.chunk_every(@chunk)
     |> Enum.reduce(MapSet.new(), fn chunk, acc ->
       list = Enum.map_join(chunk, ",", &"'#{Clickhouse.escape_public(&1)}'")
-      case Clickhouse.query_raw("SELECT DISTINCT domain FROM domains_current WHERE domain IN (#{list})", 120_000) do
+      case Clickhouse.query_raw("SELECT DISTINCT domain FROM domains WHERE domain IN (#{list})", 120_000) do
         {:ok, rows} -> Enum.reduce(rows, acc, fn [d], a -> MapSet.put(a, d) end)
         {:error, e} -> raise "existing_domains: #{inspect(e)}"
       end
@@ -221,18 +221,18 @@ defmodule LS.Verification.Store do
   """
   def rebuild_domain_keys do
     {:ok, _} = Clickhouse.query_raw("""
-    CREATE TABLE IF NOT EXISTS verification_domain_keys
+    CREATE TABLE IF NOT EXISTS verified_keys
     (name_key String, country LowCardinality(String), domain String)
     ENGINE = MergeTree ORDER BY (name_key, country)
     """)
-    {:ok, _} = Clickhouse.query_raw("TRUNCATE TABLE verification_domain_keys")
+    {:ok, _} = Clickhouse.query_raw("TRUNCATE TABLE verified_keys")
 
     for shard <- 0..(@key_shards - 1) do
       {:ok, _} = Clickhouse.query_raw("""
-      INSERT INTO verification_domain_keys
-      SELECT replaceAll(splitByChar('.', domain)[1], '-', '') AS name_key, inferred_country AS country, domain
+      INSERT INTO verified_keys
+      SELECT replaceAll(splitByChar('.', domain)[1], '-', '') AS name_key, estimated_country AS country, domain
       FROM businesses
-      WHERE cityHash64(domain) % #{@key_shards} = #{shard} AND inferred_country != '' AND length(name_key) >= 6
+      WHERE cityHash64(domain) % #{@key_shards} = #{shard} AND estimated_country != '' AND length(name_key) >= 6
       SETTINGS max_threads = 2
       """, 600_000)
     end
@@ -242,7 +242,7 @@ defmodule LS.Verification.Store do
   @doc "Keys that occur more than once in `source` — never linkable (ambiguous)."
   def duplicate_keys(source) do
     {:ok, rows} = Clickhouse.query_raw("""
-    SELECT name_key, country FROM verified_source_records
+    SELECT name_key, country FROM verified_log
     WHERE source = '#{Clickhouse.escape_public(to_string(source))}' AND length(name_key) >= 6
     GROUP BY name_key, country HAVING uniqExact(source_id) > 1
     """, 600_000)
@@ -258,7 +258,7 @@ defmodule LS.Verification.Store do
       list = Enum.map_join(chunk, ",", fn {k, c} -> "('#{Clickhouse.escape_public(k)}','#{Clickhouse.escape_public(c)}')" end)
       {:ok, rows} = Clickhouse.query_raw("""
       SELECT name_key, country, groupUniqArray(2)(domain) AS ds
-      FROM verification_domain_keys WHERE (name_key, country) IN (#{list})
+      FROM verified_keys WHERE (name_key, country) IN (#{list})
       GROUP BY name_key, country
       """, 300_000)
       Enum.reduce(rows, acc, fn
@@ -289,7 +289,7 @@ defmodule LS.Verification.Store do
         {:ok, rows} = Clickhouse.query_raw("""
         SELECT source_id, name, name_key, country, website, website_domain, revenue_usd, revenue_raw,
                employees, employees_band, period, extra, source_url, matched_domain
-        FROM verified_source_records
+        FROM verified_log
         WHERE source = '#{src}' AND country != '' AND length(name_key) >= 6
           AND source_id > '#{Clickhouse.escape_public(last)}'
         ORDER BY source_id, fetched_at LIMIT #{@chunk}
@@ -371,7 +371,7 @@ defmodule LS.Verification.Store do
                           dateDiff('second', started_at, finished_at)), started_at) AS duration_s,
                 argMax(error, started_at)                AS error,
                 count()                                  AS runs
-         FROM verification_runs FINAL
+         FROM verified_runs FINAL
          WHERE source IN ('wikidata','yc','sec_edgar','companies_house','sirene')
          GROUP BY source ORDER BY source
          """, 5_000) do
@@ -392,9 +392,9 @@ defmodule LS.Verification.Store do
     case Clickhouse.query_raw("""
          SELECT uniqExactIf(snapshot, status = 'ok')  AS months_ok,
                 uniqExactIf(snapshot, status = 'error') AS months_err,
-                (SELECT count() FROM verification_ch_accounts)  AS staged_rows,
+                (SELECT count() FROM verified_ch_accounts)  AS staged_rows,
                 argMaxIf(snapshot, started_at, status = 'running') AS running_month
-         FROM verification_runs FINAL WHERE source = 'companies_house_accounts'
+         FROM verified_runs FINAL WHERE source = 'companies_house_accounts'
          """, 5_000) do
       {:ok, [[ok, err, rows, running]]} ->
         %{months_ok: to_i(ok), months_err: to_i(err), staged_rows: to_i(rows), running_month: running}
@@ -441,7 +441,7 @@ defmodule LS.Verification.Store do
            uniqExactIf(source_id, match_method = 'website') AS website,
            uniqExactIf(source_id, match_method = 'name_country') AS name_country,
            uniqExactIf(source_id, website_domain != '') AS with_website
-    FROM verified_source_records GROUP BY source ORDER BY source
+    FROM verified_log GROUP BY source ORDER BY source
     """, 300_000)
     # ClickHouse quotes UInt64 in JSON; keep the report numeric.
     int = fn v when is_binary(v) -> String.to_integer(v); v -> v end

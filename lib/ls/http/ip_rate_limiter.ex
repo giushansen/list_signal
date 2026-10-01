@@ -10,6 +10,29 @@ defmodule LS.HTTP.IPRateLimiter do
   """
 
   @ets_table :http_ip_rate_limiter
+
+  # Shared edges (2026-10-01). Shopify's 1.4M storefronts resolve to a
+  # handful of addresses in 23.227.38.0/24, so a per-address key let every
+  # node send one request a second to each address in parallel while Shopify
+  # counted them all as one client: 3.6% of Shopify fetches ended in 429
+  # against 0.37% fleet-wide, and 82,309 stores held a 429 as their last
+  # result. One key per shared edge makes the node wait between any two
+  # requests to that vendor. Wix and Squarespace front their sites the same
+  # way. Cloudflare is NOT here: it limits per zone, not per client, and
+  # collapsing 5.9M sites onto one key would starve the fleet.
+  @shared_edges [
+    {"shopify", ["23.227.38."]},
+    {"squarespace", ["198.185.159.", "198.49.23."]},
+    {"wix", ["185.230.60.", "185.230.61.", "185.230.62.", "185.230.63.", "23.236.62."]}
+  ]
+
+  @doc "The key an address is limited under: the vendor name for a shared edge, else the address."
+  @spec limiter_key(String.t()) :: String.t()
+  def limiter_key(ip) when is_binary(ip) do
+    Enum.find_value(@shared_edges, ip, fn {vendor, prefixes} ->
+      if Enum.any?(prefixes, &String.starts_with?(ip, &1)), do: "edge:" <> vendor
+    end)
+  end
   @ets_wait_stats :http_ip_wait_stats
   @default_delay_ms 3000 # Safe with 1000ms if used in residential address
 
@@ -33,6 +56,7 @@ defmodule LS.HTTP.IPRateLimiter do
   Tracks wait statistics for bottleneck analysis.
   """
   def check_and_update(ip, delay_ms \\ @default_delay_ms) when is_binary(ip) do
+    ip = limiter_key(ip)
     now = System.monotonic_time(:millisecond)
 
     case :ets.lookup(@ets_table, ip) do

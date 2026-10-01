@@ -1,82 +1,154 @@
 defmodule LS.ApiData do
   @moduledoc """
-  Read-only queries behind `/api/v1` and `/mcp`.
+  Read-only queries behind `/api/v1` and `/mcp` (data model v2, 2026-10-01).
 
-  Named columns only (never `SELECT *`: the 2026-07 enrichment cutover
-  proved schema drift silently breaks star-selects), page sizes hard-capped
-  server-side, and every user-supplied value escaped. Contact emails are
-  returned to the caller-facing layer, which decides per-plan whether to
-  expose them, so the gating rule lives in one place (`LSWeb.ApiV1JSON`).
+  The JSON shape IS the product table: every field is a `businesses`
+  column under its own name (`estimated_revenue`, `http_tech`,
+  `hr_job_count`, ...), chosen per surface by `LS.Schema.Columns.api_columns/1`.
+  The same names appear in the dashboard, the CSV export, the data
+  dictionary on /developers and the OpenAPI schema, so a customer or an
+  agent reads one vocabulary everywhere. Lists are JSON arrays, dates are
+  ISO-8601 strings, absent numbers are null.
+
+  Named columns only (never `SELECT *`), page sizes hard-capped server-side,
+  every user-supplied value escaped. Contact emails are returned to the
+  caller-facing layer, which decides per plan whether to expose them.
   """
 
   alias LS.Clickhouse
+  alias LS.Schema.{Columns, Tables}
 
   @max_page 100
 
-  @doc "Full company record for one domain, or nil."
+  @doc "Full company record for one domain, with its last 20 changes, or nil."
   def company(domain) when is_binary(domain) do
     d = domain |> String.trim() |> String.downcase() |> Clickhouse.escape_public()
+    cols = Columns.api_columns(:company)
 
     sql = """
-    SELECT domain, http_title, business_model, industry, inferred_country,
-           estimated_revenue, estimated_employees, http_tech, http_apps,
-           product_count, price_avg, job_count, positions_overview,
-           seo_score, tranco_rank, http_emails, is_junk,
-           toString(as_of) AS as_of
-    FROM businesses FINAL
+    SELECT #{Enum.map_join(cols, ", ", &select_expr/1)}
+    FROM #{Tables.businesses()} FINAL
     WHERE domain = '#{d}'
     LIMIT 1
     """
 
     case Clickhouse.query_raw(sql) do
-      {:ok, [row]} -> to_company(row)
-      _ -> nil
+      {:ok, [row]} ->
+        cols
+        |> Enum.zip(row)
+        |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
+        |> Map.put(:changes, LS.Explorer.recent_changes(domain, 20))
+
+      _ ->
+        nil
     end
   end
 
   @doc """
   Filtered company search. `filters` accepts string keys straight from
-  params: tech, app, country (ISO-2), business_model, revenue,
-  hiring ("true"), limit, offset. Returns `{rows, applied_filters}` so the
-  response can echo what was actually honoured (agents self-correct off it).
+  params: tech, app, dns_tech, email_provider, country (ISO-2),
+  business_model, industry, revenue, employees, hiring ("true"), shopify
+  ("true"), limit, offset. Returns `{:ok, rows, applied}` so the response
+  can echo what was honoured (agents self-correct off it).
   """
   def search(filters) when is_map(filters) do
     conds =
       [
-        like("http_tech", filters["tech"]),
-        like("http_apps", filters["app"]),
-        eq("inferred_country", upcase(filters["country"])),
-        eq("business_model", filters["business_model"]),
+        has("http_tech", filters["tech"]),
+        has("http_tech", filters["app"]),
+        has("dns_tech", filters["dns_tech"]),
+        eq("dns_email_provider", filters["email_provider"]),
+        eq("estimated_country", upcase(filters["country"])),
+        eq("estimated_business_model", filters["business_model"]),
+        eq("estimated_industry", filters["industry"]),
         eq("estimated_revenue", filters["revenue"]),
-        if(filters["hiring"] in ["true", "1", true], do: "job_count > 0"),
+        eq("estimated_employees", filters["employees"]),
+        if(truthy?(filters["hiring"]), do: "hr_job_count > 0"),
+        if(truthy?(filters["shopify"]), do: "is_shopify = 1"),
         "http_title != ''",
-        "is_junk = ''"
+        "estimated_junk = ''"
       ]
       |> Enum.reject(&is_nil/1)
 
     limit = filters |> int("limit", 25) |> min(@max_page) |> max(1)
     offset = filters |> int("offset", 0) |> max(0) |> min(10_000)
+    cols = Columns.api_columns(:search)
 
     sql = """
-    SELECT domain, http_title, business_model, industry, inferred_country,
-           estimated_revenue, http_tech, job_count, seo_score, tranco_rank,
-           http_emails != '' AS has_contact
-    FROM businesses FINAL
+    SELECT #{Enum.map_join(cols, ", ", &select_expr/1)}, notEmpty(http_emails) AS has_contact
+    FROM #{Tables.businesses()} FINAL
     WHERE #{Enum.join(conds, " AND ")}
     ORDER BY tranco_rank ASC NULLS LAST
     LIMIT #{limit} OFFSET #{offset}
     """
 
     case Clickhouse.query_raw(sql, 30_000) do
-      {:ok, rows} -> {:ok, Enum.map(rows, &to_search_row/1), %{limit: limit, offset: offset}}
-      {:error, e} -> {:error, e}
+      {:ok, rows} ->
+        keys = Enum.map(cols ++ ["has_contact"], &String.to_atom/1)
+        rows = Enum.map(rows, fn r -> keys |> Enum.zip(r) |> Map.new() |> Map.update!(:has_contact, &(&1 in [1, "1", true])) end)
+        {:ok, rows, %{limit: limit, offset: offset}}
+
+      {:error, e} ->
+        {:error, e}
     end
   end
+
+  @doc "The filter names `search/1` honours, in the order the docs list them."
+  def search_filters, do: ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify limit offset)
+
+  @doc """
+  Recorded changes, newest first. `filters`: field, change, value, domain,
+  country, business_model, period (24h, 7d, 30d, 90d), limit, offset.
+  """
+  def changes(filters) when is_map(filters) do
+    limit = filters |> int("limit", 50) |> min(@max_page) |> max(1)
+    offset = filters |> int("offset", 0) |> max(0) |> min(10_000)
+    page = div(offset, limit) + 1
+
+    sig_filters = %{
+      field: filters["field"] || "",
+      change: filters["change"] || "",
+      value: filters["value"] || "",
+      domain_search: filters["domain"] || "",
+      country: filters["country"] || "",
+      business_model: filters["business_model"] || "",
+      period: if(Map.has_key?(LS.Signals.periods(), filters["period"]), do: filters["period"], else: "7d")
+    }
+
+    case LS.Signals.list(sig_filters, per_page: limit, page: page) do
+      {:ok, rows} ->
+        rows =
+          Enum.map(rows, fn r ->
+            %{
+              domain: r["domain"],
+              field: r["field"],
+              change: r["change"],
+              value: r["value"],
+              prev_value: r["prev_value"],
+              changed_at: r["changed_at"],
+              summary: LSWeb.ExplorerLive.Format.change_sentence(r["field"], r["change"], r["value"], r["prev_value"]),
+              http_title: r["http_title"],
+              estimated_country: r["estimated_country"],
+              estimated_business_model: r["estimated_business_model"]
+            }
+          end)
+
+        {:ok, rows, %{limit: limit, offset: offset, period: sig_filters.period}}
+
+      {:error, e} ->
+        {:error, e}
+    end
+  end
+
+  def changes_filters, do: ~w(field change value domain country business_model period limit offset)
 
   @doc "Technology directory with usage counts (cached upstream)."
   def technologies do
     LS.LandingCache.tech_names()
-    |> Enum.map(fn {name, count} -> %{name: name, companies: count} end)
+    |> Enum.map(fn {name, count} ->
+      {category, ecosystem} = LS.Tech.Catalog.info(name) || {:other, ""}
+      %{name: name, companies: count, category: category, ecosystem: ecosystem}
+    end)
   end
 
   @doc "Live dataset statistics from the 60s-refresh landing cache. Free."
@@ -90,65 +162,27 @@ defmodule LS.ApiData do
       businesses_tracked: l.business_count,
       domains_scanned: l.total_domains,
       shopify_stores: l.store_count,
-      # tech_count's uniq-over-171M-rows query can time out right after boot
-      # and report 0, which would contradict /technologies; the directory
-      # list is the same universe and always warm.
       technologies: max(l.tech_count, length(LS.LandingCache.tech_names())),
-      shopify_apps: l.app_count,
       domains_checked_past_hour: l.stores_last_hour,
+      tracked_fields: LS.Signals.fields(),
       refreshed_at: l.refreshed_at
     }
   end
 
-  # ── row shaping ───────────────────────────────────────────────────────────
+  # ── helpers ───────────────────────────────────────────────────────────────
 
-  defp to_company([
-         domain, title, model, industry, country, revenue, employees, tech, apps,
-         products, price_avg, jobs, positions, seo, rank, emails, is_junk, as_of
-       ]) do
-    %{
-      domain: domain,
-      title: title,
-      business_model: model,
-      industry: industry,
-      country: country,
-      estimated_revenue: revenue,
-      estimated_employees: employees,
-      technologies: split(tech),
-      shopify_apps: split(apps),
-      product_count: num(products),
-      price_avg: num(price_avg),
-      open_jobs: num(jobs),
-      hiring_overview: positions,
-      seo_score: num(seo),
-      traffic_rank: num(rank),
-      emails: split(emails),
-      is_junk: is_junk != "",
-      last_checked: as_of
-    }
+  # DateTimes go out as ISO-8601 strings; everything else as itself.
+  defp select_expr(col) do
+    case Columns.get(col) do
+      %{type: "DateTime"} -> "toString(#{col}) AS #{col}"
+      %{type: "Nullable(DateTime)"} -> "toString(#{col}) AS #{col}"
+      _ -> col
+    end
   end
 
-  defp to_company(_), do: nil
-
-  defp to_search_row([domain, title, model, industry, country, revenue, tech, jobs, seo, rank, has_contact]) do
-    %{
-      domain: domain,
-      title: title,
-      business_model: model,
-      industry: industry,
-      country: country,
-      estimated_revenue: revenue,
-      technologies: split(tech),
-      open_jobs: num(jobs),
-      seo_score: num(seo),
-      traffic_rank: num(rank),
-      has_contact: has_contact in [1, "1", true]
-    }
-  end
-
-  defp like(_col, nil), do: nil
-  defp like(_col, ""), do: nil
-  defp like(col, v), do: "positionCaseInsensitive(#{col}, '#{Clickhouse.escape_public(v)}') > 0"
+  defp has(_col, nil), do: nil
+  defp has(_col, ""), do: nil
+  defp has(col, v), do: "has(#{col}, '#{Clickhouse.escape_public(LS.Tech.Catalog.canonical(String.trim(v)))}')"
 
   defp eq(_col, nil), do: nil
   defp eq(_col, ""), do: nil
@@ -157,28 +191,12 @@ defmodule LS.ApiData do
   defp upcase(nil), do: nil
   defp upcase(v) when is_binary(v), do: String.upcase(v)
 
+  defp truthy?(v), do: v in ["true", "1", true]
+
   defp int(filters, key, default) do
     case Integer.parse(to_string(filters[key] || default)) do
       {n, _} -> n
       _ -> default
-    end
-  end
-
-  defp split(nil), do: []
-  defp split(""), do: []
-  defp split(s) when is_binary(s), do: s |> String.split("|", trim: true)
-
-  defp num(nil), do: nil
-  defp num(n) when is_number(n), do: n
-
-  defp num(s) when is_binary(s) do
-    case Integer.parse(s) do
-      {n, ""} -> n
-      _ ->
-        case Float.parse(s) do
-          {f, ""} -> f
-          _ -> nil
-        end
     end
   end
 end

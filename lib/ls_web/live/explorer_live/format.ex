@@ -12,17 +12,23 @@ defmodule LSWeb.ExplorerLive.Format do
   end
   def country_flag(_), do: ""
 
+  # List columns arrive as Elixir lists since data model v2 (2026-10-01);
+  # pipe strings are still accepted for the log tables that keep them.
+  def format_tech(tech) when is_list(tech), do: Enum.reject(tech, &(&1 in [nil, ""]))
   def format_tech(tech) when is_binary(tech), do: tech |> String.split("|") |> Enum.reject(&(&1 == ""))
   def format_tech(_), do: []
 
-  def format_subdomains(subs) when is_binary(subs) and subs != "", do: subs |> String.split("|") |> Enum.reject(&(&1 == ""))
-  def format_subdomains(_), do: []
+  def format_subdomains(subs), do: format_pipe_list(subs)
+  def format_evidence(ev), do: format_pipe_list(ev)
 
-  def format_evidence(ev) when is_binary(ev) and ev != "", do: ev |> String.split("|") |> Enum.reject(&(&1 == ""))
-  def format_evidence(_), do: []
-
+  def format_pipe_list(v) when is_list(v), do: Enum.reject(v, &(&1 in [nil, ""]))
   def format_pipe_list(v) when is_binary(v) and v != "", do: v |> String.split("|") |> Enum.reject(&(&1 == ""))
   def format_pipe_list(_), do: []
+
+  @doc "Lists as one cell: for titles, tooltips and the raw-record cards."
+  def join_list(v) when is_list(v), do: v |> format_pipe_list() |> Enum.join(", ")
+  def join_list(v) when is_binary(v), do: v
+  def join_list(_), do: ""
 
   def format_response_time(nil), do: "-"
   def format_response_time(ms) when is_integer(ms), do: "#{ms}ms"
@@ -46,6 +52,7 @@ defmodule LSWeb.ExplorerLive.Format do
 
   def has_value?(nil), do: false
   def has_value?(""), do: false
+  def has_value?([]), do: false
   def has_value?(0), do: false
   def has_value?("0"), do: false
   def has_value?(_), do: true
@@ -67,7 +74,7 @@ defmodule LSWeb.ExplorerLive.Format do
   # which is the truth and the difference a buyer cares about.
   # "✓" cells: hover shows which authoritative source verified the value.
   def verified_title(row, field) do
-    case row["verified_#{field}_source"] do
+    case row["verified_#{field}_evidence"] do
       s when s in [nil, ""] -> "estimated"
       s -> "verified via #{s}"
     end
@@ -187,6 +194,8 @@ defmodule LSWeb.ExplorerLive.Format do
   # MX provider detection
   def mx_provider(nil), do: nil
   def mx_provider(""), do: nil
+  def mx_provider([]), do: nil
+  def mx_provider(mx) when is_list(mx), do: mx_provider(Enum.join(mx, "|"))
   def mx_provider(mx) when is_binary(mx) do
     lower = String.downcase(mx)
     cond do
@@ -207,6 +216,8 @@ defmodule LSWeb.ExplorerLive.Format do
 
   def format_mx_short(nil), do: nil
   def format_mx_short(""), do: nil
+  def format_mx_short([]), do: nil
+  def format_mx_short([mx | _]), do: format_mx_short(mx)
   def format_mx_short(mx) when is_binary(mx) do
     mx |> String.split("|") |> hd() |> String.trim()
   end
@@ -237,6 +248,7 @@ defmodule LSWeb.ExplorerLive.Format do
   # DKIM/DMARC parser
   def parse_dkim(nil), do: nil
   def parse_dkim(""), do: nil
+  def parse_dkim(txt) when is_list(txt), do: parse_dkim(Enum.join(txt, "|"))
   def parse_dkim(txt) when is_binary(txt) do
     records = String.split(txt, "|")
     dmarc = Enum.find(records, fn r -> String.contains?(r, "v=DMARC1") end)
@@ -350,7 +362,7 @@ defmodule LSWeb.ExplorerLive.Format do
   end
 
   def dns_section_badge(d) do
-    mx = mx_provider(d["dns_mx"])
+    mx = if has_value?(d["dns_email_provider"]), do: d["dns_email_provider"], else: mx_provider(d["dns_mx"])
     cond do
       mx in ["Google Workspace", "Microsoft 365", "Proofpoint", "Mimecast"] -> :gold
       mx != nil -> :silver
@@ -376,7 +388,7 @@ defmodule LSWeb.ExplorerLive.Format do
 
   def domain_section_badge(d) do
     registrar = to_string(d["rdap_registrar"]) |> String.downcase()
-    has_dates = has_value?(d["rdap_domain_created_at"])
+    has_dates = has_value?(d["rdap_created_at"])
     cond do
       String.contains?(registrar, "markmonitor") or String.contains?(registrar, "csc") -> :gold
       String.contains?(registrar, "networksolutions") or String.contains?(registrar, "safenames") -> :gold
@@ -421,6 +433,47 @@ defmodule LSWeb.ExplorerLive.Format do
 
 
   def country_name(code), do: LS.Countries.name(code)
+
+  @field_labels %{
+    "http_tech" => "Technology", "dns_tech" => "DNS vendor", "dns_email_provider" => "Mailbox provider",
+    "http_title" => "Title", "http_meta_description" => "Tagline", "hr_job_count" => "Hiring",
+    "hr_departments" => "Hiring department", "shop_product_count" => "Catalog size", "shop_plus" => "Shopify Plus",
+    "shop_theme" => "Theme", "estimated_business_model" => "Business model", "estimated_industry" => "Industry",
+    "estimated_revenue" => "Revenue", "estimated_employees" => "Employees", "estimated_country" => "Country",
+    "estimated_junk" => "Junk verdict", "verified_revenue" => "Verified revenue", "verified_employees" => "Verified employees",
+    "http_status" => "Website", "http_emails" => "Email", "http_social_links" => "Social profile",
+    "ctl_subdomains" => "Subdomain", "news_last_funding_usd" => "Funding"
+  }
+
+  @doc "Customer-facing name of a tracked column."
+  def field_label(field), do: Map.get(@field_labels, field, field)
+
+  @doc ~S'''
+  One line for a change row: "Klaviyo added", "Yoast SEO removed",
+  "$1M-$10M to $10M-$100M", "started hiring (12 roles)", "website down (503)".
+  '''
+  def change_sentence(%{"field" => f, "change" => c, "value" => v, "prev_value" => p}),
+    do: change_sentence(f, c, v, p)
+
+  def change_sentence(field, change, value, prev) do
+    case {field, change} do
+      {_, "added"} -> "#{value} added"
+      {_, "removed"} -> "#{value} removed"
+      {"hr_job_count", "started"} -> "started hiring (#{value} #{if value == "1", do: "role", else: "roles"})"
+      {"hr_job_count", "stopped"} -> "stopped hiring (was #{prev})"
+      {"http_status", "down"} -> "website down (#{value})"
+      {"http_status", "back"} -> "website back (#{value})"
+      {"shop_plus", "changed"} -> if(value == "1", do: "upgraded to Shopify Plus", else: "left Shopify Plus")
+      {_, "changed"} when prev not in [nil, ""] -> "from #{prev} to #{value}"
+      {_, "changed"} -> "now #{value}"
+      _ -> "#{change} #{value}"
+    end
+  end
+
+  @doc "Tone of a change for the badge: :up, :down or :neutral."
+  def change_tone(change) when change in ["added", "started", "back"], do: :up
+  def change_tone(change) when change in ["removed", "stopped", "down"], do: :down
+  def change_tone(_), do: :neutral
 
   @language_names %{
     "en" => "English", "fr" => "French", "de" => "German", "es" => "Spanish", "it" => "Italian",

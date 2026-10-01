@@ -5,17 +5,23 @@ defmodule LS.HTTP.AppDetector do
 
   def detect(body, _tech) when is_binary(body) do
     html = String.downcase(body)
+    # Every detection goes through the tech catalog (2026-10-01): aliases
+    # resolved, unknown names dropped. The humanised Shopify handles produced
+    # 7,304 distinct "apps" in production, 6,262 of them on fewer than 100
+    # stores; only catalog names are published. The raw handles ride along
+    # so a name added to the catalog later backfills by SQL.
     apps = []
       |> detect_shopify_apps(html)
       |> detect_shopify_extensions(html)
       |> detect_shopify_app_proxies(html)
       |> detect_hubspot_modules(html)
       |> detect_wp_plugins(html)
-      |> Enum.uniq() |> Enum.sort()
-    %{apps: apps}
+      |> LS.Tech.Catalog.publish()
+      |> Enum.sort()
+    %{apps: apps, handles: extension_handles(html) |> Enum.take(100)}
   end
 
-  def detect(_, _), do: %{apps: []}
+  def detect(_, _), do: %{apps: [], handles: []}
 
   # ==========================================================================
   # SHOPIFY THEME APP EXTENSIONS - generic, no signature needed (2026-09-06)

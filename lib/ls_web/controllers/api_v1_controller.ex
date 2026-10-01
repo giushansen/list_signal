@@ -1,10 +1,14 @@
 defmodule LSWeb.ApiV1Controller do
   @moduledoc """
-  The public read-only API, v1. Four endpoints, deliberately few and
-  consolidated (the MCP tools call the same functions):
+  The public read-only API, v1 (data model v2 since 2026-10-01). Five
+  endpoints, deliberately few and consolidated (the MCP tools call the
+  same functions):
 
-    * `GET /api/v1/company/:domain`: one company's full record
+    * `GET /api/v1/company/:domain`: one company's full record, every
+      product column under its own name, plus its last 20 changes
     * `GET /api/v1/search`         : filtered company search
+    * `GET /api/v1/changes`        : the change feed (tech added or removed,
+      hiring started, revenue band moved, website down ...)
     * `GET /api/v1/technologies`   : tech directory with counts
     * `GET /api/v1/stats`          : live dataset numbers
 
@@ -39,7 +43,7 @@ defmodule LSWeb.ApiV1Controller do
       {:ok, rows, applied} ->
         track(conn, "api_search", %{
           endpoint: "search",
-          filters: Map.take(params, ~w(tech app country business_model revenue hiring limit offset)),
+          filters: Map.take(params, ApiData.search_filters()),
           result_count: length(rows)
         })
 
@@ -48,11 +52,35 @@ defmodule LSWeb.ApiV1Controller do
           count: length(rows),
           limit: applied.limit,
           offset: applied.offset,
-          filters_accepted: ~w(tech app country business_model revenue hiring limit offset)
+          filters_accepted: ApiData.search_filters()
         })
 
       {:error, _} ->
         ApiAuth.problem(conn, 503, "Search temporarily unavailable",
+          "The datastore did not answer in time. Retry with backoff; status page: https://listsignal.com.")
+    end
+  end
+
+  def changes(conn, params) do
+    case ApiData.changes(params) do
+      {:ok, rows, applied} ->
+        track(conn, "api_changes", %{
+          endpoint: "changes",
+          filters: Map.take(params, ApiData.changes_filters()),
+          result_count: length(rows)
+        })
+
+        json(conn, %{
+          data: rows,
+          count: length(rows),
+          limit: applied.limit,
+          offset: applied.offset,
+          period: applied.period,
+          filters_accepted: ApiData.changes_filters()
+        })
+
+      {:error, _} ->
+        ApiAuth.problem(conn, 503, "Changes temporarily unavailable",
           "The datastore did not answer in time. Retry with backoff; status page: https://listsignal.com.")
     end
   end
@@ -74,10 +102,13 @@ defmodule LSWeb.ApiV1Controller do
   defp gate_emails(record, plan) when plan in ["starter", "pro"], do: record
 
   defp gate_emails(record, _free) do
+    emails = record[:http_emails] || record[:emails] || []
+
     record
-    |> Map.put(:email_count, length(record.emails))
-    |> Map.put(:emails, :gated)
-    |> Map.put(:emails_note, "Contact emails require a paid plan: https://listsignal.com/pricing")
+    |> Map.put(:email_count, length(emails))
+    |> Map.put(:http_emails, :gated)
+    |> Map.put(:http_phone, :gated)
+    |> Map.put(:emails_note, "Contact emails and phone require a paid plan: https://listsignal.com/pricing")
   end
 
   defp valid_domain?(d) when is_binary(d),

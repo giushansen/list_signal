@@ -81,16 +81,37 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 
 | Store | What | Notes |
 |---|---|---|
-| ClickHouse `ls.enrichments` | append-only log, one row per enrichment | 90-day TTL; recrawls duplicate domains |
-| ClickHouse `ls.domains_current` | `ReplacingMergeTree(enriched_at)` MV keyed on domain | *the product table* — newest row wins |
-| ClickHouse `ls.domains_fast` | view over `domains_current` exposing the materialized `country`, `is_shopify` | two cached landing counters read it; public pages moved to `tech_index` (2026-09-09) |
-| ClickHouse `ls.tech_index` | one row per (technology, titled domain), `ORDER BY (tech, rank, domain)` | what `/tech`, `/top`, `/compare`, the directory and the sitemap read; rebuilt every 6h by `LS.TechIndex` (migration 024) |
+| ClickHouse `ls.enrich_log` | append-only log, one row per enrichment pass (was domains_history) | 365-day TTL; the worker's internal column names |
+| ClickHouse `ls.domains` | `ReplacingMergeTree(enriched_at)` MV keyed on domain (was domains_current) | every domain ever crawled, newest row wins |
+| ClickHouse `ls.businesses` | the product table, one row per real business, data model v2 names (`LS.Schema.Columns`) | compiled every 5 min by the compactor; `ReplacingMergeTree(compiled_at)` |
+| ClickHouse `ls.http_pages` | the page as the product keeps it: header, ordered body blocks, footer, JSON-LD, per (domain, page kind) | latest version only; ZSTD; written by workers, never read by the compactor |
+| ClickHouse `ls.changes_log` | one row per change of one tracked column on one business (was biz_signal) | keyed (field, value, changed_at, domain) with a per-domain projection; 730-day TTL |
+| ClickHouse `ls.tech_catalog` | mirror of `LS.Tech.Catalog`: the closed list of published tech names with category and ecosystem | synced on master boot |
+| ClickHouse `ls.http_deep_log` / `http_deep_state` | the deep pass: append-only log and current row per domain (were biz_enrichment_log / biz_enrichment) | |
+| ClickHouse `ls.shop_products`, `shop_collections`, `hr_jobs`, `http_contacts`, `http_deep_prices`, `news_items` | current-state child tables, one row per key (were biz_*) | the explorer's detail panel reads them by primary key |
+| ClickHouse `ls.ctl_log` | suppressed certificate sightings (was ctl_sightings) | 90-day TTL |
+| ClickHouse `ls.domains_fast` | view over `domains` exposing the materialized `country`, `is_shopify` | public SEO pages |
+| ClickHouse `ls.tech_index` | one row per (technology, titled domain), `ORDER BY (tech, rank, domain)` | what `/tech`, `/top`, `/compare`, the directory and the sitemap read; SEO only |
 | ClickHouse `ls.daily_*` | SummingMergeTree daily aggregates | kept forever; feed dashboards |
-| ClickHouse `ls.verified_facts` / `verified_source_records` / `verification_runs` | pipeline 3: facts per (domain, fact, source), the persisted source archive, the dated run log | `ReplacingMergeTree(fetched_at)`; see Verification below |
+| ClickHouse `ls.verified_facts` / `verified_log` / `verified_runs` | pipeline 3: facts per (domain, fact, source), the persisted source archive, the run log | |
 | SQLite (`LS.Repo`) | users, plans, Stripe state | the only critical durable state; hourly backups |
 
 **Newest-row-wins is a sharp edge**: a worker writing *hollow* rows silently
 replaces good data. That's what the Inserter guard protects against.
+
+**Data model v2 (2026-10-01).** The product table is declared once, in
+`LS.Schema.Columns`: name, type, fold rule, signal rule, legacy name, API
+surface, meaning. From that one list come the CREATE TABLE, the compactor's
+INSERT and SELECT, the v1 transform, the `changes_log` detection, the API
+JSON, the CSV and the data dictionary on /developers. Naming: prefix is the
+producing pipeline (`http_`, `http_deep_`, `dns_`, `ctl_`, `rdap_`, `bgp_`,
+`shop_`, `hr_`, `news_`), `estimated_` for anything a rule or model produced
+(with `_confidence` and `_evidence`), `verified_` for a registry fact; no
+`_source` anywhere. Lists are Arrays; `http_tech` carries platforms, vendors,
+WordPress plugins and Shopify apps together, filtered through the catalog.
+The enrichment log keeps the worker's internal names; the spec's `select`
+expression is the bridge. The full decision record is
+`docs/data-model-standards.md`; the migration is `clickhouse/migrations/025_data_model_v2.sh`.
 
 Accuracy of what these tables *say* (classification, revenue, junk detection)
 is measured against a hand-labeled golden set — see

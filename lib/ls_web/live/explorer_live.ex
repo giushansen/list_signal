@@ -361,15 +361,16 @@ defmodule LSWeb.ExplorerLive do
   defp fetch_dropdown_options("shopify_app", _q), do: fetch_apps(shopify_only: true)
 
   defp fetch_dropdown_options("country", _q),
-    do: fetch_distinct_by_count("inferred_country") |> Enum.filter(&valid_country?/1)
+    do: fetch_distinct_by_count("estimated_country") |> Enum.filter(&valid_country?/1)
 
   defp fetch_dropdown_options("language", _q),
     do: fetch_distinct_by_count("http_language") |> Enum.filter(&valid_language?/1)
 
   # "Shopify" is a platform (detected via http_tech, handled specially in the filter), kept as a
   # convenience option; the rest come live from the classifier's actual business_model values.
-  defp fetch_dropdown_options("business_model", _q), do: ["Shopify" | fetch_distinct_by_count("business_model")]
-  defp fetch_dropdown_options("industry", _q), do: fetch_distinct_by_count("industry")
+  defp fetch_dropdown_options("business_model", _q), do: ["Shopify" | fetch_distinct_by_count("estimated_business_model")]
+  defp fetch_dropdown_options("industry", _q), do: fetch_distinct_by_count("estimated_industry")
+  defp fetch_dropdown_options("dns_email_provider", _q), do: fetch_distinct_by_count("dns_email_provider")
   # Straight from the estimator that writes these columns — never a hand-copied
   # list, which is how "$10M-$50M"/"$50M-$100M" and "51-200"/"201-500" ended up
   # in the dropdowns matching zero rows while the data held "$10M-$100M"/"51-500".
@@ -615,7 +616,7 @@ defmodule LSWeb.ExplorerLive do
 
   defp default_filters do
     %{
-      tech: "", shopify_app: "", country: "", business_model: "", industry: "",
+      tech: "", shopify_app: "", country: "", business_model: "", industry: "", dns_email_provider: "",
       revenue: "", employees: "", language: "", domain_search: "", freshness: "", discovered: "",
       # Depth filters — the ones our buyers actually qualify on. The backend
       # has supported these for a while; they were simply never exposed.
@@ -642,7 +643,7 @@ defmodule LSWeb.ExplorerLive do
       tech: "Tech", shopify_app: "Shopify Apps", country: "Country",
       business_model: "Business", industry: "Industry", revenue: "Revenue",
       employees: "Employees", language: "Language", freshness: "Freshness",
-      discovered: "Discovered",
+      discovered: "Discovered", dns_email_provider: "Mail provider",
       has_email: "Email", hiring: "Hiring", has_pricing: "Pricing", has_catalog: "Catalogue",
       min_products: "Min products", max_products: "Max products",
       min_price_avg: "Min avg $", max_price_avg: "Max avg $",
@@ -754,6 +755,7 @@ defmodule LSWeb.ExplorerLive do
       </header>
 
       <div class="max-w-[1700px] mx-auto px-5">
+        <LSWeb.DashboardTabs.tabs active={:businesses} />
         <%!-- Hidden filter form for domain search --%>
         <form id="filter_form" phx-change="filter" class="hidden">
           <input type="hidden" name="tech" value={@filters.tech} />
@@ -761,6 +763,7 @@ defmodule LSWeb.ExplorerLive do
           <input type="hidden" name="country" value={@filters.country} />
           <input type="hidden" name="business_model" value={@filters.business_model} />
           <input type="hidden" name="industry" value={@filters.industry} />
+          <input type="hidden" name="dns_email_provider" value={@filters.dns_email_provider} />
           <input type="hidden" name="revenue" value={@filters.revenue} />
           <input type="hidden" name="employees" value={@filters.employees} />
           <input type="hidden" name="language" value={@filters.language} />
@@ -808,6 +811,7 @@ defmodule LSWeb.ExplorerLive do
               {"revenue", "Revenue", "💰", true},
               {"employees", "Employees", "👥", true},
               {"language", "Language", "🗣️", true},
+              {"dns_email_provider", "Mail provider", "📬", true},
               {"discovered", "Discovered", "✨", true},
               {"freshness", "Freshness", "🕐", true}
             ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>
@@ -989,8 +993,7 @@ defmodule LSWeb.ExplorerLive do
                   <colgroup>
                     <col data-col="domain" style="width:140px" />
                     <col data-col="title" style="width:160px" />
-                    <col data-col="tech" style="width:130px" />
-                    <col data-col="apps" style="width:130px" />
+                    <col data-col="tech" style="width:200px" />
                     <col data-col="country" style="width:80px" />
                     <col data-col="business" style="width:90px" />
                     <col data-col="industry" style="width:90px" />
@@ -1015,17 +1018,16 @@ defmodule LSWeb.ExplorerLive do
                       <.col_header label="Domain" filter_field={:domain_search} filters={@filters} />
                       <.col_header label="Title" filter_field={nil} filters={@filters} />
                       <.col_header label="Tech" filter_field={:tech} filters={@filters} />
-                      <.col_header label="Apps" filter_field={:shopify_app} filters={@filters} />
                       <.col_header label="Country" filter_field={:country} filters={@filters} />
                       <.col_header label="Business" filter_field={:business_model} filters={@filters} />
                       <.col_header label="Industry" filter_field={:industry} filters={@filters} />
                       <.col_header label="Revenue" filter_field={:revenue} filters={@filters} />
                       <.col_header label="Employees" filter_field={:employees} filters={@filters} />
                       <.col_header label="Lang" filter_field={:language} filters={@filters} />
-                      <.sort_header label="Products" column="product_count" sort={@sort} dir={@sort_dir} />
-                      <.sort_header label="Avg $" column="price_avg" sort={@sort} dir={@sort_dir} />
-                      <.sort_header label="Jobs" column="job_count" sort={@sort} dir={@sort_dir} />
-                      <.sort_header label="SEO" column="seo_score" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="Products" column="shop_product_count" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="Avg $" column="shop_price_avg" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="Jobs" column="hr_job_count" sort={@sort} dir={@sort_dir} />
+                      <.sort_header label="SEO" column="http_deep_seo_score" sort={@sort} dir={@sort_dir} />
                       <.col_header label="Fresh" filter_field={:freshness} filters={@filters} />
                       <.col_header label="Speed" filter_field={nil} filters={@filters} />
                     </tr>
@@ -1038,36 +1040,26 @@ defmodule LSWeb.ExplorerLive do
                         <td class="px-3 py-2.5 truncate text-gray-300"><%= row["http_title"] %></td>
                         <td class="px-3 py-2.5">
                           <div class="flex flex-wrap gap-1 overflow-hidden">
-                            <%= for tech <- format_tech(row["http_tech"]) |> Enum.take(2) do %>
-                              <span class="px-1.5 py-0.5 bg-purple-500/[0.08] text-purple-400/90 rounded text-[11px] font-medium truncate max-w-[80px]"><%= tech %></span>
+                            <%= for tech <- format_tech(row["http_tech"]) |> Enum.take(3) do %>
+                              <span class="px-1.5 py-0.5 bg-purple-500/[0.08] text-purple-400/90 rounded text-[11px] font-medium truncate max-w-[90px]"><%= tech %></span>
                             <% end %>
-                            <%= if length(format_tech(row["http_tech"])) > 2 do %>
-                              <span class="text-gray-600 text-[11px]">+<%= length(format_tech(row["http_tech"])) - 2 %></span>
-                            <% end %>
-                          </div>
-                        </td>
-                        <td class="px-3 py-2.5">
-                          <div class="flex flex-wrap gap-1 overflow-hidden">
-                            <%= for app <- format_pipe_list(row["http_apps"]) |> Enum.take(2) do %>
-                              <span class="px-1.5 py-0.5 bg-purple-500/[0.08] text-purple-400/90 rounded text-[11px] font-medium truncate max-w-[80px]"><%= app %></span>
-                            <% end %>
-                            <%= if length(format_pipe_list(row["http_apps"])) > 2 do %>
-                              <span class="text-gray-600 text-[11px]">+<%= length(format_pipe_list(row["http_apps"])) - 2 %></span>
+                            <%= if length(format_tech(row["http_tech"])) > 3 do %>
+                              <span class="text-gray-600 text-[11px]" title={Enum.join(format_tech(row["http_tech"]), ", ")}>+<%= length(format_tech(row["http_tech"])) - 3 %></span>
                             <% end %>
                           </div>
                         </td>
-                        <td class="px-3 py-2.5 truncate text-gray-300"><%= country_flag(row["inferred_country"]) %> <%= row["inferred_country"] %></td>
-                        <td class="px-3 py-2.5 truncate text-gray-400"><%= row["business_model"] %></td>
-                        <td class="px-3 py-2.5 truncate text-gray-400"><%= row["industry"] %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-300"><%= country_flag(row["estimated_country"]) %> <%= row["estimated_country"] %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-400"><%= row["estimated_business_model"] %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-400"><%= row["estimated_industry"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-300" title={verified_title(row, "revenue")}><%= LS.Verification.display(row, :revenue) %><%= if LS.Verification.verified?(row, :revenue), do: " ✓" %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400" title={verified_title(row, "employees")}><%= LS.Verification.display(row, :employees) %><%= if LS.Verification.verified?(row, :employees), do: " ✓" %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["http_language"] %></td>
-                        <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_num(row["product_count"]) %></td>
-                        <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_money(row["price_avg"]) %></td>
-                        <td class="px-3 py-2.5 text-right tabular-nums"><%= if to_int(row["job_count"]) > 0 do %><span class="text-emerald-400"><%= row["job_count"] %></span><% else %><span class="text-gray-600">-</span><% end %></td>
-                        <td class="px-3 py-2.5 text-right tabular-nums"><%= seo_cell(row["seo_score"]) %></td>
-                        <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= freshness_label(row["enriched_at"]) %></td>
-                        <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= format_response_time(row["http_response_time"]) %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_num(row["shop_product_count"]) %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_money(row["shop_price_avg"]) %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums"><%= if to_int(row["hr_job_count"]) > 0 do %><span class="text-emerald-400"><%= row["hr_job_count"] %></span><% else %><span class="text-gray-600">-</span><% end %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums"><%= seo_cell(row["http_deep_seo_score"]) %></td>
+                        <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= freshness_label(row["http_last_checked_at"]) %></td>
+                        <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= format_response_time(row["http_response_ms"]) %></td>
                       </tr>
                     <% end %>
                     <%= if @results == [] && !@loading do %>
@@ -1127,26 +1119,26 @@ defmodule LSWeb.ExplorerLive do
                   <%!-- Indexed date --%>
                   <div class="flex items-center gap-2 text-[11px] text-gray-500 pb-1 border-b border-white/[0.04]">
                     <span>🕐</span>
-                    <span>Indexed: <span class="text-gray-300"><%= @detail["enriched_at"] |> to_string() |> String.slice(0, 10) %></span></span>
+                    <span>Indexed: <span class="text-gray-300"><%= @detail["http_last_checked_at"] |> to_string() |> String.slice(0, 10) %></span></span>
                   </div>
 
                   <%!-- Classification: Business + Industry + Confidence on one line --%>
                   <div class="grid grid-cols-3 gap-2.5">
-                    <.detail_card icon="🏢" label="Business Model" value={@detail["business_model"]} />
-                    <.detail_card icon="🏭" label="Industry" value={@detail["industry"]} />
-                    <.detail_card icon="🎯" label="Confidence" value={format_pct(@detail["classification_confidence"])} />
+                    <.detail_card icon="🏢" label="Business Model" value={@detail["estimated_business_model"]} />
+                    <.detail_card icon="🏭" label="Industry" value={@detail["estimated_industry"]} />
+                    <.detail_card icon="🎯" label="Confidence" value={format_pct(@detail["estimated_business_model_confidence"])} />
                   </div>
 
                   <%!-- Revenue: Revenue + Employees + Confidence on one line --%>
                   <div class="grid grid-cols-3 gap-2.5">
-                    <.detail_card icon="💰" label={if LS.Verification.verified?(@detail, :revenue), do: "Revenue ✓ #{@detail["verified_revenue_source"]}", else: "Revenue"} value={LS.Verification.display(@detail, :revenue)} />
-                    <.detail_card icon="👥" label={if LS.Verification.verified?(@detail, :employees), do: "Employees ✓ #{@detail["verified_employees_source"]}", else: "Employees"} value={LS.Verification.display(@detail, :employees)} />
-                    <.detail_card icon="📊" label="Confidence" value={format_pct(@detail["revenue_confidence"])} />
+                    <.detail_card icon="💰" label={if LS.Verification.verified?(@detail, :revenue), do: "Revenue ✓ #{@detail["verified_revenue_evidence"]}", else: "Revenue"} value={LS.Verification.display(@detail, :revenue)} />
+                    <.detail_card icon="👥" label={if LS.Verification.verified?(@detail, :employees), do: "Employees ✓ #{@detail["verified_employees_evidence"]}", else: "Employees"} value={LS.Verification.display(@detail, :employees)} />
+                    <.detail_card icon="📊" label="Confidence" value={format_pct(@detail["estimated_revenue_confidence"])} />
                   </div>
 
                   <%!-- Country + Language --%>
                   <div class="grid grid-cols-2 gap-2.5">
-                    <% inferred = LS.CountryInferrer.infer(@detail["ctl_tld"], @detail["http_language"], nil, @detail["bgp_asn_country"], @detail["bgp_asn_org"]) %>
+                    <% inferred = LS.CountryInferrer.infer(@detail["ctl_tld"], @detail["http_language"], nil, @detail["bgp_country"], @detail["bgp_asn_org"]) %>
                     <.detail_card icon="🌍" label="Country" value={if inferred != "", do: "#{country_flag(inferred)} #{country_name(inferred)}"} />
                     <.detail_card icon="🗣️" label="Language" value={if @detail["http_language"], do: language_name(@detail["http_language"])} />
                   </div>
@@ -1163,22 +1155,52 @@ defmodule LSWeb.ExplorerLive do
                     </div>
                   </.detail_section_badge>
 
-                  <%!-- Apps, purple --%>
-                  <%= if has_value?(@detail["http_apps"]) do %>
-                    <.detail_section_badge icon="📦" label="Apps" badge={app_section_badge(@detail)}>
-                      <div class="flex flex-wrap gap-1.5">
-                        <%= for app <- format_tech(@detail["http_apps"]) do %>
-                          <span class="px-2 py-1 bg-purple-500/[0.08] text-purple-400/90 rounded-md text-[11px] font-medium"><%= app %></span>
+                  <%!-- Recent changes: what moved on this business, newest first --%>
+                  <%= if (@detail["changes"] || []) != [] do %>
+                    <.detail_section_badge icon="📡" label="Recent changes" badge={"#{length(@detail["changes"])}"}>
+                      <div class="space-y-1.5">
+                        <%= for ch <- Enum.take(@detail["changes"], 12) do %>
+                          <div class="flex items-center gap-2 text-[12px]">
+                            <span class={"px-1.5 py-0.5 rounded text-[10px] font-semibold " <> case change_tone(ch["change"]) do
+                              :up -> "bg-emerald-500/10 text-emerald-400"
+                              :down -> "bg-amber-500/10 text-amber-400"
+                              _ -> "bg-white/[0.06] text-gray-300" end}><%= field_label(ch["field"]) %></span>
+                            <span class="text-gray-300 truncate"><%= change_sentence(ch) %></span>
+                            <span class="text-gray-600 text-[11px] flex-shrink-0 ml-auto"><%= String.slice(to_string(ch["changed_at"]), 0, 10) %></span>
+                          </div>
                         <% end %>
                       </div>
                     </.detail_section_badge>
                   <% end %>
 
+                  <%!-- Contact facts from the footer and JSON-LD (data model v2) --%>
+                  <%= if has_value?(@detail["http_phone"]) or has_value?(@detail["http_address"]) or has_value?(@detail["http_company_id"]) or format_pipe_list(@detail["http_social_links"]) != [] do %>
+                    <.detail_section_badge icon="📍" label="Contact" badge={nil}>
+                      <div class="grid grid-cols-2 gap-2.5">
+                        <.detail_card icon="📞" label="Phone" value={@detail["http_phone"]} />
+                        <.detail_card icon="🏷️" label="Company id" value={@detail["http_company_id"]} />
+                      </div>
+                      <%= if has_value?(@detail["http_address"]) do %>
+                        <div class="mt-2.5 bg-[#0B1020] rounded-lg p-3">
+                          <div class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1">Address</div>
+                          <p class="text-[12px] text-gray-300"><%= @detail["http_address"] %></p>
+                        </div>
+                      <% end %>
+                      <%= if format_pipe_list(@detail["http_social_links"]) != [] do %>
+                        <div class="mt-2.5 flex flex-wrap gap-1.5">
+                          <%= for url <- format_pipe_list(@detail["http_social_links"]) do %>
+                            <a href={url} target="_blank" rel="noopener noreferrer" class="px-2 py-0.5 bg-blue-500/[0.06] text-blue-400 hover:text-blue-300 rounded text-[11px] truncate max-w-[220px]"><%= String.replace(url, ~r/^https?:\/\/(www\.)?/, "") %></a>
+                          <% end %>
+                        </div>
+                      <% end %>
+                    </.detail_section_badge>
+                  <% end %>
+
                   <%!-- Revenue Evidence, gold/silver/bronze --%>
-                  <%= if format_evidence(@detail["revenue_evidence"]) != [] do %>
+                  <%= if format_evidence(@detail["estimated_revenue_evidence"]) != [] do %>
                     <.detail_section_badge icon="📊" label="Revenue Evidence" badge={nil}>
                       <div class="space-y-1.5">
-                        <%= for item <- format_evidence(@detail["revenue_evidence"]) do %>
+                        <%= for item <- format_evidence(@detail["estimated_revenue_evidence"]) do %>
                           <% {tier, label} = parse_evidence_item(item) %>
                           <div class="flex items-center gap-2 text-[12px]">
                             <span class={evidence_tier_class(tier)}><%= evidence_tier_dot(tier) %></span>
@@ -1192,7 +1214,7 @@ defmodule LSWeb.ExplorerLive do
                   <%!-- HTTP --%>
                   <.detail_section_badge icon="🌐" label="HTTP" badge={nil}>
                     <div class="grid grid-cols-2 gap-2.5">
-                      <.detail_card icon="⚡" label="Response Time" value={format_response_time(@detail["http_response_time"])} />
+                      <.detail_card icon="⚡" label="Response Time" value={format_response_time(@detail["http_response_ms"])} />
                       <.detail_card icon="📡" label="Status" value={@detail["http_status"]} />
                       <.detail_card icon="📄" label="Content Type" value={friendly_content_type(@detail["http_content_type"])} />
                       <.detail_card icon="🏷️" label="Schema Type" value={@detail["http_schema_type"]} />
@@ -1210,11 +1232,11 @@ defmodule LSWeb.ExplorerLive do
                       </div>
                     <% end %>
                     <%!-- Pages, blue, clickable --%>
-                    <%= if has_value?(@detail["http_pages"]) do %>
+                    <%= if has_value?(@detail["http_pages_found"]) do %>
                       <div class="mt-2.5 bg-[#0B1020] rounded-lg p-3">
                         <div class="text-[10px] text-gray-600 uppercase tracking-wider font-semibold mb-1">📑 Pages</div>
                         <div class="flex flex-wrap gap-1.5">
-                          <%= for page <- format_pipe_list(@detail["http_pages"]) |> Enum.take(10) do %>
+                          <%= for page <- format_pipe_list(@detail["http_pages_found"]) |> Enum.take(10) do %>
                             <a href={"https://#{@detail["domain"]}#{page}"} target="_blank" rel="noopener noreferrer"
                               class="px-2 py-0.5 bg-blue-500/[0.06] text-blue-400 hover:text-blue-300 hover:bg-blue-500/[0.12] rounded text-[11px] transition"><%= page %></a>
                           <% end %>
@@ -1236,14 +1258,18 @@ defmodule LSWeb.ExplorerLive do
 
                   <%!-- DNS --%>
                   <.detail_section_badge icon="🔍" label="DNS" badge={dns_section_badge(@detail)}>
-                    <%= if has_value?(@detail["dns_mx"]) do %>
-                      <% provider = mx_provider(@detail["dns_mx"]) %>
-                      <%= if provider do %>
-                        <div class="flex items-center gap-2 mb-2.5 bg-[#0B1020] rounded-lg px-3 py-2">
-                          <span class="text-[11px] text-gray-500">📬 Mail Provider</span>
-                          <span class="text-[13px] font-semibold text-white"><%= provider %></span>
-                        </div>
-                      <% end %>
+                    <%= if has_value?(@detail["dns_email_provider"]) do %>
+                      <div class="flex items-center gap-2 mb-2.5 bg-[#0B1020] rounded-lg px-3 py-2">
+                        <span class="text-[11px] text-gray-500">📬 Mail Provider</span>
+                        <span class="text-[13px] font-semibold text-white"><%= @detail["dns_email_provider"] %></span>
+                      </div>
+                    <% end %>
+                    <%= if format_pipe_list(@detail["dns_tech"]) != [] do %>
+                      <div class="mb-2.5 flex flex-wrap gap-1.5">
+                        <%= for v <- format_pipe_list(@detail["dns_tech"]) do %>
+                          <span class="px-2 py-0.5 bg-purple-500/[0.06] text-purple-400 rounded text-[11px]"><%= v %></span>
+                        <% end %>
+                      </div>
                     <% end %>
                     <%!-- SPF and DKIM info derived from TXT --%>
                     <% spf = LS.DNS.SPF.parse(@detail["dns_txt"]) %>
@@ -1271,7 +1297,7 @@ defmodule LSWeb.ExplorerLive do
                       </div>
                     <% end %>
                     <div class="grid grid-cols-2 gap-2.5">
-                      <.detail_card icon="🅰️" label="A Record" value={@detail["dns_a"]} />
+                      <.detail_card icon="🅰️" label="A Record" value={join_list(@detail["dns_a"])} />
                       <.detail_card icon="6️⃣" label="AAAA Record" value={@detail["dns_aaaa"]} />
                       <.detail_card icon="📮" label="MX Record" value={format_mx_short(@detail["dns_mx"])} />
                       <.detail_card icon="↪️" label="CNAME" value={@detail["dns_cname"]} />
@@ -1295,21 +1321,21 @@ defmodule LSWeb.ExplorerLive do
                   <%!-- Network / BGP --%>
                   <.detail_section_badge icon="📡" label="Network (BGP)" badge={network_section_badge(@detail)}>
                     <div class="grid grid-cols-2 gap-2.5">
-                      <.detail_card icon="🔢" label="IP Address" value={@detail["bgp_ip"]} />
-                      <.detail_card icon="#️⃣" label="ASN Number" value={@detail["bgp_asn_number"]} />
-                      <.detail_card icon="🏢" label="ASN Org" value={@detail["bgp_asn_org"]} />
-                      <.detail_card icon="🌐" label="ASN Prefix" value={@detail["bgp_asn_prefix"]} />
+                      <.detail_card icon="🔢" label="IP Address" value={List.first(format_pipe_list(@detail["dns_a"]))} />
+                      <.detail_card icon="#️⃣" label="ASN" value={@detail["bgp_asn"]} />
+                      <.detail_card icon="🏢" label="Network operator" value={@detail["bgp_asn_org"]} />
+                      <.detail_card icon="🌐" label="Network country" value={@detail["bgp_country"]} />
                     </div>
                   </.detail_section_badge>
 
                   <%!-- Domain Registration --%>
                   <.detail_section_badge icon="🏛️" label="Domain Registration" badge={domain_section_badge(@detail)}>
                     <div class="grid grid-cols-2 gap-2.5">
-                      <.detail_card icon="📅" label="Created" value={format_date(@detail["rdap_domain_created_at"])} />
-                      <.detail_card icon="⏳" label="Expires" value={format_date(@detail["rdap_domain_expires_at"])} />
-                      <.detail_card icon="🔄" label="Updated" value={format_date(@detail["rdap_domain_updated_at"])} />
+                      <.detail_card icon="📅" label="Created" value={format_date(@detail["rdap_created_at"])} />
+                      <.detail_card icon="⏳" label="Expires" value={format_date(@detail["rdap_expires_at"])} />
+                      <.detail_card icon="🔄" label="Updated" value={format_date(@detail["rdap_updated_at"])} />
                       <.detail_card icon="🏛️" label="Registrar" value={@detail["rdap_registrar"]} />
-                      <.detail_card icon="📋" label="Status" value={@detail["rdap_status"]} />
+                      <.detail_card icon="📋" label="Status" value={join_list(@detail["rdap_status"])} />
                     </div>
                     <%= if has_value?(@detail["rdap_nameservers"]) do %>
                       <div class="mt-2.5 bg-[#0B1020] rounded-lg p-3">
@@ -1365,18 +1391,18 @@ defmodule LSWeb.ExplorerLive do
                        the truth is "we have not looked yet". --%>
                   <% depth = @detail["depth"] || %{} %>
 
-                  <%= if depth["depth_enriched_at"] do %>
-                    <%= if depth["seo_score"] do %>
-                      <.detail_section_badge icon="⚡" label="SEO & Performance" badge={"#{depth["seo_score"]}/100"}>
+                  <%= if depth["http_deep_last_seen_at"] do %>
+                    <%= if depth["http_deep_seo_score"] do %>
+                      <.detail_section_badge icon="⚡" label="SEO & Performance" badge={"#{depth["http_deep_seo_score"]}/100"}>
                         <div class="grid grid-cols-2 gap-2.5">
-                          <.detail_card icon="🎯" label="SEO score" value={"#{depth["seo_score"]}/100"} />
-                          <.detail_card icon="📝" label="Words" value={depth["seo_word_count"]} />
-                          <.detail_card icon="🖼️" label="Alt coverage" value={depth["seo_alt_ratio"] && "#{round((depth["seo_alt_ratio"] || 0) * 100)}%"} />
-                          <.detail_card icon="⏱️" label={if depth["render_engine"] == "camoufox", do: "LCP (measured)", else: "LCP (estimated)"} value={depth["perf_lcp_ms"] && "#{depth["perf_lcp_ms"]}ms"} />
+                          <.detail_card icon="🎯" label="SEO score" value={"#{depth["http_deep_seo_score"]}/100"} />
+                          <.detail_card icon="📝" label="Words" value={depth["http_deep_word_count"]} />
+                          <.detail_card icon="🖼️" label="Alt coverage" value={depth["http_deep_alt_ratio"] && "#{round((depth["http_deep_alt_ratio"] || 0) * 100)}%"} />
+                          <.detail_card icon="⏱️" label={if depth["http_deep_render_engine"] == "camoufox", do: "LCP (measured)", else: "LCP (estimated)"} value={depth["http_deep_lcp_ms"] && "#{depth["http_deep_lcp_ms"]}ms"} />
                         </div>
-                        <%= if depth["seo_issues"] && depth["seo_issues"] != "" do %>
+                        <%= if format_pipe_list(depth["http_deep_seo_issues"]) != [] do %>
                           <div class="mt-2 flex flex-wrap gap-1.5">
-                            <%= for issue <- String.split(depth["seo_issues"], "|", trim: true) do %>
+                            <%= for issue <- format_pipe_list(depth["http_deep_seo_issues"]) do %>
                               <span class="rounded-md bg-amber-500/10 px-2 py-0.5 text-[11px] text-amber-300"><%= issue %></span>
                             <% end %>
                           </div>
@@ -1409,9 +1435,9 @@ defmodule LSWeb.ExplorerLive do
                     <% end %>
 
                     <%= if (@detail["jobs"] || []) != [] do %>
-                      <.detail_section_badge icon="💼" label="Open roles" badge={"#{depth["job_count"] || length(@detail["jobs"])}"}>
-                        <%= if depth["ats_platform"] && depth["ats_platform"] != "" do %>
-                          <p class="mb-2 text-[11px] text-white/40">via <%= depth["ats_platform"] %></p>
+                      <.detail_section_badge icon="💼" label="Open roles" badge={"#{depth["hr_job_count"] || length(@detail["jobs"])}"}>
+                        <%= if depth["hr_ats"] && depth["hr_ats"] != "" do %>
+                          <p class="mb-2 text-[11px] text-white/40">via <%= depth["hr_ats"] %></p>
                         <% end %>
                         <div class="space-y-1 max-h-[220px] overflow-y-auto">
                           <%= for j <- @detail["jobs"] do %>
@@ -1427,12 +1453,12 @@ defmodule LSWeb.ExplorerLive do
                     <% end %>
 
                     <%= if (@detail["products"] || []) != [] do %>
-                      <.detail_section_badge icon="🛍️" label="Catalogue" badge={"#{depth["product_count"] || length(@detail["products"])}"}>
+                      <.detail_section_badge icon="🛍️" label="Catalogue" badge={"#{depth["shop_product_count"] || length(@detail["products"])}"}>
                         <div class="grid grid-cols-2 gap-2.5 mb-2">
-                          <.detail_card icon="💲" label="Avg price" value={depth["price_avg"]} />
-                          <.detail_card icon="🆕" label="New in 30d" value={depth["new_products_30d"]} />
-                          <.detail_card icon="🏷️" label="Vendors" value={depth["vendor_count"]} />
-                          <.detail_card icon="📉" label="Out of stock" value={depth["oos_ratio"] && "#{round((depth["oos_ratio"] || 0) * 100)}%"} />
+                          <.detail_card icon="💲" label="Avg price" value={depth["shop_price_avg"]} />
+                          <.detail_card icon="🆕" label="New in 30d" value={depth["shop_new_products_30d"]} />
+                          <.detail_card icon="🏷️" label="Vendors" value={depth["shop_vendor_count"]} />
+                          <.detail_card icon="📉" label="Out of stock" value={depth["shop_oos_ratio"] && "#{round((depth["shop_oos_ratio"] || 0) * 100)}%"} />
                         </div>
                         <div class="space-y-1 max-h-[220px] overflow-y-auto">
                           <%= for pr <- @detail["products"] do %>
@@ -1455,13 +1481,13 @@ defmodule LSWeb.ExplorerLive do
                       </.detail_section_badge>
                     <% end %>
 
-                    <%= if (depth["mission"] || "") != "" or (depth["hq_location"] || "") != "" do %>
+                    <%= if (depth["estimated_summary"] || "") != "" or (depth["estimated_hq_location"] || "") != "" do %>
                       <.detail_section_badge icon="🏢" label="Company" badge={nil}>
-                        <%= if (depth["hq_location"] || "") != "" do %>
-                          <.detail_card icon="📍" label="HQ" value={depth["hq_location"]} />
+                        <%= if (depth["estimated_hq_location"] || "") != "" do %>
+                          <.detail_card icon="📍" label="HQ" value={depth["estimated_hq_location"]} />
                         <% end %>
-                        <%= if (depth["mission"] || "") != "" do %>
-                          <p class="mt-2 text-[12px] text-white/60 leading-relaxed"><%= depth["mission"] %></p>
+                        <%= if (depth["estimated_summary"] || "") != "" do %>
+                          <p class="mt-2 text-[12px] text-white/60 leading-relaxed"><%= depth["estimated_summary"] %></p>
                         <% end %>
                       </.detail_section_badge>
                     <% end %>

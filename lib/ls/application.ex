@@ -174,6 +174,8 @@ defmodule LS.Application do
       # Pipeline 2 (depth): its own queue, plus the compactor that folds
       # discovery + enrichment into the `businesses` product table every 5 min.
       LS.Cluster.EnrichmentQueue,
+      # The tech catalog the fold reads must match this release (data model v2).
+      LS.Tech.CatalogSync,
       LS.Cluster.Compactor,
       # Pipeline 3 (verification): authoritative sources → verified_facts.
       # Runs on the master only — bulk downloads against official endpoints

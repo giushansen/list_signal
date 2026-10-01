@@ -151,6 +151,9 @@ defmodule LS.Pipeline do
           h1 = TextExtractor.extract_h1(body)
           body_text = TextExtractor.extract_visible_text(body, 500)
           nav_links = TextExtractor.extract_nav_links(body)
+          # The page as the product keeps it (2026-10-01): header, ordered
+          # body blocks, footer, JSON-LD, and the footer scalars.
+          parts = LS.HTTP.PageBlocks.extract(body)
           result = %{
             http_status: resp.status,
             http_response_time: resp[:elapsed_ms],
@@ -167,8 +170,15 @@ defmodule LS.Pipeline do
             http_error: "",
             http_schema_type: schema_type,
             http_og_type: og_type,
+            http_phone: parts.phone,
+            http_address: parts.address,
+            http_social_links: Enum.join(parts.social_links, "|"),
+            http_company_id: parts.company_id,
+            http_nav_links: Enum.join(parts.nav_links, "|"),
+            http_shopify_app_handles: Enum.join(app_result[:handles] || [], "|"),
             # Ephemeral — used by classifier, text stored separately via merge_row
             _h1: h1,
+            _page_parts: parts,
             # Computed here because the RAW html is in scope: tel: hrefs and
             # JSON-LD addressCountry are markup, and the extracted visible
             # text has already thrown both away.
@@ -416,6 +426,13 @@ defmodule LS.Pipeline do
       http_error: http[:http_error] || "",
       http_h1: h1,
       http_body_snippet: body_text,
+      http_phone: http[:http_phone] || "",
+      http_address: http[:http_address] || "",
+      http_social_links: http[:http_social_links] || "",
+      http_company_id: http[:http_company_id] || "",
+      http_nav_links: http[:http_nav_links] || "",
+      http_shopify_app_handles: http[:http_shopify_app_handles] || "",
+      _page_parts: http[:_page_parts],
       business_model: classify_result.business_model,
       industry: classify_result.industry,
       classification_confidence: classify_result.confidence,
@@ -463,9 +480,32 @@ defmodule LS.Pipeline do
       # :defer bookkeeping rides on the row until WorkerAgent finalizes it
       case ml_defer do
         {text, heuristic} -> Map.merge(row, %{_ml_text: text, _ml_heuristic: heuristic})
-        nil -> row
+        nil -> finalize_pages(row)
       end
     end)
+  end
+
+  @doc """
+  Decide whether the page blocks are kept, once the classification is final.
+
+  Who gets a page row (owner's bar, 2026-10-01): a successful fetch of a
+  site that is not junk and is classified at 0.6 confidence or better,
+  13.4M domains in production. `_page_parts` is dropped either way: it
+  must never travel to the master (it is the parsed page, up to a few
+  hundred KB), only the capped blocks do.
+  """
+  def finalize_pages(row) do
+    parts = row[:_page_parts]
+    row = Map.delete(row, :_page_parts)
+
+    keep? =
+      is_map(parts) and is_integer(row[:http_status]) and row[:http_status] in 200..399 and
+        (row[:is_junk] || "") == "" and (row[:business_model] || "") != "" and
+        (row[:classification_confidence] || 0) >= 0.6
+
+    if keep?,
+      do: Map.put(row, :_pages, [LS.HTTP.PageBlocks.page_row(parts, "home", row[:enriched_at])]),
+      else: row
   end
 
   @doc """
@@ -478,10 +518,11 @@ defmodule LS.Pipeline do
     row
     |> Map.drop([:_ml_text, :_ml_heuristic])
     |> Map.merge(%{business_model: r.business_model, industry: r.industry, classification_confidence: r.confidence, classification_source: r[:source] || ""})
+    |> finalize_pages()
   end
 
   @doc "Drop defer bookkeeping from a row that needed no ML."
-  def strip_ml_defer(row), do: Map.drop(row, [:_ml_text, :_ml_heuristic])
+  def strip_ml_defer(row), do: row |> Map.drop([:_ml_text, :_ml_heuristic]) |> finalize_pages()
 
   defp add_revenue_estimate(row) do
     rev = RevenueEstimator.estimate(row)

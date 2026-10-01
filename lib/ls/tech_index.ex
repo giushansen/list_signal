@@ -73,7 +73,7 @@ defmodule LS.TechIndex do
         tech, ifNull(toUInt32(tranco_rank), 4294967295) AS rank, domain, http_title, http_tech, country,
         tranco_rank, majestic_rank, is_shopify, http_status, http_response_time, http_language,
         rdap_registrar, rdap_domain_created_at, bgp_asn_org, dns_mx, http_emails, enriched_at, now()
-    FROM domains_current FINAL
+    FROM domains FINAL
     ARRAY JOIN splitByChar('|', http_tech) AS tech
     WHERE http_tech != '' AND http_title != '' AND tech != ''
     SETTINGS max_threads = 2, max_insert_threads = 1, max_execution_time = 1700, max_memory_usage = 3000000000

@@ -27,6 +27,42 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ## 2026-10-01
 
+**Data model v2: one spec, prefixed names, arrays, a page store, a change
+log.** Measured first (2026-09-26 to 10-01): the stored "body snippet" was
+the first 500 visible characters, median 502 bytes of navigation menu, 32.6
+GiB across the two domain tables, catching an email on 7% of homepages
+while the footer carries one on 23%. The app detector's humanised Shopify
+handles had produced 7,304 distinct "apps", 6,262 on fewer than 100 stores.
+A 22.8M-row array column timed at 0.5 s for `has()` against 0.74 s for
+`LIKE`, bloom filter or not, so one array is as fast as a split. Shopify
+answered 3.6% of fetches with 429 against 0.37% fleet-wide because the
+per-IP limiter keyed its 1.4M stores on a handful of edge addresses.
+
+What changed: `LS.Schema.Columns` declares the product table once and
+generates DDL, fold, v1 transform, change detection, API shape and docs.
+Prefix = producing pipeline, `estimated_` with `_confidence`/`_evidence`,
+`verified_` for registries, `_source` retired. Lists are Arrays; `http_tech`
+holds platforms, vendors, plugins and apps through `LS.Tech.Catalog` (a
+closed list, aliases resolved, raw handles kept in
+`http_shopify_app_handles`). `dns_email_provider` and `dns_tech` come from
+`LS.DNS.Vendors`, one rule list for Elixir and SQL. Workers run
+`LS.HTTP.PageBlocks`: header, ordered body blocks, footer, JSON-LD and the
+footer scalars (phone, address, company id, social links) into `http_pages`
+and the log; measured 2,014 compressed bytes per page with ZSTD, 27 GB for
+the 13.4M real businesses, the same disk the snippet costs. Emails and social
+links fold as a union. Each compaction pass lands in a scratch table,
+`changes_log` is written from the scratch-vs-current diff (rules per column
+on the spec), then the rows move into `businesses`. Tables renamed to
+`<pipeline>_log` / `<pipeline>_<things>` / `domains` / `businesses`; legacy
+column names stay one release as ALIAS columns. The dashboard gained a
+Signals tab with its own CSV on the same quota; `/api/v1/changes` and the
+data dictionary on /developers are generated from the spec. The limiter
+keys Shopify, Wix and Squarespace edges as one client each.
+
+Migration: `clickhouse/migrations/025_data_model_v2.sh`, additive first,
+one atomic product-table swap, v1 kept as `bak_businesses_v1`. Twenty-two
+committed test files pinned the v1 names and need the owner's unlock.
+
 **Fourth abuse report, from the first domain ever put on the never-contact
 list.** expoBMS (the WAF behind morbihan-genealogie.bzh, reporter of
 2026-08) reported one GET / from chi3 at 05:46 UTC on 09-30. The list

@@ -11,7 +11,8 @@ defmodule LS.Cluster.Inserter do
   @flush_size 5_000
   @ch_url "http://127.0.0.1:8123/"
   @ch_db "ls"
-  @ch_table "domains_history"
+  @ch_table LS.Schema.Tables.enrich_log()
+  @pages_table LS.Schema.Tables.http_pages()
 
   @columns [
     :enriched_at, :worker, :domain,
@@ -36,7 +37,11 @@ defmodule LS.Cluster.Inserter do
     :tranco_rank, :majestic_rank, :majestic_ref_subnets,
     :is_malware, :is_phishing, :is_disposable_email, :is_junk,
     # Revenue estimation
-    :estimated_revenue, :estimated_employees, :revenue_confidence, :revenue_evidence
+    :estimated_revenue, :estimated_employees, :revenue_confidence, :revenue_evidence,
+    # Page facts (data model v2, 2026-10-01): footer and JSON-LD scalars,
+    # social links, nav link texts, raw Shopify app handles
+    :http_phone, :http_address, :http_social_links, :http_company_id, :http_nav_links,
+    :http_shopify_app_handles
   ]
 
   def columns, do: @columns
@@ -237,6 +242,7 @@ defmodule LS.Cluster.Inserter do
   end
 
   defp insert_to_clickhouse(rows) do
+    insert_pages(rows)
     tsv = rows |> Enum.map(&row_to_tsv/1) |> Enum.join("\n")
     cols = @columns |> Enum.map(&Atom.to_string/1) |> Enum.join(", ")
     query = "INSERT INTO #{@ch_db}.#{@ch_table} (#{cols}) FORMAT TabSeparated"
@@ -253,6 +259,35 @@ defmodule LS.Cluster.Inserter do
       {:error, e} -> {:error, inspect(e)}
     end
   rescue e -> {:error, Exception.message(e)}
+  end
+
+  # The ordered page blocks ride on the row as `:_pages` (a list of maps,
+  # see LS.HTTP.PageBlocks) and land in `http_pages`, latest version per
+  # (domain, page kind). JSONEachRow: arrays of free text through
+  # TabSeparated would need a second escaping layer, and the three
+  # TabSeparated batch kills on record are reason enough not to add one.
+  # Best effort: a failed page insert is logged and never blocks the row.
+  defp insert_pages(rows) do
+    pages =
+      Enum.flat_map(rows, fn row ->
+        for p <- List.wrap(row[:_pages]), is_map(p), do: Map.put(p, :domain, row[:domain])
+      end)
+
+    if pages != [] do
+      body = Enum.map_join(pages, "\n", &Jason.encode!/1) <> "\n"
+      query = "INSERT INTO #{@ch_db}.#{@pages_table} FORMAT JSONEachRow"
+      url = "#{@ch_url}?query=#{URI.encode(query)}"
+
+      case LS.Clickhouse.post(url, body, receive_timeout: 30_000, finch: LS.Finch.CH) do
+        {:ok, %{status: 200}} -> :ok
+        {:ok, %{status: st, body: b}} -> Logger.warning("[PAGES] insert failed HTTP #{st}: #{String.slice(to_string(b), 0, 200)}")
+        {:error, e} -> Logger.warning("[PAGES] insert failed: #{inspect(e)}")
+      end
+    end
+
+    :ok
+  rescue
+    e -> Logger.warning("[PAGES] insert crashed: #{Exception.message(e)}")
   end
 
   # ── Data-quality guard ──────────────────────────────────────────────────────

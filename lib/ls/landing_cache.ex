@@ -87,7 +87,7 @@ defmodule LS.LandingCache do
   end
 
   defp fetch_all do
-    insert_last_min = fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 MINUTE")
+    insert_last_min = fetch_count("SELECT count() FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 MINUTE")
     %{
       # Count the product table, NOT domains_current. Same predicate, very
       # different universe: domains_current holds every domain ever crawled, so
@@ -98,17 +98,17 @@ defmodule LS.LandingCache do
       # can actually reach. (2026-08-24)
       store_count: fetch_count("SELECT count() FROM businesses WHERE is_shopify = 1"),
       business_count: fetch_count("SELECT count() FROM businesses"),
-      total_domains: fetch_count("SELECT count() FROM domains_current"),
+      total_domains: fetch_count("SELECT count() FROM domains"),
       # Two arrayJoin scans of domains_current, ~10s each, and the recent-store
       # scan below (~18s: is_shopify over 193M rows sorted by enriched_at) ran
       # every minute for numbers that move by the day. Every 30 minutes now
       # (2026-09-09, measured on prod as ls_app's slowest routine queries).
-      tech_count: slow(:tech_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains_current WHERE http_tech != ''") end),
-      app_count: slow(:app_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains_current WHERE http_apps != ''") end),
+      tech_count: slow(:tech_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains WHERE http_tech != ''") end),
+      app_count: slow(:app_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains WHERE http_apps != ''") end),
       scan_rate: insert_last_min,
       ch_insert_rate: insert_last_min,
       ctl_rate_per_sec: fetch_ctl_rate(),
-      stores_last_hour: fetch_count("SELECT count() FROM domains_history WHERE enriched_at >= now() - INTERVAL 1 HOUR"),
+      stores_last_hour: fetch_count("SELECT count() FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 HOUR"),
       recent_stores: slow(:recent_stores, &fetch_recent_stores/0),
       top_stores: fetch_top_stores(),
       top_businesses: fetch_top_businesses(),

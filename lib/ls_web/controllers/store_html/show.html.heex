@@ -275,7 +275,7 @@
             <%= for [kind, value, changed_at] <- Enum.take(@store.recent_changes, 2) do %>
               <div class="flex items-center gap-2">
                 <span class={["rounded-full px-2 py-0.5 text-xs font-semibold border",
-                  if(String.ends_with?(to_string(kind), "added") or kind == "started_hiring",
+                  if(String.ends_with?(to_string(kind), ["added", "started", "back"]),
                     do: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
                     else: "bg-amber-500/10 text-amber-400 border-amber-500/20")]}>
                   <%= String.replace(to_string(kind), "_", " ") %>

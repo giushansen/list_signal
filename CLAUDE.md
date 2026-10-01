@@ -184,10 +184,14 @@ request after agents rewrote test assertions to fit their own changes.
 
 ## Data
 
-- **Never let a writer blank another writer's data.** `domains_current` and
+- **Never let a writer blank another writer's data.** `domains` and
   `businesses` are newest-row-wins; a partial row erases good data. Pipelines
   write only their own tables/columns, and the compactor coalesces
   "last non-empty per signal unit".
+- **The product table is declared once**, in `LS.Schema.Columns` (data model
+  v2, 2026-10-01). A new column goes there, with its fold rule and signal
+  rule, and nowhere else; naming rules in `docs/data-model-standards.md`.
+  Table names come from `LS.Schema.Tables`, never as bare literals.
 - ClickHouse facts worth remembering (measured on prod, 2026-07):
   sparse columns are ~free (191:1 compression), `ALTER ADD COLUMN` is 0.056s,
   but a JOIN costs ~9× a single-table scan. So: **wide tables for 1:1 scalars,

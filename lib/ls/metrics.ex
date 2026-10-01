@@ -23,7 +23,7 @@ defmodule LS.Metrics do
   # ── ClickHouse-backed ──
 
   @doc "domains_history rows inserted in the last `hours` (fleet ingestion volume)."
-  def ingestion(hours \\ 3), do: ch_one("SELECT count() FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR", 0)
+  def ingestion(hours \\ 3), do: ch_one("SELECT count() FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR", 0)
 
   @doc "Per-worker throughput and quality over the last `hours`."
   def per_worker(hours \\ 6) do
@@ -33,7 +33,7 @@ defmodule LS.Metrics do
       round(100 * countIf(http_status BETWEEN 200 AND 399) / count(), 1) AS http_ok_pct,
       round(100 * countIf(dns_a != '' AND (http_status IS NULL OR http_status = 0) AND http_error != '') / nullif(countIf(dns_a != ''), 0), 1) AS resolved_fail_pct,
       round(100 * countIf(business_model != '') / count(), 1) AS classified_pct
-    FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR
+    FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR
     GROUP BY worker ORDER BY rows DESC
     """)
     |> Enum.map(fn [w, r, ok, rf, cl] ->
@@ -48,24 +48,24 @@ defmodule LS.Metrics do
 
   @doc "Workers that did real work in the last `days` — the set we EXPECT to be live."
   def known_workers(days \\ 3) do
-    ch_rows("SELECT worker, count() FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(days)} DAY AND worker != '' GROUP BY worker HAVING count() >= #{@known_worker_floor}")
+    ch_rows("SELECT worker, count() FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(days)} DAY AND worker != '' GROUP BY worker HAVING count() >= #{@known_worker_floor}")
     |> Enum.map(&hd/1)
   end
 
   @doc "Row counts of the three end tables."
   def table_counts do
-    case Clickhouse.query_raw("SELECT (SELECT count() FROM domains_current), (SELECT count() FROM domains_history), (SELECT count() FROM businesses FINAL)", 8_000) do
+    case Clickhouse.query_raw("SELECT (SELECT count() FROM domains), (SELECT count() FROM enrich_log), (SELECT count() FROM businesses FINAL)", 8_000) do
       {:ok, [[dc, dh, b]]} -> %{domains_current: to_i(dc), domains_history: to_i(dh), businesses: to_i(b)}
       _ -> %{domains_current: 0, domains_history: 0, businesses: 0}
     end
   end
 
   @doc "Seconds since the newest `businesses` row — how stale the product table is (compactor health)."
-  def businesses_stale_seconds, do: ch_one("SELECT dateDiff('second', max(as_of), now()) FROM businesses", 0)
+  def businesses_stale_seconds, do: ch_one("SELECT dateDiff('second', max(compiled_at), now()) FROM businesses", 0)
 
   @doc "Classification + junk coverage of the product table."
   def classification do
-    case Clickhouse.query_raw("SELECT round(100*countIf(business_model!='')/count(),1), round(100*countIf(is_junk!='')/count(),1), count() FROM businesses FINAL", 8_000) do
+    case Clickhouse.query_raw("SELECT round(100*countIf(estimated_business_model!='')/count(),1), round(100*countIf(estimated_junk!='')/count(),1), count() FROM businesses FINAL", 8_000) do
       {:ok, [[c, j, n]]} -> %{classified_pct: to_f(c), junk_pct: to_f(j), total: to_i(n)}
       _ -> %{classified_pct: 0.0, junk_pct: 0.0, total: 0}
     end
@@ -81,13 +81,13 @@ defmodule LS.Metrics do
 
   @doc "Per-day domains_history volume for the last `days` (report trend + baseline)."
   def daily_ingestion(days \\ 8) do
-    ch_rows("SELECT toDate(enriched_at) d, count() FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(days)} DAY GROUP BY d ORDER BY d")
+    ch_rows("SELECT toDate(enriched_at) d, count() FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(days)} DAY GROUP BY d ORDER BY d")
     |> Enum.map(fn [d, n] -> %{day: d, rows: to_i(n)} end)
   end
 
   @doc "Per-day pipeline-2 depth-enrichment volume."
   def daily_enrichment(days \\ 8) do
-    ch_rows("SELECT toDate(enriched_at) d, count() FROM biz_enrichment WHERE enriched_at > now() - INTERVAL #{i(days)} DAY GROUP BY d ORDER BY d")
+    ch_rows("SELECT toDate(enriched_at) d, count() FROM http_deep_state WHERE enriched_at > now() - INTERVAL #{i(days)} DAY GROUP BY d ORDER BY d")
     |> Enum.map(fn [d, n] -> %{day: d, rows: to_i(n)} end)
   end
 
@@ -103,16 +103,16 @@ defmodule LS.Metrics do
     ch_rows("""
     SELECT s.kind, count() AS events,
       round(100 * countIf(
-        (s.kind = 'tech_added'     AND has(splitByChar('|', b.http_tech), s.value)) OR
-        (s.kind = 'tech_removed'   AND NOT has(splitByChar('|', b.http_tech), s.value)) OR
-        (s.kind = 'app_added'      AND has(splitByChar('|', b.http_apps), s.value)) OR
-        (s.kind = 'app_removed'    AND NOT has(splitByChar('|', b.http_apps), s.value)) OR
-        (s.kind = 'started_hiring' AND coalesce(b.job_count, 0) > 0) OR
-        (s.kind = 'stopped_hiring' AND coalesce(b.job_count, 0) = 0)) / count(), 1) AS holds_pct
-    FROM (SELECT kind, value, domain FROM biz_signal WHERE changed_at >= now() - INTERVAL 63 DAY AND changed_at < now() - INTERVAL 56 DAY) s
+        (s.kind = 'http_tech added'       AND has(b.http_tech, s.value)) OR
+        (s.kind = 'http_tech removed'     AND NOT has(b.http_tech, s.value)) OR
+        (s.kind = 'hr_job_count started'  AND coalesce(b.hr_job_count, 0) > 0) OR
+        (s.kind = 'hr_job_count stopped'  AND coalesce(b.hr_job_count, 0) = 0)) / count(), 1) AS holds_pct
+    FROM (SELECT concat(field, ' ', change) AS kind, value, domain FROM changes_log
+          WHERE field IN ('http_tech', 'hr_job_count')
+            AND changed_at >= now() - INTERVAL 63 DAY AND changed_at < now() - INTERVAL 56 DAY) s
     INNER JOIN (
-      SELECT domain, http_tech, http_apps, job_count FROM businesses FINAL
-      WHERE domain IN (SELECT domain FROM biz_signal WHERE changed_at >= now() - INTERVAL 63 DAY AND changed_at < now() - INTERVAL 56 DAY)
+      SELECT domain, http_tech, hr_job_count FROM businesses FINAL
+      WHERE domain IN (SELECT domain FROM changes_log WHERE changed_at >= now() - INTERVAL 63 DAY AND changed_at < now() - INTERVAL 56 DAY)
     ) b USING domain
     GROUP BY s.kind ORDER BY events DESC
     SETTINGS max_execution_time = 240, max_memory_usage = 4000000000, join_use_nulls = 1
@@ -122,7 +122,7 @@ defmodule LS.Metrics do
 
   @doc "Business-model distribution of the product table."
   def by_model do
-    ch_rows("SELECT business_model, count() FROM businesses FINAL WHERE business_model!='' GROUP BY 1 ORDER BY 2 DESC")
+    ch_rows("SELECT estimated_business_model, count() FROM businesses FINAL WHERE estimated_business_model!='' GROUP BY 1 ORDER BY 2 DESC")
     |> Enum.map(fn [m, n] -> %{model: m, count: to_i(n)} end)
   end
 
@@ -134,7 +134,7 @@ defmodule LS.Metrics do
            countIf(http_blocked != '') AS blocked,
            countIf(http_error != '') AS failed,
            countIf(dns_a = '' AND dns_cname = '') AS no_dns
-         FROM domains_history WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR
+         FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR
          """, 15_000) do
       {:ok, [[t, ok, bl, f, nd]]} -> %{total: to_i(t), ok: to_i(ok), blocked: to_i(bl), failed: to_i(f), no_dns: to_i(nd)}
       _ -> %{total: 0, ok: 0, blocked: 0, failed: 0, no_dns: 0}
@@ -149,7 +149,7 @@ defmodule LS.Metrics do
       argMax(matched_website + matched_name_country, started_at) AS matched,
       sum(bytes) AS bytes_total,
       max(started_at) AS last_run
-    FROM verification_runs FINAL
+    FROM verified_runs FINAL
     WHERE source IN ('wikidata','yc','sec_edgar','companies_house','sirene')
     GROUP BY source ORDER BY source
     """)
@@ -172,7 +172,7 @@ defmodule LS.Metrics do
     ages =
       ch_rows("""
       SELECT source, dateDiff('second', max(finished_at), now())
-      FROM verification_runs WHERE status = 'ok' GROUP BY source
+      FROM verified_runs WHERE status = 'ok' GROUP BY source
       """)
       |> Map.new(fn [src, secs] -> {to_string(src), to_i(secs)} end)
 

@@ -415,7 +415,7 @@ defmodule LS.Cluster.CrawlDedup do
           tsv = Enum.map_join(rows, "\n", fn {_, row} -> row end)
 
           case LS.Clickhouse.insert_raw(
-                 "INSERT INTO ctl_sightings (domain, seen_at, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains) FORMAT TabSeparated",
+                 "INSERT INTO #{LS.Schema.Tables.ctl_log()} (domain, seen_at, ctl_tld, ctl_issuer, ctl_subdomain_count, ctl_subdomains) FORMAT TabSeparated",
                  tsv
                ) do
             :ok ->
@@ -443,7 +443,7 @@ defmodule LS.Cluster.CrawlDedup do
           bloom = Enum.at(blooms, age)
 
           sql =
-            "SELECT DISTINCT domain FROM domains_history " <>
+            "SELECT DISTINCT domain FROM #{LS.Schema.Tables.enrich_log()} " <>
               "WHERE enriched_at >= now() - INTERVAL #{age + 1} DAY AND enriched_at < now() - INTERVAL #{age} DAY " <>
               "AND cityHash64(domain) % #{@backfill_shards} = #{shard}"
 

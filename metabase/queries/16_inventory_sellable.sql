@@ -1,6 +1,9 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- SELLABLE INVENTORY: classified businesses with a live site, not flagged.
 -- The core asset. Split by business model with contactability signals.
--- (No FINAL: the hourly Optimizer keeps domains_current collapsed; counts are
+-- (No FINAL: the hourly Optimizer keeps domains collapsed; counts are
 -- within <1h of inserts of exact.)
 SELECT
     business_model,

@@ -25,7 +25,7 @@ defmodule LSWeb.McpController do
     %{
       name: "listsignal_get_company",
       description:
-        "Get everything ListSignal knows about one company by its website domain: technologies used, Shopify apps, estimated revenue and employees, open jobs with hiring breakdown, SEO score, traffic rank, and contact emails (paid plans). Use when the user asks about a specific company or website.",
+        "Get everything ListSignal knows about one company by its website domain: the full product record under stable field names (http_tech: technologies, plugins and apps; estimated_revenue and estimated_employees with confidence and evidence; estimated_country; hr_job_count and hr_departments; shop_product_count and prices for stores; dns_email_provider; http_emails and http_phone on paid plans) plus `changes`, the last 20 recorded changes (a technology added or removed, hiring started, a revenue band moved, the website going down). Use when the user asks about a specific company or website.",
       inputSchema: %{
         type: "object",
         properties: %{
@@ -37,19 +37,24 @@ defmodule LSWeb.McpController do
     %{
       name: "listsignal_search_companies",
       description:
-        "Find companies by technology, Shopify app, country, business model, revenue bracket, or hiring status. Filters combine with AND. Returns up to 100 ranked companies per call (use offset to page). Use for questions like 'find SaaS companies in France using HubSpot that are hiring'.",
+        "Find companies by technology or app (one http_tech name), DNS vendor, mailbox provider, country, business model, industry, revenue or employee band, hiring status, or Shopify. Filters combine with AND. Returns up to 100 ranked companies per call (use offset to page). Use for questions like 'find SaaS companies in France using HubSpot that are hiring' or 'Shopify stores on Google Workspace with more than 500 products'.",
       inputSchema: %{
         type: "object",
         properties: %{
-          tech: %{type: "string", description: "Technology name, e.g. Shopify, Klaviyo, HubSpot"},
-          app: %{type: "string", description: "Shopify app name, e.g. ReCharge"},
+          tech: %{type: "string", description: "One technology, plugin or app name as it appears in http_tech, e.g. Shopify, Klaviyo, HubSpot, Yoast SEO, Judge.me"},
+          app: %{type: "string", description: "Same as tech, kept for older clients"},
+          dns_tech: %{type: "string", description: "A vendor visible in DNS, e.g. Mailchimp, SendGrid, Salesforce"},
+          email_provider: %{type: "string", description: "Mailbox provider: Google Workspace, Microsoft 365, Zoho Mail, Proton Mail"},
           country: %{type: "string", description: "ISO-2 country code, e.g. US, FR"},
           business_model: %{
             type: "string",
-            description: "Ecommerce, SaaS, Agency, Marketplace, Tool, Media, or Consulting"
+            description: "Ecommerce, SaaS, Agency, Marketplace, Tool, Media, Consulting, LocalBusiness"
           },
-          revenue: %{type: "string", description: "Revenue bracket, e.g. $1M-$10M"},
+          industry: %{type: "string", description: "Industry label, e.g. Fintech, Fashion"},
+          revenue: %{type: "string", description: "Revenue band: <$1M, $1M-$10M, $10M-$100M, $100M-$1B, $1B+"},
+          employees: %{type: "string", description: "Employee band: 1-10, 11-50, 51-500, 501-5000, 5001+"},
           hiring: %{type: "string", description: "'true' to keep only companies with open jobs"},
+          shopify: %{type: "string", description: "'true' to keep only Shopify stores"},
           limit: %{type: "integer", description: "1-100, default 25"},
           offset: %{type: "integer", description: "For paging, default 0"}
         }
@@ -168,9 +173,13 @@ defmodule LSWeb.McpController do
   def gate(record, plan) when plan in ["starter", "pro"], do: record
 
   def gate(record, _free) do
+    emails = record[:http_emails] || record[:emails] || []
+    key = if Map.has_key?(record, :http_emails), do: :http_emails, else: :emails
+
     record
-    |> Map.put(:email_count, length(record.emails))
-    |> Map.put(:emails, "gated: contact emails require a paid plan (listsignal.com/pricing)")
+    |> Map.put(:email_count, length(emails))
+    |> Map.put(key, "gated: contact emails require a paid plan (listsignal.com/pricing)")
+    |> then(&if(Map.has_key?(&1, :http_phone), do: Map.put(&1, :http_phone, "gated"), else: &1))
   end
 
   # ── JSON-RPC plumbing ─────────────────────────────────────────────────────

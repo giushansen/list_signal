@@ -1,3 +1,6 @@
+-- 2026-10-01: table names updated for data model v2 (see docs/data-model-standards.md).
+-- Column names on `businesses` keep working through legacy ALIAS columns for one release;
+-- changes_log replaced biz_signal (kind -> field + change). Re-check this query in Metabase.
 -- EXACT same-day duplicate churn, per day (30d window).
 -- Inner GROUP BY (day, domain) makes the dupe math exact — uniq() HLL noise
 -- made this metric meaningless (it went negative) in a single-level query.
@@ -13,7 +16,7 @@ SELECT
     countIf(cnt > 1)                                  AS domains_hit_twice_plus
 FROM (
     SELECT toDate(enriched_at) AS day, domain, count() AS cnt
-    FROM domains_history
+    FROM enrich_log
     WHERE enriched_at >= now() - INTERVAL 30 DAY
     GROUP BY day, domain
 )
