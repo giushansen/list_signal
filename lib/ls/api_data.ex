@@ -64,6 +64,7 @@ defmodule LS.ApiData do
         eq("estimated_revenue", filters["revenue"]),
         eq("estimated_employees", filters["employees"]),
         if(truthy?(filters["hiring"]), do: "hr_job_count > 0"),
+        gte("estimated_realness", filters["min_realness"]),
         if(truthy?(filters["shopify"]), do: "is_shopify = 1"),
         "http_title != ''",
         "estimated_junk = ''"
@@ -183,6 +184,19 @@ defmodule LS.ApiData do
   defp has(_col, nil), do: nil
   defp has(_col, ""), do: nil
   defp has(col, v), do: "has(#{col}, '#{Clickhouse.escape_public(LS.Tech.Catalog.canonical(String.trim(v)))}')"
+
+  # A numeric floor, parsed so nothing but a number reaches the SQL.
+  defp gte(_col, nil), do: nil
+  defp gte(_col, ""), do: nil
+
+  defp gte(col, v) when is_binary(v) do
+    case Float.parse(v) do
+      {f, _} when f >= 0 and f <= 1 -> "#{col} >= #{f}"
+      _ -> nil
+    end
+  end
+
+  defp gte(_col, _), do: nil
 
   defp eq(_col, nil), do: nil
   defp eq(_col, ""), do: nil

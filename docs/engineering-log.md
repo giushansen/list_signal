@@ -25,6 +25,31 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-01 (afternoon)
+
+**Cost and quality pass after the v2 morning, from measurements.** Rows:
+60% of everything the fleet wrote were domains that resolved and were then
+filtered (TLD, name, no MX+SPF), never fetched: 345M of 506M rows in
+enrich_log, 189M of 305M in domains, and 64.5% of what the CT logs
+re-sight. Those domains now write no row and sleep in a dormant ring
+(60-90 days) or, for a missing mail setup, 28-35 days; twice-unchanged
+businesses go dormant too, and any recorded change puts a domain back on
+7 days. Inventory: 18M never-fetched domains sit on the Shopify, Wix and
+Squarespace edges (4.56M on Shopify's, 1.75M with MX) and 19M have MX at a
+known business mail provider without SPF; both now crawl (the TLD list
+had .xyz but not .shop, .store or .au). Quality: pages were lost to one
+Latin-1 byte per batch (45% coverage, fixed with scrubbing), the feed had
+www and first-fill noise (two rule options), 132K businesses on parking
+nameservers had no junk flag (LS.DNS.Parking; Hostinger's dns-parking.com
+is hosting, not parking), and `estimated_realness` with its evidence
+string answers "real businesses only" from facts already in the row. Also
+captured from now on: ETag and Last-Modified (conditional GET, phase two)
+and a simhash of the visible text (template clustering). Migration 026 is
+online (ADD COLUMN plus two mutations). The two-week A/B numbers to watch:
+detected changes per 1,000 fetches, rows written per day, 429 rate. Owner
+decisions pending: the changes_log noise DELETE, the enrich_log TTL on
+hollow rows, dropping bak_* tables, fleet size, Metabase off the master.
+
 ## 2026-10-01
 
 **Data model v2: one spec, prefixed names, arrays, a page store, a change

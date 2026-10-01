@@ -41,7 +41,7 @@ defmodule LS.Cluster.Inserter do
     # Page facts (data model v2, 2026-10-01): footer and JSON-LD scalars,
     # social links, nav link texts, raw Shopify app handles
     :http_phone, :http_address, :http_social_links, :http_company_id, :http_nav_links,
-    :http_shopify_app_handles
+    :http_shopify_app_handles, :http_etag, :http_last_modified, :http_body_simhash
   ]
 
   def columns, do: @columns

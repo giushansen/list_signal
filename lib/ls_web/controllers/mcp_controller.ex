@@ -52,6 +52,7 @@ defmodule LSWeb.McpController do
           },
           industry: %{type: "string", description: "Industry label, e.g. Fintech, Fashion"},
           revenue: %{type: "string", description: "Revenue band: <$1M, $1M-$10M, $10M-$100M, $100M-$1B, $1B+"},
+          min_realness: %{type: "string", description: "Minimum estimated_realness (0 to 1); 0.6 keeps businesses with solid evidence of operating"},
           employees: %{type: "string", description: "Employee band: 1-10, 11-50, 51-500, 501-5000, 5001+"},
           hiring: %{type: "string", description: "'true' to keep only companies with open jobs"},
           shopify: %{type: "string", description: "'true' to keep only Shopify stores"},

@@ -377,6 +377,7 @@ defmodule LSWeb.ExplorerLive do
   defp fetch_dropdown_options("revenue", _q), do: LS.Revenue.Estimator.revenue_labels()
   defp fetch_dropdown_options("employees", _q), do: LS.Revenue.Estimator.employee_labels()
   defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
+  defp fetch_dropdown_options("realness", _q), do: ["0.8+", "0.6+", "0.4+"]
   defp fetch_dropdown_options("discovered", _q), do: ["24h", "7d", "30d"]
   defp fetch_dropdown_options(_, _), do: []
 
@@ -617,7 +618,7 @@ defmodule LSWeb.ExplorerLive do
   defp default_filters do
     %{
       tech: "", shopify_app: "", country: "", business_model: "", industry: "", dns_email_provider: "",
-      revenue: "", employees: "", language: "", domain_search: "", freshness: "", discovered: "",
+      revenue: "", employees: "", language: "", domain_search: "", freshness: "", discovered: "", realness: "",
       # Depth filters — the ones our buyers actually qualify on. The backend
       # has supported these for a while; they were simply never exposed.
       has_email: "", has_pricing: "", hiring: "", has_catalog: "",
@@ -643,7 +644,7 @@ defmodule LSWeb.ExplorerLive do
       tech: "Tech", shopify_app: "Shopify Apps", country: "Country",
       business_model: "Business", industry: "Industry", revenue: "Revenue",
       employees: "Employees", language: "Language", freshness: "Freshness",
-      discovered: "Discovered", dns_email_provider: "Mail provider",
+      discovered: "Discovered", dns_email_provider: "Mail provider", realness: "Realness",
       has_email: "Email", hiring: "Hiring", has_pricing: "Pricing", has_catalog: "Catalogue",
       min_products: "Min products", max_products: "Max products",
       min_price_avg: "Min avg $", max_price_avg: "Max avg $",
@@ -770,6 +771,7 @@ defmodule LSWeb.ExplorerLive do
           <input type="hidden" name="domain_search" value={@filters.domain_search} />
           <input type="hidden" name="freshness" value={@filters.freshness} />
           <input type="hidden" name="discovered" value={@filters.discovered} />
+          <input type="hidden" name="realness" value={@filters.realness} />
         </form>
 
         <%!-- Click-outside backdrop when a dropdown is open (pointer-events only, no layout impact) --%>
@@ -812,6 +814,7 @@ defmodule LSWeb.ExplorerLive do
               {"employees", "Employees", "👥", true},
               {"language", "Language", "🗣️", true},
               {"dns_email_provider", "Mail provider", "📬", true},
+              {"realness", "Realness", "✅", false},
               {"discovered", "Discovered", "✨", true},
               {"freshness", "Freshness", "🕐", true}
             ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>

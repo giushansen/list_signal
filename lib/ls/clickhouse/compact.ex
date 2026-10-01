@@ -46,7 +46,8 @@ defmodule LS.Clickhouse.Compact do
     tranco_rank majestic_rank majestic_ref_subnets is_malware is_phishing is_disposable_email is_junk
     estimated_revenue estimated_employees revenue_confidence revenue_evidence
     classification_source pipeline_version http_fingerprint
-    http_phone http_address http_social_links http_company_id http_nav_links http_shopify_app_handles)
+    http_phone http_address http_social_links http_company_id http_nav_links http_shopify_app_handles
+    http_etag http_last_modified http_body_simhash)
 
   # Nullable history columns and their inner type: an "absent" value on a
   # synthetic row must be a typed NULL, not '', or the fold's `IS NOT NULL`
@@ -64,7 +65,8 @@ defmodule LS.Clickhouse.Compact do
   # `argMaxIf(col, ts, status BETWEEN 200 AND 399)` cannot pick it.
   @verified_cols ~w(http_status http_response_time http_blocked http_content_type http_tech http_apps
     http_language http_title http_meta_description http_pages http_h1 http_schema_type http_og_type is_junk
-    http_fingerprint http_phone http_address http_social_links http_company_id http_nav_links http_shopify_app_handles)
+    http_fingerprint http_phone http_address http_social_links http_company_id http_nav_links http_shopify_app_handles
+    http_etag http_last_modified http_body_simhash)
 
   # How a compiled `businesses` row reads back as a history row (the
   # synthetic leg). Columns absent here read as the same name.
@@ -361,6 +363,11 @@ defmodule LS.Clickhouse.Compact do
         argMaxIf(s_http_apps, s_enriched_at, #{observed_sql("s_")}) AS http_apps,
         argMaxIf(s_http_fingerprint, s_enriched_at, #{observed_sql("s_")} AND s_http_fingerprint != '') AS http_fingerprint,
         argMaxIf(s_http_shopify_app_handles, s_enriched_at, #{observed_sql("s_")}) AS http_shopify_app_handles,
+        /* Validators and the text fingerprint: the newest observed fetch
+           that carried one (2026-10-01). */
+        argMaxIf(s_http_etag, s_enriched_at, #{observed_sql("s_")} AND s_http_etag != '') AS http_etag,
+        argMaxIf(s_http_last_modified, s_enriched_at, #{observed_sql("s_")} AND s_http_last_modified != '') AS http_last_modified,
+        argMaxIf(s_http_body_simhash, s_enriched_at, #{observed_sql("s_")} AND s_http_body_simhash != 0) AS http_body_simhash,
         /* Every page fact takes the observed guard (data model v2): a bot
            wall served as 200 carried "Just a moment..." into http_title and
            the next real crawl then recorded a title change. */
@@ -596,6 +603,7 @@ defmodule LS.Clickhouse.Compact do
   end
 
   defp blank("http_observed"), do: "0"
+  defp blank("http_body_simhash"), do: "toUInt64(0)"
 
   defp blank(col) do
     case Map.fetch(@history_nullable, col) do

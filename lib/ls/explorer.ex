@@ -628,6 +628,15 @@ defmodule LS.Explorer do
   # product_count > 0 means we successfully read /products.json: an actual
   # storefront with actual products.
   defp filter_clause({:has_catalog, "true"}), do: ["shop_product_count > 0"]
+
+  # Realness band (2026-10-01): "0.6+" keeps rows with at least that much
+  # evidence of an operating business. Parsed, never interpolated raw.
+  defp filter_clause({:realness, v}) when is_binary(v) and v != "" do
+    case Float.parse(String.trim_trailing(v, "+")) do
+      {f, _} when f >= 0 and f <= 1 -> ["estimated_realness >= #{f}"]
+      _ -> []
+    end
+  end
   defp filter_clause({:has_pricing, "true"}), do: ["http_deep_pricing_points > 0"]
   defp filter_clause({:has_email, "true"}), do: ["notEmpty(http_emails)"]
   defp filter_clause({:hiring, "true"}), do: ["hr_job_count > 0"]

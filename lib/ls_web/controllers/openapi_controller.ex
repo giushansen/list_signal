@@ -71,6 +71,7 @@ defmodule LSWeb.OpenapiController do
               qp("revenue", "Revenue band: <$1M, $1M-$10M, $10M-$100M, $100M-$1B, $1B+"),
               qp("employees", "Employee band: 1-10, 11-50, 51-500, 501-5000, 5001+"),
               qp("hiring", "true to keep only companies with open jobs"),
+              qp("min_realness", "Minimum estimated_realness, 0 to 1 (0.6 keeps businesses with solid evidence: mail setup, a contact, a company number, schema.org, traffic...)"),
               qp("shopify", "true to keep only Shopify stores"),
               %{name: "limit", in: "query", schema: %{type: "integer", maximum: 100, default: 25}},
               %{name: "offset", in: "query", schema: %{type: "integer", maximum: 10_000, default: 0}}

@@ -183,6 +183,38 @@ skipped, which is what lets the fleet shrink to about seven fetch IPs;
 the 09-11 worker count decision reads `WorkQueue.stats.total_deduped_stable`
 against `total_enqueued`.
 
+### Dormant and hot rings, and no hollow rows (2026-10-01)
+
+Measured that morning: 345M of the 506M rows in `enrich_log` were domains
+that resolved and were then filtered (TLD, name, no MX+SPF), never fetched;
+189M of the 305M rows in `domains` are the same class, and 64.5% of the
+domains the CT logs re-sight in 30 days are those domains coming back to be
+filtered again. Three changes in `WorkerAgent`, `WorkQueue` and
+`CrawlDedup`:
+
+- A filtered or unresolved domain writes **no row**. The worker returns the
+  verdicts with the batch (`WorkQueue.complete/3`), and
+  `WorkQueue.remember_skipped/1` puts name-settled skips (`{:skip, :tld}`,
+  `{:skip, :junk_name}`, registry TLDs) into the **dormant ring** (three
+  monthly blooms, 40M at 2%, so 60-90 days) and mail-less skips
+  (`{:skip, :no_mail}`) into the stable ring (28-35 days, mail often comes
+  weeks after the certificate). `DomainFilter.verdict/4` is the rule, with
+  two bypasses measured in the never-fetched class: a Shopify, Wix or
+  Squarespace edge address (18M domains) and MX at a known business mail
+  provider without SPF (19M).
+- A business unchanged across a gap of 25+ days was already unchanged once
+  (nothing recrawls a stable domain sooner): `Compactor.mark_stable/2`
+  puts it in the dormant ring instead of the stable one.
+- Domains with a change recorded in the pass (subdomain churn excluded) go
+  into the **hot ring** (four weekly blooms, 5M at 1%, 21-28 days) which
+  `WorkQueue.enqueue/2` checks first: a hot domain ignores both slow rings.
+
+Gate order: hot > dormant > stable > daily blooms. Rings share one
+rotation/save/restore implementation in `CrawlDedup` (`@rings`);
+`LS_DORMANT_RING=false` turns the dormant check off. The public "domains
+checked in the past hour" counter now counts real checks and fell with the
+row volume.
+
 Discovery's DNS stage also resolves DMARC, BIMI and DKIM
 (`LS.DNS.EmailAuth`, MX domains only, at most four small TXT lookups) into
 `dns_dmarc` / `dns_bimi` / `dns_dkim`, plus reverse DNS and the Microsoft

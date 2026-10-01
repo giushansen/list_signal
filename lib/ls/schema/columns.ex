@@ -144,6 +144,8 @@ defmodule LS.Schema.Columns do
     c("estimated_summary", "String", default: "''", select: "if(ifNull(v.mission_summary, '') != '', v.mission_summary, ifNull(s.mission, ''))", v1: "if(b.mission_summary != '', b.mission_summary, b.mission)", family: :estimated, api: [:company], export: true, doc: "One-line description of what the business does."),
     c("estimated_summary_evidence", "String", default: "''", select: "multiIf(ifNull(v.mission_summary, '') != '', 'registry', ifNull(s.mission, '') != '', 'about page', '')", v1: "multiIf(b.mission_summary != '', 'registry', b.mission != '', 'about page', '')", family: :estimated, api: [:company], doc: "registry or about page."),
     c("estimated_junk", "LowCardinality(String)", default: "''", legacy: "is_junk", select: :junk, family: :estimated, signal: :changed, api: [:company], export: true, doc: "Empty when the site looks like a real business; parked or placeholder otherwise. Follows the newest successful fetch."),
+    c("estimated_realness", "Float32", default: "0", select: :realness, v1: :realness_v1, family: :estimated, api: [:company, :search], export: true, doc: "How much evidence says this is an operating business, 0 to 1: mail setup, a contact, a company number, schema.org, 90 days of certificates, a catalogue or jobs, traffic, social links, a registry match. 0 when junk."),
+    c("estimated_realness_evidence", "String", default: "''", select: :realness_evidence, v1: :realness_evidence_v1, family: :estimated, api: [:company], export: true, doc: "The facts behind estimated_realness, '|' separated (mx, dmarc, contact, address, company_id, schema_org, age_90d, activity, traffic, social, registry)."),
     c("estimated_at", "Nullable(DateTime)", select: "if(#{@deep_est}, s.enriched_at_newest, h.as_of)", v1: "if(b.depth_enriched_at IS NOT NULL, b.depth_enriched_at, b.as_of)", family: :estimated, api: [:company], doc: "When the estimates were last produced."),
     c("estimated_version", "LowCardinality(String)", default: "''", legacy: "pipeline_version", select: "h.pipeline_version", family: :estimated, internal: true, doc: "Build that produced the estimates."),
 
@@ -161,6 +163,9 @@ defmodule LS.Schema.Columns do
     c("http_phone", "String", default: "''", select: "h.http_phone", v1: "''", api: [:company], export: true, doc: "Phone number from the footer or JSON-LD."),
     c("http_address", "String", default: "''", select: "h.http_address", v1: "''", api: [:company], export: true, doc: "Postal address from the footer or JSON-LD."),
     c("http_social_links", "Array(String)", select: "arraySlice(h.http_social_links, 1, 20)", v1: "[]", signal: :set_added, since: @v2_at, api: [:company], export: true, doc: "Social profile URLs linked from the site."),
+    c("http_etag", "String", default: "''", select: "h.http_etag", v1: "''", internal: true, doc: "ETag the homepage last answered with; sent back as If-None-Match so an unchanged page costs a 304, not a body."),
+    c("http_last_modified", "String", default: "''", select: "h.http_last_modified", v1: "''", internal: true, doc: "Last-Modified the homepage last answered with (If-Modified-Since on the next check)."),
+    c("http_body_simhash", "UInt64", default: "0", select: "h.http_body_simhash", v1: "0", internal: true, doc: "64-bit simhash of the visible text; near-identical values across many domains mark a template, not a business."),
     c("http_company_id", "String", default: "''", select: "h.http_company_id", v1: "''", api: [:company], export: true, doc: "Company registration or VAT number printed on the site, the key into public registries."),
     c("http_nav_links", "Array(String)", select: "arraySlice(h.http_nav_links_arr, 1, 60)", v1: "[]", api: [:company], doc: "Main navigation link texts."),
 
@@ -346,6 +351,12 @@ defmodule LS.Schema.Columns do
   def fold_expr(%{select: :junk}),
     do: "if(#{LS.DNS.Parking.sql("splitByChar('|', h.rdap_nameservers)")}, 'parked', h.is_junk)"
 
+  # The realness score reads other columns' fold expressions, never their
+  # aliases, so the same SQL runs in the fold, the v1 transform and a
+  # backfill over businesses (LS.Schema.Realness).
+  def fold_expr(%{select: :realness}), do: LS.Schema.Realness.score_sql(&fold_expr(get(&1)))
+  def fold_expr(%{select: :realness_evidence}), do: LS.Schema.Realness.evidence_sql(&fold_expr(get(&1)))
+
   def fold_expr(%{select: :dns_tech}), do: LS.DNS.Vendors.tech_sql("h.dns_mx", "h.dns_txt", "h.dns_cname")
   def fold_expr(%{select: :dns_email_provider}), do: LS.DNS.Vendors.email_provider_sql("h.dns_mx")
 
@@ -372,6 +383,9 @@ defmodule LS.Schema.Columns do
   def v1_expr(%{v1: :apps_legacy_v1}),
     do:
       "arrayStringConcat(arrayFilter(x -> has(_apps_catalog, x), #{catalog_filter("arrayConcat(splitByChar('|', b.http_tech), splitByChar('|', b.http_apps))")}), '|')"
+
+  def v1_expr(%{v1: :realness_v1}), do: LS.Schema.Realness.score_sql(&v1_expr(get(&1)))
+  def v1_expr(%{v1: :realness_evidence_v1}), do: LS.Schema.Realness.evidence_sql(&v1_expr(get(&1)))
 
   def v1_expr(%{v1: :dns_tech_v1}), do: LS.DNS.Vendors.tech_sql("b.dns_mx", "b.dns_txt", "b.dns_cname")
   def v1_expr(%{v1: :dns_email_provider_v1}), do: LS.DNS.Vendors.email_provider_sql("b.dns_mx")

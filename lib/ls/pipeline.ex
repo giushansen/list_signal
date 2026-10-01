@@ -176,6 +176,11 @@ defmodule LS.Pipeline do
             http_company_id: parts.company_id,
             http_nav_links: Enum.join(parts.nav_links, "|"),
             http_shopify_app_handles: Enum.join(app_result[:handles] || [], "|"),
+            # Validators for the next check (conditional GET, 2026-10-01) and
+            # the template fingerprint of the visible text.
+            http_etag: get_header(resp, "etag") |> String.slice(0, 200),
+            http_last_modified: get_header(resp, "last-modified") |> String.slice(0, 64),
+            http_body_simhash: LS.HTTP.Simhash.of(Enum.map(parts.body, &elem(&1, 1))),
             # Ephemeral — used by classifier, text stored separately via merge_row
             _h1: h1,
             _page_parts: parts,
@@ -433,6 +438,9 @@ defmodule LS.Pipeline do
       http_company_id: http[:http_company_id] || "",
       http_nav_links: http[:http_nav_links] || "",
       http_shopify_app_handles: http[:http_shopify_app_handles] || "",
+      http_etag: http[:http_etag] || "",
+      http_last_modified: http[:http_last_modified] || "",
+      http_body_simhash: http[:http_body_simhash] || 0,
       _page_parts: http[:_page_parts],
       business_model: classify_result.business_model,
       industry: classify_result.industry,
