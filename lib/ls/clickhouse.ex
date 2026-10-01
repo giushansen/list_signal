@@ -649,6 +649,11 @@ defmodule LS.Clickhouse do
     end
   end
 
+  # Raw log columns the refill joins for the estimator (see the SQL below).
+  @refill_log_columns ~w(dns_txt dns_ptr dns_cname dns_ms_enterprise)
+  @doc false
+  def refill_log_columns, do: @refill_log_columns
+
   @doc """
   Domains due for depth enrichment, newest-value-first by commercial value.
 
@@ -744,11 +749,15 @@ defmodule LS.Clickhouse do
       arrayStringConcat(b.rdap_nameservers, '|'), arrayStringConcat(b.dns_a, '|'), x.dns_cname
     FROM businesses b
     -- The raw DNS strings the estimator reads (TXT, PTR, CNAME, the Microsoft
-    -- tenant flag) live in the log's current row, not in the product table
-    -- (data model v2): a point read on the same primary-key set.
+    -- tenant flag) are not in the product table (data model v2). They come
+    -- from the log's newest row: enrich_log is keyed (domain, enriched_at),
+    -- so this is a primary-key read for the picked set. Not from `domains`:
+    -- that table was never given dns_ptr or dns_ms_enterprise, and the first
+    -- v2 boot (2026-10-01 08:26) failed this refill on prod with Code 47
+    -- for an hour while the harness, which had the columns, stayed green.
     LEFT JOIN (
-      SELECT domain, dns_txt, dns_ptr, dns_cname, dns_ms_enterprise
-      FROM #{LS.Schema.Tables.domains()}
+      SELECT domain, #{Enum.join(@refill_log_columns, ", ")}
+      FROM #{LS.Schema.Tables.enrich_log()}
       WHERE domain IN (#{picked})
       ORDER BY enriched_at DESC
       LIMIT 1 BY domain

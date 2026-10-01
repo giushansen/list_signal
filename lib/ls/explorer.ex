@@ -68,9 +68,14 @@ defmodule LS.Explorer do
   # table at all.
   # The detail panel reads every customer-facing column of the product table
   # (the spec is the list); the raw DNS strings the panel's SPF/DKIM parsers
-  # want come from the log's current row (`domains`) by primary key.
+  # want come from the log's newest row (`enrich_log`, keyed domain then
+  # time) by primary key. Not from `domains`: it never received dns_ptr
+  # (2026-10-01, Code 47 on prod while the harness had the column).
   @detail_columns LS.Schema.Columns.names()
   @log_detail_columns ~w(dns_aaaa dns_txt dns_cname dns_ptr http_content_type)
+
+  @doc false
+  def log_detail_columns, do: @log_detail_columns
 
   # Business-model and industry options are derived from the live data (distinct_by_count/2),
   # not a hardcoded list — the classifier's categories are the source of truth, so the dropdowns
@@ -256,7 +261,7 @@ defmodule LS.Explorer do
   defp log_detail(domain) do
     sql = """
     SELECT #{Enum.join(@log_detail_columns, ", ")}
-    FROM #{LS.Schema.Tables.domains()}
+    FROM #{LS.Schema.Tables.enrich_log()}
     WHERE domain = '#{Clickhouse.escape_public(domain)}'
     ORDER BY enriched_at DESC
     LIMIT 1
