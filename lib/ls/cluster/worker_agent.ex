@@ -24,7 +24,6 @@ defmodule LS.Cluster.WorkerAgent do
   alias LS.Reputation.Blocklist
   alias LS.Cache
 
-  @http_timeout 25_000
   @reconnect_interval_ms 10_000
   @empty_queue_wait_ms 30_000
   @max_errors 50
@@ -264,7 +263,9 @@ defmodule LS.Cluster.WorkerAgent do
     # a fixed 120 s await killed it and threw every fetched page away
     # (2026-10-01 evening: "http stage exceeded 120000ms" four times an
     # hour per worker). The await now covers the paced duration plus slack.
-    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", http_stage_timeout(length(http_cands))) end)
+    # enrich_http keeps what finished by its own deadline; the await here is
+    # only the backstop for a stage that never returns.
+    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", http_stage_timeout(length(http_cands)) + 30_000) end)
     {bgp_us, bgp_res} = :timer.tc(fn -> await_stage(bgp_task, "bgp", 120_000) end)
     {rdap_us, rdap_res} = :timer.tc(fn -> await_stage(rdap_task, "rdap", rdap_timeout) end)
 
@@ -387,8 +388,10 @@ defmodule LS.Cluster.WorkerAgent do
   @doc false
   # Pure: how long the HTTP stage may take for `n` candidates, each fetch
   # paced by the node budget, with a minute of slack for the slow tail.
+  # A candidate costs its homepage slot plus, for the fifth or so that have
+  # a contact or pricing page, up to two secondary fetches: 1.5 slots each.
   def http_stage_timeout(n, per_min \\ LS.HTTP.NodeBudget.per_min()),
-    do: max(120_000, div(n * 60_000, per_min) + 60_000)
+    do: max(120_000, div(n * 90_000, per_min) + 60_000)
 
   @doc false
   # Pure: the domains that get a row. Fetched or attempted ones (HTTP has
@@ -430,29 +433,54 @@ defmodule LS.Cluster.WorkerAgent do
   # ==========================================================================
 
   defp enrich_http([], _), do: %{}
+
   defp enrich_http(cands, conc) do
-    cands
-    |> Task.async_stream(
-      fn {d, ip} ->
-        r = do_http(d, ip)
-        Cache.http_insert(d)
-        {d, r}
-      end,
-      # Homepage budget + up to 2 best-effort secondary fetches (login/pricing),
-      # each ≤10s plus per-IP rate-limiter spacing. Raised so a secondary fetch can
-      # never time out the task and drop the (sacred) homepage row. Since the
-      # node budget (2026-10-02) a task also sleeps until its reserved slot,
-      # up to the whole paced stage: a per-task timeout shorter than that
-      # killed sleeping tasks and wrote hollow rows (33.6% of rows in the
-      # first half hour), so the per-task bound is the stage bound.
-      max_concurrency: conc, timeout: max(@http_timeout + 35_000, http_stage_timeout(length(cands))),
-      on_timeout: :kill_task, ordered: false
-    )
-    |> Enum.reduce(%{}, fn
-      {:ok, {d, r}}, acc -> Map.put(acc, d, r)
-      {:exit, _}, acc -> acc
-    end)
+    bound = http_stage_timeout(length(cands))
+    deadline = System.monotonic_time(:millisecond) + bound
+
+    stream =
+      Task.async_stream(
+        cands,
+        fn {d, ip} ->
+          r = do_http(d, ip)
+          Cache.http_insert(d)
+          {d, r}
+        end,
+        # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),
+        # so the per-task bound is the stage bound, not the homepage budget.
+        max_concurrency: conc, timeout: bound, on_timeout: :kill_task, ordered: false
+      )
+
+    {res, cut} = collect_until(stream, deadline)
+    if cut > 0, do: Logger.warning("http stage deadline: #{cut} of #{length(cands)} candidates not fetched, #{map_size(res)} kept")
+    res
   end
+
+  @doc false
+  # Consume a result stream until the deadline, KEEPING what finished.
+  # Until 2026-10-02 the HTTP stage ran in a task that the batch killed on
+  # overrun, and every fetched page of the batch went with it: with the node
+  # budget pacing fetches, 3 to 4 stages an hour per worker overran and 41%
+  # of rows were hollow. Halting the stream shuts the pending tasks down;
+  # the ones that finished are returned. Returns {results, not_finished}.
+  def collect_until(stream, deadline_ms) do
+    {res, n} =
+      Enum.reduce_while(stream, {%{}, 0}, fn item, {acc, n} ->
+        acc =
+          case item do
+            {:ok, {d, r}} -> Map.put(acc, d, r)
+            _ -> acc
+          end
+
+        if System.monotonic_time(:millisecond) >= deadline_ms, do: {:halt, {acc, n + 1}}, else: {:cont, {acc, n + 1}}
+      end)
+
+    {res, max(stream_size(stream) - n, 0)}
+  end
+
+  defp stream_size(%Stream{enum: enum}) when is_list(enum), do: length(enum)
+  defp stream_size(%Stream{enum: enum}), do: Enum.count(enum)
+  defp stream_size(_), do: 0
 
   defp do_http(domain, ip), do: LS.Pipeline.http(domain, ip)
 
