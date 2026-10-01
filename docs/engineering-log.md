@@ -25,6 +25,26 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-01
+
+**Fourth abuse report, from the first domain ever put on the never-contact
+list.** expoBMS (the WAF behind morbihan-genealogie.bzh, reporter of
+2026-08) reported one GET / from chi3 at 05:46 UTC on 09-30. The list
+held for `.bzh`: that name was refused at the gate on 09-30 00:34. The
+same owner runs the same site on eight TLDs (.bzh .net .org .be .info
+.biz .fr .eu) on one OVH address, and seven nodes fetched the other seven
+names on 09-30 (503 on .net, 403 on .fr, 200 on .be); the WAF logs every
+one under its canonical .bzh host. The list matched exact names and
+parents, and the 09-25 word rule covered only "shinhan". Now every listed
+domain's first label is a stem that blocks that label under any suffix
+(`NeverContact.stems/0`, minimum six characters, checked at compile
+time), and the stems go to the browser gate with the words. An IP rule
+was considered and rejected: 164.132.235.17 hosts 31,337 of our domains.
+What this still does not cover: a reporter whose other sites carry a
+different name. Those are added when they report.
+
+---
+
 ## 2026-09-26
 
 **dal1 quarantined for twelve hours over a poisoned BGP cache; the guard

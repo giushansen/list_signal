@@ -60,6 +60,22 @@ defmodule LS.HTTP.NeverContact do
   # third report from a bank's incident-response team.
   @reported_words ["shinhan"]
 
+  # 2026-10-01, fourth report, and from the FIRST domain ever listed: the
+  # owner of morbihan-genealogie.bzh runs the same site on eight TLDs (.bzh
+  # .net .org .be .info .biz .fr .eu), all on one address, and the list held
+  # for .bzh while the fleet fetched the other seven on 09-30 (503 from
+  # their WAF on .net, logged under the canonical .bzh host). A reporter is
+  # a name, not a TLD: the first label of every listed domain is a stem that
+  # blocks that label under any suffix. Stems shorter than six characters
+  # are refused at compile time so a generic label can never block half the
+  # web.
+  @reported_stems @reported
+                  |> Enum.map(fn d -> d |> String.split(".") |> hd() end)
+                  |> Enum.uniq()
+  for stem <- @reported_stems, String.length(stem) < 6 do
+    raise "never-contact stem #{inspect(stem)} is too short to be safe"
+  end
+
   @doc """
   True when `domain` (or any parent of it) has filed an abuse report.
 
@@ -69,7 +85,10 @@ defmodule LS.HTTP.NeverContact do
   @spec blocked?(term()) :: boolean()
   def blocked?(domain) when is_binary(domain) do
     d = domain |> String.downcase() |> String.trim_trailing(".")
-    Enum.any?(suffixes(d), &MapSet.member?(@reported, &1)) or Enum.any?(@reported_words, &String.contains?(d, &1))
+
+    Enum.any?(suffixes(d), &MapSet.member?(@reported, &1)) or
+      Enum.any?(@reported_words, &String.contains?(d, &1)) or
+      registrable_label(d) in @reported_stems
   end
 
   def blocked?(_), do: false
@@ -78,9 +97,31 @@ defmodule LS.HTTP.NeverContact do
   @spec words() :: [String.t()]
   def words, do: @reported_words
 
+  @doc "Name stems that block any domain carrying them as a label, on any TLD (see `@reported_stems`)."
+  @spec stems() :: [String.t()]
+  def stems, do: @reported_stems
+
   @doc "The current blocklist, for the admin dashboard and tests."
   @spec all() :: MapSet.t()
   def all, do: @reported
+
+  # Second-level suffixes under a two-letter country code: "co.uk", "com.mx",
+  # "co.kr". Enough for the stem rule; a full public-suffix list is not
+  # needed to tell a reporter's own name from a lookalike that embeds it.
+  @second_level ~w(co com net org gov edu ac ne or)
+
+  @doc false
+  # The label a person registered: "www.morbihan-genealogie.net" -> that
+  # name; "morbihan-genealogie.co.uk" -> the same. By the owner's standing
+  # rule, "xayann-services.com.evil.example" -> "evil": a reporter's name as
+  # someone else's subdomain is a lookalike, not the reporter.
+  def registrable_label(domain) do
+    case domain |> String.split(".") |> Enum.reverse() do
+      [tld, sld, label | _] when byte_size(tld) == 2 and sld in @second_level -> label
+      [_tld, label | _] -> label
+      _ -> nil
+    end
+  end
 
   # "a.b.example.com" -> ["a.b.example.com", "b.example.com", "example.com"]
   defp suffixes(domain) do

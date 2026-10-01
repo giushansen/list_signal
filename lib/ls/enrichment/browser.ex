@@ -56,7 +56,8 @@ defmodule LS.Enrichment.Browser do
   end
 
   @doc false
-  def blocked_list, do: LS.HTTP.NeverContact.words() ++ Enum.to_list(LS.HTTP.NeverContact.all())
+  def blocked_list,
+    do: LS.HTTP.NeverContact.words() ++ LS.HTTP.NeverContact.stems() ++ Enum.to_list(LS.HTTP.NeverContact.all())
 
   defp render_via_sidecar(domain, path) do
     case url() do
