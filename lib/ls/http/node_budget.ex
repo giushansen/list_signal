@@ -20,6 +20,9 @@ defmodule LS.HTTP.NodeBudget do
 
   @table :http_node_budget
   @default_per_min 140
+  # A reservation further out than this means the node is overloaded:
+  # refuse rather than queue fetches a minute into the future.
+  @max_wait_ms 45_000
 
   @doc "Create the counter table. Idempotent."
   def init do
@@ -40,30 +43,47 @@ defmodule LS.HTTP.NodeBudget do
   end
 
   @doc """
-  Take one unit of this minute's budget. `:ok` to fetch now, or
-  `{:wait, ms}` until the next minute starts.
+  Reserve the next fetch slot. `:ok` to fetch now; `{:wait, ms}` with a
+  slot held for the caller that many milliseconds from now; `:overloaded`
+  when the next free slot is more than #{@max_wait_ms} ms away.
+
+  Slots are spaced evenly (60,000 / per_min ms apart), so the rate is
+  smooth within the minute instead of 100 concurrent tasks spending the
+  budget in the first seconds and the rest of the minute waiting. The
+  first version did exactly that (2026-10-01 evening): 12.9% of fetches
+  gave up as rate_limited and one-minute peaks still reached 275.
   """
-  @spec take(pos_integer()) :: :ok | {:wait, pos_integer()}
+  @spec take(pos_integer()) :: :ok | {:wait, pos_integer()} | :overloaded
   def take(limit \\ per_min()) do
     init()
-    now_ms = System.system_time(:millisecond)
-    minute = div(now_ms, 60_000)
-    n = :ets.update_counter(@table, minute, {2, 1}, {minute, 0})
+    interval = div(60_000, limit)
+    now = System.monotonic_time(:millisecond)
+    # Atomic reservation: advance the shared "next free slot" by one interval
+    # and read what it was before. Behind `now` means the slot is free now.
+    # update_counter returns the advanced value; the slot we hold is the one before it.
+    base = :ets.update_counter(@table, :next_at, {2, interval}, {:next_at, now}) - interval
+    cond do
+      base <= now ->
+        # The line went idle: pull the next slot forward so idle time is
+        # not banked as a burst (counter already advanced from `base`).
+        if now - base > interval, do: :ets.insert(@table, {:next_at, now + interval})
+        :ok
 
-    if n <= limit do
-      if n == 1, do: :ets.select_delete(@table, [{{:"$1", :_}, [{:<, :"$1", minute - 1}], [true]}])
-      :ok
-    else
-      {:wait, max((minute + 1) * 60_000 - now_ms, 1)}
+      base - now > @max_wait_ms ->
+        :ets.update_counter(@table, :next_at, {2, -interval})
+        :overloaded
+
+      true ->
+        {:wait, base - now}
     end
   end
 
-  @doc "Fetches taken in the current minute, for stats."
-  def used_this_minute do
+  @doc "Milliseconds until the next free slot, for stats (0 when idle)."
+  def backlog_ms do
     init()
 
-    case :ets.lookup(@table, div(System.system_time(:millisecond), 60_000)) do
-      [{_, n}] -> n
+    case :ets.lookup(@table, :next_at) do
+      [{_, t}] -> max(t - System.monotonic_time(:millisecond), 0)
       [] -> 0
     end
   end

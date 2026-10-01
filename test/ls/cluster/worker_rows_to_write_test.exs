@@ -33,3 +33,18 @@ defmodule LS.Cluster.WorkerRowsToWriteTest do
     assert function_exported?(LS.Clickhouse, :changed_domains, 2)
   end
 end
+
+defmodule LS.Cluster.WorkerHttpStageTimeoutTest do
+  @moduledoc """
+  The HTTP stage await must cover the node budget's pacing (2026-10-01
+  evening): a fixed 120 s killed stages that were legitimately taking
+  150 s and threw every fetched page of the batch away.
+  """
+  use ExUnit.Case, async: true
+
+  test "the await grows with the candidate count at the budgeted rate, never below two minutes" do
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(50, 140) == 120_000
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(350, 140) == 210_000
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(700, 140) == 360_000
+  end
+end

@@ -259,7 +259,12 @@ defmodule LS.Cluster.WorkerAgent do
     # is shut down and skipped instead of killing the whole batch (its domains
     # still get rows, just without that stage's fields).
     rdap_timeout = max(120_000, length(rdap_cands) * 1_000)
-    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", 120_000) end)
+    # The HTTP stage is paced by the node budget (LS.HTTP.NodeBudget): with
+    # 350 candidates at 140 a minute the stage legitimately runs 150 s, and
+    # a fixed 120 s await killed it and threw every fetched page away
+    # (2026-10-01 evening: "http stage exceeded 120000ms" four times an
+    # hour per worker). The await now covers the paced duration plus slack.
+    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", http_stage_timeout(length(http_cands))) end)
     {bgp_us, bgp_res} = :timer.tc(fn -> await_stage(bgp_task, "bgp", 120_000) end)
     {rdap_us, rdap_res} = :timer.tc(fn -> await_stage(rdap_task, "rdap", rdap_timeout) end)
 
@@ -378,6 +383,12 @@ defmodule LS.Cluster.WorkerAgent do
       end
     end)
   end
+
+  @doc false
+  # Pure: how long the HTTP stage may take for `n` candidates, each fetch
+  # paced by the node budget, with a minute of slack for the slow tail.
+  def http_stage_timeout(n, per_min \\ LS.HTTP.NodeBudget.per_min()),
+    do: max(120_000, div(n * 60_000, per_min) + 60_000)
 
   @doc false
   # Pure: the domains that get a row. Fetched or attempted ones (HTTP has

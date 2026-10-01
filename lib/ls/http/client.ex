@@ -141,11 +141,12 @@ defmodule LS.HTTP.Client do
     # address. Over budget means wait for the next minute, then one more
     # try; the wait is bounded by the minute itself.
     case LS.HTTP.NodeBudget.take() do
-      {:wait, ms} when retries_left > 0 ->
+      {:wait, ms} ->
+        # A slot is reserved for us; sleeping is the pacing, not a retry.
         Process.sleep(ms)
-        attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left - 1)
+        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left)
 
-      {:wait, _} ->
+      :overloaded ->
         {:error, "rate_limited", :rate_limited}
 
       :ok ->

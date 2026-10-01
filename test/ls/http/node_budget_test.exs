@@ -1,22 +1,43 @@
 defmodule LS.HTTP.NodeBudgetTest do
   @moduledoc """
   A per-node cap on fetches per minute (2026-10-01). The per-IP limiter
-  protected destinations; nothing capped our own source address, and after
-  the crawl-gate change workers averaged 119 fetches a minute with bursts
-  of 355 against a measured safe envelope of 130 to 160.
+  protected destinations; nothing capped our own source address: workers
+  averaged 119 fetches a minute with bursts of 355 against a measured safe
+  envelope of 130 to 160. The first cap counted per wall-clock minute and
+  100 concurrent tasks spent it in the first seconds, so 12.9% of fetches
+  gave up; slots are now spaced evenly and reserved, never refused unless
+  the line is 45 s long.
   """
   use ExUnit.Case, async: false
 
   alias LS.HTTP.NodeBudget
 
-  test "the budget admits `limit` fetches in a minute and then asks the caller to wait for the next one" do
+  setup do
     NodeBudget.init()
     :ets.delete_all_objects(:http_node_budget)
-    results = for _ <- 1..5, do: NodeBudget.take(3)
-    assert Enum.take(results, 3) == [:ok, :ok, :ok]
-    assert [{:wait, a}, {:wait, b}] = Enum.drop(results, 3)
-    assert a > 0 and a <= 60_000 and b > 0 and b <= 60_000
-    assert NodeBudget.used_this_minute() == 5
+    :ok
+  end
+
+  test "slots are spaced evenly: the first is free, the next ones wait one interval each" do
+    assert NodeBudget.take(60) == :ok
+    assert {:wait, a} = NodeBudget.take(60)
+    assert {:wait, b} = NodeBudget.take(60)
+    assert a > 0 and a <= 1_000
+    assert b > a and b <= 2_000
+  end
+
+  test "an idle line does not bank a burst" do
+    assert NodeBudget.take(6000) == :ok
+    Process.sleep(50)
+    # 10 ms interval, 50 ms idle: the next take is free, the one after waits ~10 ms, not 0
+    assert NodeBudget.take(6000) == :ok
+    assert {:wait, ms} = NodeBudget.take(6000)
+    assert ms <= 10
+  end
+
+  test "a line longer than 45 seconds refuses instead of queueing" do
+    for _ <- 1..46, do: NodeBudget.take(60)
+    assert NodeBudget.take(60) == :overloaded
   end
 
   test "the default ceiling sits inside the measured envelope" do
