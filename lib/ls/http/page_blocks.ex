@@ -66,8 +66,8 @@ defmodule LS.HTTP.PageBlocks do
     {blocks, links, jsonld} = walk(html)
 
     header = Enum.reverse(blocks.header) |> cap(:header)
-    body = Enum.reverse(blocks.body) |> cap(:body)
     footer = Enum.reverse(blocks.footer) |> cap(:footer)
+    body = blocks.body |> Enum.reverse() |> drop_boilerplate(header, footer, blocks.nav_texts) |> cap(:body)
     footer_text = Enum.map_join(footer, " ", &elem(&1, 1))
     all_links = Enum.reverse(links)
     jsonld = jsonld |> Enum.reverse() |> Enum.join("\n") |> String.slice(0, @jsonld_cap)
@@ -88,6 +88,24 @@ defmodule LS.HTTP.PageBlocks do
   end
 
   def extract(_), do: empty()
+
+  # Menus that are not wrapped in <header>/<nav>/<footer> land in the body
+  # as one-word blocks, and consent banners add their sentence to every
+  # page (measured over 54,535 stored pages on 2026-10-01: "Home" was the
+  # most common body block, 2,515 times; 0.9% of body blocks were
+  # navigation labels and 0.3% cookie text). A body block that repeats a
+  # header or footer block of the same page is the menu; a block that
+  # reads like a consent banner is not about the business.
+  @consent_re ~r/\b(cookie|accept all|reject all|consent|personal data will be processed)\b/iu
+
+  defp drop_boilerplate(body, header, footer, nav_texts) do
+    chrome = MapSet.new(Enum.map(header ++ footer, &elem(&1, 1)) ++ Enum.map(List.wrap(nav_texts), &clean/1))
+
+    Enum.reject(body, fn {tag, text} ->
+      (tag not in ["h1", "h2", "h3"] and MapSet.member?(chrome, text)) or
+        (tag == "p" and Regex.match?(@consent_re, text))
+    end)
+  end
 
   @doc "The row fields the worker writes for one page, as `LS.Cluster.Inserter` expects them."
   @spec page_row(t(), String.t(), String.t()) :: map()
@@ -257,10 +275,13 @@ defmodule LS.HTTP.PageBlocks do
     list = Map.fetch!(state.blocks, region)
 
     list =
-      cond do
-        byte_size(t) < 3 -> list
-        match?([{_, ^t} | _], list) -> list
-        true -> [{tag, t} | list]
+      case list do
+        _ when byte_size(t) < 3 -> list
+        # The same text twice in a row: keep one, and let a heading win over
+        # the list item before it (a menu "Shop" followed by <h1>Shop</h1>).
+        [{prev_tag, ^t} | rest] when tag in ["h1", "h2", "h3"] and prev_tag not in ["h1", "h2", "h3"] -> [{tag, t} | rest]
+        [{_, ^t} | _] -> list
+        _ -> [{tag, t} | list]
       end
 
     %{state | cur: nil, blocks: Map.put(state.blocks, region, list)}

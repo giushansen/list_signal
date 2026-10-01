@@ -136,13 +136,31 @@ defmodule LS.HTTP.Client do
   # on prod 2026-07-29: only 65 of 299 contact-page domains yielded contacts.
   # Discovery keeps the default 1; it is throughput-bound and disposable.
   defp attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left) do
+    # The node's own budget first (LS.HTTP.NodeBudget, 2026-10-01): the
+    # per-IP spacing protects the destination, this protects our source
+    # address. Over budget means wait for the next minute, then one more
+    # try; the wait is bounded by the minute itself.
+    case LS.HTTP.NodeBudget.take() do
+      {:wait, ms} when retries_left > 0 ->
+        Process.sleep(ms)
+        attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left - 1)
+
+      {:wait, _} ->
+        {:error, "rate_limited", :rate_limited}
+
+      :ok ->
+        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left)
+    end
+  end
+
+  defp attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left) do
     case IPRateLimiter.check_and_update(ip, 1000) do
       :ok ->
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes)
 
       {:wait, wait_ms} when retries_left > 0 ->
         Process.sleep(wait_ms)
-        attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left - 1)
+        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left - 1)
 
       {:wait, _} ->
         {:error, "rate_limited", :rate_limited}

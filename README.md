@@ -8,22 +8,29 @@ Domain intelligence platform. Ingests SSL certificates in real-time, enriches do
 
 No files in the pipeline. CTL → ETS queue → workers → ClickHouse. That's it.
 
-## Three pipelines
+## The pipeline, end to end
 
 ```
-CT logs ─► DISCOVERY (10 VPS, fast peek) ─► domains_history ─► domains_current
-                                                                    │
-                                                     "real businesses?"
-                                                                    ▼
-           ENRICHMENT (big nodes + home NUC) ◄──── EnrichmentQueue
-              /products.json · ATS job APIs · /contact · /pricing
-              camoufox only when HTTP is refused or JS is required
-                                    │
-                     biz_contact · biz_career · biz_pricing · biz_summary
-                                    │
-                              COMPACTOR (every 5 min)
-                                    ▼
-                            businesses  ← the product (app · API · CSV)
+CT logs ─► crawl gate (hot > dormant > stable > 7-day blooms) ─► WorkQueue
+                                                                     │ batches of 1,000
+DISCOVERY WORKERS: DNS ─► verdict (crawl / skip:tld / skip:junk_name / skip:no_mail)
+                          ─► HTTP peek + page blocks ∥ BGP ∥ RDAP ─► classify ─► merge
+                                     │ one row per attempted fetch        │ verdicts
+                                     ▼                                    ▼
+                               enrich_log (append)                 gate rings
+                               http_pages (latest per domain)
+                                     │ MV
+                                     ▼
+                                  domains  ──"real businesses?"──► EnrichmentQueue
+                                                                          │
+DEPTH WORKERS (+ home NUC): /products.json · ATS APIs · /contact · /pricing
+                            camoufox only when HTTP is refused or JS is required
+                                     │
+          http_deep_log · http_deep_state · http_contacts · hr_jobs · shop_products · http_deep_prices
+                                     │
+                               COMPACTOR (every 5 min): fold ─► scratch ─► changes_log diff ─► businesses
+                                     ▼
+                     businesses + changes_log  ← the product (dashboard · API · MCP · CSV)
 ```
 
 **Discovery** is breadth: millions of domains, 5s timeout, homepage only.
@@ -304,8 +311,11 @@ clickhouse client --database=ls --query="INSERT INTO enrichments FORMAT CSVWithN
 
 | Object | Type | Purpose |
 |---|---|---|
-| `ls.enrichments` | Table (MergeTree) | Append-only log. Partitioned by month. Every enriched domain gets a row here. |
-| `ls.domains_current` | Materialized View (ReplacingMergeTree) | Auto-maintained latest state per domain. Deduplicates on `domain`, keeps newest `enriched_at`. |
+| `ls.enrich_log` | Table (MergeTree) | Append-only log, one row per attempted fetch (filtered domains write nothing since 2026-10-01). Partitioned by month, 365-day TTL. |
+| `ls.domains` | Materialized View (ReplacingMergeTree) | Latest state per domain, newest `enriched_at` wins. |
+| `ls.businesses` | Table (ReplacingMergeTree) | The product: one compiled row per real business, columns declared in `LS.Schema.Columns`. |
+| `ls.changes_log` | Table (ReplacingMergeTree) | One row per change of one tracked column on one business. |
+| `ls.http_pages` | Table (ReplacingMergeTree) | The page as the product keeps it: header, body blocks, footer, JSON-LD. |
 
 One INSERT point (the Inserter). No staging tables. No import scripts.
 
@@ -313,13 +323,14 @@ One INSERT point (the Inserter). No staging tables. No import scripts.
 
 ```sql
 -- Row count
-SELECT count() FROM ls.enrichments;
+SELECT count() FROM ls.enrich_log;
 
--- Today's throughput
-SELECT count() FROM ls.enrichments WHERE enriched_at >= today();
+-- Today's attempted fetches
+SELECT count() FROM ls.enrich_log WHERE enriched_at >= today();
 
--- Latest state for a domain
-SELECT * FROM ls.domains_current FINAL WHERE domain = 'stripe.com';
+-- Latest crawl state for a domain, and its compiled business row
+SELECT * FROM ls.domains FINAL WHERE domain = 'stripe.com';
+SELECT * FROM ls.businesses FINAL WHERE domain = 'stripe.com';
 ```
 
 ### SQLite (application data — via Ecto)
@@ -514,9 +525,10 @@ Inserter (GenServer buffer)
     └─ On success: rows gone from memory
     │
     ▼
-ls.enrichments (append-only MergeTree table)
+ls.enrich_log (append-only MergeTree table)
     │
-    └──> ls.domains_current (auto-updated materialized view)
+    └──> ls.domains (auto-updated materialized view)
+    └──> compactor fold every 5 min ──> ls.businesses + ls.changes_log
 ```
 
 ---

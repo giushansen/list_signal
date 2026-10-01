@@ -202,8 +202,9 @@ request after agents rewrote test assertions to fit their own changes.
 
 - Prod master: `root@45.63.7.58`. ClickHouse is localhost-only; reach it via
   the SSH tunnel or `clickhouse-client` on the box.
-- Metabase (prod): `https://metabase.listsignal.com:8443`, secrets in
-  `/root/.listsignal-secrets`.
+- Metabase was removed from the master on 2026-10-01 (archive in
+  `/root/metabase-archive-2026-10-01.tgz`); analytics run from the laptop's
+  Metabase against prod through the read-only tunnel (see `metabase/`).
 - Query source of truth lives in `metabase/queries/*.sql` — iterate in the
   Metabase editor, then paste back into the repo file.
 - The master is a shared box (ClickHouse 7G cap + app 4G cap + Metabase 4G).

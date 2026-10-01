@@ -1,5 +1,12 @@
 # Architecture
 
+> Table names are the data model v2 names (2026-10-01). Sections dated
+> before that mention the old ones; read them with this mapping:
+> `domains_history` is now `enrich_log`, `domains_current` is `domains`,
+> `biz_enrichment` / `biz_enrichment_log` are `http_deep_state` /
+> `http_deep_log`, `biz_contact` is `http_contacts`, `biz_career` is
+> `hr_jobs`, `biz_signal` is `changes_log`, `ctl_sightings` is `ctl_log`.
+
 ListSignal discovers newly-certificated domains from Certificate Transparency
 logs, enriches them across a distributed worker fleet, and serves the result
 as a searchable directory of businesses (Shopify stores, SaaS, agencies, …).
@@ -10,19 +17,78 @@ CT logs (~16, both protocols)▶│ CTL.Poller ─▶ Cluster.WorkQueue (ETS, ca
                         │        ▲                 │ dequeue (batches)       │
                         │ Recrawl.Scheduler ───────┘                         │
                         │                                                    │
-                        │ Cluster.Inserter ─▶ ClickHouse (enrichments,       │
-                        │   ▲ (quality guard)      domains_current MV)      │
+                        │ Cluster.Inserter ─▶ ClickHouse (enrich_log,        │
+                        │   ▲ (quality guard)      domains MV, http_pages)  │
                         │   │                       ▲                        │
                         │ LSWeb (Phoenix) ──────────┘  SQLite (users/plans)  │
                         └───┼────────────────────────────────────────────────┘
                             │ rows                     Erlang distribution
                             │                          over WireGuard mesh
         ┌───────────────────┴─────────────────────────────────┐
-        │            WORKERS (11 nodes, LS_ROLE=worker)       │
+        │            WORKERS (14 nodes, LS_ROLE=worker)       │
         │  Cluster.WorkerAgent: pulls a batch, runs stages:   │
-        │   DNS ─▶ [HTTP ∥ BGP ∥ RDAP] ─▶ classify ─▶ merge   │
+        │   DNS ─▶ verdict ─▶ [HTTP ∥ BGP ∥ RDAP] ─▶ classify ─▶ merge │
+        │   (filtered domains: no row, verdict back to the gate)       │
         └─────────────────────────────────────────────────────┘
 ```
+
+## The pipeline end to end (2026-10-01)
+
+```mermaid
+flowchart LR
+  CT[CT logs<br/>~3,600 domains/min] --> G{Crawl gate<br/>hot > dormant > stable > 7-day blooms}
+  G -- suppressed --> CTL[(ctl_log<br/>sighting kept)]
+  G -- admitted --> Q[WorkQueue<br/>batches of 1,000]
+  Q --> W[Worker: DNS]
+  W --> V{DomainFilter.verdict}
+  V -- skip:tld / skip:junk_name --> D[dormant ring<br/>60-90 d]
+  V -- skip:no_mail --> S[stable ring<br/>28-35 d]
+  V -- crawl --> H[HTTP peek + PageBlocks<br/>BGP, RDAP, classify]
+  H --> EL[(enrich_log<br/>one row per attempted fetch)]
+  H --> HP[(http_pages<br/>header, body blocks, footer, JSON-LD)]
+  EL -- MV --> DM[(domains<br/>newest row per domain)]
+  DM --> EQ[EnrichmentQueue] --> DW[Depth workers<br/>catalog, jobs, contacts, prices]
+  DW --> DT[(http_deep_state, http_contacts,<br/>hr_jobs, shop_products ...)]
+  EL --> C[Compactor, every 5 min<br/>fold window + synthetic legs]
+  DT --> C
+  C --> SC[(scratch table)]
+  SC -- diff vs current --> CL[(changes_log)]
+  SC -- move --> B[(businesses<br/>the product)]
+  CL -- changed domains --> HOT[hot ring, 21-28 d]
+  C -- unchanged once / twice --> S
+  C -- twice unchanged --> D
+  B --> API[Dashboard, API, MCP, CSV]
+  CL --> API
+```
+
+**How a compiled row is merged.** The fold reads every crawl of a touched
+domain in the pass window plus two synthetic legs built from the current
+compiled row (one "verified" leg carrying the page facts as observed at
+`http_last_seen_at`, one "latest" leg carrying status and errors as of
+`http_last_checked_at`). Each column has one rule from the spec:
+
+| Rule | Columns | Meaning |
+|---|---|---|
+| newest observed | title, meta, tech, apps, language, pages, phone, address, fingerprint, ETag, simhash | the newest crawl that actually saw the site (2xx/3xx, not a bot wall) |
+| newest non-empty | DNS, RDAP, BGP, ranks, country evidence | a blank never replaces a value |
+| union | emails, social links, subdomains | lists only grow, capped |
+| best | revenue, employees, model, industry | highest confidence wins, ranks seen on the master |
+| newest, excluding 304 (planned) | http_status | a conditional GET is a check, not a status |
+| derived | `estimated_realness`, `dns_tech`, `dns_email_provider`, `estimated_junk` | computed from the merged row (parking nameservers override the page verdict) |
+
+The merged row lands in a scratch table; `changes_log` is written from the
+scratch-vs-current diff with one rule per tracked column (set added/removed,
+changed, started/stopped, down/back, percentage); then the rows move into
+`businesses`. `docs/data-model-standards.md` holds the rules in detail.
+
+**How revisit frequency follows relevance.** Every domain starts on the
+7-day blooms. A crawl that comes back unchanged puts it on 28-35 days; a
+second unchanged crawl puts it on 60-90 days; a recorded change (anything
+but subdomain churn) puts it back on 7 days for a month. Domains the name
+settles (unlisted TLD, junk name, registry) sleep 60-90 days without a row;
+a listed TLD without mail setup waits a month and is re-evaluated. The
+recrawl scheduler's weekly tier for digital businesses stays as the floor
+for domains the certificate logs never re-sight.
 
 ## Node roles
 

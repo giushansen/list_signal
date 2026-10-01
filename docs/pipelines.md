@@ -1,5 +1,13 @@
 # The two pipelines
 
+> Table names below are the data model v2 names (2026-10-01): `enrich_log`
+> (was domains_history), `domains` (was domains_current), `http_deep_state`
+> / `http_deep_log` (were biz_enrichment / biz_enrichment_log),
+> `http_contacts`, `hr_jobs`, `http_deep_prices`, `shop_products`,
+> `shop_collections`, `news_items`, `http_deep_fetch_log`, `ctl_log`,
+> `changes_log` (was biz_signal). Older sections keep the dates they were
+> written at; the mapping above reads them.
+
 ListSignal runs **two** crawling pipelines with opposite goals. They share
 every resolver, cache and rate limiter, but write to different tables — and
 that separation is the whole point.
@@ -17,13 +25,13 @@ that separation is the whole point.
                                        │ one row per crawl
                                        ▼
                             ┌────────────────────┐
-                            │  domains_history   │  append log, TTL 365d
+                            │  enrich_log        │  append log, TTL 365d
                             │  126M rows         │  ← cybersecurity dataset
                             └─────────┬──────────┘
                                       │ MV
                                       ▼
                             ┌────────────────────┐
-                            │  domains_current   │  newest row per domain
+                            │  domains           │  newest row per domain
                             │  93M rows          │
                             └─────────┬──────────┘
                                       │ "which are real businesses?"
@@ -52,7 +60,7 @@ that separation is the whole point.
                                       │
               ┌───────────────┬───────┴───────┬────────────────┐
               ▼               ▼               ▼                ▼
-        biz_contact      biz_career      biz_pricing      biz_summary
+        http_contacts    hr_jobs         http_deep_prices http_deep_state
         (1:many)         (1:many)        (1:many)         (1:1 signals)
               │               │               │                │
               └───────────────┴───────┬───────┴────────────────┘
