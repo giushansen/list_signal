@@ -492,10 +492,7 @@ defmodule LS.Cluster.WorkerAgent do
     # task exit mid-flight and took the whole WorkerAgent down with it (h1
     # crash-loop, 2026-07-27) — and any worker could hit it on a cold cache.
     bgp_timeout = max(60_000, div(length(ips), 100) * 10_000 + 30_000)
-    asn_map = case GenServer.call(BGPResolver, {:lookup_batch, ips}, bgp_timeout) do
-      {:ok, m} -> m
-      {:error, _} -> %{}
-    end
+    asn_map = bgp_lookup(BGPResolver, ips, bgp_timeout)
     Enum.reduce(cands, %{}, fn {d, ip}, acc ->
       case Map.get(asn_map, ip) do
         nil -> acc
@@ -511,6 +508,25 @@ defmodule LS.Cluster.WorkerAgent do
     end)
   rescue
     _ -> %{}
+  end
+
+  @doc false
+  # A resolver that does not answer in time costs the batch its BGP fields,
+  # never the batch. GenServer.call raises an exit on timeout, which the
+  # `rescue` below never saw: on 2026-10-01 whois.cymru.com port 43 was
+  # unreachable from both Paris nodes and par1/par2 crash-looped for two
+  # hours (84 and 74 agent restarts, zero batches completed), the same
+  # shape as h1 on 2026-07-27.
+  def bgp_lookup(server, ips, timeout_ms) do
+    case GenServer.call(server, {:lookup_batch, ips}, timeout_ms) do
+      {:ok, m} when is_map(m) -> m
+      _ -> %{}
+    end
+  catch
+    :exit, reason ->
+      require Logger
+      Logger.warning("BGP stage skipped for #{length(ips)} IPs: #{inspect(reason) |> String.slice(0, 120)}")
+      %{}
   end
 
   # ==========================================================================
