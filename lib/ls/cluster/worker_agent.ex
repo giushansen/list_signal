@@ -159,9 +159,9 @@ defmodule LS.Cluster.WorkerAgent do
           {:ok, bid, domains} ->
             Logger.info("Batch #{bid}: #{length(domains)} domains")
             t0 = System.monotonic_time(:millisecond)
-            {results, stages, samples, errors} = enrich_batch(domains, hc, dc, rc)
+            {results, stages, samples, errors, skipped} = enrich_batch(domains, hc, dc, rc)
             stages = Map.put(stages, :cycle_ms, System.monotonic_time(:millisecond) - t0)
-            send(parent, {:batch_done, bid, results, stages, samples, errors})
+            send(parent, {:batch_done, bid, results, stages, samples, errors, skipped})
           {:empty, []} ->
             send(parent, :batch_empty)
         end
@@ -173,12 +173,14 @@ defmodule LS.Cluster.WorkerAgent do
   end
 
   @impl true
-  def handle_info({:batch_done, bid, results, stages, samples, batch_errors}, s) do
+  def handle_info({:batch_done, bid, results, stages, samples, batch_errors, skipped}, s) do
     queue = {LS.Cluster.WorkQueue, s.master_node}
     cyc = Map.get(stages, :cycle_ms, 0)
     known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
     Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
-    GenServer.cast(queue, {:complete, bid, results})
+    # The verdicts travel with the rows so the gate can remember them
+    # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
+    GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved])})
     errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
     new_s = %{s |
       total_enriched: s.total_enriched + length(results),
@@ -241,8 +243,10 @@ defmodule LS.Cluster.WorkerAgent do
     end
 
     # 2. Classify
-    {http_cands, bgp_cands} = classify(dns_results)
+    {http_cands, bgp_cands, skipped} = classify(dns_results)
     rdap_cands = classify_rdap(dns_results)
+    unresolved = for d <- domains, dom = d[:ctl_domain] || d[:domain], not Map.has_key?(dns_results, dom), do: dom
+    skipped = Map.put(skipped, :unresolved, unresolved)
 
     # 3. Parallel: HTTP + BGP + RDAP
     http_task = Task.async(fn -> enrich_http(http_cands, http_c) end)
@@ -267,7 +271,8 @@ defmodule LS.Cluster.WorkerAgent do
     end
 
     # 4. Merge (reputation + classification + scoring happen here)
-    {merge_us, merged} = :timer.tc(fn -> merge_results(domains, dns_results, http_res, bgp_res, rdap_res, worker) end)
+    {merge_us, merged} =
+      :timer.tc(fn -> merge_results(rows_to_write(domains, dns_results, http_cands), dns_results, http_res, bgp_res, rdap_res, worker) end)
 
     stages = %{
       dns: %{input: length(domains), output: map_size(dns_results), ms: div(dns_us, 1000)},
@@ -277,6 +282,7 @@ defmodule LS.Cluster.WorkerAgent do
       rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
               rate_limited: length(rdap_cands) - map_size(rdap_res)},
       merge: %{input: length(domains), output: length(merged), ms: div(merge_us, 1000)},
+      skipped: %{dormant: length(skipped.dormant), soft: length(skipped.soft), recent: length(skipped.recent), unresolved: length(unresolved)},
       total: length(merged)
     }
 
@@ -288,7 +294,7 @@ defmodule LS.Cluster.WorkerAgent do
       merged: Enum.take(merged, 5)
     }
 
-    {merged, stages, samples, errors}
+    {merged, stages, samples, errors, skipped}
   end
 
   # ==========================================================================
@@ -333,20 +339,57 @@ defmodule LS.Cluster.WorkerAgent do
   # CLASSIFY
   # ==========================================================================
 
+  # Which resolved domains get an HTTP fetch, and what happens to the rest.
+  #
+  # Until 2026-10-01 every domain in the batch got a row, fetched or not:
+  # 60% of all rows written (345M of the 506M in enrich_log, 189M of the
+  # 305M in domains) were "resolved, filtered, never fetched", and 64% of
+  # certificate re-sightings were those same domains coming back to be
+  # filtered again. Now a filtered domain gets no row; the master is told
+  # the verdict instead and remembers it in the crawl gate (dormant for a
+  # verdict the name settles, 28-35 days for a missing mail setup).
   defp classify(dns_results) do
-    Enum.reduce(dns_results, {[], []}, fn {domain, data}, {ha, ba} ->
+    Enum.reduce(dns_results, {[], [], %{dormant: [], soft: [], recent: []}}, fn {domain, data}, {ha, ba, sk} ->
       ip = data.dns[:a] |> List.wrap() |> List.first()
       ba = if ip && ip != "", do: [{domain, ip} | ba], else: ba
       mx = data.dns[:mx] |> List.wrap() |> Enum.join("|")
       txt = data.dns[:txt] |> List.wrap() |> Enum.join(" ")
-      # Skip HTTP for blocklisted domains
-      ha = if ip && ip != "" && Cache.http_lookup(domain) == :miss &&
-              !Blocklist.blocked?(domain) && !LS.Reputation.TLDFilter.is_registry?(domain) && DomainFilter.should_crawl?(domain, mx, txt) do
-        [{domain, ip} | ha]
-      else
-        ha
+
+      cond do
+        is_nil(ip) or ip == "" ->
+          {ha, ba, sk}
+
+        # Blocklisted domains keep a row: the malware/phishing flag is data.
+        Blocklist.blocked?(domain) ->
+          {ha, ba, sk}
+
+        Cache.http_lookup(domain) != :miss ->
+          {ha, ba, %{sk | recent: [domain | sk.recent]}}
+
+        LS.Reputation.TLDFilter.is_registry?(domain) ->
+          {ha, ba, %{sk | dormant: [domain | sk.dormant]}}
+
+        true ->
+          case DomainFilter.verdict(domain, mx, txt, ip) do
+            :crawl -> {[{domain, ip} | ha], ba, sk}
+            {:skip, :no_mail} -> {ha, ba, %{sk | soft: [domain | sk.soft]}}
+            {:skip, _settled} -> {ha, ba, %{sk | dormant: [domain | sk.dormant]}}
+          end
       end
-      {ha, ba}
+    end)
+  end
+
+  @doc false
+  # Pure: the domains that get a row. Fetched or attempted ones (HTTP has
+  # something to say, including the error), blocklisted ones (the flag is
+  # the data). Filtered and unresolved domains write nothing: a row with
+  # DNS fields only used to REPLACE a good `domains` row with a hollow one.
+  def rows_to_write(domains, dns_results, http_cands) do
+    attempted = MapSet.new(http_cands, fn {d, _ip} -> d end)
+
+    Enum.filter(domains, fn d ->
+      domain = d[:ctl_domain] || d[:domain]
+      MapSet.member?(attempted, domain) or (Map.has_key?(dns_results, domain) and Blocklist.blocked?(domain))
     end)
   end
 

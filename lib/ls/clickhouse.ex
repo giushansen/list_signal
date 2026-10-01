@@ -801,6 +801,7 @@ defmodule LS.Clickhouse do
   # ── compaction: see LS.Clickhouse.Compact (data model v2, 2026-10-01) ──
 
   defdelegate compact_businesses(since_unix, until_unix \\ nil), to: Compact
+  defdelegate changed_domains(since_unix, until_unix), to: Compact
   defdelegate rebuild_businesses_full(), to: Compact
   defdelegate compact_shard(shard, total_shards), to: Compact
   defdelegate compact_sql_shard_preview(shard \\ 0, total \\ 256), to: Compact

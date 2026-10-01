@@ -654,18 +654,43 @@ defmodule LS.Clickhouse.Compact do
 
   @doc """
   Domains whose newest crawl in the window looks exactly like the compiled
-  row we already had: same title, published tech list and status. Feeds the
-  crawl gate's stable ring (28-35 days instead of 7, 2026-09-09). Only
+  row we already had: same title, published tech list and status, with the
+  days since the previous check. Feeds the crawl gate's stable ring (28-35
+  days instead of 7, 2026-09-09) or, when the previous check was itself
+  25+ days back (so it was already unchanged once), the dormant ring
+  (60-90 days, 2026-10-01). Only
   observed 2xx/3xx crawls count, and the window's raw tech list goes
   through the same catalog map as the fold, so a store whose unknown
   handles the catalog drops is still "unchanged".
   """
   def stable_domains(since_unix, until_unix) do
     case Clickhouse.query_raw(stable_domains_sql(since_unix, until_unix), 120_000, background: true) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d, gap] -> {d, to_int(gap)} end)}
+      err -> err
+    end
+  end
+
+  @doc """
+  Domains with a change recorded in the window, subdomain churn excluded.
+  They go into the crawl gate's hot ring (back on the 7-day schedule).
+  """
+  def changed_domains(since_unix, until_unix) do
+    sql = """
+    SELECT DISTINCT domain FROM #{Tables.changes_log()}
+    WHERE changed_at >= toDateTime(#{int(since_unix)}) AND changed_at < toDateTime(#{int(until_unix)})
+      AND field != 'ctl_subdomains'
+    SETTINGS max_execution_time = 30, max_threads = 2
+    """
+
+    case Clickhouse.query_raw(sql, 40_000, background: true) do
       {:ok, rows} -> {:ok, Enum.map(rows, fn [d] -> d end)}
       err -> err
     end
   end
+
+  defp to_int(n) when is_integer(n), do: n
+  defp to_int(n) when is_binary(n), do: (case Integer.parse(n) do {v, _} -> v; _ -> 0 end)
+  defp to_int(_), do: 0
 
   @doc false
   def stable_domains_sql(since_unix, until_unix) do
@@ -674,9 +699,9 @@ defmodule LS.Clickhouse.Compact do
 
     """
     WITH #{catalog_with()}
-    SELECT n.domain
+    SELECT n.domain, dateDiff('day', ifNull(o.http_last_checked_at, n.at), n.at) AS gap_days
     FROM (
-      SELECT domain,
+      SELECT domain, max(enriched_at) AS at,
              argMax(http_title, enriched_at) AS title,
              arraySort(arrayDistinct(arrayFilter(x -> x != '' AND has(_catalog, x),
                arrayMap(x -> transform(x, _alias_from, _alias_to, x),
@@ -687,9 +712,11 @@ defmodule LS.Clickhouse.Compact do
       GROUP BY domain
     ) AS n
     INNER JOIN (
-      SELECT domain, http_title, arraySort(http_tech) AS tech_sorted, http_status, tranco_rank
+      SELECT domain, http_title, arraySort(http_tech) AS tech_sorted, http_status, tranco_rank, http_last_checked_at
       FROM #{Tables.businesses()}
       WHERE domain IN (SELECT domain FROM #{enrich_log} WHERE #{window})
+      ORDER BY compiled_at DESC
+      LIMIT 1 BY domain
     ) AS o USING (domain)
     WHERE n.title = o.http_title AND n.tech = o.tech_sorted AND n.status = o.http_status
       AND (o.tranco_rank IS NULL OR o.tranco_rank > 100000)

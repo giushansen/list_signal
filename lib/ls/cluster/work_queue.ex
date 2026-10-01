@@ -62,6 +62,7 @@ defmodule LS.Cluster.WorkQueue do
   @idx_dropped 2
   @idx_deduped 3
   @idx_deduped_stable 4
+  @idx_deduped_dormant 5
 
   # ==========================================================================
   # CLIENT API
@@ -91,16 +92,27 @@ defmodule LS.Cluster.WorkQueue do
 
   def enqueue(domain_data, opts) when is_map(domain_data) and is_list(opts) do
     current_size = :ets.info(@queue_table, :size)
+    domain = domain_data[:ctl_domain] || domain_data[:domain]
+    # A domain that just changed is back on the 7-day schedule whatever the
+    # slower rings say (2026-10-01): revisit in proportion to change.
+    hot = LS.Cluster.CrawlDedup.hot?(domain)
 
     cond do
       current_size >= max_queue_size() ->
         :counters.add(counter_ref(), @idx_dropped, 1)
         :queue_full
 
-      # Stable ring first, and NOT bypassed by force (2026-09-09): a domain
+      # Dormant ring (2026-10-01): twice unchanged, or filtered on a verdict
+      # the name settles. 60-90 days, not bypassed by force either.
+      not hot and LS.Cluster.CrawlDedup.dormant?(domain) ->
+        LS.Cluster.CrawlDedup.record_sighting(domain_data)
+        :counters.add(counter_ref(), @idx_deduped_dormant, 1)
+        :recently_crawled
+
+      # Stable ring next, and NOT bypassed by force (2026-09-09): a domain
       # whose last crawl came back unchanged waits 28-35 days, whoever asks.
       # The recrawl scheduler's force only means "I am the 7-day schedule".
-      LS.Cluster.CrawlDedup.stable?(domain_data[:ctl_domain] || domain_data[:domain]) ->
+      not hot and LS.Cluster.CrawlDedup.stable?(domain) ->
         LS.Cluster.CrawlDedup.record_sighting(domain_data)
         :counters.add(counter_ref(), @idx_deduped_stable, 1)
         :recently_crawled
@@ -140,6 +152,15 @@ defmodule LS.Cluster.WorkQueue do
     GenServer.cast(__MODULE__, {:complete, batch_id, results})
   end
 
+  @doc """
+  Return completed results plus the batch's verdicts on domains that got
+  no row (2026-10-01): `dormant` (name-settled skips), `soft` (no mail
+  setup yet), `recent`, `unresolved`. The gate remembers them.
+  """
+  def complete(batch_id, results, skipped) when is_map(skipped) do
+    GenServer.cast(__MODULE__, {:complete, batch_id, results, skipped})
+  end
+
   @doc "Return failed batch for requeue. Called by workers on crash."
   def fail(batch_id) do
     GenServer.cast(__MODULE__, {:fail, batch_id})
@@ -162,7 +183,7 @@ defmodule LS.Cluster.WorkQueue do
     :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
-    ref = :counters.new(4, [:write_concurrency])
+    ref = :counters.new(5, [:write_concurrency])
     :persistent_term.put(@counter_table, ref)
 
     schedule_cleanup()
@@ -225,6 +246,7 @@ defmodule LS.Cluster.WorkQueue do
     total_dropped = :counters.get(ref, @idx_dropped)
     total_deduped = :counters.get(ref, @idx_deduped)
     total_deduped_stable = :counters.get(ref, @idx_deduped_stable)
+    total_deduped_dormant = :counters.get(ref, @idx_deduped_dormant)
 
     # Lifetime averages kept for reference; the dashboard uses the windowed rates
     # below (total/uptime lied for hours after every restart — cold dedup cache
@@ -245,6 +267,7 @@ defmodule LS.Cluster.WorkQueue do
       total_dropped: total_dropped,
       total_deduped: total_deduped,
       total_deduped_stable: total_deduped_stable,
+      total_deduped_dormant: total_deduped_dormant,
       enqueue_rate_per_min: state.enqueue_rate_win,
       drain_rate_per_min: state.drain_rate_win,
       enqueue_rate_lifetime: enqueue_rate_lifetime,
@@ -265,6 +288,15 @@ defmodule LS.Cluster.WorkQueue do
 
     {:noreply, %{state | total_completed: state.total_completed + length(results)}}
   end
+
+  def handle_cast({:complete, batch_id, results, skipped}, state) do
+    :ets.delete(@inflight_table, batch_id)
+    mark_recently_crawled(results)
+    remember_skipped(skipped)
+    LS.Cluster.Inserter.insert(results)
+    {:noreply, %{state | total_completed: state.total_completed + length(results)}}
+  end
+
 
   @impl true
   def handle_cast({:fail, batch_id}, state) do
@@ -336,6 +368,23 @@ defmodule LS.Cluster.WorkQueue do
   # ==========================================================================
   # PRIVATE
   # ==========================================================================
+
+  @doc false
+  # Verdicts on domains that wrote no row: the name-settled ones sleep
+  # 60-90 days, the mail-less ones 28-35, and all of them count as handled
+  # so a late batch timeout does not send them to a second node.
+  def remember_skipped(skipped) when is_map(skipped) do
+    dormant = List.wrap(skipped[:dormant])
+    soft = List.wrap(skipped[:soft])
+    LS.Cluster.CrawlDedup.mark_dormant(dormant)
+    LS.Cluster.CrawlDedup.mark_stable(soft)
+
+    (dormant ++ soft ++ List.wrap(skipped[:recent]) ++ List.wrap(skipped[:unresolved]))
+    |> Enum.map(&%{domain: &1})
+    |> mark_recently_crawled()
+  end
+
+  def remember_skipped(_), do: :ok
 
   defp counter_ref do
     :persistent_term.get(@counter_table)

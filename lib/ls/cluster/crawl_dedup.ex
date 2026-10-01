@@ -88,13 +88,32 @@ defmodule LS.Cluster.CrawlDedup do
   @rotate_ms :timer.hours(24)
   @capacity 10_000_000
   @fp_rate 0.01
-  @stable_key {__MODULE__, :stable}
-  @stable_windows 5
-  @stable_capacity 20_000_000
-  @stable_fp 0.001
-  @week_s 7 * 86_400
   @stable_save_ms :timer.hours(6)
-  @stable_file "stable_blooms.bin"
+
+  # Three more rings share the stable ring's mechanics (2026-10-01, cost
+  # and quality pass). Each is a list of blooms rotated on a fixed period;
+  # a domain is a member for between (windows - 1) and windows periods.
+  #
+  #   :stable   unchanged on its last crawl        5 weekly windows, 28-35 days
+  #   :dormant  twice unchanged, or a verdict that  3 monthly windows, 60-90 days
+  #             DNS alone settles (low-value TLD,
+  #             junk name, registry)
+  #   :hot      a change was just recorded          4 weekly windows, 21-28 days;
+  #             bypasses :stable and :dormant so a
+  #             moving business is back on 7 days
+  #
+  # Sizing is measured: the first v2 morning wrote 1.36M distinct filtered
+  # domains in eleven hours, almost all re-sightings of domains already
+  # known, so a 40M monthly window holds the steady state with room; 2% false
+  # positives on a dormant check costs one skipped recrawl of a domain that
+  # already waits 60 days. Memory is allocated up front: 3 x 41 MB for
+  # dormant, 4 x 6 MB for hot, next to the stable ring's 5 x 36 MB.
+  @rings %{
+    stable: %{key: {__MODULE__, :stable}, windows: 5, period_s: 7 * 86_400, capacity: 20_000_000, fp: 0.001, file: "stable_blooms.bin", counter: {__MODULE__, :stable_marked}},
+    dormant: %{key: {__MODULE__, :dormant}, windows: 3, period_s: 30 * 86_400, capacity: 40_000_000, fp: 0.02, file: "dormant_blooms.bin", counter: {__MODULE__, :dormant_marked}},
+    hot: %{key: {__MODULE__, :hot}, windows: 4, period_s: 7 * 86_400, capacity: 5_000_000, fp: 0.01, file: "hot_blooms.bin", counter: {__MODULE__, :hot_marked}}
+  }
+  @ring_names Map.keys(@rings)
   @backfill_shards 16
   @backfill_days 3
   @sightings :ctl_sightings_buffer
@@ -134,23 +153,51 @@ defmodule LS.Cluster.CrawlDedup do
   Fails open like the daily ring, and is off under `LS_STABLE_REVISIT=false`.
   """
   @spec stable?(term()) :: boolean()
-  def stable?(domain) when is_binary(domain) and domain != "" do
-    Application.get_env(:ls, :stable_revisit, true) and
-      case :persistent_term.get(@stable_key, nil) do
-        %{blooms: blooms} -> Enum.any?(blooms, &Bloom.member?(&1, domain))
-        _ -> false
-      end
-  end
-
-  def stable?(_), do: false
+  def stable?(domain), do: Application.get_env(:ls, :stable_revisit, true) and in_ring?(:stable, domain)
 
   @doc "Remember that these domains came back unchanged. Returns how many were written."
   @spec mark_stable([String.t()]) :: non_neg_integer()
-  def mark_stable(domains) when is_list(domains) do
-    case :persistent_term.get(@stable_key, nil) do
+  def mark_stable(domains), do: mark(:stable, domains)
+
+  @doc """
+  True if `domain` is dormant: twice unchanged, or filtered on a verdict
+  that only DNS or the name decides. Waits 60-90 days, whoever asks. Off
+  under `LS_DORMANT_RING=false`.
+  """
+  @spec dormant?(term()) :: boolean()
+  def dormant?(domain), do: Application.get_env(:ls, :dormant_ring, true) and in_ring?(:dormant, domain)
+
+  @doc "Put domains to sleep for 60-90 days. Returns how many were written."
+  @spec mark_dormant([String.t()]) :: non_neg_integer()
+  def mark_dormant(domains), do: mark(:dormant, domains)
+
+  @doc """
+  True if a change was recorded for `domain` in the last 21-28 days. A hot
+  domain ignores the stable and dormant rings: a business that just moved
+  is the one worth watching weekly (Cho and Garcia-Molina: revisit in
+  proportion to the observed change rate).
+  """
+  @spec hot?(term()) :: boolean()
+  def hot?(domain), do: in_ring?(:hot, domain)
+
+  @doc "Remember that these domains just changed. Returns how many were written."
+  @spec mark_hot([String.t()]) :: non_neg_integer()
+  def mark_hot(domains), do: mark(:hot, domains)
+
+  defp in_ring?(name, domain) when is_binary(domain) and domain != "" do
+    case :persistent_term.get(@rings[name].key, nil) do
+      %{blooms: blooms} -> Enum.any?(blooms, &Bloom.member?(&1, domain))
+      _ -> false
+    end
+  end
+
+  defp in_ring?(_, _), do: false
+
+  defp mark(name, domains) when is_list(domains) do
+    case :persistent_term.get(@rings[name].key, nil) do
       %{blooms: [newest | _]} ->
         n = domains |> Enum.filter(&(is_binary(&1) and &1 != "")) |> Enum.map(&Bloom.put(newest, &1)) |> length()
-        :counters.add(stable_counter(), 1, n)
+        :counters.add(ring_counter(name), 1, n)
         n
 
       _ ->
@@ -158,13 +205,16 @@ defmodule LS.Cluster.CrawlDedup do
     end
   end
 
-  defp stable_counter, do: :persistent_term.get({__MODULE__, :stable_marked}, nil) || init_stable_counter()
+  defp mark(_, _), do: 0
 
-  defp init_stable_counter do
+  defp ring_counter(name), do: :persistent_term.get(@rings[name].counter, nil) || init_ring_counter(name)
+
+  defp init_ring_counter(name) do
     c = :counters.new(1, [:write_concurrency])
-    :persistent_term.put({__MODULE__, :stable_marked}, c)
+    :persistent_term.put(@rings[name].counter, c)
     c
   end
+
 
   @doc """
   Remember what a suppressed certificate sighting said. Cheap: one ETS
@@ -232,22 +282,29 @@ defmodule LS.Cluster.CrawlDedup do
           %{windows: 0, entries: [], memory_mb: 0.0, sightings_buffered: 0}
       end
 
-    stable =
-      case :persistent_term.get(@stable_key, nil) do
-        %{blooms: blooms, rotated_at: at} ->
-          %{
-            stable_windows: length(blooms),
-            stable_entries: Enum.map(blooms, &Bloom.count/1),
-            stable_memory_mb: blooms |> Enum.map(&Bloom.memory_mb/1) |> Enum.sum() |> Float.round(1),
-            stable_marked_total: :counters.get(stable_counter(), 1),
-            stable_rotated_at: at
-          }
+    rings =
+      Enum.reduce(@ring_names, %{}, fn name, acc ->
+        prefix = Atom.to_string(name)
 
-        _ ->
-          %{stable_windows: 0, stable_entries: [], stable_memory_mb: 0.0, stable_marked_total: 0, stable_rotated_at: nil}
-      end
+        stats =
+          case :persistent_term.get(@rings[name].key, nil) do
+            %{blooms: blooms, rotated_at: at} ->
+              %{
+                "#{prefix}_windows" => length(blooms),
+                "#{prefix}_entries" => Enum.map(blooms, &Bloom.count/1),
+                "#{prefix}_memory_mb" => blooms |> Enum.map(&Bloom.memory_mb/1) |> Enum.sum() |> Float.round(1),
+                "#{prefix}_marked_total" => :counters.get(ring_counter(name), 1),
+                "#{prefix}_rotated_at" => at
+              }
 
-    Map.merge(daily, stable)
+            _ ->
+              %{"#{prefix}_windows" => 0, "#{prefix}_entries" => [], "#{prefix}_memory_mb" => 0.0, "#{prefix}_marked_total" => 0, "#{prefix}_rotated_at" => nil}
+          end
+
+        Map.merge(acc, Map.new(stats, fn {k, v} -> {String.to_atom(k), v} end))
+      end)
+
+    Map.merge(daily, rings)
   end
 
   @impl true
@@ -258,52 +315,61 @@ defmodule LS.Cluster.CrawlDedup do
     Process.send_after(self(), :flush, @flush_ms)
     send(self(), :backfill)
 
-    init_stable_counter()
-    restore_stable()
-    Process.send_after(self(), :rotate_stable, ms_until_stable_rotation())
-    Process.send_after(self(), :save_stable, @stable_save_ms)
+    for name <- @ring_names do
+      init_ring_counter(name)
+      restore_ring(name)
+      Process.send_after(self(), {:rotate_ring, name}, ms_until_rotation(name))
+    end
 
-    Logger.info("🔁 CrawlDedup started (#{@windows} daily windows x #{@capacity} entries, suppression 7-8 days; #{@stable_windows} weekly stable windows)")
+    Process.send_after(self(), :save_rings, @stable_save_ms)
+
+    Logger.info("🔁 CrawlDedup started (#{@windows} daily windows x #{@capacity} entries, suppression 7-8 days; rings: #{Enum.map_join(@ring_names, ", ", &"#{&1} #{@rings[&1].windows}x#{div(@rings[&1].period_s, 86_400)}d")})")
 
     {:ok, %{recorded: 0}}
   end
 
-  # ── stable ring ────────────────────────────────────────────────────────
+  # ── rings: stable, dormant, hot ───────────────────────────────────────
 
-  defp new_stable_bloom, do: Bloom.new(@stable_capacity, @stable_fp)
+  defp new_bloom(name), do: Bloom.new(@rings[name].capacity, @rings[name].fp)
 
   @doc false
-  def stable_path, do: Path.join(LS.State.dir(), @stable_file)
+  def ring_path(name), do: Path.join(LS.State.dir(), @rings[name].file)
 
-  # A saved ring is rotated forward by the weeks that passed while the BEAM
-  # was down, so a two-week outage releases two weeks of domains instead of
-  # none. Anything unreadable starts fresh: an empty ring only costs fetches.
-  defp restore_stable do
+  @doc false
+  def stable_path, do: ring_path(:stable)
+
+  # A saved ring is rotated forward by the periods that passed while the
+  # BEAM was down, so a two-week outage releases two weeks of domains
+  # instead of none. Anything unreadable starts fresh: an empty ring only
+  # costs fetches.
+  defp restore_ring(name) do
     now = System.system_time(:second)
 
     ring =
-      with {:ok, bin} <- File.read(stable_path()),
-           {:ok, ring} <- decode_stable(bin, now) do
-        Logger.info("🔁 CrawlDedup stable ring restored (#{Enum.map_join(ring.blooms, "/", &Bloom.count/1)} entries)")
+      with {:ok, bin} <- File.read(ring_path(name)),
+           {:ok, ring} <- decode_ring(name, bin, now) do
+        Logger.info("🔁 CrawlDedup #{name} ring restored (#{Enum.map_join(ring.blooms, "/", &Bloom.count/1)} entries)")
         ring
       else
-        {:error, :enoent} -> fresh_stable(now)
+        {:error, :enoent} -> fresh_ring(name, now)
         other ->
-          Logger.warning("🔁 CrawlDedup stable ring not restored (#{inspect(other)}), starting empty")
-          fresh_stable(now)
+          Logger.warning("🔁 CrawlDedup #{name} ring not restored (#{inspect(other)}), starting empty")
+          fresh_ring(name, now)
       end
 
-    :persistent_term.put(@stable_key, ring)
+    :persistent_term.put(@rings[name].key, ring)
   end
 
-  defp fresh_stable(now), do: %{blooms: for(_ <- 1..@stable_windows, do: new_stable_bloom()), rotated_at: now}
+  defp fresh_ring(name, now), do: %{blooms: for(_ <- 1..@rings[name].windows, do: new_bloom(name)), rotated_at: now}
 
   @doc false
-  def decode_stable(bin, now) do
+  def decode_ring(name, bin, now) do
+    windows = @rings[name].windows
+
     case :erlang.binary_to_term(bin, [:safe]) do
-      %{v: 1, rotated_at: at, blooms: bins} when is_integer(at) and is_list(bins) and length(bins) == @stable_windows ->
-        blooms = Enum.map(bins, fn b -> case Bloom.from_binary(b) do {:ok, f} -> f; :error -> new_stable_bloom() end end)
-        {:ok, rotate_stable_ring(%{blooms: blooms, rotated_at: at}, now)}
+      %{v: 1, rotated_at: at, blooms: bins} when is_integer(at) and is_list(bins) and length(bins) == windows ->
+        blooms = Enum.map(bins, fn b -> case Bloom.from_binary(b) do {:ok, f} -> f; :error -> new_bloom(name) end end)
+        {:ok, rotate_ring(name, %{blooms: blooms, rotated_at: at}, now)}
 
       _ ->
         {:error, :corrupt}
@@ -313,38 +379,46 @@ defmodule LS.Cluster.CrawlDedup do
   end
 
   @doc false
-  # Pure: advance the ring by however many whole weeks separate `rotated_at`
-  # from `now`; more than the ring's length means a fresh ring.
-  def rotate_stable_ring(%{blooms: blooms, rotated_at: at} = ring, now) do
-    weeks = div(max(now - at, 0), @week_s)
+  def decode_stable(bin, now), do: decode_ring(:stable, bin, now)
+
+  @doc false
+  # Pure: advance the ring by however many whole periods separate
+  # `rotated_at` from `now`; more than the ring's length means a fresh ring.
+  def rotate_ring(name, %{blooms: blooms, rotated_at: at} = ring, now) do
+    %{windows: windows, period_s: period} = @rings[name]
+    periods = div(max(now - at, 0), period)
 
     cond do
-      weeks == 0 -> ring
-      weeks >= @stable_windows -> fresh_stable(now)
+      periods == 0 -> ring
+      periods >= windows -> fresh_ring(name, now)
       true ->
-        kept = Enum.take(blooms, @stable_windows - weeks)
-        %{blooms: for(_ <- 1..weeks, do: new_stable_bloom()) ++ kept, rotated_at: at + weeks * @week_s}
+        kept = Enum.take(blooms, windows - periods)
+        %{blooms: for(_ <- 1..periods, do: new_bloom(name)) ++ kept, rotated_at: at + periods * period}
     end
   end
 
-  defp ms_until_stable_rotation do
-    %{rotated_at: at} = :persistent_term.get(@stable_key)
-    max((at + @week_s - System.system_time(:second)) * 1000, 60_000)
+  @doc false
+  def rotate_stable_ring(ring, now), do: rotate_ring(:stable, ring, now)
+
+  defp ms_until_rotation(name) do
+    %{rotated_at: at} = :persistent_term.get(@rings[name].key)
+    max((at + @rings[name].period_s - System.system_time(:second)) * 1000, 60_000)
   end
 
   @doc false
-  def save_stable do
-    case :persistent_term.get(@stable_key, nil) do
+  def save_ring(name) do
+    case :persistent_term.get(@rings[name].key, nil) do
       %{blooms: blooms, rotated_at: at} ->
         bin = :erlang.term_to_binary(%{v: 1, rotated_at: at, blooms: Enum.map(blooms, &Bloom.to_binary/1)})
-        tmp = stable_path() <> ".tmp"
+        path = ring_path(name)
+        tmp = path <> ".tmp"
 
-        with :ok <- File.write(tmp, bin), :ok <- File.rename(tmp, stable_path()) do
+        with :ok <- File.write(tmp, bin), :ok <- File.rename(tmp, path) do
           :ok
         else
           err ->
             File.rm(tmp)
-            Logger.warning("🔁 CrawlDedup stable ring not saved: #{inspect(err)}")
+            Logger.warning("🔁 CrawlDedup #{name} ring not saved: #{inspect(err)}")
             err
         end
 
@@ -352,6 +426,9 @@ defmodule LS.Cluster.CrawlDedup do
         :ok
     end
   end
+
+  @doc false
+  def save_stable, do: save_ring(:stable)
 
   @impl true
   def handle_info(:rotate, state) do
@@ -369,17 +446,17 @@ defmodule LS.Cluster.CrawlDedup do
     {:noreply, %{state | recorded: state.recorded + n}}
   end
 
-  def handle_info(:rotate_stable, state) do
-    ring = :persistent_term.get(@stable_key)
-    :persistent_term.put(@stable_key, rotate_stable_ring(ring, System.system_time(:second)))
-    Process.send_after(self(), :rotate_stable, ms_until_stable_rotation())
-    Logger.info("🔁 CrawlDedup stable ring rotated")
+  def handle_info({:rotate_ring, name}, state) do
+    ring = :persistent_term.get(@rings[name].key)
+    :persistent_term.put(@rings[name].key, rotate_ring(name, ring, System.system_time(:second)))
+    Process.send_after(self(), {:rotate_ring, name}, ms_until_rotation(name))
+    Logger.info("🔁 CrawlDedup #{name} ring rotated")
     {:noreply, state}
   end
 
-  def handle_info(:save_stable, state) do
-    Task.start(&save_stable/0)
-    Process.send_after(self(), :save_stable, @stable_save_ms)
+  def handle_info(:save_rings, state) do
+    Task.start(fn -> Enum.each(@ring_names, &save_ring/1) end)
+    Process.send_after(self(), :save_rings, @stable_save_ms)
     {:noreply, state}
   end
 
@@ -394,7 +471,7 @@ defmodule LS.Cluster.CrawlDedup do
   @impl true
   def terminate(_reason, _state) do
     flush_sightings()
-    save_stable()
+    Enum.each(@ring_names, &save_ring/1)
     :ok
   end
 

@@ -147,6 +147,7 @@ defmodule LS.Cluster.Compactor do
           if count > 0 do
             lag = if behind?, do: " (catching up, #{div(now - until, 60)}m behind)", else: ""
             Logger.info("[COMPACT] refreshed #{count} businesses in #{System.monotonic_time(:millisecond) - t0}ms#{lag}")
+            mark_hot(s.since - @lookback_slack_s, until)
           end
 
           %{s |
@@ -169,13 +170,35 @@ defmodule LS.Cluster.Compactor do
     {:noreply, s}
   end
 
+  # Unchanged across a gap this long means it was already unchanged once
+  # (nothing recrawls a stable domain sooner): second strike, sleep 60-90d.
+  @dormant_gap_days 25
+
+  @doc false
+  # Domains the pass just recorded a change for go back on the 7-day
+  # schedule, whatever the stable or dormant ring says.
+  def mark_hot(since, until) do
+    case Clickhouse.changed_domains(since, until) do
+      {:ok, domains} ->
+        n = LS.Cluster.CrawlDedup.mark_hot(domains)
+        if n > 0, do: Logger.info("[COMPACT] #{n} changed domains marked hot")
+        n
+
+      {:error, reason} ->
+        Logger.warning("[COMPACT] hot check failed: #{inspect(reason) |> String.slice(0, 200)}")
+        0
+    end
+  end
+
   @doc false
   def mark_stable(since, until) do
     case Clickhouse.stable_domains(since, until) do
       {:ok, domains} ->
-        n = LS.Cluster.CrawlDedup.mark_stable(domains)
-        if n > 0, do: Logger.info("[COMPACT] #{n} unchanged domains marked stable")
-        n
+        {again, first} = Enum.split_with(domains, fn {_d, gap} -> gap >= @dormant_gap_days end)
+        n = LS.Cluster.CrawlDedup.mark_stable(Enum.map(first, &elem(&1, 0)))
+        d = LS.Cluster.CrawlDedup.mark_dormant(Enum.map(again, &elem(&1, 0)))
+        if n + d > 0, do: Logger.info("[COMPACT] #{n} unchanged domains marked stable, #{d} twice unchanged marked dormant")
+        n + d
 
       {:error, reason} ->
         Logger.warning("[COMPACT] stable check failed (compaction continues): #{inspect(reason) |> String.slice(0, 200)}")

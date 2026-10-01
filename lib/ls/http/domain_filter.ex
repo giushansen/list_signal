@@ -70,17 +70,54 @@ defmodule LS.HTTP.DomainFilter do
       iex> should_crawl?("example123456.com", "mx.google.com", "random txt")
       false
   """
-  def should_crawl?(domain, mx, txt) do
-    tranco_ranked?(domain) or
-      with true <- has_high_value_tld?(domain),
-           true <- not_junk_domain?(domain),
-           true <- has_mx?(mx),
-           true <- has_spf?(txt) do
-        true
-      else
-        _ -> false
-      end
+  def should_crawl?(domain, mx, txt, ip \\ nil), do: verdict(domain, mx, txt, ip) == :crawl
+
+  @doc """
+  Why a resolved domain is fetched or not.
+
+      :crawl              fetch it
+      {:skip, :junk_name} digits, too short, double hyphen: never a business
+      {:skip, :tld}       a TLD off the high-value list
+      {:skip, :no_mail}   listed TLD, real-looking name, but no MX+SPF yet
+
+  The first two are settled by the name alone and put the domain to sleep
+  for 60-90 days (`LS.Cluster.CrawlDedup.mark_dormant/1`); the last one is
+  soft, a new business often sets mail up weeks after its certificate, so
+  it waits 28-35 days and is re-evaluated.
+
+  Two bypasses besides Tranco (measured on prod 2026-10-01, in the 189M
+  resolved domains that were never fetched): 18M sit on the Shopify, Wix
+  or Squarespace edge, 4.56M on Shopify's alone, 1.75M of those with MX.
+  Someone pays for a storefront there; that is stronger evidence than a
+  TLD list that has .xyz but not .shop, .store or .au. And 19M have MX at
+  a known business mail provider (Google Workspace, Microsoft 365, Zoho,
+  Proofpoint...) with no SPF record; the provider is the evidence, SPF is
+  hygiene. The ICP's stores and SaaS companies were in both groups.
+  """
+  @spec verdict(String.t(), String.t(), String.t(), String.t() | nil) :: :crawl | {:skip, :junk_name | :tld | :no_mail}
+  def verdict(domain, mx, txt, ip \\ nil) do
+    cond do
+      tranco_ranked?(domain) -> :crawl
+      not not_junk_domain?(domain) -> {:skip, :junk_name}
+      commerce_edge?(ip) -> :crawl
+      not has_high_value_tld?(domain) -> {:skip, :tld}
+      has_mx?(mx) and (has_spf?(txt) or known_mail_provider?(mx)) -> :crawl
+      true -> {:skip, :no_mail}
+    end
   end
+
+  # The address belongs to a hosted-commerce edge the limiter already keys
+  # as one client (LS.HTTP.IpRateLimiter.limiter_key/1): Shopify, Wix,
+  # Squarespace.
+  defp commerce_edge?(ip) when is_binary(ip) and ip != "",
+    do: String.starts_with?(LS.HTTP.IPRateLimiter.limiter_key(ip), "edge:")
+
+  defp commerce_edge?(_), do: false
+
+  # "Other" is what the vendor list says for an MX it does not know: not
+  # evidence of anything, so the SPF requirement stands for those.
+  defp known_mail_provider?(mx) when is_binary(mx) and mx != "", do: LS.DNS.Vendors.email_provider(mx) not in ["", "Other"]
+  defp known_mail_provider?(_), do: false
 
   # Tranco bypass: a Tranco-ranked domain has independently-measured real
   # traffic, which is stronger evidence than any of our heuristics — crawl it
