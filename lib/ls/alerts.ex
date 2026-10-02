@@ -143,38 +143,78 @@ defmodule LS.Alerts do
 
   # ── checks (each prepends firing alerts) ──
 
-  defp ingestion(acc, %{ingestion_3h: n}) when is_integer(n) and n < @ingestion_3h_floor,
-    do: [
-      al(
-        :critical,
-        "ingestion_low",
-        "Ingestion stalled",
-        "only #{fmt(n)} domains crawled in the last 3h (floor #{fmt(@ingestion_3h_floor)})"
-      )
-      | acc
-    ]
+  # "Stalled" means the workers stopped completing work, which the queue's
+  # drain rate shows directly. Rows written are a proxy, and on 2026-10-01
+  # the proxy changed meaning under the alert: the v2 crawl gate writes no
+  # row for a filtered domain and the per-node fetch budget paced the fleet
+  # to a fifth of its old volume, so "Ingestion stalled" fired on a pipeline
+  # that was draining 390 domains a minute. Below the row floor AND below the
+  # drain floor is a stall; below the row floor alone is a volume change,
+  # which the data-quantity check already reports as a warning.
+  @drain_floor_per_min 100
+
+  defp ingestion(acc, %{ingestion_3h: n} = m) when is_integer(n) and n < @ingestion_3h_floor do
+    drain = get_in(m, [:queue, :drain_rate_per_min])
+
+    if is_number(drain) and drain >= @drain_floor_per_min do
+      acc
+    else
+      [
+        al(
+          :critical,
+          "ingestion_low",
+          "Ingestion stalled",
+          "only #{fmt(n)} domains crawled in the last 3h (floor #{fmt(@ingestion_3h_floor)})" <>
+            if(is_number(drain), do: ", queue draining #{round(drain)}/min", else: "")
+        )
+        | acc
+      ]
+    end
+  end
 
   defp ingestion(acc, _), do: acc
 
+  # A worker is down when it falls far behind the FLEET, not behind a number
+  # chosen in August. 2026-10-02: "Worker down" went out for ny1, ny2, dal1,
+  # dal2, par1, par2, ny3 and h1 in one night while all thirteen were up and
+  # claiming batches; the whole fleet had moved under the 20K floor together
+  # (v2 crawl gate, fetch budget, twelve rolling deploys). One node at a
+  # quarter of the fleet median is dead; a fleet that is uniformly low is a
+  # volume change, reported elsewhere.
+  @dead_vs_median 0.25
+
   defp workers_dead(acc, %{known_workers: known, per_worker: pw}) do
     live = Map.new(pw, &{&1.worker, &1.rows})
+    median = fleet_median(known, live)
 
     Enum.reduce(known, acc, fn w, a ->
       rows = Map.get(live, w, 0)
 
-      if rows < @worker_6h_floor,
+      if rows < @worker_6h_floor and rows < median * @dead_vs_median,
         do: [
           al(
             :critical,
             "worker_dead:#{w}",
             "Worker down: #{short(w)}",
-            "#{short(w)} produced #{fmt(rows)} rows in 6h (floor #{fmt(@worker_6h_floor)})"
+            "#{short(w)} produced #{fmt(rows)} rows in 6h (floor #{fmt(@worker_6h_floor)}, fleet median #{fmt(round(median))})"
           )
           | a
         ],
         else: a
     end)
   end
+
+  @doc false
+  # Pure. The median of the known workers' row counts; a fleet of one or
+  # none has no median, and the absolute floor alone decides.
+  def fleet_median(known, live) do
+    case known |> Enum.map(&Map.get(live, &1, 0)) |> Enum.sort() do
+      [] -> @worker_6h_floor / @dead_vs_median
+      [_] -> @worker_6h_floor / @dead_vs_median
+      xs -> Enum.at(xs, div(length(xs), 2))
+    end
+  end
+
 
   defp workers_quality(acc, %{per_worker: pw}) do
     Enum.reduce(pw, acc, fn w, a ->

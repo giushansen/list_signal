@@ -41,11 +41,14 @@ defmodule LS.Ops.BackupLog do
         nil
 
       {after_start, [start | _]} ->
+        # Any ERROR in the run makes it a failed run, even after "clickhouse
+        # ok": on 2026-09-27 the dump succeeded and the offsite ship failed,
+        # the archive sat on the master for five days, and this read :ok.
         result =
           cond do
-            Enum.any?(after_start, &String.contains?(&1, "clickhouse ok")) -> :ok
             Enum.any?(after_start, &String.contains?(&1, "backup skipped")) -> :skipped
             Enum.any?(after_start, &String.contains?(&1, "ERROR")) -> :error
+            Enum.any?(after_start, &String.contains?(&1, "clickhouse ok")) -> :ok
             true -> nil
           end
 
