@@ -93,7 +93,14 @@ followed. What was measured and what changed:
   last known signals), and enqueues only the live ones. A dead name costs
   one lookup per cadence, never a batch. Refresh items also bypass the
   first-contact name filter on the worker (a known business without MX was
-  soft-skipped on every refresh and never checked again).
+  soft-skipped on every refresh and never checked again). Measured after:
+  73% of each 12,500 block dead and recorded in 7 minutes, zero near-empty
+  batches in the next hour. Two follow-ups the same night: the dead-check
+  rows (worker 'master') are excluded from per-worker, known-worker and
+  the HTTP-errors data check (they fired worker_quality:master and a data
+  quality alert within the hour), and a tick reads up to four blocks at
+  successive offsets until it has 12,500 live names, since one block gave
+  about 3,150.
 
 Tests: tiers_test, tier_rings_test, compaction_membership_test,
 changes_estimate_gating_test, domain_filter_low_yield_test,

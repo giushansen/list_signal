@@ -33,7 +33,9 @@ defmodule LS.Recrawl.Liveness do
   require Logger
 
   @anchors ["google.com", "cloudflare.com", "shopify.com"]
-  @concurrency 50
+  # 100: a 12,500-name block took 7 minutes at 50 (dead names with lame
+  # nameservers wait out both tries); the GenServer is blocked meanwhile.
+  @concurrency 100
   @lookup_timeout_ms 20_000
   @error "dns_unresolved"
   @first_try_ms 4_000

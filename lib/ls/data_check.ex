@@ -45,10 +45,14 @@ defmodule LS.DataCheck do
 
   # Error-rate quality metrics. Lower is better.
   @error_metrics [
-    {"HTTP errors", "http_error != ''"},
+    # dns_unresolved is the master's dead-check outcome, not a fetch (2026-10-03).
+    {"HTTP errors", "http_error != '' AND http_error != 'dns_unresolved'"},
     {"HTTP 5xx", "http_status >= 500"},
     {"junk detected", "is_junk != ''"}
   ]
+
+  @doc false
+  def error_metrics, do: @error_metrics
 
   # Quantity streams: {label, table, time column}.
   @streams [

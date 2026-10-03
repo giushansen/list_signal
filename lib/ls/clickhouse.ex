@@ -586,7 +586,7 @@ defmodule LS.Clickhouse do
   # robots.txt opt-out is a promise on /bot; 429 is kept on purpose, one
   # polite request after two months is what "come back later" asks for
   # (2026-08-02: excluding it would silently lose 388K domains).
-  def stale_domains_sql(limit) when is_integer(limit) and limit > 0 do
+  def stale_domains_sql(limit, offset \\ 0) when is_integer(limit) and limit > 0 and is_integer(offset) and offset >= 0 do
     a = LS.Crawl.Tiers.cadence_days(:a)
     b = LS.Crawl.Tiers.cadence_days(:b)
     c = LS.Crawl.Tiers.cadence_days(:c)
@@ -600,8 +600,8 @@ defmodule LS.Clickhouse do
         AND http_last_checked_at < now() - INTERVAL #{a} DAY
     )
     WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY
-    ORDER BY tier ASC, http_last_checked_at ASC
-    LIMIT #{limit}
+    ORDER BY tier ASC, http_last_checked_at ASC, domain
+    LIMIT #{limit} OFFSET #{offset}
     SETTINGS max_threads = 2, max_execution_time = 110
     """
   end
@@ -612,9 +612,9 @@ defmodule LS.Clickhouse do
   `{domain, tier}`. Until 2026-10-03 this read the 57 GB `domains` table
   FINAL for 5,000 rows every six hours with a 7/30-day rule.
   """
-  @spec stale_domains(pos_integer()) :: {:ok, [{String.t(), String.t()}]} | {:error, term()}
-  def stale_domains(limit) do
-    case query_raw(stale_domains_sql(limit), 120_000) do
+  @spec stale_domains(pos_integer(), non_neg_integer()) :: {:ok, [{String.t(), String.t()}]} | {:error, term()}
+  def stale_domains(limit, offset \\ 0) do
+    case query_raw(stale_domains_sql(limit, offset), 120_000) do
       {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t] -> {d, t} end)}
       err -> err
     end

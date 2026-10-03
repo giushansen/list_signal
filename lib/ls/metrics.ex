@@ -25,30 +25,49 @@ defmodule LS.Metrics do
   @doc "domains_history rows inserted in the last `hours` (fleet ingestion volume)."
   def ingestion(hours \\ 3), do: ch_one("SELECT count() FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR", 0)
 
-  @doc "Per-worker throughput and quality over the last `hours`."
-  def per_worker(hours \\ 6) do
-    ch_rows("""
-    SELECT worker,
-      count() AS rows,
-      round(100 * countIf(http_status BETWEEN 200 AND 399) / count(), 1) AS http_ok_pct,
-      round(100 * countIf(dns_a != '' AND (http_status IS NULL OR http_status = 0) AND http_error != '') / nullif(countIf(dns_a != ''), 0), 1) AS resolved_fail_pct,
-      round(100 * countIf(business_model != '') / count(), 1) AS classified_pct
-    FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR
-    GROUP BY worker ORDER BY rows DESC
-    """)
-    |> Enum.map(fn [w, r, ok, rf, cl] ->
-      %{worker: w, rows: to_i(r), http_ok_pct: to_f(ok), resolved_fail_pct: to_f(rf), classified_pct: to_f(cl)}
-    end)
-  end
-
+  # The refresh scheduler records a dead name's check as a row with worker
+  # 'master' (LS.Recrawl.Liveness, 2026-10-03): status NULL, error
+  # dns_unresolved, last known DNS carried. Those rows are checks, not
+  # fetches; counted as a worker they read as a node whose every resolved
+  # name fails HTTP (the split-brain signature) and fired worker_quality
+  # within the hour of the first pass.
+  @dead_check_worker "master"
   # A real fleet worker moves ~2M rows over 3 days; a transient/local debug
   # worker (e.g. worker_disc@127.0.0.1, 7.7k rows) does not. Require a floor so
   # a one-off node that came and went is never alerted as "down".
   @known_worker_floor 200_000
 
+  @doc "SQL fragment: rows written by fleet workers, never the master's dead checks."
+  def fleet_rows, do: "worker != '#{@dead_check_worker}'"
+
+  @doc false
+  def per_worker_sql(hours) do
+    """
+    SELECT worker,
+      count() AS rows,
+      round(100 * countIf(http_status BETWEEN 200 AND 399) / count(), 1) AS http_ok_pct,
+      round(100 * countIf(dns_a != '' AND (http_status IS NULL OR http_status = 0) AND http_error != '') / nullif(countIf(dns_a != ''), 0), 1) AS resolved_fail_pct,
+      round(100 * countIf(business_model != '') / count(), 1) AS classified_pct
+    FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR AND #{fleet_rows()}
+    GROUP BY worker ORDER BY rows DESC
+    """
+  end
+
+  @doc false
+  def known_workers_sql(days),
+    do: "SELECT worker, count() FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(days)} DAY AND worker != '' AND #{fleet_rows()} GROUP BY worker HAVING count() >= #{@known_worker_floor}"
+
+  @doc "Per-worker throughput and quality over the last `hours`."
+  def per_worker(hours \\ 6) do
+    ch_rows(per_worker_sql(hours))
+    |> Enum.map(fn [w, r, ok, rf, cl] ->
+      %{worker: w, rows: to_i(r), http_ok_pct: to_f(ok), resolved_fail_pct: to_f(rf), classified_pct: to_f(cl)}
+    end)
+  end
+
   @doc "Workers that did real work in the last `days` — the set we EXPECT to be live."
   def known_workers(days \\ 3) do
-    ch_rows("SELECT worker, count() FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(days)} DAY AND worker != '' GROUP BY worker HAVING count() >= #{@known_worker_floor}")
+    ch_rows(known_workers_sql(days))
     |> Enum.map(&hd/1)
   end
 

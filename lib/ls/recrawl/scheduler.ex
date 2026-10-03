@@ -40,10 +40,19 @@ defmodule LS.Recrawl.Scheduler do
     GenServer.call(__MODULE__, :stats)
   end
 
+  # Passes per tick. The liveness check (LS.Recrawl.Liveness) found 73% of
+  # each 12,500 block dead on 2026-10-03, so one pass enqueued 3,150 live
+  # names, a quarter of the budget. A tick now reads further down the due
+  # list (same order, next offset) until it has enqueued batch_size live
+  # names or has read this many blocks. Dead names cost a lookup each, no
+  # fetch, so the fetch budget is unchanged.
+  @max_passes 4
+
   @doc "The refresh plan: domains per run, runs per day, and the daily ceiling they make."
   def plan do
     runs = div(24 * 3_600_000, @check_interval_ms)
-    %{batch_size: @batch_size, interval_ms: @check_interval_ms, runs_per_day: runs, per_day: runs * @batch_size, queue_headroom: @queue_headroom}
+    %{batch_size: @batch_size, interval_ms: @check_interval_ms, runs_per_day: runs, per_day: runs * @batch_size,
+      queue_headroom: @queue_headroom, max_passes: @max_passes}
   end
 
   @doc "Manually trigger a recrawl check."
@@ -87,25 +96,54 @@ defmodule LS.Recrawl.Scheduler do
     depth = LS.Cluster.WorkQueue.stats()[:queue_depth] || 0
     Logger.info("[RECRAWL] Checking for due businesses (tiers 14/60/120 days, queue depth #{depth})")
 
-    case if(depth > @queue_headroom, do: {:ok, []}, else: LS.Clickhouse.stale_domains(@batch_size)) do
+    if depth > @queue_headroom do
+      Logger.info("[RECRAWL] Queue holds #{depth}, over the #{@queue_headroom} headroom: no refresh this tick")
+      %{state | total_checks: state.total_checks + 1, last_check_at: DateTime.utc_now(), last_batch_size: 0}
+    else
+      {enqueued, dead} = passes(0, 0, 0)
+      Logger.info("[RECRAWL] Tick done: enqueued #{enqueued} live, #{dead} dead recorded on the master")
+
+      %{state |
+        total_enqueued: state.total_enqueued + enqueued,
+        total_dead: Map.get(state, :total_dead, 0) + dead,
+        total_checks: state.total_checks + 1,
+        last_check_at: DateTime.utc_now(),
+        last_batch_size: enqueued}
+    end
+  catch
+    {:queue_full, enqueued, dead} ->
+      %{state |
+        total_enqueued: state.total_enqueued + enqueued,
+        total_dead: Map.get(state, :total_dead, 0) + dead,
+        total_checks: state.total_checks + 1,
+        last_check_at: DateTime.utc_now(),
+        last_batch_size: enqueued}
+  end
+
+  # One block of the due list per pass, at the next offset; stops at the
+  # live target, at the end of the due list, or after @max_passes blocks.
+  defp passes(pass, enqueued, dead) when pass >= @max_passes or enqueued >= @batch_size, do: {enqueued, dead}
+
+  defp passes(pass, enqueued, dead) do
+    case LS.Clickhouse.stale_domains(@batch_size, pass * @batch_size) do
       {:ok, []} ->
-        Logger.info("[RECRAWL] No stale domains found")
-        %{state | total_checks: state.total_checks + 1, last_check_at: DateTime.utc_now(), last_batch_size: 0}
+        Logger.info("[RECRAWL] No stale domains found at offset #{pass * @batch_size}")
+        {enqueued, dead}
 
       {:ok, domains} ->
         count = length(domains)
-        Logger.info("[RECRAWL] Found #{count} stale domains, enqueuing for re-crawl")
+        Logger.info("[RECRAWL] Found #{count} stale domains at offset #{pass * @batch_size}, pass #{pass + 1}/#{@max_passes}")
 
         # Resolve on the master first (LS.Recrawl.Liveness, 2026-10-03): a
         # dead name gets its check recorded here and never costs a worker
-        # batch. A suspect resolver sends the whole list on, as before.
+        # batch. A suspect resolver sends the whole block on, as before.
         {domains, dead_recorded} =
           case LS.Recrawl.Liveness.partition(domains) do
-            {:ok, live, dead} ->
-              case LS.Recrawl.Liveness.record_dead(dead) do
+            {:ok, live, dead_list} ->
+              case LS.Recrawl.Liveness.record_dead(dead_list) do
                 {:ok, n} -> {live, n}
                 {:error, reason} ->
-                  Logger.error("[RECRAWL] could not record #{length(dead)} dead domains: #{inspect(reason)}")
+                  Logger.error("[RECRAWL] could not record #{length(dead_list)} dead domains: #{inspect(reason)}")
                   {live, 0}
               end
 
@@ -114,40 +152,30 @@ defmodule LS.Recrawl.Scheduler do
               {domains, 0}
           end
 
-        enqueued = Enum.reduce(domains, 0, fn {domain, tier}, acc ->
+        added = Enum.reduce(domains, 0, fn {domain, tier}, acc ->
           # Use the same :ctl_domain key CTL items carry so the worker pipeline
           # (enrich_dns/merge_results) can read it uniformly regardless of source.
           data = %{ctl_domain: domain, source: :recrawl, tier: tier}
-          # This IS the 7-day schedule: stale_domains already selected only
-          # domains 7+ (or 30+) days old, so the dedup gate has nothing to add
-          # and could hold a day-7 domain until its window rotates (day 8).
+          # This IS the schedule: stale_domains already selected only domains
+          # past their cadence, so the daily and tier rings have nothing to add.
           case LS.Cluster.WorkQueue.enqueue(data, force: true) do
             :ok -> acc + 1
             :queue_full ->
-              Logger.warning("[RECRAWL] WorkQueue full, stopping enqueue at #{acc}/#{count}")
-              throw({:queue_full, acc})
+              Logger.warning("[RECRAWL] WorkQueue full, stopping enqueue at #{enqueued + acc}")
+              throw({:queue_full, enqueued + acc, dead + dead_recorded})
             _ -> acc
           end
         end)
 
-        Logger.info("[RECRAWL] Enqueued #{enqueued}/#{count} stale domains (#{dead_recorded} dead recorded on the master)")
-        %{state |
-          total_enqueued: state.total_enqueued + enqueued,
-          total_dead: Map.get(state, :total_dead, 0) + dead_recorded,
-          total_checks: state.total_checks + 1,
-          last_check_at: DateTime.utc_now(),
-          last_batch_size: enqueued}
+        Logger.info("[RECRAWL] Enqueued #{added}/#{count} stale domains (#{dead_recorded} dead recorded on the master)")
+
+        if count < @batch_size,
+          do: {enqueued + added, dead + dead_recorded},
+          else: passes(pass + 1, enqueued + added, dead + dead_recorded)
 
       {:error, reason} ->
         Logger.error("[RECRAWL] ClickHouse query failed: #{inspect(reason)}")
-        %{state | total_checks: state.total_checks + 1, last_check_at: DateTime.utc_now(), last_batch_size: 0}
+        {enqueued, dead}
     end
-  catch
-    {:queue_full, enqueued} ->
-      %{state |
-        total_enqueued: state.total_enqueued + enqueued,
-        total_checks: state.total_checks + 1,
-        last_check_at: DateTime.utc_now(),
-        last_batch_size: enqueued}
   end
 end
