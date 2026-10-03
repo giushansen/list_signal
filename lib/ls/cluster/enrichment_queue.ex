@@ -50,6 +50,9 @@ defmodule LS.Cluster.EnrichmentQueue do
   # a newer empty row would supersede a good one at merge time (ReplacingMergeTree),
   # which is exactly the blanking the pipeline design forbids.
   @attempt_cooldown_ms 24 * 3_600_000
+  # Batches kept for the drop-share alert: 50 batches of 8 is 400 domains,
+  # about an hour of the lane on a full fleet.
+  @recent_batches 50
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
@@ -69,7 +72,7 @@ defmodule LS.Cluster.EnrichmentQueue do
     send(self(), :refill)
     Process.send_after(self(), :check_inflight, 60_000)
     Logger.info("🔬 EnrichmentQueue started (target depth: #{@target_depth})")
-    {:ok, %{enqueued: 0, completed: 0, refills: 0, http_starved_streak: 0}}
+    {:ok, %{enqueued: 0, completed: 0, refills: 0, http_starved_streak: 0, dropped: 0, recent: []}}
   end
 
   # Old agents (pre residential-affinity) send the 3-tuple: treat as datacenter.
@@ -98,15 +101,46 @@ defmodule LS.Cluster.EnrichmentQueue do
      Map.merge(state, %{
        queue_depth: :ets.info(@table, :size) + :ets.info(@table_browser, :size),
        browser_depth: :ets.info(@table_browser, :size),
-       inflight_batches: :ets.info(@inflight, :size)
+       inflight_batches: :ets.info(@inflight, :size),
+       drop_share: drop_share(Map.get(state, :recent, []))
      }), state}
   end
 
   @impl true
   def handle_cast({:complete_enrichment, batch_id, results}, state) do
+    # A batch that comes back short lost domains to the agent's 120 s task
+    # timeout. The master keeps the last @recent_batches sizes so the drop
+    # share is an alert, not a warning line on six nodes (2026-10-03: the
+    # lane dropped nine in ten domains for eight hours behind a full
+    # discovery budget while every alert stayed green).
+    sent =
+      case :ets.lookup(@inflight, batch_id) do
+        [{_, items, _}] when is_list(items) -> length(items)
+        _ -> length(results)
+      end
+
     :ets.delete(@inflight, batch_id)
     LS.Cluster.EnrichmentWriter.write(results)
-    {:noreply, %{state | completed: state.completed + length(results)}}
+    dropped = max(sent - length(results), 0)
+
+    {:noreply,
+     %{
+       state
+       | completed: state.completed + length(results),
+         dropped: Map.get(state, :dropped, 0) + dropped,
+         recent: Enum.take([{sent, length(results)} | Map.get(state, :recent, [])], @recent_batches)
+     }}
+  end
+
+  @doc """
+  Pure: share of domains dropped over recent batches, as a percentage, and
+  how many batches it rests on. `{0, 0}` with no history.
+  """
+  @spec drop_share([{non_neg_integer(), non_neg_integer()}]) :: {non_neg_integer(), non_neg_integer()}
+  def drop_share(recent) do
+    sent = recent |> Enum.map(&elem(&1, 0)) |> Enum.sum()
+    got = recent |> Enum.map(&elem(&1, 1)) |> Enum.sum()
+    if sent > 0, do: {div((sent - got) * 100, sent), length(recent)}, else: {0, length(recent)}
   end
 
   @impl true

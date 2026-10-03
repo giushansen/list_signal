@@ -132,6 +132,7 @@ defmodule LS.Alerts do
     |> backups(m)
     |> backup_last_run(m)
     |> enrichment_lane(m)
+    |> enrichment_drops(m)
     |> verification(m)
     |> verification_overdue(m)
     |> ctl_sources(m)
@@ -628,6 +629,29 @@ defmodule LS.Alerts do
        ]
 
   defp enrichment_lane(acc, _), do: acc
+
+  # 2026-10-03: the lane dropped nine domains in ten for eight hours (the
+  # discovery batches held the whole node fetch budget, each depth domain
+  # queued past its 120 s task timeout) and nothing fired: the queue was
+  # full, the refill healthy, the row count merely low. The drop share
+  # over the last 50 batches is the direct signal.
+  @lane_drop_pct 50
+  @lane_drop_min_batches 20
+
+  defp enrichment_drops(acc, %{enrichment_queue: %{drop_share: {pct, batches}}})
+       when is_integer(pct) and pct >= @lane_drop_pct and batches >= @lane_drop_min_batches,
+       do: [
+         al(
+           :critical,
+           "enrichment_drops",
+           "Enrichment lane dropping domains",
+           "#{pct}% of depth domains over the last #{batches} batches came back dropped (120 s task timeout); " <>
+             "check LS.HTTP.NodeBudget.lane_limit(:enrichment) and the [ENRICH] exceeded lines on dual nodes"
+         )
+         | acc
+       ]
+
+  defp enrichment_drops(acc, _), do: acc
 
   # One shape for all three tiers: missing entirely, or older than its cadence.
   defp stale_backup(acc, age, ceiling, severity, key, subject, what) do

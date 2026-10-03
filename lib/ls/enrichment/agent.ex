@@ -80,6 +80,10 @@ defmodule LS.Enrichment.Agent do
   """
   @spec enrich(map()) :: map()
   def enrich(%{domain: domain} = item) do
+    # Every fetch this task makes draws on the enrichment line of the node
+    # budget (LS.HTTP.NodeBudget, 2026-10-03). The tag lives in this
+    # process, and the visit list runs in it: no sub-task loses it.
+    Process.put(:ls_fetch_lane, :enrichment)
     ip = item[:ip] || resolve(domain)
 
     # LIGHT tier (unranked, no emails, weak classification — computed by the

@@ -25,6 +25,66 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-03
+
+**Tiers, membership, estimate gating, two batches, and a budget that held.**
+Commits a2f877f, 54fffb0, bd930a2, 4a4d27e and the lane reserve that
+followed. What was measured and what changed:
+
+- *Membership.* The compactor and the page writer required a classification
+  before a domain became a business or kept its pages. 58K observed sites a
+  day with a title and no junk marker were thrown away on the estimator's
+  silence. An observed 2xx with a title and no junk is now a business, pages
+  kept, classification empty until a later pass fills it (the UI already
+  filters on it). Measured after: 330,375 businesses added in the five hours
+  from 06:30 UTC against 60,108 in the same window the day before.
+- *Refresh tiers* (`LS.Crawl.Tiers`): A (ICP with money or motion) every 14
+  days, B (other ICP, unclassified) 60, C (non-ICP, top-100K) 120. A flat two
+  weeks for 14.6M ICP sites was 2.8x the refresh budget (1.04M fetches a day
+  against 367K). Rings tier_b (7x10d) and tier_c (7x20d) in `CrawlDedup`
+  gate the CT re-emissions; the scheduler forces through the daily and tier
+  rings, never the stable or dormant ones.
+- *Estimate gating.* On 10-02 the change log held 24K revenue-bracket and
+  14K model changes, 34% and 47% of them next to any fact change on the same
+  domain; the rest was the estimator re-reading the same evidence. An
+  estimate event is recorded only next to a fact event of the same domain in
+  the same pass. After: estimates are 13% of events (33,749 against 220,294
+  facts).
+- *Pre-fetch filter.* Over 951K first-time fetches every pre-fetch feature
+  yielded 10-25% businesses except ZeroSSL-issued names (4.7%, 11K fetches a
+  day) and .xyz (5.3%, 5K a day): those two are settled skips, nothing else
+  is, the data does not support more.
+- *Two batches per node under 120/min.* The budget sat idle a third of every
+  cycle (DNS, merge, ML). Two staggered batches fill it (`LS_WORKER_BATCHES`,
+  2 on 4 GB nodes, 1 on 1-core nodes with 500/50). The ceiling is 120, two a
+  second, under the 130-160 envelope.
+- *The budget leaked* (54fffb0): every caller finding the line idle was
+  admitted at once, and the ETS table died with the fetch task that created
+  it, so each batch boundary restarted an idle line. Nodes did 136 a minute
+  on average, dal1 186. One atomic idle claim and a long-lived owner. After:
+  47-71 a minute per node, none over 120.
+- *Stage deadline and scheduler block* (bd930a2, 4a4d27e): the HTTP stage was
+  sized for the whole ceiling while two batches shared it (ny1 cut at
+  319.5 s); the scheduler's 150K block every six hours drew batches that were
+  93% known businesses, 930 candidates and 25 minutes each, and chi2 lost two
+  whole batches at their outer timer. Deadline per batch share; scheduler
+  12,500 every 30 minutes (same 600K a day); outer timer deadline + 180 s.
+- *The depth lane starved* (same evening). With the budget airtight, two
+  discovery batches kept the line full and every depth fetch queued behind
+  a minute of discovery slots. A depth domain visits up to four pages and
+  blew its 120 s task timeout: ny1 dropped 108 of 120 domains in an hour,
+  chi1 101 of 112, the fleet wrote 1,200 depth rows an hour against 5,300
+  the day before, and no alert fired (queue full, refill healthy). The
+  enrichment lane now has its own line with 30 of the 120
+  (`LS_ENRICH_FETCH_PER_MIN`), discovery the other 90; the shares add up to
+  the ceiling. The master keeps the drop share over the last 50 batches and
+  alerts at 50% (`enrichment_drops`).
+
+Tests: tiers_test, tier_rings_test, compaction_membership_test,
+changes_estimate_gating_test, domain_filter_low_yield_test,
+worker_parallel_batches_test, node_budget_race_test, scheduler_plan_test,
+node_budget_lanes_test, alerts_enrichment_drops_test.
+
 ## 2026-10-01 (evening) to 2026-10-02
 
 **A per-node fetch budget, done twice.** After the crawl-gate change workers

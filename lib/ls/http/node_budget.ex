@@ -16,6 +16,18 @@ defmodule LS.HTTP.NodeBudget do
 
   `LS_FETCH_PER_MIN` overrides the default (140). The owner's rule stands:
   capacity comes from more source IPs, never more rate per IP.
+
+  Two lanes, one ceiling (2026-10-03). On a node that runs discovery and
+  depth enrichment, both lanes fetched from the same line. The day the
+  budget became airtight (the idle-claim fix), two discovery batches kept
+  the line full, each depth fetch queued behind a minute of discovery
+  slots, and a domain with four pages to visit blew its 120 s task
+  timeout: ny1 and chi1 dropped 108 of 120 and 101 of 112 depth domains
+  in one hour, and the fleet wrote 1,200 depth rows an hour against 5,300
+  the day before. The enrichment lane now holds a reserved share of the
+  ceiling (`LS_ENRICH_FETCH_PER_MIN`, default 30) on its own line; the
+  discovery lane gets the rest. The two shares add up to the ceiling, so
+  the source IP never sends more than before.
   """
 
   @table :http_node_budget
@@ -28,6 +40,7 @@ defmodule LS.HTTP.NodeBudget do
   # 10%: a batch can carry 700 candidates (300 s). Seven minutes covers it
   # and still refuses a runaway line; the batch in-flight limit is ten.
   @max_wait_ms 420_000
+  @default_enrich_per_min 30
 
   @doc """
   Create the counter table. Idempotent. The table is owned by a process
@@ -70,9 +83,38 @@ defmodule LS.HTTP.NodeBudget do
   end
 
   @doc """
-  Reserve the next fetch slot. `:ok` to fetch now; `{:wait, ms}` with a
-  slot held for the caller that many milliseconds from now; `:overloaded`
-  when the next free slot is more than #{@max_wait_ms} ms away.
+  The share of the ceiling each lane may use on this node, from `LS_LANES`.
+
+  Discovery alone: the whole ceiling. Enrichment alone (the NUC): the
+  whole ceiling. Both: enrichment keeps `LS_ENRICH_FETCH_PER_MIN` (default
+  #{@default_enrich_per_min}) and discovery the rest, never under one.
+  """
+  @spec lane_limit(:discovery | :enrichment) :: pos_integer()
+  def lane_limit(lane) do
+    lanes = LS.Application.worker_lanes()
+    both? = "discovery" in lanes and "enrichment" in lanes
+    reserve = min(enrich_per_min(), max(per_min() - 1, 1))
+
+    case {lane, both?} do
+      {:enrichment, true} -> reserve
+      {:discovery, true} -> per_min() - reserve
+      _ -> per_min()
+    end
+  end
+
+  @doc false
+  def enrich_per_min do
+    case System.get_env("LS_ENRICH_FETCH_PER_MIN") do
+      nil -> @default_enrich_per_min
+      v -> (case Integer.parse(v) do {n, _} when n > 0 -> n; _ -> @default_enrich_per_min end)
+    end
+  end
+
+  @doc """
+  Reserve the next fetch slot on a lane's line. `:ok` to fetch now;
+  `{:wait, ms}` with a slot held for the caller that many milliseconds
+  from now; `:overloaded` when the next free slot is more than
+  #{@max_wait_ms} ms away. `take/1` is the discovery line.
 
   Slots are spaced evenly (60,000 / per_min ms apart), so the rate is
   smooth within the minute instead of 100 concurrent tasks spending the
@@ -80,11 +122,12 @@ defmodule LS.HTTP.NodeBudget do
   first version did exactly that (2026-10-01 evening): 12.9% of fetches
   gave up as rate_limited and one-minute peaks still reached 275.
   """
-  @spec take(pos_integer()) :: :ok | {:wait, pos_integer()} | :overloaded
-  def take(limit \\ per_min()) do
+  @spec take(pos_integer(), :discovery | :enrichment) :: :ok | {:wait, pos_integer()} | :overloaded
+  def take(limit \\ per_min(), lane \\ :discovery) do
     init()
     interval = div(60_000, limit)
     now = System.monotonic_time(:millisecond)
+    key = line_key(lane)
 
     # An idle line (next slot already in the past) is claimed by exactly ONE
     # caller, atomically, and moved to now + interval; everyone else lines
@@ -96,35 +139,42 @@ defmodule LS.HTTP.NodeBudget do
     # average, 186 on dal1, against a 120 ceiling. Bursts are what abuse
     # reports are made of.
     claimed =
-      :ets.select_replace(@table, [{{:next_at, :"$1"}, [{:<, :"$1", now}], [{{:next_at, now + interval}}]}])
+      # `{:const, key}`: a tuple key written bare in a match-spec body reads
+      # as a call, so the enrichment line's key must be passed as a constant.
+      :ets.select_replace(@table, [{{key, :"$1"}, [{:<, :"$1", now}], [{{{:const, key}, now + interval}}]}])
 
     cond do
       claimed == 1 ->
         :ok
 
-      :ets.insert_new(@table, {:next_at, now + interval}) ->
+      :ets.insert_new(@table, {key, now + interval}) ->
         :ok
 
       true ->
         # update_counter returns the advanced value; the slot we hold is the
         # one before it, and it is never behind `now` by more than a tick.
-        base = :ets.update_counter(@table, :next_at, {2, interval}) - interval
+        base = :ets.update_counter(@table, key, {2, interval}) - interval
 
         cond do
           base <= now -> :ok
           base - now > @max_wait_ms ->
-            :ets.update_counter(@table, :next_at, {2, -interval})
+            :ets.update_counter(@table, key, {2, -interval})
             :overloaded
           true -> {:wait, base - now}
         end
     end
   end
 
-  @doc "Milliseconds until the next free slot, for stats (0 when idle)."
-  def backlog_ms do
+  # The discovery line keeps the historical key so its stats and tests read
+  # as before; the enrichment line is a second key in the same table.
+  defp line_key(:discovery), do: :next_at
+  defp line_key(:enrichment), do: {:next_at, :enrichment}
+
+  @doc "Milliseconds until a lane's next free slot, for stats (0 when idle)."
+  def backlog_ms(lane \\ :discovery) do
     init()
 
-    case :ets.lookup(@table, :next_at) do
+    case :ets.lookup(@table, line_key(lane)) do
       [{_, t}] -> max(t - System.monotonic_time(:millisecond), 0)
       [] -> 0
     end

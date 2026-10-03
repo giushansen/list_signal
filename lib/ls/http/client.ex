@@ -139,8 +139,12 @@ defmodule LS.HTTP.Client do
     # The node's own budget first (LS.HTTP.NodeBudget, 2026-10-01): the
     # per-IP spacing protects the destination, this protects our source
     # address. Over budget means wait for the next minute, then one more
-    # try; the wait is bounded by the minute itself.
-    case LS.HTTP.NodeBudget.take() do
+    # try; the wait is bounded by the minute itself. The depth lane tags
+    # its task (`:ls_fetch_lane`) and draws on its own reserved line
+    # (2026-10-03), so discovery can no longer queue it into its timeout.
+    lane = Process.get(:ls_fetch_lane, :discovery)
+
+    case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do
       {:wait, ms} ->
         # A slot is reserved for us; sleeping is the pacing, not a retry.
         Process.sleep(ms)

@@ -93,3 +93,15 @@ of unrelated sites) and on identity (user agent, reverse DNS, honeypot
 links). Every abuse report so far came from a honeypot or a listed site,
 not from rate. "At most one request per second to any host", the promise
 on /bot and to Vultr, is a per-target statement and holds at any node rate.
+
+**The ceiling is shared by two lanes, with a reserve.** On a dual node the
+depth lane (pipeline 2) fetches through the same client as discovery. The
+hour the budget became airtight, two discovery batches kept the line full
+and every depth fetch queued behind a minute of discovery slots; a depth
+domain visits up to four pages, so it blew its 120 s task timeout. ny1
+dropped 108 of 120 depth domains in an hour, chi1 101 of 112, the fleet
+wrote 1,200 depth rows an hour against 5,300 the day before. The
+enrichment lane now holds `LS_ENRICH_FETCH_PER_MIN` (default 30) of the
+ceiling on its own line and discovery gets the rest (90 on a dual node,
+45 per batch). The shares add up to the ceiling: the source IP sends no
+more than before. An enrichment-only node (h1) keeps the whole ceiling.
