@@ -32,6 +32,34 @@ defmodule LS.DNS.Resolver do
     lookup_with_retry(domain, 0)
   end
 
+  @doc """
+  One A query, with the answer's kind preserved: `{:ok, ips}` (an empty
+  list is NODATA, the name exists without an address), `:nxdomain`, or
+  `{:error, reason}` for a timeout, SERVFAIL or a refused query. For the
+  refresh scheduler's liveness pass (2026-10-03): `lookup/1` asks five
+  record types with three retries of 8 s each, which made a 12,500-name
+  pass run past 13 minutes, and it folds a timeout into the same answer as
+  a missing name, which must never declare a business dead.
+  """
+  @spec a_status(String.t(), pos_integer()) :: {:ok, [String.t()]} | :nxdomain | {:error, term()}
+  def a_status(domain, timeout_ms \\ 4_000) do
+    case :inet_res.resolve(String.to_charlist(domain), :in, :a, nameservers: [dns_server()], timeout: timeout_ms) do
+      {:ok, msg} ->
+        ips =
+          for rr <- :inet_dns.msg(msg, :anlist), :inet_dns.rr(rr, :type) == :a do
+            rr |> :inet_dns.rr(:data) |> :inet.ntoa() |> to_string()
+          end
+
+        {:ok, ips}
+
+      {:error, :nxdomain} -> :nxdomain
+      {:error, {:nxdomain, _}} -> :nxdomain
+      {:error, reason} -> {:error, reason}
+    end
+  rescue
+    _ -> {:error, :exception}
+  end
+
   defp lookup_with_retry(domain, retry_count) when retry_count < @max_retries do
     case perform_lookup(domain) do
       {:ok, results} ->

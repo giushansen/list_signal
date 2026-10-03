@@ -352,6 +352,18 @@ defmodule LS.Metrics do
     |> Enum.reject(fn {_, r} -> is_nil(r) end)
   end
 
+  @doc """
+  The lanes each connected worker runs, by node name as a string
+  (`"worker_lsh1@10.0.0.7" => ["enrichment"]`). A node that does not answer
+  is absent, so a dead node is never excused by this map.
+  """
+  def lanes_by_node do
+    Node.list()
+    |> Enum.map(fn n -> {Atom.to_string(n), safe(fn -> :erpc.call(n, LS.Application, :worker_lanes, [], 3_000) end, nil)} end)
+    |> Enum.reject(fn {_, l} -> not is_list(l) end)
+    |> Map.new()
+  end
+
   @watchdog_log "/var/log/listsignal_watchdog.log"
 
   @doc """

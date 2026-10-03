@@ -34,8 +34,14 @@ defmodule LS.Recrawl.Liveness do
 
   @anchors ["google.com", "cloudflare.com", "shopify.com"]
   @concurrency 50
-  @lookup_timeout_ms 30_000
+  @lookup_timeout_ms 20_000
   @error "dns_unresolved"
+  @first_try_ms 4_000
+  @second_try_ms 8_000
+  # Domains per INSERT. The list travels as a URL query parameter and the
+  # first pass sent 10,213 names in one: "HTML Form Exception: Field value
+  # too long", nothing recorded. 500 names is about 12 KB.
+  @chunk 500
 
   @type due :: {String.t(), String.t()}
 
@@ -49,8 +55,8 @@ defmodule LS.Recrawl.Liveness do
   from this run.
   """
   @spec partition([due()], (String.t() -> term())) :: {:ok, [due()], [due()]} | {:error, :resolver_suspect}
-  def partition(domains, resolve \\ &LS.DNS.Resolver.lookup/1) do
-    if Enum.all?(@anchors, &(not dead?(resolve.(&1)))) do
+  def partition(domains, resolve \\ &resolve/1) do
+    if Enum.all?(@anchors, &alive?(resolve.(&1))) do
       {live, dead} =
         domains
         |> Task.async_stream(fn {d, _} = item -> {item, dead?(resolve.(d))} end,
@@ -68,11 +74,44 @@ defmodule LS.Recrawl.Liveness do
     end
   end
 
-  @doc "Pure: a resolver answer with no A record, or an error, is a dead name."
+  @doc """
+  Pure: a resolver answer with no A record, or an error, is a dead name.
+  `{:unknown, reason}` is neither: the default resolver returns it for a
+  timeout or SERVFAIL after two tries, and such a name goes to a worker
+  rather than being declared dead on a bad minute.
+  """
   @spec dead?(term()) :: boolean()
+  def dead?({:unknown, _}), do: false
   def dead?({:ok, dns}) when is_map(dns), do: List.wrap(dns[:a]) == []
   def dead?({:ok, _}), do: true
   def dead?(_), do: true
+
+  @doc "Pure: a positive answer with at least one address."
+  @spec alive?(term()) :: boolean()
+  def alive?({:ok, %{a: [_ | _]}}), do: true
+  def alive?(_), do: false
+
+  @doc """
+  The default resolver: one A query at #{@first_try_ms} ms, a second at
+  #{@second_try_ms} ms only when the first one errored. NXDOMAIN and NODATA
+  are answers; a second error is `{:unknown, reason}`.
+  """
+  @spec resolve(String.t()) :: {:ok, %{a: [String.t()]}} | {:unknown, term()}
+  def resolve(domain) do
+    case LS.DNS.Resolver.a_status(domain, @first_try_ms) do
+      {:error, _} ->
+        case LS.DNS.Resolver.a_status(domain, @second_try_ms) do
+          {:error, reason} -> {:unknown, reason}
+          answer -> as_dns(answer)
+        end
+
+      answer ->
+        as_dns(answer)
+    end
+  end
+
+  defp as_dns({:ok, ips}), do: {:ok, %{a: ips}}
+  defp as_dns(:nxdomain), do: {:ok, %{a: []}}
 
   @doc """
   Record a check for each dead domain. Returns the number recorded, or the
@@ -82,15 +121,21 @@ defmodule LS.Recrawl.Liveness do
   def record_dead([]), do: {:ok, 0}
 
   def record_dead(dead) do
-    domains = Enum.map(dead, &elem(&1, 0))
-
-    with {:ok, cols} <- columns(),
-         {:ok, _} <-
-           LS.Clickhouse.query_raw(record_dead_sql(cols), 60_000,
-             params: %{doms: LS.Clickhouse.array_param(domains)}) do
-      {:ok, length(domains)}
+    with {:ok, cols} <- columns() do
+      dead
+      |> Enum.map(&elem(&1, 0))
+      |> Enum.chunk_every(@chunk)
+      |> Enum.reduce_while({:ok, 0}, fn chunk, {:ok, n} ->
+        case LS.Clickhouse.query_raw(record_dead_sql(cols), 60_000, params: %{doms: LS.Clickhouse.array_param(chunk)}) do
+          {:ok, _} -> {:cont, {:ok, n + length(chunk)}}
+          {:error, reason} -> {:halt, {:error, {reason, recorded: n}}}
+        end
+      end)
     end
   end
+
+  @doc false
+  def chunk_size, do: @chunk
 
   @doc """
   Pure: the INSERT ... SELECT that copies each domain's newest `domains` row

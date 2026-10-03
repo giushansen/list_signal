@@ -92,7 +92,7 @@ defmodule LS.Alerts do
     %{
       ingestion_3h: Metrics.ingestion(3),
       per_worker: Metrics.per_worker(6),
-      known_workers: Metrics.known_workers(3),
+      known_workers: known_discovery_workers(Metrics.known_workers(3), Metrics.lanes_by_node()),
       stale_seconds: Metrics.businesses_stale_seconds(),
       worker_health: Metrics.worker_health(),
       queue: Metrics.queue(),
@@ -202,6 +202,24 @@ defmodule LS.Alerts do
           | a
         ],
         else: a
+    end)
+  end
+
+  @doc """
+  Pure. The known workers that run the discovery lane: a connected node
+  that reports lanes without "discovery" writes no discovery rows by
+  design and is dropped from the dead check. 2026-10-03: h1 became
+  enrichment-only and was reported dead against the fleet median within
+  the day. A node that reports nothing (disconnected, old build) stays
+  known, so a dead node is still caught.
+  """
+  @spec known_discovery_workers([String.t()], %{String.t() => [String.t()]}) :: [String.t()]
+  def known_discovery_workers(known, lanes_by_node) do
+    Enum.reject(known, fn w ->
+      case Map.get(lanes_by_node, w) do
+        lanes when is_list(lanes) -> "discovery" not in lanes
+        _ -> false
+      end
     end)
   end
 
