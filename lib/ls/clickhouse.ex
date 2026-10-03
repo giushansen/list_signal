@@ -571,53 +571,51 @@ defmodule LS.Clickhouse do
 
   # ── Recrawl scheduler ──
 
-  @doc """
-  Fetch domains that need re-crawling based on tiered freshness.
-  Digital businesses (Ecommerce, SaaS, Tool, Marketplace, Agency) → stale after `weekly_days`.
-  Everything else → stale after `monthly_days`.
-  Returns {:ok, [domain, ...]} or {:error, reason}.
+  @doc "Domain and tier ('a', 'b', 'c') of every non-junk business compiled in the window (LS.Crawl.Tiers)."
+  @spec compiled_tiers(integer(), integer()) :: {:ok, [{String.t(), String.t()}]} | {:error, term()}
+  def compiled_tiers(since_unix, until_unix) do
+    case query_raw(LS.Crawl.Tiers.compiled_tiers_sql(since_unix, until_unix), 70_000) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t] -> {d, t} end)}
+      err -> err
+    end
+  end
 
-  A domain qualifies when it was ever crawled (`http_status`) *or* is known
-  DNS-alive (`dns_a`). The old `http_status IS NOT NULL`-only filter
-  permanently orphaned any domain whose newest row was hollow — the 2026-07
-  h1 resolver incident produced ~45M such rows, hiding its victims from the
-  very scheduler that could heal them.
+  @doc false
+  # The due query, with its exclusions written here: 403/503 are a WAF wall
+  # and belong to the browser lane (2026-09-04, second Vultr report); a
+  # robots.txt opt-out is a promise on /bot; 429 is kept on purpose, one
+  # polite request after two months is what "come back later" asks for
+  # (2026-08-02: excluding it would silently lose 388K domains).
+  def stale_domains_sql(limit) when is_integer(limit) and limit > 0 do
+    a = LS.Crawl.Tiers.cadence_days(:a)
+    b = LS.Crawl.Tiers.cadence_days(:b)
+    c = LS.Crawl.Tiers.cadence_days(:c)
 
-  `enriched_at ASC` as tie-break makes selection among equal-rank (mostly
-  unranked) domains oldest-first, so recrawl is eventually-complete instead
-  of arbitrary — unranked domains could otherwise starve indefinitely.
-  """
-  def stale_domains(weekly_days, monthly_days, limit \\ 5000) do
-    # Digital business models that get weekly crawling
-    digital_bms = "'Ecommerce','SaaS','Tool','Marketplace','Agency'"
-
-    # 403/503 are excluded on purpose (2026-09-04, second Vultr abuse
-    # report): a WAF-walled domain re-hit on schedule, from a different node
-    # each cycle, with an HTTP client that cannot pass a JS challenge, reads
-    # as distributed malicious scraping to the WAF's operator, and 2.26M
-    # domains sat in those states when this was written. Blocked domains are
-    # the browser lane's job (enrichment_lane_filter browser_only: a real
-    # Firefox that passes the challenge instead of failing it); plain-HTTP
-    # recrawl never touches them again. 429 is NOT excluded: rate limiting
-    # means "come back later", and one polite bot-UA request per month is
-    # exactly that (2026-08-02: treating 429 as a wall drowned the browser
-    # lane; the same mistake here would silently lose 388K domains).
-    sql = """
-    SELECT domain FROM #{LS.Schema.Tables.domains()} FINAL
-    WHERE (
-      (business_model IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{weekly_days} DAY)
-      OR
-      (business_model NOT IN (#{digital_bms}) AND enriched_at < now() - INTERVAL #{monthly_days} DAY)
-    )
-    AND (http_status IS NOT NULL OR dns_a != '')
-    AND (http_status IS NULL OR http_status NOT IN (403, 503))
-    AND http_error != 'robots_disallow'
-    ORDER BY tranco_rank ASC NULLS LAST, enriched_at ASC
-    LIMIT #{limit}
     """
+    SELECT domain, tier FROM (
+      SELECT domain, #{LS.Crawl.Tiers.tier_sql()} AS tier, http_last_checked_at
+      FROM #{LS.Schema.Tables.businesses()}
+      WHERE estimated_junk = '' AND http_error != 'robots_disallow' AND http_blocked = ''
+        AND (http_status IS NULL OR http_status NOT IN (403, 503))
+        AND http_last_checked_at < now() - INTERVAL #{a} DAY
+    )
+    WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY
+    ORDER BY tier ASC, http_last_checked_at ASC
+    LIMIT #{limit}
+    SETTINGS max_threads = 2, max_execution_time = 110
+    """
+  end
 
-    case query(sql) do
-      {:ok, rows} -> {:ok, Enum.map(rows, fn [d] -> d end)}
+  @doc """
+  Businesses due for a refresh under their tier cadence (LS.Crawl.Tiers: A
+  14 days, B 60, C 120), most valuable tier first, oldest first, as
+  `{domain, tier}`. Until 2026-10-03 this read the 57 GB `domains` table
+  FINAL for 5,000 rows every six hours with a 7/30-day rule.
+  """
+  @spec stale_domains(pos_integer()) :: {:ok, [{String.t(), String.t()}]} | {:error, term()}
+  def stale_domains(limit) do
+    case query_raw(stale_domains_sql(limit), 120_000) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t] -> {d, t} end)}
       err -> err
     end
   end

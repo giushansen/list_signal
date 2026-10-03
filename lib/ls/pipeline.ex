@@ -497,11 +497,13 @@ defmodule LS.Pipeline do
   @doc """
   Decide whether the page blocks are kept, once the classification is final.
 
-  Who gets a page row (owner's bar, 2026-10-01): a successful fetch of a
-  site that is not junk and is classified at 0.6 confidence or better,
-  13.4M domains in production. `_page_parts` is dropped either way: it
-  must never travel to the master (it is the parsed page, up to a few
-  hundred KB), only the capped blocks do.
+  Who gets a page row: a successful fetch of a site that is not junk,
+  classified or not. The 2026-10-01 bar also required a classification at
+  0.6 or better, which kept 264K of 933K daily 2xx pages; the 446K a day
+  the classifier abstained on are the pages a better classifier needs
+  most, and keeping them costs 1.4 KB each (2026-10-03). `_page_parts` is
+  dropped either way: it must never travel to the master (it is the parsed
+  page, up to a few hundred KB), only the capped blocks do.
   """
   def finalize_pages(row) do
     parts = row[:_page_parts]
@@ -509,8 +511,7 @@ defmodule LS.Pipeline do
 
     keep? =
       is_map(parts) and is_integer(row[:http_status]) and row[:http_status] in 200..399 and
-        (row[:is_junk] || "") == "" and (row[:business_model] || "") != "" and
-        (row[:classification_confidence] || 0) >= 0.6
+        (row[:is_junk] || "") == ""
 
     if keep?,
       do: Map.put(row, :_pages, [LS.HTTP.PageBlocks.page_row(parts, "home", row[:enriched_at])]),

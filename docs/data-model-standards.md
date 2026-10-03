@@ -231,8 +231,13 @@ order is preserved by array position. Hidden, aria-hidden, dialog, drawer,
 cart and cookie-banner nodes are removed before blocks are emitted. Header
 is header/nav/role=banner; footer is footer/role=contentinfo/class footer.
 
-Who gets a page row: http 200, estimated_junk empty, business-model
-confidence at least 0.6. 13.4M domains today.
+Who gets a page row: http 200 and estimated_junk empty, classified or not
+(2026-10-03; until then a business-model confidence of 0.6 was also
+required, which kept 264K of 933K daily 2xx pages and dropped exactly the
+pages a better classifier needs). Same bar for a `businesses` row: an
+observed page with a title and no junk verdict is a business, with an
+empty model until the classifier decides. 446K first fetches a day were
+being thrown away under the classified-only bar.
 
 Measured on 394 real homepages loaded into ClickHouse: 2,014 compressed
 bytes per page with ZSTD(3), 3,145 with LZ4, against 218,701 bytes of raw

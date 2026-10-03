@@ -67,6 +67,7 @@ defmodule LS.Cluster.WorkerAgent do
       http_concurrency: http_c, dns_concurrency: dns_c,
       rdap_concurrency: rdap_c, batch_size: batch,
       total_enriched: 0, total_batches: 0, current_batch: nil, draining: false,
+      inflight: 0, max_inflight: parallel_batches(),
       start_time: System.monotonic_time(:second),
       last_stages: nil, last_samples: %{}, errors: []
     }
@@ -116,7 +117,7 @@ defmodule LS.Cluster.WorkerAgent do
 
   @impl true
   def handle_call(:drain_status, _from, s) do
-    {:reply, %{draining: s.draining, idle: s.current_batch == nil}, s}
+    {:reply, %{draining: s.draining, idle: s.inflight == 0}, s}
   end
 
   @impl true
@@ -147,11 +148,75 @@ defmodule LS.Cluster.WorkerAgent do
   # WORK LOOP
   # ==========================================================================
 
+  # One batch at a time left the node's fetch budget idle a third of the
+  # time (2026-10-03, measured on ny1 and chi1): DNS 15 s, then the HTTP
+  # stage at the budget cap for 150-240 s, then merge and ML for 18-58 s
+  # with no fetch in flight. A second batch, staggered by half a minute,
+  # fills the gaps; the node budget (LS.HTTP.NodeBudget) is node-wide, so
+  # two batches can never exceed the per-IP ceiling, and each batch takes
+  # half the DNS concurrency so the resolver load is unchanged. A node with
+  # under 3.5 GB runs one batch; `LS_WORKER_BATCHES` overrides; a second
+  # batch is not started under 700 MB of available memory.
+  @stagger_ms 30_000
+  @min_avail_mb 700
+
   @impl true
+  def handle_info(:pull_work, s) when s.inflight >= s.max_inflight, do: {:noreply, s}
+
   def handle_info(:pull_work, s) do
+    if s.inflight > 0 and not memory_headroom?() do
+      Process.send_after(self(), :pull_work, @stagger_ms)
+      {:noreply, s}
+    else
+      s = start_batch(s)
+      if s.inflight < s.max_inflight and not s.draining, do: Process.send_after(self(), :pull_work, @stagger_ms)
+      {:noreply, s}
+    end
+  end
+
+  @impl true
+  def handle_info({:batch_done, bid, results, stages, samples, batch_errors, skipped}, s) do
+    queue = {LS.Cluster.WorkQueue, s.master_node}
+    cyc = Map.get(stages, :cycle_ms, 0)
+    known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
+    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
+    # The verdicts travel with the rows so the gate can remember them
+    # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
+    GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved])})
+    errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
+    new_s = finished(%{s |
+      total_enriched: s.total_enriched + length(results),
+      total_batches: s.total_batches + 1,
+      last_stages: stages,
+      last_samples: samples,
+      errors: errors
+    })
+    unless new_s.draining, do: send(self(), :pull_work)
+    {:noreply, new_s}
+  end
+
+  @impl true
+  def handle_info(:batch_empty, s) do
+    unless s.draining, do: Process.send_after(self(), :pull_work, @empty_queue_wait_ms)
+    {:noreply, finished(s)}
+  end
+
+  @impl true
+  def handle_info({:batch_error, reason}, s) do
+    err = %{time: now_iso(), msg: "Lost master: #{inspect(reason)}", stage: "connection"}
+    errors = [err | s.errors] |> Enum.take(@max_errors)
+    Process.send_after(self(), :connect_and_work, @reconnect_interval_ms)
+    {:noreply, %{finished(s) | connected: false, errors: errors}}
+  end
+
+  @impl true
+  def handle_info(_msg, s), do: {:noreply, s}
+
+  defp start_batch(s) do
     queue = {LS.Cluster.WorkQueue, s.master_node}
     parent = self()
-    %{http_concurrency: hc, dns_concurrency: dc, rdap_concurrency: rc, batch_size: bs} = s
+    %{http_concurrency: hc, rdap_concurrency: rc, batch_size: bs} = s
+    dc = max(div(s.dns_concurrency, s.max_inflight), 50)
     spawn_link(fn ->
       try do
         case GenServer.call(queue, {:dequeue, bs}, 15_000) do
@@ -168,47 +233,38 @@ defmodule LS.Cluster.WorkerAgent do
         :exit, reason -> send(parent, {:batch_error, reason})
       end
     end)
-    {:noreply, %{s | current_batch: :working}}
+    %{s | current_batch: :working, inflight: s.inflight + 1}
   end
 
-  @impl true
-  def handle_info({:batch_done, bid, results, stages, samples, batch_errors, skipped}, s) do
-    queue = {LS.Cluster.WorkQueue, s.master_node}
-    cyc = Map.get(stages, :cycle_ms, 0)
-    known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
-    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
-    # The verdicts travel with the rows so the gate can remember them
-    # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
-    GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved])})
-    errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
-    new_s = %{s |
-      total_enriched: s.total_enriched + length(results),
-      total_batches: s.total_batches + 1,
-      current_batch: nil,
-      last_stages: stages,
-      last_samples: samples,
-      errors: errors
-    }
-    unless new_s.draining, do: send(self(), :pull_work)
-    {:noreply, new_s}
+  @doc false
+  # Pure. How many batches this node runs at once.
+  def parallel_batches(env \\ System.get_env("LS_WORKER_BATCHES"), mem_total_mb \\ meminfo_mb("MemTotal")) do
+    case env && Integer.parse(env) do
+      {n, _} when n in 1..4 -> n
+      _ -> if mem_total_mb >= 3_500, do: 2, else: 1
+    end
   end
 
-  @impl true
-  def handle_info(:batch_empty, s) do
-    unless s.draining, do: Process.send_after(self(), :pull_work, @empty_queue_wait_ms)
-    {:noreply, %{s | current_batch: nil}}
+  defp memory_headroom?, do: meminfo_mb("MemAvailable") >= @min_avail_mb
+
+  defp meminfo_mb(key) do
+    case File.read("/proc/meminfo") do
+      {:ok, text} ->
+        case Regex.run(~r/^#{key}:\s+(\d+) kB/m, text) do
+          [_, kb] -> div(String.to_integer(kb), 1024)
+          _ -> 0
+        end
+
+      _ ->
+        0
+    end
   end
 
-  @impl true
-  def handle_info({:batch_error, reason}, s) do
-    err = %{time: now_iso(), msg: "Lost master: #{inspect(reason)}", stage: "connection"}
-    errors = [err | s.errors] |> Enum.take(@max_errors)
-    Process.send_after(self(), :connect_and_work, @reconnect_interval_ms)
-    {:noreply, %{s | connected: false, current_batch: nil, errors: errors}}
+  defp finished(s) do
+    inflight = max(s.inflight - 1, 0)
+    %{s | inflight: inflight, current_batch: if(inflight > 0, do: :working, else: nil)}
   end
 
-  @impl true
-  def handle_info(_msg, s), do: {:noreply, s}
 
   # ==========================================================================
   # ENRICHMENT
@@ -242,7 +298,8 @@ defmodule LS.Cluster.WorkerAgent do
     end
 
     # 2. Classify
-    {http_cands, bgp_cands, skipped} = classify(dns_results)
+    issuers = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d[:ctl_issuer] || ""} end)
+    {http_cands, bgp_cands, skipped} = classify(dns_results, issuers)
     rdap_cands = classify_rdap(dns_results)
     unresolved = for d <- domains, dom = d[:ctl_domain] || d[:domain], not Map.has_key?(dns_results, dom), do: dom
     skipped = Map.put(skipped, :unresolved, unresolved)
@@ -354,7 +411,7 @@ defmodule LS.Cluster.WorkerAgent do
   # filtered again. Now a filtered domain gets no row; the master is told
   # the verdict instead and remembers it in the crawl gate (dormant for a
   # verdict the name settles, 28-35 days for a missing mail setup).
-  defp classify(dns_results) do
+  defp classify(dns_results, issuers) do
     Enum.reduce(dns_results, {[], [], %{dormant: [], soft: [], recent: []}}, fn {domain, data}, {ha, ba, sk} ->
       ip = data.dns[:a] |> List.wrap() |> List.first()
       ba = if ip && ip != "", do: [{domain, ip} | ba], else: ba
@@ -376,7 +433,7 @@ defmodule LS.Cluster.WorkerAgent do
           {ha, ba, %{sk | dormant: [domain | sk.dormant]}}
 
         true ->
-          case DomainFilter.verdict(domain, mx, txt, ip) do
+          case DomainFilter.verdict(domain, mx, txt, ip, Map.get(issuers, domain, "")) do
             :crawl -> {[{domain, ip} | ha], ba, sk}
             {:skip, :no_mail} -> {ha, ba, %{sk | soft: [domain | sk.soft]}}
             {:skip, _settled} -> {ha, ba, %{sk | dormant: [domain | sk.dormant]}}

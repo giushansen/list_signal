@@ -445,8 +445,17 @@ defmodule LS.Clickhouse.Compact do
         argMaxIf(s_is_junk, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS is_junk
       FROM (#{history_rows_sql(since_unix, until_unix)})
       GROUP BY s_domain
+      /* Who becomes a business (2026-10-03): any site we observed with a
+         title and no junk verdict, classified or not. From 09-07 to 10-03
+         only classified sites (0.6 or better) qualified, and 446K first
+         fetches a day returned a real page that was then thrown away: a
+         Kennebunkport shop, a dive school, a photographer, all abstained on
+         by the classifier. They are kept now, with an empty model, and the
+         stored page blocks let the classifier revisit them without a refetch.
+         Walled sites keep their row on a mail server alone, for the browser lane. */
       HAVING (is_malware = '' AND is_phishing = '')
          AND ((business_model != '' AND crawlable)
+              OR (crawlable AND http_title != '' AND is_junk = '')
               OR ((last_http_blocked != '' OR last_http_status IN (401, 403, 429)) AND dns_mx != ''))
     ) h
     LEFT JOIN (

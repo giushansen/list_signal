@@ -281,6 +281,22 @@ rotation/save/restore implementation in `CrawlDedup` (`@rings`);
 checked in the past hour" counter now counts real checks and fell with the
 row volume.
 
+### Refresh tiers (2026-10-03)
+
+`LS.Crawl.Tiers` decides how often a known business is refreshed, by what
+a customer buys: A, an ICP model with money or motion (revenue over $1M,
+jobs, a catalogue, a reachable contact), every 14 days; B, the other ICP
+businesses and the unclassified ones, every 60; C, non-ICP models and the
+top 100K sites, every 120. The compactor marks every compiled B and C
+business into two more rings in `LS.Cluster.CrawlDedup` (7 windows of 10
+and 20 days), so a certificate re-sighting of a known business waits its
+cadence; `LS.Recrawl.Scheduler` enqueues what is due every six hours, most
+valuable tier first, up to 150K per run, with `force: true`, which bypasses
+the daily and tier rings but not the stable and dormant ones. Before this,
+refreshes were whatever CT re-emitted after the 7-day ring, about a month
+for everything; a flat two weeks for all 14.6M ICP sites would have cost
+2.8 times the refresh budget.
+
 Discovery's DNS stage also resolves DMARC, BIMI and DKIM
 (`LS.DNS.EmailAuth`, MX domains only, at most four small TXT lookups) into
 `dns_dmarc` / `dns_bimi` / `dns_dkim`, plus reverse DNS and the Microsoft

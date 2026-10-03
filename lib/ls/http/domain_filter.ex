@@ -72,6 +72,24 @@ defmodule LS.HTTP.DomainFilter do
   """
   def should_crawl?(domain, mx, txt, ip \\ nil), do: verdict(domain, mx, txt, ip) == :crawl
 
+  # Measured on 2026-10-02 over 951K first-time fetches: the share that
+  # became a business was 10-25% for almost every DNS and certificate
+  # feature, so the layer before the fetch cannot tell a business from a
+  # dead site, with two exceptions worth a rule. ZeroSSL-issued names
+  # became businesses 4.7% of the time (11K fetches a day), .xyz 5.3%
+  # (5K a day); everything else sat at 10% or more. These are settled
+  # skips (the dormant ring, 60-90 days): about 16K fetches a day saved
+  # for under 1K businesses.
+  @low_yield_tlds ~w(xyz)
+  @low_yield_issuers ["ZeroSSL"]
+
+  @doc "True when the name or its certificate issuer is in a measured low-yield bucket."
+  @spec low_yield?(String.t(), String.t() | nil) :: boolean()
+  def low_yield?(domain, issuer) do
+    tld = domain |> String.downcase() |> String.split(".") |> List.last()
+    tld in @low_yield_tlds or Enum.any?(@low_yield_issuers, &String.starts_with?(issuer || "", &1))
+  end
+
   @doc """
   Why a resolved domain is fetched or not.
 
@@ -94,12 +112,14 @@ defmodule LS.HTTP.DomainFilter do
   Proofpoint...) with no SPF record; the provider is the evidence, SPF is
   hygiene. The ICP's stores and SaaS companies were in both groups.
   """
-  @spec verdict(String.t(), String.t(), String.t(), String.t() | nil) :: :crawl | {:skip, :junk_name | :tld | :no_mail}
-  def verdict(domain, mx, txt, ip \\ nil) do
+  @spec verdict(String.t(), String.t(), String.t(), String.t() | nil, String.t() | nil) ::
+          :crawl | {:skip, :junk_name | :tld | :no_mail | :low_yield}
+  def verdict(domain, mx, txt, ip \\ nil, issuer \\ "") do
     cond do
       tranco_ranked?(domain) -> :crawl
       not not_junk_domain?(domain) -> {:skip, :junk_name}
       commerce_edge?(ip) -> :crawl
+      low_yield?(domain, issuer) -> {:skip, :low_yield}
       not has_high_value_tld?(domain) -> {:skip, :tld}
       has_mx?(mx) and (has_spf?(txt) or known_mail_provider?(mx)) -> :crawl
       true -> {:skip, :no_mail}

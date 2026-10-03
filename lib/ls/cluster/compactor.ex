@@ -148,6 +148,7 @@ defmodule LS.Cluster.Compactor do
             lag = if behind?, do: " (catching up, #{div(now - until, 60)}m behind)", else: ""
             Logger.info("[COMPACT] refreshed #{count} businesses in #{System.monotonic_time(:millisecond) - t0}ms#{lag}")
             mark_hot(s.since - @lookback_slack_s, until)
+            mark_tiers(s.since - @lookback_slack_s, until)
           end
 
           %{s |
@@ -187,6 +188,27 @@ defmodule LS.Cluster.Compactor do
       {:error, reason} ->
         Logger.warning("[COMPACT] hot check failed: #{inspect(reason) |> String.slice(0, 200)}")
         0
+    end
+  end
+
+  @doc false
+  # Every business compiled in the pass is placed in its refresh tier
+  # (LS.Crawl.Tiers): B and C go into the gate's slow rings, A is left to
+  # the daily and stable rings. Re-compiling re-arms the ring, so the
+  # cadence counts from the last refresh.
+  def mark_tiers(since, until) do
+    case Clickhouse.compiled_tiers(since, until) do
+      {:ok, rows} ->
+        by = Enum.group_by(rows, &elem(&1, 1), &elem(&1, 0))
+        b = LS.Cluster.CrawlDedup.mark_tier_b(Map.get(by, "b", []))
+        c = LS.Cluster.CrawlDedup.mark_tier_c(Map.get(by, "c", []))
+        a = length(Map.get(by, "a", []))
+        if a + b + c > 0, do: Logger.info("[COMPACT] tiers: #{a} A (14d), #{b} B (60d), #{c} C (120d)")
+        {a, b, c}
+
+      {:error, reason} ->
+        Logger.warning("[COMPACT] tier check failed (compaction continues): #{inspect(reason) |> String.slice(0, 200)}")
+        {0, 0, 0}
     end
   end
 

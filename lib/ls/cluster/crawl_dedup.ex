@@ -111,7 +111,16 @@ defmodule LS.Cluster.CrawlDedup do
   @rings %{
     stable: %{key: {__MODULE__, :stable}, windows: 5, period_s: 7 * 86_400, capacity: 20_000_000, fp: 0.001, file: "stable_blooms.bin", counter: {__MODULE__, :stable_marked}},
     dormant: %{key: {__MODULE__, :dormant}, windows: 3, period_s: 30 * 86_400, capacity: 40_000_000, fp: 0.02, file: "dormant_blooms.bin", counter: {__MODULE__, :dormant_marked}},
-    hot: %{key: {__MODULE__, :hot}, windows: 4, period_s: 7 * 86_400, capacity: 5_000_000, fp: 0.01, file: "hot_blooms.bin", counter: {__MODULE__, :hot_marked}}
+    hot: %{key: {__MODULE__, :hot}, windows: 4, period_s: 7 * 86_400, capacity: 5_000_000, fp: 0.01, file: "hot_blooms.bin", counter: {__MODULE__, :hot_marked}},
+    # Refresh tiers (2026-10-03, LS.Crawl.Tiers): the compactor marks every
+    # compiled business of tier B or C here, so a certificate re-sighting
+    # of a known business waits its tier's cadence instead of 7 days. Tier
+    # A is governed by the daily ring and the stable ring alone. Bypassed by
+    # `force: true` (the scheduler IS the tier schedule) and by :hot.
+    # 7 windows of 10 days: a member for 60-70 days; 7 of 20: 120-140.
+    # Capacity 8M per window at 1% is ~10 MB each, ~134 MB for both rings.
+    tier_b: %{key: {__MODULE__, :tier_b}, windows: 7, period_s: 10 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_b_blooms.bin", counter: {__MODULE__, :tier_b_marked}},
+    tier_c: %{key: {__MODULE__, :tier_c}, windows: 7, period_s: 20 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_c_blooms.bin", counter: {__MODULE__, :tier_c_marked}}
   }
   @ring_names Map.keys(@rings)
   @backfill_shards 16
@@ -183,6 +192,19 @@ defmodule LS.Cluster.CrawlDedup do
   @doc "Remember that these domains just changed. Returns how many were written."
   @spec mark_hot([String.t()]) :: non_neg_integer()
   def mark_hot(domains), do: mark(:hot, domains)
+
+  @doc "True if the domain is a tier B or tier C business inside its refresh cadence (see LS.Crawl.Tiers)."
+  @spec tiered?(term()) :: boolean()
+  def tiered?(domain),
+    do: Application.get_env(:ls, :tier_rings, true) and (in_ring?(:tier_b, domain) or in_ring?(:tier_c, domain))
+
+  @doc "Mark tier B businesses (60-70 days). Returns how many were written."
+  @spec mark_tier_b([String.t()]) :: non_neg_integer()
+  def mark_tier_b(domains), do: mark(:tier_b, domains)
+
+  @doc "Mark tier C businesses (120-140 days). Returns how many were written."
+  @spec mark_tier_c([String.t()]) :: non_neg_integer()
+  def mark_tier_c(domains), do: mark(:tier_c, domains)
 
   defp in_ring?(name, domain) when is_binary(domain) and domain != "" do
     case :persistent_term.get(@rings[name].key, nil) do

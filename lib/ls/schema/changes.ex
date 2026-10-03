@@ -83,6 +83,12 @@ defmodule LS.Schema.Changes do
   INSERT ... SELECT that records every change between the scratch table of
   freshly compiled rows (`n`) and the current `businesses` rows (`o`).
   """
+  # An estimate change is recorded only next to a fact change of the same
+  # domain in the same pass (2026-10-03). Measured on 10-02: 24K revenue and
+  # 14K business-model changes a day, of which 34% and 47% coincided with
+  # any http_/dns_/shop_/hr_ change; the rest was the estimator re-reading
+  # the same evidence (13.8K "<$1M" to "$1M-$10M" in one day). A customer
+  # subscribing to revenue changes must see a business moving, not a model.
   def detect_sql(scratch, businesses \\ Tables.businesses(), changes \\ Tables.changes_log()) do
     rules = Enum.map_join(Columns.tracked_rules(), ",\n        ", &rule_sql/1)
     cols = Columns.tracked() |> Enum.map(&elem(&1, 0))
@@ -98,9 +104,9 @@ defmodule LS.Schema.Changes do
       ORDER BY compiled_at DESC
       LIMIT 1 BY domain
     ) AS o ON n.domain = o.domain
-    ARRAY JOIN arrayConcat(
+    ARRAY JOIN arrayFilter(t -> NOT startsWith(t.1, 'estimated_') OR arrayExists(u -> NOT startsWith(u.1, 'estimated_'), _all), arrayConcat(
         #{rules}
-    ) AS ch
+    ) AS _all) AS ch
     SETTINGS join_use_nulls = 1, max_threads = 2, max_execution_time = 115
     """
   end

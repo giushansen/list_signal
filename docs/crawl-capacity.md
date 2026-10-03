@@ -73,3 +73,23 @@ half of all fetches. Read `LS.Cluster.WorkQueue.stats().total_deduped_stable`
 against `total_enqueued` before deciding node counts; the fleet's fetch
 budget should follow the fetches actually needed, not the number of domains
 discovered.
+
+## The per-IP ceiling, and why 120 (2026-10-03)
+
+The budget (`LS.HTTP.NodeBudget`, `LS_FETCH_PER_MIN`) was 140 and the fleet
+averaged about 70 fetches a minute per node anyway: a worker ran one batch
+at a time, and the fetch budget sat idle during the DNS stage (15 s), the
+merge and the ML stage (18-58 s), a third of every cycle. Two staggered
+batches per 4 GB node fill that gap (`LS_WORKER_BATCHES`); the budget is
+node-wide, so the ceiling cannot be exceeded by running two.
+
+The ceiling itself is set to 120 a minute, two a second. The measured safe
+envelope is 130-160 (sub-1% 429s, zero blocks); 120 keeps a margin under
+it. Two facts about how the other side judges us: no CDN or firewall
+documents a global per-client rate, their rate rules are per site and we
+make one request per site per visit, so they never trip; what does trip
+is reputation, which is keyed on breadth (one address touching thousands
+of unrelated sites) and on identity (user agent, reverse DNS, honeypot
+links). Every abuse report so far came from a honeypot or a listed site,
+not from rate. "At most one request per second to any host", the promise
+on /bot and to Vultr, is a per-target statement and holds at any node rate.

@@ -63,6 +63,7 @@ defmodule LS.Cluster.WorkQueue do
   @idx_deduped 3
   @idx_deduped_stable 4
   @idx_deduped_dormant 5
+  @idx_deduped_tier 6
 
   # ==========================================================================
   # CLIENT API
@@ -115,6 +116,15 @@ defmodule LS.Cluster.WorkQueue do
       not hot and LS.Cluster.CrawlDedup.stable?(domain) ->
         LS.Cluster.CrawlDedup.record_sighting(domain_data)
         :counters.add(counter_ref(), @idx_deduped_stable, 1)
+        :recently_crawled
+
+      # Refresh tiers (2026-10-03): a known tier B or C business waits its
+      # cadence (60 or 120 days) before a certificate re-sighting can fetch
+      # it again. The scheduler's force bypasses this ring, the way it
+      # bypasses the daily one: it is the tier schedule.
+      not hot and not Keyword.get(opts, :force, false) and LS.Cluster.CrawlDedup.tiered?(domain) ->
+        LS.Cluster.CrawlDedup.record_sighting(domain_data)
+        :counters.add(counter_ref(), @idx_deduped_tier, 1)
         :recently_crawled
 
       # 27.6% of all fetches were repeat visits inside a week (2026-09-04:
@@ -183,7 +193,7 @@ defmodule LS.Cluster.WorkQueue do
     :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
-    ref = :counters.new(5, [:write_concurrency])
+    ref = :counters.new(6, [:write_concurrency])
     :persistent_term.put(@counter_table, ref)
 
     schedule_cleanup()
@@ -247,6 +257,7 @@ defmodule LS.Cluster.WorkQueue do
     total_deduped = :counters.get(ref, @idx_deduped)
     total_deduped_stable = :counters.get(ref, @idx_deduped_stable)
     total_deduped_dormant = :counters.get(ref, @idx_deduped_dormant)
+    total_deduped_tier = :counters.get(ref, @idx_deduped_tier)
 
     # Lifetime averages kept for reference; the dashboard uses the windowed rates
     # below (total/uptime lied for hours after every restart — cold dedup cache
@@ -268,6 +279,7 @@ defmodule LS.Cluster.WorkQueue do
       total_deduped: total_deduped,
       total_deduped_stable: total_deduped_stable,
       total_deduped_dormant: total_deduped_dormant,
+      total_deduped_tier: total_deduped_tier,
       enqueue_rate_per_min: state.enqueue_rate_win,
       drain_rate_per_min: state.drain_rate_win,
       enqueue_rate_lifetime: enqueue_rate_lifetime,
