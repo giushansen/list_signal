@@ -1,0 +1,1 @@
+50 min after the fleet deploy (17:25 UTC): depth lane wrote 4,407 rows in the 16:00 hour against 1,200-2,600 an hour earlier in the day; master drop_share {2, 50} (was 90% dropped on ny1/chi1); discovery per node 31-57 a minute under the 90 share (was 47-71 under 120). A 365-row dual stage ran 791 s, right at its deadline, tail cut by collect_until.
