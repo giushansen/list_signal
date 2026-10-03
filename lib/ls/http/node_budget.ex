@@ -29,10 +29,32 @@ defmodule LS.HTTP.NodeBudget do
   # and still refuses a runaway line; the batch in-flight limit is ten.
   @max_wait_ms 420_000
 
-  @doc "Create the counter table. Idempotent."
+  @doc """
+  Create the counter table. Idempotent. The table is owned by a process
+  that lives as long as the node, not by the caller: until 2026-10-03 the
+  first fetch task to call this owned it, and an ETS table dies with its
+  owner, so every batch end deleted the line and the next batch started
+  from an idle one.
+  """
   def init do
     if :ets.whereis(@table) == :undefined do
-      :ets.new(@table, [:set, :public, :named_table, write_concurrency: true])
+      parent = self()
+
+      spawn(fn ->
+        try do
+          :ets.new(@table, [:set, :public, :named_table, write_concurrency: true])
+          send(parent, {:node_budget_table, :created})
+          Process.sleep(:infinity)
+        rescue
+          ArgumentError -> send(parent, {:node_budget_table, :exists})
+        end
+      end)
+
+      receive do
+        {:node_budget_table, _} -> :ok
+      after
+        5_000 -> :ok
+      end
     end
 
     :ok
@@ -63,23 +85,38 @@ defmodule LS.HTTP.NodeBudget do
     init()
     interval = div(60_000, limit)
     now = System.monotonic_time(:millisecond)
-    # Atomic reservation: advance the shared "next free slot" by one interval
-    # and read what it was before. Behind `now` means the slot is free now.
-    # update_counter returns the advanced value; the slot we hold is the one before it.
-    base = :ets.update_counter(@table, :next_at, {2, interval}, {:next_at, now}) - interval
+
+    # An idle line (next slot already in the past) is claimed by exactly ONE
+    # caller, atomically, and moved to now + interval; everyone else lines
+    # up behind it. The previous version let every concurrent caller that
+    # found the line idle through at once and reset it afterwards, so an
+    # idle gap of 30 s at 500 ms a slot admitted a burst of 60 fetches, and
+    # with two batches alternating DNS and HTTP phases those gaps came every
+    # few minutes: measured 2026-10-03 at 136 fetches a minute per node on
+    # average, 186 on dal1, against a 120 ceiling. Bursts are what abuse
+    # reports are made of.
+    claimed =
+      :ets.select_replace(@table, [{{:next_at, :"$1"}, [{:<, :"$1", now}], [{{:next_at, now + interval}}]}])
+
     cond do
-      base <= now ->
-        # The line went idle: pull the next slot forward so idle time is
-        # not banked as a burst (counter already advanced from `base`).
-        if now - base > interval, do: :ets.insert(@table, {:next_at, now + interval})
+      claimed == 1 ->
         :ok
 
-      base - now > @max_wait_ms ->
-        :ets.update_counter(@table, :next_at, {2, -interval})
-        :overloaded
+      :ets.insert_new(@table, {:next_at, now + interval}) ->
+        :ok
 
       true ->
-        {:wait, base - now}
+        # update_counter returns the advanced value; the slot we hold is the
+        # one before it, and it is never behind `now` by more than a tick.
+        base = :ets.update_counter(@table, :next_at, {2, interval}) - interval
+
+        cond do
+          base <= now -> :ok
+          base - now > @max_wait_ms ->
+            :ets.update_counter(@table, :next_at, {2, -interval})
+            :overloaded
+          true -> {:wait, base - now}
+        end
     end
   end
 
