@@ -80,10 +80,26 @@ followed. What was measured and what changed:
   the ceiling. The master keeps the drop share over the last 50 batches and
   alerts at 50% (`enrichment_drops`).
 
+- *The refresh was re-asking the dead* (night). A worker writes no row for
+  a name whose DNS fails, so a known business that went dark never advanced
+  its last check, and the oldest-first due query returned it every 30
+  minutes: 34 of the first 40 due names failed DNS from a laptop, 7 to 11
+  of every run's 11 batches wrote 0 to 2 rows, 65K enqueued in three hours
+  for 7.5K refreshed. `LS.Recrawl.Liveness`: the master resolves the due
+  list itself (three anchor names must resolve or the run is suspect and
+  goes to the workers as before), records a check for each dead name as a
+  full copy of its newest `domains` row with `http_error` 'dns_unresolved',
+  `http_status` NULL, `worker` 'master' (nothing blanked; the fold keeps the
+  last known signals), and enqueues only the live ones. A dead name costs
+  one lookup per cadence, never a batch. Refresh items also bypass the
+  first-contact name filter on the worker (a known business without MX was
+  soft-skipped on every refresh and never checked again).
+
 Tests: tiers_test, tier_rings_test, compaction_membership_test,
 changes_estimate_gating_test, domain_filter_low_yield_test,
 worker_parallel_batches_test, node_budget_race_test, scheduler_plan_test,
-node_budget_lanes_test, alerts_enrichment_drops_test.
+node_budget_lanes_test, alerts_enrichment_drops_test, liveness_test,
+worker_refresh_prefilter_test.
 
 ## 2026-10-01 (evening) to 2026-10-02
 

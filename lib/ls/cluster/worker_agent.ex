@@ -299,7 +299,8 @@ defmodule LS.Cluster.WorkerAgent do
 
     # 2. Classify
     issuers = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d[:ctl_issuer] || ""} end)
-    {http_cands, bgp_cands, skipped} = classify(dns_results, issuers)
+    refresh = for d <- domains, d[:source] == :recrawl, into: MapSet.new(), do: d[:ctl_domain] || d[:domain]
+    {http_cands, bgp_cands, skipped} = classify(dns_results, issuers, refresh)
     rdap_cands = classify_rdap(dns_results)
     unresolved = for d <- domains, dom = d[:ctl_domain] || d[:domain], not Map.has_key?(dns_results, dom), do: dom
     skipped = Map.put(skipped, :unresolved, unresolved)
@@ -417,7 +418,7 @@ defmodule LS.Cluster.WorkerAgent do
   # filtered again. Now a filtered domain gets no row; the master is told
   # the verdict instead and remembers it in the crawl gate (dormant for a
   # verdict the name settles, 28-35 days for a missing mail setup).
-  defp classify(dns_results, issuers) do
+  defp classify(dns_results, issuers, refresh) do
     Enum.reduce(dns_results, {[], [], %{dormant: [], soft: [], recent: []}}, fn {domain, data}, {ha, ba, sk} ->
       ip = data.dns[:a] |> List.wrap() |> List.first()
       ba = if ip && ip != "", do: [{domain, ip} | ba], else: ba
@@ -439,7 +440,7 @@ defmodule LS.Cluster.WorkerAgent do
           {ha, ba, %{sk | dormant: [domain | sk.dormant]}}
 
         true ->
-          case DomainFilter.verdict(domain, mx, txt, ip, Map.get(issuers, domain, "")) do
+          case prefetch_verdict(domain, mx, txt, ip, Map.get(issuers, domain, ""), MapSet.member?(refresh, domain)) do
             :crawl -> {[{domain, ip} | ha], ba, sk}
             {:skip, :no_mail} -> {ha, ba, %{sk | soft: [domain | sk.soft]}}
             {:skip, _settled} -> {ha, ba, %{sk | dormant: [domain | sk.dormant]}}
@@ -447,6 +448,20 @@ defmodule LS.Cluster.WorkerAgent do
       end
     end)
   end
+
+  @doc """
+  Pure: whether a resolved domain gets a fetch. A refresh item (the
+  scheduler's `source: :recrawl`) always does: its membership was decided
+  by an observed 2xx, so the name filter that guards first contact (junk
+  names, listed TLDs, no mail setup, low-yield issuers) has nothing to add.
+  Until 2026-10-03 a known business without MX was soft-skipped on every
+  refresh and never checked again. Blocklist, registry and the politeness
+  cache are checked before this and are not bypassed.
+  """
+  @spec prefetch_verdict(String.t(), String.t(), String.t(), String.t() | nil, String.t(), boolean()) ::
+          :crawl | {:skip, atom()}
+  def prefetch_verdict(_domain, _mx, _txt, _ip, _issuer, true), do: :crawl
+  def prefetch_verdict(domain, mx, txt, ip, issuer, false), do: DomainFilter.verdict(domain, mx, txt, ip, issuer)
 
   @doc false
   # Pure: how long the HTTP stage may take for `n` candidates, each fetch

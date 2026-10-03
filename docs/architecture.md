@@ -225,7 +225,14 @@ module's docs.
 `LS.Cluster.CrawlDedup` keeps eight daily bloom windows (10M entries each,
 ~96MB): a domain enqueued from a CT log is crawled at most once every 7 days
 and released by day 8. The recrawl scheduler bypasses the gate
-(`WorkQueue.enqueue(data, force: true)`) because it is the schedule. A
+(`WorkQueue.enqueue(data, force: true)`) because it is the schedule. Since
+2026-10-03 the scheduler resolves its due list on the master first
+(`LS.Recrawl.Liveness`): a name that no longer resolves gets a check
+recorded as a full copy of its newest `domains` row with `http_error`
+'dns_unresolved', and only live names go to the workers, where a refresh
+item is fetched without the first-contact name filter. Without this the
+dead names, which never advance their last check, took over the
+oldest-first due list and the refresh budget. A
 suppressed sighting is appended to `ctl_sightings` (issuer, subdomains,
 90-day TTL) instead of being dropped, never to `domains_history`, whose
 newest-row-wins projection would blank the domain's other columns.

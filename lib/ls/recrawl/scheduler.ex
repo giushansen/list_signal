@@ -63,6 +63,7 @@ defmodule LS.Recrawl.Scheduler do
 
     {:ok, %{
       total_enqueued: 0,
+      total_dead: 0,
       total_checks: 0,
       last_check_at: nil,
       last_batch_size: 0,
@@ -95,6 +96,24 @@ defmodule LS.Recrawl.Scheduler do
         count = length(domains)
         Logger.info("[RECRAWL] Found #{count} stale domains, enqueuing for re-crawl")
 
+        # Resolve on the master first (LS.Recrawl.Liveness, 2026-10-03): a
+        # dead name gets its check recorded here and never costs a worker
+        # batch. A suspect resolver sends the whole list on, as before.
+        {domains, dead_recorded} =
+          case LS.Recrawl.Liveness.partition(domains) do
+            {:ok, live, dead} ->
+              case LS.Recrawl.Liveness.record_dead(dead) do
+                {:ok, n} -> {live, n}
+                {:error, reason} ->
+                  Logger.error("[RECRAWL] could not record #{length(dead)} dead domains: #{inspect(reason)}")
+                  {live, 0}
+              end
+
+            {:error, :resolver_suspect} ->
+              Logger.error("[RECRAWL] master resolver failed an anchor name; sending all #{count} to workers")
+              {domains, 0}
+          end
+
         enqueued = Enum.reduce(domains, 0, fn {domain, tier}, acc ->
           # Use the same :ctl_domain key CTL items carry so the worker pipeline
           # (enrich_dns/merge_results) can read it uniformly regardless of source.
@@ -111,9 +130,10 @@ defmodule LS.Recrawl.Scheduler do
           end
         end)
 
-        Logger.info("[RECRAWL] Enqueued #{enqueued}/#{count} stale domains")
+        Logger.info("[RECRAWL] Enqueued #{enqueued}/#{count} stale domains (#{dead_recorded} dead recorded on the master)")
         %{state |
           total_enqueued: state.total_enqueued + enqueued,
+          total_dead: Map.get(state, :total_dead, 0) + dead_recorded,
           total_checks: state.total_checks + 1,
           last_check_at: DateTime.utc_now(),
           last_batch_size: enqueued}
