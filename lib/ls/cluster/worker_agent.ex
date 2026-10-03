@@ -447,8 +447,12 @@ defmodule LS.Cluster.WorkerAgent do
   # paced by the node budget, with a minute of slack for the slow tail.
   # A candidate costs its homepage slot plus, for the fifth or so that have
   # a contact or pricing page, up to two secondary fetches: 1.5 slots each.
-  def http_stage_timeout(n, per_min \\ LS.HTTP.NodeBudget.per_min()),
-    do: max(120_000, div(n * 90_000, per_min) + 60_000)
+  # The rate a batch can count on is the node ceiling divided by the
+  # batches running at once (2026-10-03): with two batches sharing 120 a
+  # minute, a 345-candidate stage sized for the whole ceiling ran into its
+  # deadline at 319.5 s on ny1 and lost its tail.
+  def http_stage_timeout(n, per_min \\ div(LS.HTTP.NodeBudget.per_min(), parallel_batches())),
+    do: max(120_000, div(n * 90_000, max(per_min, 1)) + 60_000)
 
   @doc false
   # Pure: the domains that get a row. Fetched or attempted ones (HTTP has
