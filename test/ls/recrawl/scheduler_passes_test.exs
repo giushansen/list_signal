@@ -15,6 +15,14 @@ defmodule LS.Recrawl.SchedulerPassesTest do
     assert LS.Clickhouse.stale_domains_sql(1000) =~ "LIMIT 1000 OFFSET 0"
   end
 
+  test "a tick never enqueues past its quota, whatever the later blocks hold" do
+    plan = LS.Recrawl.Scheduler.plan()
+    assert LS.Recrawl.Scheduler.quota_left(0) == plan.batch_size
+    assert LS.Recrawl.Scheduler.quota_left(7_051) == plan.batch_size - 7_051
+    assert LS.Recrawl.Scheduler.quota_left(plan.batch_size) == 0
+    assert LS.Recrawl.Scheduler.quota_left(plan.batch_size + 500) == 0
+  end
+
   test "a tick reads at most a few blocks, so a dead-dominated list cannot run the tick past its interval" do
     plan = LS.Recrawl.Scheduler.plan()
     assert plan.max_passes in 2..4

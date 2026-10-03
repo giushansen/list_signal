@@ -120,6 +120,10 @@ defmodule LS.Recrawl.Scheduler do
         last_batch_size: enqueued}
   end
 
+  @doc "Pure: how many live names this tick may still enqueue."
+  @spec quota_left(non_neg_integer()) :: non_neg_integer()
+  def quota_left(enqueued), do: max(@batch_size - enqueued, 0)
+
   # One block of the due list per pass, at the next offset; stops at the
   # live target, at the end of the due list, or after @max_passes blocks.
   defp passes(pass, enqueued, dead) when pass >= @max_passes or enqueued >= @batch_size, do: {enqueued, dead}
@@ -152,7 +156,10 @@ defmodule LS.Recrawl.Scheduler do
               {domains, 0}
           end
 
-        added = Enum.reduce(domains, 0, fn {domain, tier}, acc ->
+        # Only the quota left in this tick: the third block of the first
+        # multi-block ticks pushed 22,491 and 18,921 live names into a
+        # 12,500 plan (2026-10-03). The rest stay due and lead the next tick.
+        added = domains |> Enum.take(quota_left(enqueued)) |> Enum.reduce(0, fn {domain, tier}, acc ->
           # Use the same :ctl_domain key CTL items carry so the worker pipeline
           # (enrich_dns/merge_results) can read it uniformly regardless of source.
           data = %{ctl_domain: domain, source: :recrawl, tier: tier}
