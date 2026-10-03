@@ -322,7 +322,13 @@ defmodule LS.Cluster.WorkerAgent do
     # hour per worker). The await now covers the paced duration plus slack.
     # enrich_http keeps what finished by its own deadline; the await here is
     # only the backstop for a stage that never returns.
-    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", http_stage_timeout(length(http_cands)) + 30_000) end)
+    # The outer timer is a safety net for a hung stage, never the working
+    # deadline: the stage keeps what finished by its own deadline and
+    # returns, and shutting down the stragglers can take more than the 30 s
+    # this used to allow. 2026-10-03 on chi2: two 930-candidate stages ended
+    # 30 s past their deadline and the outer timer threw away every result
+    # of both batches, 1,874 rows with no HTTP after 25 minutes of fetching.
+    {http_us, http_res} = :timer.tc(fn -> await_stage(http_task, "http", http_stage_timeout(length(http_cands)) + 180_000) end)
     {bgp_us, bgp_res} = :timer.tc(fn -> await_stage(bgp_task, "bgp", 120_000) end)
     {rdap_us, rdap_res} = :timer.tc(fn -> await_stage(rdap_task, "rdap", rdap_timeout) end)
 

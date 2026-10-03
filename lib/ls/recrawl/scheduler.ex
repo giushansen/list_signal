@@ -16,13 +16,19 @@ defmodule LS.Recrawl.Scheduler do
   use GenServer
   require Logger
 
-  # 150K per run, four runs a day: a 600K-a-day refresh ceiling, which is
-  # what tiers A+B+C add up to at steady state (430K + 140K + 50K). The run
-  # is skipped while the work queue already holds more than half a million
-  # domains, so a refresh never buries discovery.
-  @batch_size 150_000
-  @queue_headroom 500_000
-  @check_interval_ms 6 * 3_600_000  # 6 hours
+  # 12,500 per run, every 30 minutes: a 600K-a-day refresh ceiling, which
+  # is what tiers A+B+C add up to at steady state (430K + 140K + 50K). Small
+  # and often, not 150K every six hours (the first form, 2026-10-03
+  # morning): a block of known businesses makes refresh-only batches, and a
+  # known business passes the gate 93% of the time against 37% for a new
+  # name, so those batches carried 930 HTTP candidates instead of 370, ran
+  # 25 minutes against a shared ceiling and some died at their deadline.
+  # Mixed into discovery at this rate a batch stays near 450 candidates.
+  # The run is skipped while the work queue already holds more than
+  # 150K domains, so a refresh never buries discovery.
+  @batch_size 12_500
+  @queue_headroom 150_000
+  @check_interval_ms 30 * 60_000
   # Wait 5 minutes after boot before first check (let CTL/workers warm up)
   @initial_delay_ms 300_000
 
@@ -32,6 +38,12 @@ defmodule LS.Recrawl.Scheduler do
 
   def stats do
     GenServer.call(__MODULE__, :stats)
+  end
+
+  @doc "The refresh plan: domains per run, runs per day, and the daily ceiling they make."
+  def plan do
+    runs = div(24 * 3_600_000, @check_interval_ms)
+    %{batch_size: @batch_size, interval_ms: @check_interval_ms, runs_per_day: runs, per_day: runs * @batch_size, queue_headroom: @queue_headroom}
   end
 
   @doc "Manually trigger a recrawl check."
@@ -45,7 +57,7 @@ defmodule LS.Recrawl.Scheduler do
     Logger.info(
       "[RECRAWL] Scheduler started — " <>
       "tiers A/B/C: #{LS.Crawl.Tiers.cadence_days(:a)}/#{LS.Crawl.Tiers.cadence_days(:b)}/#{LS.Crawl.Tiers.cadence_days(:c)} days, " <>
-      "batch: #{@batch_size}, interval: #{div(@check_interval_ms, 3_600_000)}h"
+      "batch: #{@batch_size}, interval: #{div(@check_interval_ms, 60_000)}min"
     )
     Process.send_after(self(), :check_stale, @initial_delay_ms)
 
