@@ -29,6 +29,13 @@ defmodule LSWeb.Router do
     plug :fetch_current_scope_for_user
   end
 
+  # Deliberately no :accepts plug. The MCP registry fetches the ownership
+  # proof with its own Accept header; constraining it to ["html"] made the
+  # endpoint answer 406 and the namespace claim fail (2026-10-04).
+  pipeline :well_known do
+    plug :put_secure_browser_headers
+  end
+
   pipeline :api do
     plug :accepts, ["json"]
   end
@@ -103,8 +110,13 @@ defmodule LSWeb.Router do
     get "/terms", LegalController, :terms
 
     get "/developers", PageController, :developers
-    get "/.well-known/mcp-registry-auth", WellKnownController, :mcp_registry_auth
     get "/sitemap.xml", SitemapController, :index
+  end
+
+  # Domain-ownership proof for the MCP registry (com.listsignal/* namespace).
+  scope "/.well-known", LSWeb do
+    pipe_through :well_known
+    get "/mcp-registry-auth", WellKnownController, :mcp_registry_auth
   end
 
   # Machine-readable API contract, unauthenticated by design: agents read it
