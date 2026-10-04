@@ -1,0 +1,1 @@
+Live after deploy 0.1.0-202610041209: LS.Metrics.backup_status() returns ch_last_run :ok, ch_last_run_at 2026-10-04 04:05:18, ch_age_h 0 with no local archive (the log fallback). Alert evaluation on the master returns [].
