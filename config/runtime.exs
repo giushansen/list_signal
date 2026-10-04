@@ -46,6 +46,10 @@ config :ls, :stripe_starter_yearly_price_id, System.get_env("STRIPE_STARTER_YEAR
 
 # Umami analytics override — the default (public) website_id lives in config.exs;
 # these let ops point at a different site or script host without a rebuild.
+if proof = System.get_env("MCP_REGISTRY_PROOF") do
+  config :ls, :mcp_registry_proof, proof
+end
+
 if id = System.get_env("UMAMI_WEBSITE_ID") do
   config :ls, :umami,
     website_id: id,

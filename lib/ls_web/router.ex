@@ -103,6 +103,7 @@ defmodule LSWeb.Router do
     get "/terms", LegalController, :terms
 
     get "/developers", PageController, :developers
+    get "/.well-known/mcp-registry-auth", WellKnownController, :mcp_registry_auth
     get "/sitemap.xml", SitemapController, :index
   end
 

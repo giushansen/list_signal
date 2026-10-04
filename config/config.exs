@@ -41,6 +41,12 @@ config :ls, :stripe_client, LS.StripeClient
 # website_id is NOT a secret: it ships in the public tracker script, so it lives
 # here rather than in the env. Override either value with UMAMI_WEBSITE_ID /
 # UMAMI_SRC (see config/runtime.exs). Set website_id to nil to disable the tag.
+# Ownership proof served at /.well-known/mcp-registry-auth so the MCP
+# registry can grant us the com.listsignal/* namespace. Public key only;
+# override with MCP_REGISTRY_PROOF if the keypair is rotated.
+config :ls, :mcp_registry_proof,
+  "v=MCPv1; k=ed25519; p=YwKNOBuxtjr86lqeSLSZyS5KzKH30p02mgYECEy1vXk="
+
 config :ls, :umami,
   website_id: "eca3e61a-5159-41bd-a637-d59412f0b417",
   src: "https://stats.listsignal.com/script.js"
