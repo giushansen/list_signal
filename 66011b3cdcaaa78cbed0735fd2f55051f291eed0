@@ -1,0 +1,1 @@
+Verified after the deploy: /website/0-0-game.com serves 200 with the newest row's title; 504 multi-row domains compared on prod with zero differences; 149,062 multi-row domains with zero tied newest versions. FINAL dated from 83c5224 when domains_current was a MaterializedView, not from an incident.
