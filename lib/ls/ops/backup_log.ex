@@ -48,7 +48,14 @@ defmodule LS.Ops.BackupLog do
           cond do
             Enum.any?(after_start, &String.contains?(&1, "backup skipped")) -> :skipped
             Enum.any?(after_start, &String.contains?(&1, "ERROR")) -> :error
-            Enum.any?(after_start, &String.contains?(&1, "clickhouse ok")) -> :ok
+            Enum.any?(after_start, &(String.contains?(&1, "clickhouse ok") and plausible_ch_size?(&1))) -> :ok
+            # A success line that reports no real archive is a failed run
+            # (2026-10-04): the weekly tier asked for a table the v2 rename
+            # had removed, dumped nothing, tarred the empty directory and
+            # logged "clickhouse ok (12K)". This module read the week as
+            # successful, so no alert fired on the age either, and an hour
+            # later the retry shipped that 12 KB over the only real copy.
+            Enum.any?(after_start, &String.contains?(&1, "clickhouse ok")) -> :error
             true -> nil
           end
 
@@ -57,6 +64,33 @@ defmodule LS.Ops.BackupLog do
   end
 
   def last_ch_run(_), do: nil
+
+  @doc """
+  Pure: whether a "clickhouse ok" line reports a size a real history dump
+  could have. The archive has been 12G to 46.8G all year; anything in bytes,
+  kilobytes or megabytes is not a backup of an 83 GiB table.
+
+  A line this cannot read at all counts as implausible, deliberately. The
+  script that writes the line lives in another repo (devops/listsignal/
+  backup.sh), so a format change there must surface as a loud alert and a
+  failing test here rather than as a guard that quietly stopped looking.
+  Both current shapes are pinned in backup_log_size_test.
+  """
+  @spec plausible_ch_size?(String.t()) :: boolean()
+  def plausible_ch_size?(line) when is_binary(line) do
+    case Regex.run(~r/\((\d+(?:\.\d+)?)\s*([BKMGT])\b/, line) do
+      [_, num, unit] when unit in ["G", "T"] ->
+        case Float.parse(num) do
+          {n, _} -> n >= 1.0
+          :error -> false
+        end
+
+      _ ->
+        false
+    end
+  end
+
+  def plausible_ch_size?(_), do: false
 
   @doc """
   Timestamp of the newest successful `[ch]` run ("clickhouse ok"), or nil.
@@ -68,7 +102,7 @@ defmodule LS.Ops.BackupLog do
   def last_ch_ok_at(text) when is_binary(text) do
     text
     |> String.split("\n")
-    |> Enum.filter(&(String.contains?(&1, "[ch]") and String.contains?(&1, "clickhouse ok")))
+    |> Enum.filter(&(String.contains?(&1, "[ch]") and String.contains?(&1, "clickhouse ok") and plausible_ch_size?(&1)))
     |> List.last()
     |> case do
       nil -> nil

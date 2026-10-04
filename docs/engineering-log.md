@@ -56,6 +56,37 @@ two sentinel ticks; a stall is relative to the fleet's own trailing day,
 with a 15-minute boot grace; enrichment-only nodes and dead-check rows are
 out of every fleet metric (shipped at 22:00 the day before).
 
+## 2026-10-04 (early morning): the weekly backup backed up nothing
+
+The 10-01 data model v2 migration renamed `domains_history` to `enrich_log`.
+The weekly ClickHouse tier dumps exactly that one table and still named the
+old one, so the first weekly run after the rename (03:15 UTC, cron
+`15 3 * * 0`) matched no table, tarred an empty directory and logged
+"clickhouse ok (12K)" in one second where a real run takes 25 minutes and
+46.8G. An hour later the hourly sqlite run's pending-chw retry (added 10-02)
+found that 10 KB file, deleted the previous offsite archive as that path
+always does to fit a 120G box, shipped the 10 KB in its place and removed the
+local copy. The 46,830,131,200-byte archive of 09-27 was the only backup of
+crawl history anywhere; the laptop pull keeps product archives only. No data
+was lost (`enrich_log` is live, 83.15 GiB, append-only) but history had no
+backup for an hour.
+
+Five fixes in devops a32fdb1: the right table name, every requested name must
+resolve before the dump starts, a dump that produced zero files is an ERROR
+and never an archive, the archive is streamed offsite to `<name>.part` and
+verified there before the previous one is deleted, and the legacy retry
+refuses anything under 1G or under half of what is already offsite. The
+stale 1.5x-whole-database space check (286G on a 361G disk, which is why
+every six-hourly run logged "ERROR need 262G free") is replaced by one sized
+from the tables being dumped. The local tar is gone: 46G of archive beside
+46G of dump dir no longer fits next to a 191G ClickHouse.
+
+App side (66011b3 follow-up): `LS.Ops.BackupLog.plausible_ch_size?/1`. A
+"clickhouse ok" line whose size is in bytes, kilobytes or megabytes is a
+failed run, and the age of the last good dump ignores it, so the same shape
+of failure now fires both the run alert and the stale-backup alert instead of
+reading as a healthy week.
+
 ## 2026-10-03
 
 **Tiers, membership, estimate gating, two batches, and a budget that held.**
