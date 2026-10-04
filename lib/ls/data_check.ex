@@ -66,7 +66,7 @@ defmodule LS.DataCheck do
   # these numbers are what a USER experiences, so they must not drift with a
   # degrading baseline the way the quality bands are allowed to.
   @speed_probes [
-    {"domain point lookup", "SELECT domain FROM domains FINAL WHERE domain = 'google.com' LIMIT 1", 500, 2_500},
+    {"domain point lookup", "SELECT domain FROM domains WHERE domain = 'google.com' ORDER BY enriched_at DESC LIMIT 1", 500, 2_500},
     {"shopify filter count", "SELECT count() FROM businesses WHERE is_shopify = 1", 1_000, 4_000},
     {"signal history lookup", "SELECT count() FROM changes_log WHERE domain = 'google.com'", 500, 2_500}
   ]

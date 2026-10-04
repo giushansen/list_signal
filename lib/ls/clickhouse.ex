@@ -197,11 +197,22 @@ defmodule LS.Clickhouse do
   # float hit decode_html/1 (104 FunctionClauseErrors in ten minutes,
   # reported by the other session). A row is now self-describing.
   def get_store(domain) when is_binary(domain) do
-    case query("SELECT * FROM #{LS.Schema.Tables.domains()} FINAL WHERE domain = '#{escape(domain)}' LIMIT 1") do
+    case query(store_row_sql(domain)) do
       {:ok, rows} -> {:ok, Enum.map(rows, &(domains_current_columns() |> Enum.zip(&1) |> Map.new()))}
       err -> err
     end
   end
+
+  @doc """
+  Pure: the newest row of one domain. `domains` is
+  ReplacingMergeTree(enriched_at), so ordering by the version column and
+  taking one row is what FINAL would return, without FINAL's merge: 78 ms
+  and 103 MB against 116 ms and 169 MB for the same cold domain
+  (2026-10-04), on the query a public page runs for every visit.
+  """
+  @spec store_row_sql(String.t()) :: String.t()
+  def store_row_sql(domain),
+    do: "SELECT * FROM #{LS.Schema.Tables.domains()} WHERE domain = '#{escape(domain)}' ORDER BY enriched_at DESC LIMIT 1"
 
   @doc """
   domains_current's physical column order, as atoms, read once from the

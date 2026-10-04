@@ -87,10 +87,52 @@ defmodule LS.Alerts do
   @verify_grace_s 2 * 86_400
   @cooldown_hours 6
 
+  # Keys that flap on a single tick and are only meaningful when they hold
+  # across two: a node that misses one 8 s probe mid-batch, an hourly
+  # volume that dips while a deploy restarts the fleet, a rate window that
+  # is empty after a restart. 2026-10-02 and 10-03: "1 node(s) report no
+  # resources" twice, four "Ingestion rate" and three "Ingestion stalled"
+  # emails, none of them a fault that lasted fifteen minutes.
+  @sustained_prefixes ["unmonitored:", "data_quantity:", "ingestion_low"]
+  @sustain_memory_s 40 * 60
+
+  @doc """
+  Pure: keep every alert, except that one whose key starts with a flappy
+  prefix passes only if the same key was raised on the previous tick.
+  """
+  @spec sustain([map()], [String.t()]) :: [map()]
+  def sustain(alerts, previous_keys) do
+    prev = MapSet.new(previous_keys)
+
+    Enum.filter(alerts, fn %{key: k} ->
+      not Enum.any?(@sustained_prefixes, &String.starts_with?(k, &1)) or MapSet.member?(prev, k)
+    end)
+  end
+
+  @doc false
+  def flappy?(key), do: Enum.any?(@sustained_prefixes, &String.starts_with?(key, &1))
+
+  # Remember this tick's keys for the next one; a memory older than two
+  # ticks and change is stale (the node restarted) and counts as empty.
+  defp remember_keys(alerts) do
+    :persistent_term.put({__MODULE__, :last_keys}, {Enum.map(alerts, & &1.key), System.monotonic_time(:second)})
+  end
+
+  defp previous_keys do
+    case :persistent_term.get({__MODULE__, :last_keys}, nil) do
+      {keys, at} when is_list(keys) ->
+        if System.monotonic_time(:second) - at <= @sustain_memory_s, do: keys, else: []
+
+      _ ->
+        []
+    end
+  end
+
   @doc "Gather everything `evaluate/1` needs. Master-only; each field is independently safe."
   def gather do
     %{
       ingestion_3h: Metrics.ingestion(3),
+      ingestion_24h: Metrics.ingestion(24),
       per_worker: Metrics.per_worker(6),
       known_workers: known_discovery_workers(Metrics.known_workers(3), Metrics.lanes_by_node()),
       stale_seconds: Metrics.businesses_stale_seconds(),
@@ -154,12 +196,25 @@ defmodule LS.Alerts do
   # which the data-quantity check already reports as a warning.
   @drain_floor_per_min 100
 
+  # The floor is August's. The v2 crawl writes a row only for a fetched
+  # domain, so a healthy fleet now sits at 135-150K in 3 hours and the
+  # floor alone fired "Ingestion stalled" three times on 10-02 and 10-03
+  # (146.1K against 150K). A stall is a volume well under the fleet's own
+  # trailing day AND a queue that stops draining; a master that restarted
+  # minutes ago has an empty rate window and is not a stall either.
+  @ingestion_vs_baseline 0.5
+  @boot_grace_s 900
+
   defp ingestion(acc, %{ingestion_3h: n} = m) when is_integer(n) and n < @ingestion_3h_floor do
     drain = get_in(m, [:queue, :drain_rate_per_min])
+    uptime = get_in(m, [:queue, :uptime_seconds])
+    baseline_3h = case m[:ingestion_24h] do d when is_integer(d) and d > 0 -> d / 8; _ -> nil end
 
-    if is_number(drain) and drain >= @drain_floor_per_min do
-      acc
-    else
+    cond do
+      is_number(drain) and drain >= @drain_floor_per_min -> acc
+      is_number(uptime) and uptime < @boot_grace_s -> acc
+      is_number(baseline_3h) and n >= baseline_3h * @ingestion_vs_baseline -> acc
+      true ->
       [
         al(
           :critical,
@@ -831,7 +886,9 @@ defmodule LS.Alerts do
 
   @doc "Evaluate now, send a digest for any alert past its cooldown. Returns the alerts sent."
   def run do
-    alerts = evaluate(gather())
+    raised = evaluate(gather())
+    alerts = sustain(raised, previous_keys())
+    remember_keys(raised)
     fresh = Enum.reject(alerts, &cooling_down?/1)
 
     if fresh != [] do

@@ -10,6 +10,9 @@ defmodule LSWeb.Router do
 
   pipeline :public do
     plug :accepts, ["html"]
+    # 60 a minute per client (2026-10-04): a scraper at 1,000 pages a minute
+    # put ClickHouse at 350% CPU and took the compaction and backup down.
+    plug LSWeb.Plugs.PublicRateLimit
     plug :put_root_layout, html: {LSWeb.Layouts, :public_root}
     plug :put_secure_browser_headers
     plug LSWeb.Plugs.CSP

@@ -25,6 +25,37 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-04 (night)
+
+**Nineteen alert emails in two days, and the load behind the last ones.**
+The owner's inbox, from `ops_email_log`: six "Worker down: lsh1" (h1 had
+become enrichment-only and writes no discovery rows), three "Ingestion
+stalled" (146.1K rows in 3h against a 150K floor chosen in August; a rate
+window empty after a master restart), four "Ingestion rate" data-quantity
+dips (deploy restarts, the estimate gating halving changes by design, one
+real depth-lane starvation), two "1 node(s) report no resources" (a dual
+missing one 8 s probe mid-batch), one "Worker degraded: master" and one
+"Data quality: HTTP errors" (the dead-check rows of the new liveness pass
+counted as fetches). Then at 00:00 UTC a client fetched /website and
+/shopify pages at 130 to 1,000 a minute. Each page is a FINAL point read
+of the 58-column `domains` table (77 MB of granules, 169 MB of memory),
+ClickHouse ran at 350% CPU on four cores, load reached 20, the 00:30
+product backup's businesses dump and a compaction pass both hit the 6.5 GB
+server ceiling, in-flight batches timed out and 18K domains were requeued,
+the depth lane stranded 400 items. The backup log still said "product ok":
+the pipeline's status was zstd's.
+
+Fixed, same night: `LSWeb.Plugs.PublicRateLimit`, 60 a minute per client
+on the public pipeline (Cloudflare's address, loopback exempt), 429 with
+Retry-After; the store row read by version column instead of FINAL (78 ms
+and 103 MB against 116 and 169); backup.sh with `set -o pipefail`, dumps at
+`--max_threads=1` (62 s and 147 MiB for businesses against 4.19 GiB and a
+failure) and a failed table recorded instead of archived; alerts that flap
+on one tick (unmonitored, data_quantity, ingestion_low) must hold across
+two sentinel ticks; a stall is relative to the fleet's own trailing day,
+with a 15-minute boot grace; enrichment-only nodes and dead-check rows are
+out of every fleet metric (shipped at 22:00 the day before).
+
 ## 2026-10-03
 
 **Tiers, membership, estimate gating, two batches, and a budget that held.**
