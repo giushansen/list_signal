@@ -76,3 +76,6 @@ run_mac_worker.sh
 
 # Owner consent file for the test guard (see CLAUDE.md). Never committed.
 .claude/tests-unlock
+
+# golden v6 raw homepages: unpack pages_v6_2026-10-05.tar.gz here for the harness
+analysis/golden_set/pages_v6/
