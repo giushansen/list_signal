@@ -25,6 +25,25 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-05: golden v6 and what it did to the ICP classes
+
+Golden v6 (320 rows from the stored page blocks, ICP-weighted) found the
+product's best-selling labels at the bottom of the table: Ecommerce 49%
+precision, SaaS 59%, Marketplace 14%, Tool 44%, LocalBusiness 39% recall,
+revenue exact 61.5% with four over-estimates for every under. Three causes
+carried most of it: WooCommerce counted as a shop on consultancies and
+chambers of commerce (right 1 in 14 when alone), nothing scored the plain
+ways a SaaS or a plumber describes itself, and the ML head reached for SaaS
+on anything technical (2 right in 14 on the rows it decided). The
+estimator read hosting-provider ASNs, Network Solutions, old domains,
+autodiscover and p=reject as enterprise signals; all six are small-business
+defaults. Tuned after the labels were frozen (99b0e2e), with an offline
+harness per change: SaaS 58.8% -> 73.2%, Ecommerce 49.1% -> 77.4%,
+LocalBusiness recall 39% -> 85%, revenue exact 61.5% -> 72.6%, over/under
+83/22 -> 43/29. Coverage fell 88.9% -> 64.4% offline, mostly wrong calls
+the per-class ML floors now withhold. In-sample until v7. Details in
+`docs/data-quality.md`.
+
 ## 2026-10-04 (night)
 
 **Nineteen alert emails in two days, and the load behind the last ones.**

@@ -197,3 +197,20 @@ bands low 38.2% (n=157), high 64.5% (n=121); revenue exact bracket 61.5%
 predicted $100M-$1B exact 0% (n=25). Recall by true class: LocalBusiness
 39%, Consulting 44%, Agency 44%, Manufacturer 9%. 20 of the 28 Ecommerce
 false positives carry WooCommerce and none has a product count.
+
+After (same session, classifier and estimator tuned against v6 after the
+labels were frozen and committed in 99b0e2e; offline harness
+`mix ls.golden_reclassify --ml` on the 294 cached homepages in
+`pages_v6_2026-10-05.tar.gz`, so no response headers and no crawled page
+paths, which is why coverage reads lower than production's): SaaS precision
+58.8% -> 73.2%, Ecommerce 49.1% -> 77.4%, Consulting 63.3% -> 100%, Agency
+56.5% -> 80.0%, LocalBusiness recall 39% -> 85% at 91.7% precision,
+Manufacturer 1 of 11 -> 3 of 4 predicted right; Marketplace 3 of 21 wrong
+calls -> none made; overall accuracy 50.0% -> 52.6% on 270 truth-known rows
+with coverage 88.9% -> 64.4% (the 26 points lost are mostly ML SaaS and
+Marketplace calls that were wrong). Junk: 10 of 40 labeled-junk rows now
+flagged, 0 real businesses wrongly flagged. Revenue, `mix ls.golden_reestimate`
+on the stored enrich_log rows: exact bracket 61.5% -> 72.6%, within one
+86.4% -> 96.2%, over/under 83/22 -> 43/29; employees exact 58.3% -> 72.7%.
+In-sample: v7 must be grown from v6's disagreements before these numbers
+are quoted as out-of-sample.

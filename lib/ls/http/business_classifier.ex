@@ -38,8 +38,10 @@ defmodule LS.HTTP.BusinessClassifier do
       # 132K unflagged businesses on Sedo, Bodis, Dovendi and friends).
       LS.DNS.Parking.parked_ns?(signals[:rdap_nameservers]) -> "parked"
       parking_page?(signals) -> "parked"
+      v6_parking_page?(signals) -> "parked"
       default_shopify_page?(signals) -> "placeholder"
       generic_placeholder?(signals) -> "placeholder"
+      v6_placeholder?(signals) -> "placeholder"
       scam_page?(signals) -> "scam"
       empty_page?(signals) -> "empty"
       true -> ""
@@ -71,7 +73,24 @@ defmodule LS.HTTP.BusinessClassifier do
   end
   def classify(_), do: @empty_result
 
+  @doc """
+  The raw score maps behind `classify/1`, for the golden harness and for
+  anyone asking "why did this page get that label". Same layers, same
+  order, no thresholds applied.
+  """
+  @spec scores(map()) :: %{model: map(), industry: map(), methods: [String.t()]}
+  def scores(signals) when is_map(signals) do
+    {ms, is, methods} = run_layers(signals)
+    %{model: ms, industry: is, methods: Enum.reverse(methods)}
+  end
+
+
   defp classify_by_layers(signals) do
+    {model_scores, industry_scores, methods} = run_layers(signals)
+    pick_winner(model_scores, industry_scores, methods)
+  end
+
+  defp run_layers(signals) do
     model_scores = %{}
     industry_scores = %{}
     methods = []
@@ -83,8 +102,37 @@ defmodule LS.HTTP.BusinessClassifier do
     {model_scores, industry_scores, methods} = layer_5_tld(signals, model_scores, industry_scores, methods)
     {model_scores, industry_scores, methods} = layer_6_keywords(signals, model_scores, industry_scores, methods)
     {model_scores, industry_scores, methods} = layer_7_dns(signals, model_scores, industry_scores, methods)
+    model_scores = plugin_only_shop(signals, model_scores)
+    model_scores = physical_lean(signals, model_scores)
+    {model_scores, industry_scores, methods}
+  end
 
-    pick_winner(model_scores, industry_scores, methods)
+  # A street address and a phone number on the homepage is how a physical
+  # business presents itself (golden v6: LocalBusiness recall 39%, the
+  # misses were plumbers, clinics, gyms and contractors filed as
+  # Consulting, Ecommerce or nothing). Alone it is a lean; with trade
+  # vocabulary it decides. A factory is physical too, so the lean follows
+  # Manufacturer when that is already the stronger of the two (silmatec:
+  # "usinagem" 9 lost to the lean's own 5 plus a quote cue).
+  #
+  # The other way round: a SaaS that sells to restaurants or clinics says
+  # so on its homepage, and those words are its customers, not its trade
+  # (tripleseat, marvia). A product cue (schema SoftwareApplication, "X
+  # management software") outranks them: without an address and phone the
+  # trade words go, with one they are halved and the lean is withheld.
+  defp physical_lean(signals, ms) do
+    lb = Map.get(ms, "LocalBusiness", 0)
+    mf = Map.get(ms, "Manufacturer", 0)
+    saas = Map.get(ms, "SaaS", 0)
+    contact? = local_contact?(signals)
+
+    cond do
+      saas >= 8 and not contact? -> Map.delete(ms, "LocalBusiness")
+      saas >= 8 and lb > 0 -> Map.put(ms, "LocalBusiness", div(lb, 2))
+      contact? and mf > 0 and mf >= lb -> add(ms, "Manufacturer", 5)
+      contact? -> add(ms, "LocalBusiness", 5)
+      true -> ms
+    end
   end
 
   # ===========================================================================
@@ -105,6 +153,12 @@ defmodule LS.HTTP.BusinessClassifier do
 
     ms = Enum.reduce(techs, ms, fn t, acc ->
       cond do
+        # WooCommerce scores like the other platforms here, and
+        # plugin_only_shop/2 takes most of it back when the page itself
+        # argues for another class (golden v6, 2026-10-05: 20 of the 28
+        # Ecommerce false positives carried WooCommerce on a steel
+        # fabricator, an SAP consultancy, a chamber of commerce, a winery
+        # and a trade fair, none with a product count).
         t in @tech_ecommerce -> add(acc, "Ecommerce", 12)
         t == "Substack" -> add(acc, "Newsletter", 12)
         t == "Ghost" -> add(acc, "Media", 10)
@@ -128,6 +182,45 @@ defmodule LS.HTTP.BusinessClassifier do
 
     methods = if ms != %{}, do: ["tech" | methods], else: methods
     {ms, is, methods}
+  end
+
+  # WooCommerce is a WordPress plugin, installed on sites that sell nothing
+  # (golden v6, 2026-10-05: 20 of 28 Ecommerce false positives, on a steel
+  # fabricator, an SAP consultancy, a chamber of commerce, a winery and a
+  # trade fair, none with a product count). When the plugin is the only
+  # commerce evidence, that is exactly 12 points from layer 1 and no cart
+  # or catalogue vocabulary, the plugin keeps a hint's worth: minus 6 when
+  # the homepage is in hand and shows no shop (golden v6: that pattern was
+  # right once in 14), minus 10 when the page argues for another class with
+  # real evidence. Absence of a shop can only be read off a page, so with
+  # no page text at all the tech stack stays the whole story and
+  # WooCommerce alone still reads as a shop, which is what the tech-only
+  # test pins and what a bare storefront is.
+  @ecom_platforms_not_woo ~w(Shopify Magento BigCommerce PrestaShop Ecwid OpenCart Shift4Shop Volusion)
+
+  @cart_words ~r/shop now|buy now|add to cart|order now|order online|free shipping|free delivery|our collection|new arrivals|best sellers|on sale|checkout|\bcart\b|\bbasket\b|\bshop\b|\bboutique\b|\bstore\b|products?\b/i
+
+  defp plugin_only_shop(signals, ms) do
+    techs = s(signals, :http_tech) |> String.split("|", trim: true)
+    apps = s(signals, :http_apps) |> String.split("|", trim: true)
+    text = Enum.map_join([:http_title, :h1, :nav_links, :body_text], " ", &s(signals, &1))
+
+    plugin_only? =
+      "WooCommerce" in techs and not Enum.any?(techs, &(&1 in @ecom_platforms_not_woo)) and
+        not Enum.any?(apps, &(&1 in @apps_ecommerce or &1 in @apps_wp_ecom)) and
+        not Regex.match?(@cart_words, text)
+
+    rival? = Enum.any?(ms, fn {k, v} -> k != "Ecommerce" and v >= 3 end)
+    page_read? = byte_size(s(signals, :body_text)) >= 40
+
+    # Two points left against a rival: the confidence formula divides by
+    # the total, so a larger residue would still sink the rival under the
+    # 0.55 floor. Six alone sits at 0.50, under the floor.
+    cond do
+      plugin_only? and rival? -> Map.update!(ms, "Ecommerce", &(&1 - 10))
+      plugin_only? and page_read? -> Map.update!(ms, "Ecommerce", &(&1 - 6))
+      true -> ms
+    end
   end
 
   # ===========================================================================
@@ -213,12 +306,21 @@ defmodule LS.HTTP.BusinessClassifier do
     "WebSite" => {nil, 0, nil, 0},
   }
 
+  # A WebApplication whose title says calculator or converter is a Tool,
+  # not a SaaS (golden v6: timedecimalconverter.com shipped as SaaS 10 vs
+  # Tool 6 from exactly this schema row).
+  @tool_title_re ~r/calculator|converter|generator|checker|calcul(?:ateur|s)?\b|rechner|calculadora|simulateur/i
+
   defp layer_2_schema(signals, ms, is, methods) do
     schema_type = s(signals, :http_schema_type)
     og_type = s(signals, :http_og_type)
     matched = false
+    tool_title? = s(signals, :http_title) =~ @tool_title_re
 
     {ms, is, matched} = case Map.get(@schema_to_class, schema_type) do
+      {"SaaS", mp, _industry, _ip} when tool_title? ->
+        {add(ms, "Tool", mp), is, true}
+
       {model, mp, industry, ip} ->
         ms = if model, do: add(ms, model, mp), else: ms
         is = if industry, do: add(is, industry, ip), else: is
@@ -327,8 +429,14 @@ defmodule LS.HTTP.BusinessClassifier do
   # LAYER 4 — Nav link text
   # ===========================================================================
 
+  # When the block store found no <nav>, the header is still the first
+  # thing in the body text, so the opening of the body stands in for it
+  # (golden v6: shiftcycle, sportful, benchpro and duasocial all carried
+  # "Features Pricing Login" there and no nav_links).
   defp layer_4_nav(signals, ms, is, methods) do
     nav = s(signals, :nav_links) |> String.downcase()
+    nav = if nav == "", do: s(signals, :body_text) |> String.downcase() |> String.slice(0, 400), else: nav
+
     if nav == "" do
       {ms, is, methods}
     else
@@ -340,7 +448,7 @@ defmodule LS.HTTP.BusinessClassifier do
         {ms, matched}
       end
 
-      {ms, matched} = if nav =~ ~r/pricing/ and nav =~ ~r/docs|api|login/ do
+      {ms, matched} = if nav =~ ~r/pricing|preise|planos|tarifs/ and nav =~ ~r/docs|api|log ?in|sign ?in|sign ?up|get started|demo|early access|features|funktionen/ do
         {add(ms, "SaaS", 7), true}
       else
         {ms, matched}
@@ -436,6 +544,12 @@ defmodule LS.HTTP.BusinessClassifier do
   @model_keywords [
     {~r/\bsaas\b|cloud[- ]based|cloud platform/i, "SaaS", 7},
     {~r/free trial|start free|try free|try it free/i, "SaaS", 5},
+    # How a SaaS introduces itself (golden v6: 19 of 41 SaaS homepages scored
+    # nothing; "the AI platform for claim integrity", "workforce management
+    # for temporary staffing", "ERP for multi-store retail" were all there).
+    {~r/\b(?:platform|software|erp|crm|saas|operating system|app|solution) (?:for|built for|designed for|that)\b|\bthe (?:ai |all[- ]in[- ]one )?(?:platform|software|operating system) for\b|\b(?:ai|analytics|automation|scheduling|benchmarking|management|productivity)[- ](?:platform|software|app)\b/i, "SaaS", 8},
+    {~r/get early access|join (?:the )?waitlist|early access|beta is live|\berp\b|workforce management|content planner|chatbot solution|as a service\b|simple apis|integrations? (?:&|and) apis?/i, "SaaS", 6},
+    {~r/\b(?:management|accounting|scheduling|booking|invoicing|payroll|crm|hr|inventory|marketing|practice|property|compliance|analytics|screening|coding|tracking) (?:software|platform|suite|tool)\b|software for\b|all[- ]in[- ]one (?:platform|software|solution)|screener\b|tracker\b/i, "SaaS", 10},
     {~r/web hosting|shared hosting|\bvps\b|dedicated server|managed hosting|cloud hosting/i, "SaaS", 6},
     {~r/per user|per seat|per month|billed annually|billed monthly/i, "SaaS", 6},
     {~r/request (?:a )?demo|book (?:a )?demo|schedule (?:a )?demo|get (?:a )?demo/i, "SaaS", 5},
@@ -447,6 +561,9 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/we (?:help|work with) (?:brands|clients|companies)/i, "Agency", 5},
     {~r/our clients|client (?:results|success|stories)|case stud(?:y|ies)/i, "Agency", 4},
     {~r/consulting firm|management consulting|strategy consulting/i, "Consulting", 7},
+    # Golden v6 (2026-10-05): Consulting recall 44%. "SAP Consulting", a
+    # "cabinet de conseil", accountants and advisors matched nothing above.
+    {~r/\bconsulting\b|consultancy|consultants?\b|cabinet de conseil|unternehmensberatung|\bberatung\b|consultor(?:ia|ía)|advisory (?:firm|services|practice)|accountants?\b|accounting (?:firm|services)|bookkeeping|commercialisti|expert[- ]comptable|tax (?:advisor|preparation|advisory)|notary|notariat|psychotherap|market research|forensic/i, "Consulting", 7},
     {~r/law firm|attorneys?\b|lawyers?\b|legal (?:services|practice|team)/i, "Consulting", 7},
     # Newsletter must BE a publication, not merely have a signup box — golden
     # v1: a Brazilian web store's signup widget shipped Newsletter@1.0
@@ -454,7 +571,7 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/(?:weekly|daily|monthly) (?:newsletter|digest|brief)|newsletter archive|read (?:past|previous) issues|join [\d,.]+ (?:readers|subscribers)/i, "Newsletter", 5},
     {~r/\bmarketplace\b|buy and sell|connect buyers/i, "Marketplace", 6},
     {~r/online course|bootcamp|online (?:learning|classes|school)/i, "Education", 5},
-    {~r/calculator|generator|converter|checker|(?:free )?tool\b/i, "Tool", 6},
+    {~r/calculator|generator|converter|checker|(?:free )?tool\b|calcul(?:ateur|s)?\b|rechner|calculadora|simulateur|simulador/i, "Tool", 6},
     {~r/\bcommunity forum\b|\bdiscussion board\b|\bforum topic|online community|members area/i, "Community", 4},
     {~r/latest news|breaking news|editorial|journalism|reporting/i, "Media", 5},
     {~r/directory|listing|submit your|find (?:a |local )/i, "Directory", 4},
@@ -463,6 +580,23 @@ defmodule LS.HTTP.BusinessClassifier do
     {~r/(?:free|request a|get a(?:n instant)?) quote|call us today|licensed and insured|fully insured|opening hours|visit our (?:store|showroom)/i, "LocalBusiness", 6},
     {~r/joinery|glazier|glazing|plumbing|electricians?\b|roofing|landscaping|carpentry|locksmith|removals|scaffolding/i, "LocalBusiness", 5},
     {~r/book (?:a table|an appointment)|our (?:clinic|practice|salon|studio|showroom)|personal train(?:er|ing)|crossfit/i, "LocalBusiness", 5},
+    # Golden v6 (2026-10-05): the trades, clinics and venues production
+    # filed under Consulting, Ecommerce or nothing.
+    # The text is lowercased and stems must match their inflections
+    # ("remodeling", "clinica"), so no trailing boundary. A trade word in
+    # the title scores 8; with the address-and-phone lean (5) or a presence
+    # phrase it clears the floor, alone it does not, which is the point.
+    {~r/\b(?:dentist|dental|clinics?\b|cl[ií]nicas?\b|physio|chiropract|orthodont|veterinar|vets?\b|barber|hair salon|nail salon|day spa|massage|tattoo|gym\b|fitness|muay thai|yoga studio|remodel|renovat|general contractor|hvac|heating (?:&|and) (?:cooling|air)|plumbing|plumber|plombier|electrician|roofing|asphalt paving|paving (?:contractor|company|services|stones)|concrete (?:contractor|work|services|driveway|slab|pour)|masonry|maçonnerie|janitorial|cleaning services|house cleaning|pressure washing|window cleaning|irrigation|lawn care|pest control|movers|moving services|limousine|black car|car service|towing|auto repair|dent repair|body shop|appliance repair|restaurant|ristorante|bistro|brasserie|pizzeria|bakery|boulangerie|cafe\b|coffee shop|pub\b|bed and breakfast|ferienwohnung|holiday (?:apartments?|rentals?|cottage)|guest ?house|real estate agency|inmobiliaria|immobilier|estate agents?)/i, "LocalBusiness", 8},
+    {~r/serving (?:the )?(?:greater |all of )?[a-z]+|near me\b|call (?:us )?(?:today|now)\b|book (?:now|online)\b|same[- ]day service|24\/7 (?:emergency|dispatch|service)|free estimates?\b|get a free estimate|licensed (?:and|&) insured|family[- ]owned|locally owned|our (?:team|technicians) (?:will|can) (?:come|visit)|we come to you/i, "LocalBusiness", 5},
+    # Makers: production vocabulary (golden v6: Manufacturer recall 9%, a
+    # steel fabricator, a glass-jar plant and a CNC shop read as Ecommerce
+    # or Consulting).
+    {~r/\b(?:manufactur|we manufacture|(?:steel|metal) fabricat|fabricators?\b|usinagem|caldeiraria|cnc\b|produttore|hersteller|fabricante|fabrik\b|factory|foundry|machining|tooling|injection mold|oem\b|our (?:plant|production facility))/i, "Manufacturer", 9},
+    {~r/\b(?:structural steel|steel (?:suppliers?|works|structures|beams)|lintels|machinery|industrial (?:equipment|assembly|automation)|precision parts|powder metal|sheet metal|welding|forging|castings?\b|extrusion|production line)/i, "Manufacturer", 6},
+    # Service shops that build software or run campaigns for clients are
+    # agencies, whatever they call their subscription (golden v6: SaaS
+    # false positives were dev subscriptions, outbound services, studios).
+    {~r/software (?:house|studio|agency)|development agency|dev shop|done[- ]for[- ]you|we (?:build|design|develop|create) (?:websites|web ?apps|apps|software|products|brands) for|development subscription|book a (?:call|discovery call)/i, "Agency", 6},
   ]
 
   # Classes golden v1 measured at ≤33% precision, all poisoned by body-text
@@ -714,6 +848,48 @@ defmodule LS.HTTP.BusinessClassifier do
       String.contains?(title, "pagina niet gevonden") or
       String.contains?(body, "page cannot be displayed") or
       String.contains?(body, "checking if you're a real user")
+  end
+
+  # Golden v6 (2026-10-05): 42 of 320 sampled "businesses" were not one,
+  # and none was flagged. Every string below names a template, not a site.
+  defp v6_parking_page?(signals) do
+    title = s(signals, :http_title) |> String.downcase()
+    body = s(signals, :body_text) |> String.downcase()
+
+    String.contains?(body, "domain may be for sale") or
+      String.contains?(body, "this domain may be for sale") or
+      String.contains?(title, "aftermarket.eu :: domain") or
+      String.contains?(body, "interested in this domain?") or
+      (String.contains?(body, "is for sale.") and String.contains?(body, "powered by computer.com")) or
+      String.contains?(title, "domínio à venda") or String.contains?(title, "dominio a venda") or
+      String.contains?(body, "procurando domínio") or
+      String.contains?(title, "domain for sale") or String.contains?(title, "domaine à vendre")
+  end
+
+  defp v6_placeholder?(signals) do
+    title = s(signals, :http_title) |> String.downcase() |> String.trim()
+    body = s(signals, :body_text) |> String.downcase() |> String.trim()
+    domain = s(signals, :domain) |> String.downcase()
+
+    (String.contains?(body, "opening soon") and (String.contains?(body, "store owner") or String.contains?(body, "be the first to know when we launch"))) or
+      String.contains?(body, "website under update") or
+      String.contains?(body, "website under maintenance") or
+      String.contains?(title, "em manutenção") or String.contains?(body, "estamos aprimorando nossa plataforma") or
+      String.contains?(body, "site under construction") or
+      String.contains?(title, "your awesome title") or
+      String.contains?(body, "default test page") or String.contains?(body, "siteworx account") or
+      (String.contains?(body, "detail your services") and String.contains?(body, "display real testimonials")) or
+      String.contains?(body, "this domain does not yet support https") or
+      String.contains?(title, "konsoleh :: login") or
+      # A page whose whole visible text is its own domain name (golden v6:
+      # skindeepbodyart.net, scambio-coppia.net).
+      (domain != "" and String.replace(body, ~r/\s+/, "") == domain) or
+      (domain != "" and title == domain and String.length(body) < 40)
+  end
+
+  # Pure: the homepage carries a street address and a phone number.
+  defp local_contact?(signals) do
+    s(signals, :http_address) != "" and s(signals, :http_phone) != ""
   end
 
   # Narrow, template-level fraud patterns only — a wrong "scam" on a real

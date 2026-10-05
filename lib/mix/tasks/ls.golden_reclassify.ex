@@ -95,7 +95,43 @@ defmodule Mix.Tasks.Ls.GoldenReclassify do
 
     report_junk(results)
     report_models(results)
+    report_ml(results)
     report_diffs(results)
+  end
+
+  # ── what the ML tier decided, by class and confidence ────────────────────
+  #
+  # Added 2026-10-05: golden v6 showed the heuristic at 74% SaaS precision
+  # and the merged result at 60%, so the floor per class has to be chosen
+  # from this table, not guessed.
+  defp report_ml(results) do
+    decided =
+      for r <- results, get(r.row, "is_real_business") == "y", truth(r.row) != "",
+          ml = r.after[:ml], ml != nil, ml.model != "" do
+        {ml.model, ml.conf, ml.model == truth(r.row), get(r.row, "domain"), truth(r.row)}
+      end
+
+    if decided != [] do
+      Mix.shell().info("ML-decided rows (heuristic under 0.55), by class and confidence band:")
+
+      decided
+      |> Enum.group_by(fn {m, _, _, _, _} -> m end)
+      |> Enum.sort()
+      |> Enum.each(fn {class, rows} ->
+        bands =
+          for {lo, hi} <- [{0.0, 0.55}, {0.55, 0.65}, {0.65, 0.75}, {0.75, 0.85}, {0.85, 1.01}],
+              rs = Enum.filter(rows, fn {_, c, _, _, _} -> c >= lo and c < hi end),
+              rs != [] do
+            "#{lo}-#{hi}: #{Enum.count(rs, &elem(&1, 2))}/#{length(rs)}"
+          end
+
+        ok = Enum.count(rows, &elem(&1, 2))
+        Mix.shell().info("    #{String.pad_trailing(class, 14)} #{ok}/#{length(rows)}  #{Enum.join(bands, "  ")}")
+      end)
+
+      wrong = for {m, c, false, d, t} <- decided, do: "    #{d}: ML #{m}@#{c} (truth: #{t})"
+      Mix.shell().info(Enum.join(wrong, "\n") <> "\n")
+    end
   end
 
 
@@ -196,7 +232,11 @@ defmodule Mix.Tasks.Ls.GoldenReclassify do
       |> String.trim()
 
     if ml? and res.confidence < 0.55 and byte_size(ml_text) > 20 do
-      LS.Pipeline.merge_classification(res, LS.ML.Classifier.classify(ml_text))
+      ml = LS.ML.Classifier.classify(ml_text)
+      merged = LS.Pipeline.merge_classification(res, ml)
+      conf = Map.get(ml, :ml_bm_confidence) || Map.get(ml, :ml_confidence) || 0.0
+
+      Map.put(merged, :ml, %{model: merged.business_model, conf: Float.round(conf * 1.0, 2)})
     else
       res
     end

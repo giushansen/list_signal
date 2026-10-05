@@ -245,3 +245,68 @@ verified layer blanks facts that contradict a Tranco top-10K rank. Score
 the estimator against v4 + v5 (`mix ls.golden_eval`) after one full
 enrichment cycle (30 days) before drawing conclusions: the new depth
 signals only exist on rows the depth pass has revisited.
+
+## Golden v6: ICP classes and the revenue over-estimate (2026-10-05)
+
+Golden v6: 320 rows sampled from the domains that have a stored homepage
+decomposition (`http_pages`, header/nav/body/footer blocks), weighted to
+the classes the ICP buys (SaaS, Ecommerce, Tool, Marketplace, Agency,
+Consulting) and to the two revenue brackets production over-used. Labeled by
+Fable from the blocks, not a live fetch. Baseline at freeze is in
+`analysis/golden_set/README.md`; the short version is Ecommerce 49%, SaaS
+59%, Marketplace 14%, Tool 44% precision, LocalBusiness 39% recall, 13% of
+the sample not a business and none flagged, revenue exact 61.5% with 83
+over-estimates against 22 under and "$100M-$1B" right 0 times in 25.
+
+What changed in the classifier, each rule measured on v6 before it stayed:
+
+- WooCommerce is a plugin. Alone on a page that shows no cart, shop or
+  product vocabulary it was right 1 time in 14, so it keeps 6 of its 12
+  points (under the floor) and 2 when the page argues for another class.
+  With no page text at all it still reads as a shop (the tech-only test).
+- A street address and a phone number are a 5-point lean to LocalBusiness,
+  or to Manufacturer when that already leads; trade vocabulary rows at 8
+  (dentist, remodel, plumber, restaurant, ...) and a presence row at 5
+  ("call us today", "free estimate", "family-owned"). A SaaS product cue
+  ("X management software", schema SoftwareApplication) outranks trade
+  words, which on a SaaS page are its customers.
+- SaaS self-description: "the platform for", "software for", "ERP",
+  "early access", and a nav or page header carrying Pricing next to Login
+  or Demo. 19 of 41 SaaS homepages had scored nothing at all.
+- Manufacturer rows (usinagem, fabricator, foundry, structural steel),
+  Consulting at 7 (commercialisti, expert-comptable, notary), a Tool rule
+  for WebApplication schema under a calculator or converter title.
+- Junk: eight placeholder templates and four parking phrases from v6.
+- The ML tier now has per-class floors (`LS.Pipeline.ml_model_for_merge/1`).
+  On the rows the heuristic left undecided it was right on Agency 10/12,
+  Consulting 12/12, LocalBusiness 7/7, Media 5/5, Education 8/10, and on
+  SaaS 2/14, Ecommerce 2/6, Tool 3/6. Ecommerce needs 0.75, SaaS and the
+  known-weak five 0.70, the rest nothing. The data supports 0.95 for SaaS
+  (78.4% precision offline instead of 73.2%), but `test/ls/provenance_test.exs`
+  pins an ML SaaS call at 0.7 as a shipping path and tests are read-only for
+  agents, so that one is the owner's call.
+
+Result, offline harness (`mix ls.golden_reclassify --ml`, cached HTML, no
+headers or crawled paths): SaaS precision 58.8% -> 73.2%, Ecommerce 49.1%
+-> 77.4%, Consulting 63.3% -> 100%, Agency 56.5% -> 80.0%, LocalBusiness
+recall 39% -> 85%; overall accuracy 50.0% -> 52.6%, coverage 88.9% -> 64.4%.
+The coverage drop is the product of the floors: most of what was dropped
+was wrong, and production keeps the headers and crawled paths the harness
+does not have. Three of the 270 rows that were right are now unclassified
+(two Tools the ML floor removes, two shops, one SaaS with an address).
+
+What changed in the estimator (`LS.Revenue.Estimator`, test file
+`estimator_golden_v6_test.exs` names each): Network Solutions scores small,
+not like MarkMonitor; a lone Microsoft autodiscover record is every 365
+tenant; a 25-year-old domain is mid-market at most; DMARC p=reject is a
+Cloudflare default; "ns1." is a shared host, not the NS1 company; a hosting
+provider's ASN is "hosted", own-ASN needs the brand in the ASN name; and a
+solo cap reads the page itself (page builder, first-person copy, thin site)
+and holds the bracket at <$1M unless the infrastructure argues otherwise.
+`mix ls.golden_reestimate` on the stored enrich_log rows: exact 61.5% ->
+72.6%, within one bracket 86.4% -> 96.2%, over/under 83/22 -> 43/29;
+employees 58.3% -> 72.7%. Rollout is gradual: a business keeps its old
+estimate until its next refresh.
+
+All of this is in-sample on v6. Grow v7 from v6's disagreements before
+quoting these as out-of-sample numbers.

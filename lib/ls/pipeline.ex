@@ -362,7 +362,11 @@ defmodule LS.Pipeline do
       # or a JS-rendered shell (see docs/data-quality.md).
       http_status: http[:http_status],
       is_js_site: http[:_is_js_site] == true,
-      rdap_nameservers: rdap[:nameservers] || ""
+      rdap_nameservers: rdap[:nameservers] || "",
+      # Physical-presence lean for LocalBusiness (golden v6, 2026-10-05).
+      http_address: http[:http_address] || "",
+      http_phone: http[:http_phone] || "",
+      domain: domain
     }
 
     classify_result = BusinessClassifier.classify(classify_signals)
@@ -543,16 +547,49 @@ defmodule LS.Pipeline do
   # PRIVATE — ML/heuristic merge
   # ===========================================================================
 
+  # Classes the head gets wrong more often than right below 0.7 (golden v6,
+  # 2026-10-05: Marketplace 3 of 22 right, Tool 8 of 18, Community 0 of 2,
+  # Directory 0 of 1, all from the ML tier at 0.41-0.66). The head's own
+  # calibration says 0.7 is where it reaches 84%; these classes wait for it.
+  # Per-class floors for the ML tier, measured on golden v6 (2026-10-05)
+  # over the rows the heuristic left undecided. Agency 10/12, Consulting
+  # 12/12, LocalBusiness 7/7, Media 5/5 and Education 8/10 at any
+  # confidence; Marketplace 3/21 and Tool 8/18 in production, Tool 3/6
+  # offline, all under 0.85; SaaS 2/14 and Ecommerce 2/6 with the misses
+  # spread up to 0.92. The head reaches for SaaS on anything technical and
+  # for Ecommerce on anything with a product word, so those two need the
+  # heuristic. The v6 data supports 0.95 for SaaS; `test/ls/provenance_test.exs`
+  # pins an ML SaaS call at 0.7 as a shipping path, so SaaS stays at 0.7
+  # until the owner decides (the test is read-only for agents).
+  @ml_class_floor %{
+    "Marketplace" => 0.7,
+    "Tool" => 0.7,
+    "Community" => 0.7,
+    "Directory" => 0.7,
+    "Newsletter" => 0.7,
+    "Ecommerce" => 0.75,
+    "SaaS" => 0.7
+  }
+
+  @doc "Pure: the ML business model this merge may use, or empty."
+  def ml_model_for_merge(ml) do
+    bm = ml.business_model
+    conf = ml[:ml_bm_confidence] || ml[:ml_confidence] || 0.0
+    if conf < Map.get(@ml_class_floor, bm, 0.0), do: "", else: bm
+  end
+
   @doc """
   Merge the heuristic and ML-tier classifications — THE production merge rule.
   Public so `mix ls.golden_reclassify` reproduces the exact shipping path
   instead of a drifting copy.
   """
   def merge_classification(heuristic, ml) do
+    ml_bm = ml_model_for_merge(ml)
+
     # ML overrides heuristic BM if ML confidence is decent and heuristic was empty or weak
     bm = cond do
-      ml.business_model != "" and heuristic.business_model == "" -> ml.business_model
-      ml.business_model != "" and ml[:ml_bm_confidence] >= 0.5 and heuristic.confidence < 0.45 -> ml.business_model
+      ml_bm != "" and heuristic.business_model == "" -> ml_bm
+      ml_bm != "" and ml[:ml_bm_confidence] >= 0.5 and heuristic.confidence < 0.45 -> ml_bm
       true -> heuristic.business_model
     end
 
@@ -640,8 +677,12 @@ defmodule LS.Pipeline do
     tech_result = LS.HTTP.TechDetector.detect(%{body: body, headers: []})
     app_result = LS.HTTP.AppDetector.detect(body, tech_result.tech)
     {pages, _emails} = LS.HTTP.PageExtractor.extract_all(body, opts[:domain])
+    parts = LS.HTTP.PageBlocks.extract(body)
 
     %{
+      http_address: parts.address,
+      http_phone: parts.phone,
+      domain: opts[:domain] || "",
       http_tech: tech_result.tech |> Enum.join("|"),
       http_apps: app_result.apps |> Enum.join("|"),
       http_title: extract_title(body),
