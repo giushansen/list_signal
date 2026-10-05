@@ -163,3 +163,37 @@ Recurring pipeline errors the labelers flagged: Shopify carts on
 LocalBusiness sites (bakery pickup, single bottle shop, takeaway) labeled
 Ecommerce; "Community" used as a catch-all for small organisations; frozen
 Shopify stores (HTTP 402) and "Opening soon" shells counted as businesses.
+
+
+## v6 (2026-10-05) — ICP-weighted, from the stored page blocks, Fable-labeled
+
+`golden_set_v6_2026-10-05.csv` — **320 domains**, sampled from `businesses`
+(alive 2xx, non-empty title, `estimated_junk=''`) restricted to domains that
+have a stored homepage decomposition in `http_pages` (1.36M of 24M), by
+`cityHash64(concat(domain,'gv6'))` order within strata, every v1-v5 and
+teacher-labeled domain excluded (6,099 names). Strata: SaaS 25 high / 25 low
+confidence, Ecommerce 20 Shopify / 15 high / 15 low, Tool 25, Marketplace 25,
+Agency 25, Consulting 25, LocalBusiness 20, catch-all classes 30,
+unclassified 25, predicted $10M-$100M 25, predicted $100M-$1B 20. The sample
+is deliberately heavy on the classes the ICP buys and the classes v5 found
+weak; it is not population-weighted.
+
+Labeling: Claude Fable 5.1 in one session, reading the stored evidence per
+domain (title, meta, h1, nav links, header/footer/body text blocks, JSON-LD
+type, tech, apps, product and job counts, emails, phone, address, company
+id, verified facts) rather than a live fetch; raw output in
+`gv6_labels/batch_*.jsonl`, the evidence in
+`gv6_labels/evidence_2026-10-05.jsonl`. Notes prefixed `AI: blocks;`.
+Invented classes where the taxonomy has none: `Wholesaler` (3),
+`Holding` (1). 100% LLM-authored, like v5.
+
+Baseline at freeze (`mix ls.golden_eval`, prod predictions at sampling
+time): junk 13.1% and production had flagged none of it; 19 real
+businesses in the unclassified bucket; Marketplace precision 13.6%
+(n=22), Tool 44.4% (n=18), Ecommerce 48.1% (n=54), Agency 58.3%,
+SaaS 58.8% (n=51), Consulting 61.3%, LocalBusiness 95.2%; confidence
+bands low 38.2% (n=157), high 64.5% (n=121); revenue exact bracket 61.5%
+(n=273), within one bracket 86.4%, 83 over-estimates against 22 under;
+predicted $100M-$1B exact 0% (n=25). Recall by true class: LocalBusiness
+39%, Consulting 44%, Agency 44%, Manufacturer 9%. 20 of the 28 Ecommerce
+false positives carry WooCommerce and none has a product count.
