@@ -249,9 +249,13 @@ defmodule LS.Revenue.Estimator do
         {add(scores, :large_enterprise, 10) |> add(:enterprise, 5),
          [{"registrar", "CSC", :large_enterprise} | evidence]}
 
+      # 2026-10-05 (golden v6): Network Solutions registered a one-person
+      # Dubai consultancy, a chamber of commerce and a 20-person government
+      # contractor in the same sample; it is a legacy consumer registrar,
+      # not a corporate one, and it had been scored like MarkMonitor.
       String.contains?(registrar, "network solutions") ->
-        {add(scores, :enterprise, 6) |> add(:mid_market, 3),
-         [{"registrar", "NetworkSolutions", :enterprise} | evidence]}
+        {add(scores, :small, 2) |> add(:mid_market, 2),
+         [{"registrar", "NetworkSolutions", :small} | evidence]}
 
       String.contains?(registrar, "godaddy") ->
         {add(scores, :micro, 4) |> add(:small, 3),
@@ -427,8 +431,15 @@ defmodule LS.Revenue.Estimator do
         {add(scores, :mid_market, 6) |> add(:enterprise, 6) |> add(:large_enterprise, 2),
          [{"ms_enterprise", flags, :enterprise} | evidence]}
 
+      # autodiscover alone is every Microsoft 365 tenant, a one-person shop
+      # included (2026-10-05: it carried a translator and a machining
+      # workshop toward mid-market).
+      n == 1 and String.contains?(flags, "autodiscover") ->
+        {add(scores, :small, 2) |> add(:mid_market, 1),
+         [{"ms_enterprise", flags, :small} | evidence]}
+
       n == 1 ->
-        {add(scores, :small, 2) |> add(:mid_market, 4) |> add(:enterprise, 2),
+        {add(scores, :small, 2) |> add(:mid_market, 3) |> add(:enterprise, 1),
          [{"ms_enterprise", flags, :mid_market} | evidence]}
 
       true ->
@@ -588,9 +599,11 @@ defmodule LS.Revenue.Estimator do
       policy == "" ->
         {add(scores, :micro, 2), evidence}
 
+      # p=reject is what Cloudflare and Google templates emit for a domain
+      # that sends no mail at all (2026-10-05: two parked names had it).
       policy == "reject" ->
-        {add(scores, :mid_market, 5) |> add(:enterprise, 4) |> add(:large_enterprise, 2),
-         [{"dmarc", "p=reject", :mid_market} | evidence]}
+        {add(scores, :small, 3) |> add(:mid_market, 3),
+         [{"dmarc", "p=reject", :small} | evidence]}
 
       policy == "quarantine" ->
         {add(scores, :small, 3) |> add(:mid_market, 3),
@@ -896,13 +909,17 @@ defmodule LS.Revenue.Estimator do
         age = Date.utc_today().year - year
 
         cond do
+          # An old domain is an old business, not a big one (2026-10-05:
+          # 25-29 year domains sat on a translation boutique, a parked
+          # name and a chamber of commerce). It says "established", so at
+          # most mid-market, and never enterprise on its own.
           age >= 25 ->
-            {add(scores, :enterprise, 5) |> add(:large_enterprise, 3),
-             [{"domain_age", "#{age}yr", :enterprise} | evidence]}
+            {add(scores, :mid_market, 3) |> add(:small, 2),
+             [{"domain_age", "#{age}yr", :mid_market} | evidence]}
 
           age >= 15 ->
-            {add(scores, :mid_market, 3) |> add(:enterprise, 2),
-             [{"domain_age", "#{age}yr", :mid_market} | evidence]}
+            {add(scores, :small, 2) |> add(:mid_market, 2),
+             [{"domain_age", "#{age}yr", :small} | evidence]}
 
           age >= 5 ->
             {add(scores, :small, 2),
@@ -935,10 +952,19 @@ defmodule LS.Revenue.Estimator do
         {add(scores, :micro, 6) |> add(:small, 2),
          [{"hosting", "shared:#{short_asn(asn_org)}", :micro} | evidence]}
 
-      # Own ASN (not a hosting/cloud provider) = likely enterprise
-      not hosting_provider?(asn_org) and asn_number != "" ->
+      # An ASN that carries the company's own name is its own network,
+      # which only an organisation with an IT function has. Any other
+      # unlisted ASN is somebody's hosting: on golden v6 (2026-10-05)
+      # InMotion, Newfold, Hivelocity, MCO2 and a dozen regional hosts all
+      # read as "own ASN" and pushed one-person sites to $100M-$1B, 0 of 25
+      # right.
+      not hosting_provider?(asn_org) and asn_number != "" and brand_asn?(asn_org, signals) ->
         {add(scores, :enterprise, 6) |> add(:large_enterprise, 3),
          [{"hosting", "own_asn:#{short_asn(asn_org)}", :enterprise} | evidence]}
+
+      not hosting_provider?(asn_org) and asn_number != "" ->
+        {add(scores, :small, 2) |> add(:mid_market, 2),
+         [{"hosting", "hosted:#{short_asn(asn_org)}", :small} | evidence]}
 
       true -> {scores, evidence}
     end
@@ -1111,9 +1137,11 @@ defmodule LS.Revenue.Estimator do
         {add(scores, :enterprise, 5) |> add(:mid_market, 3),
          [{"ns", "Dyn", :enterprise} | evidence]}
 
+      # "ns1." matches the first nameserver of most shared hosts, not the
+      # NS1 managed-DNS company (2026-10-05). Neutral-to-small.
       String.contains?(ns, "nsone") or String.contains?(ns, "ns1.") ->
-        {add(scores, :mid_market, 4) |> add(:enterprise, 3),
-         [{"ns", "NS1", :mid_market} | evidence]}
+        {add(scores, :small, 2) |> add(:mid_market, 2),
+         [{"ns", "NS1", :small} | evidence]}
 
       String.contains?(ns, "awsdns") ->
         {add(scores, :small, 3) |> add(:mid_market, 2),
@@ -1295,6 +1323,96 @@ defmodule LS.Revenue.Estimator do
   end
 
   # =========================================================================
+  # SIGNAL 16 — The solo cap (2026-10-05, golden v6)
+  # =========================================================================
+  # Infrastructure signals add up: an old domain, a Microsoft tenant, a
+  # strict DMARC and a hosted ASN gave a freelance art director in
+  # Marseille, a cardiologist's practice and a massage therapist
+  # "$100M-$1B" with confidence 0.5 to 0.96 (0 of 25 right). The page says
+  # who it is. A site built on a page builder, written in the first person
+  # singular, or with one email, no catalogue, no jobs and a handful of
+  # technologies is one person or a few, and nothing short of a strong
+  # upward fact (traffic rank, hiring, catalogue size, a corporate
+  # registrar or mail gateway, an enterprise Microsoft tenant, its own
+  # ASN) may push it past the small bracket.
+  @builder_tech ~w(Wix Squarespace Weebly Jimdo Webnode Carrd Strikingly) ++ ["GoDaddy Builder", "Wix.com"]
+  @solo_re ~r/\b(I am|I'm|je suis|ich bin|yo soy|sou (?:um|uma)|freelance|freelancer|my studio|mon studio|one[- ]person|solo (?:founder|practitioner|consultant))\b/iu
+  @upward_brackets [:mid_market, :enterprise, :large_enterprise]
+
+  defp solo_cap(winner, _scores, evidence, signals) when winner in @upward_brackets or winner == :small do
+    case solo_reason(signals) do
+      nil ->
+        {winner, evidence, false}
+
+      reason ->
+        cond do
+          strong_upward?(signals) ->
+            {winner, evidence, false}
+
+          # Measured on v6 before this clause: capping only the brackets
+          # above small, and to "small whenever its score beat micro",
+          # moved the mass to $1M-$10M, where 69 of 111 were under $1M. A
+          # site that reads as one person is under $1M unless something
+          # concrete (several contacts, a real stack, a sizeable site, an
+          # address with a phone) says a few people work there.
+          moderate_upward?(signals) ->
+            capped = :small
+            {capped, if(winner == :small, do: evidence, else: [{"solo_cap", reason, capped} | evidence]), winner != :small}
+
+          true ->
+            {:micro, [{"solo_cap", reason, :micro} | evidence], true}
+        end
+    end
+  end
+
+  defp solo_cap(winner, _scores, evidence, _signals), do: {winner, evidence, false}
+
+  @doc "Pure: why a site reads as one person or a few, or nil."
+  @spec solo_reason(map()) :: String.t() | nil
+  def solo_reason(signals) do
+    techs = get_str(signals, :http_tech) |> String.split("|", trim: true)
+    text = Enum.map_join([:http_title, :http_meta_description, :http_h1, :http_body_snippet], " ", &get_str(signals, &1))
+    emails = get_str(signals, :http_emails) |> String.split("|", trim: true) |> length()
+    pages = get_str(signals, :http_pages)
+
+    cond do
+      Enum.any?(techs, &(&1 in @builder_tech)) -> "builder"
+      Regex.match?(@solo_re, text) -> "first_person"
+      emails <= 1 and (get_int(signals, :job_count) || 0) == 0 and (get_int(signals, :product_count) || 0) == 0 and
+        length(techs) <= 5 and not String.contains?(pages, "/careers") and not String.contains?(pages, "/jobs") -> "thin"
+      true -> nil
+    end
+  end
+
+  @doc "Pure: enough substance for a few people rather than one: several contacts, a real stack, a sizeable site, or a physical address with a phone."
+  @spec moderate_upward?(map()) :: boolean()
+  def moderate_upward?(signals) do
+    emails = get_str(signals, :http_emails) |> String.split("|", trim: true) |> length()
+    techs = get_str(signals, :http_tech) |> String.split("|", trim: true) |> length()
+    (get_int(signals, :sitemap_urls) || 0) >= 150 or emails >= 3 or techs >= 10 or
+      (get_str(signals, :http_address) != "" and get_str(signals, :http_phone) != "" and emails >= 2)
+  end
+
+  @doc "Pure: a fact that outranks the page's own modesty."
+  @spec strong_upward?(map()) :: boolean()
+  def strong_upward?(signals) do
+    registrar = get_str(signals, :rdap_registrar) |> String.downcase()
+    mx = get_str(signals, :dns_mx) |> String.downcase()
+    ms = get_str(signals, :dns_ms_enterprise)
+    pages = get_str(signals, :http_pages)
+    rank_ok = fn v -> is_integer(v) and v > 0 and v <= 300_000 end
+
+    rank_ok.(get_int(signals, :tranco_rank)) or rank_ok.(get_int(signals, :majestic_rank)) or
+      (get_int(signals, :job_count) || 0) >= 1 or (get_int(signals, :product_count) || 0) >= 200 or
+      (get_int(signals, :sitemap_urls) || 0) >= 500 or
+      String.contains?(pages, "/careers") or String.contains?(pages, "/jobs") or String.contains?(pages, "/investors") or
+      String.contains?(registrar, "markmonitor") or String.contains?(registrar, "csc corporate") or
+      String.contains?(mx, "proofpoint") or String.contains?(mx, "mimecast") or
+      (ms != "" and length(String.split(ms, "|", trim: true)) >= 2) or
+      brand_asn?(get_str(signals, :bgp_asn_org), signals)
+  end
+
+  # =========================================================================
   # RESULT COMPUTATION
   # =========================================================================
 
@@ -1306,8 +1424,10 @@ defmodule LS.Revenue.Estimator do
     else
       probs = softmax(scores)
       {winner, max_prob} = Enum.max_by(probs, fn {_k, v} -> v end)
+      {winner, evidence, capped?} = solo_cap(winner, scores, evidence, signals)
       evidence_density = min(length(evidence) / 10.0, 1.0)
       confidence = Float.round(max_prob * 0.7 + evidence_density * 0.3, 2) |> min(0.99)
+      confidence = if capped?, do: min(confidence, 0.6), else: confidence
 
       if confidence >= @min_confidence do
         employee_bracket = estimate_employees(winner, signals)
@@ -1410,7 +1530,30 @@ defmodule LS.Revenue.Estimator do
     microsoft azure shopify squarespace wix godaddy bluehost hostgator
     hostinger dreamhost netlify vercel render railway heroku
     rackspace softlayer ibm oracle akamai fastly leaseweb
+    inmotion newfold bizland hivelocity tiggee contabo ionos strato scaleway
+    liquidweb a2hosting siteground wpengine kinsta pantheon flywheel incapsula
+    imperva sucuri stackpath cdn77 bunny gcore unified-layer hostpapa hostwinds
+    interserver cloudways upcloud psychz choopa limestone m247 quadranet
+    colocrossing hostdime hostpoint infomaniak loopia combell mochahost
+    ipage webnx hostkey timeweb selectel reg.ru beget aruba register.it
+    ionos one.com websupport active24 forpsi wedos zone.eu domeneshop
   )
+
+  @doc """
+  Pure: whether an ASN organisation name carries the site's own name. The
+  registrable label is split into alphabetic tokens of four letters or
+  more; one of them inside the ASN org is "own network". "ringcentral" in
+  "RINGCENTRAL INC" yes; "silmatec" against "MCO2 TECNO" no.
+  """
+  @spec brand_asn?(String.t(), map()) :: boolean()
+  def brand_asn?(asn_org, signals) when is_binary(asn_org) do
+    label = get_str(signals, :domain) |> String.downcase() |> String.split(".") |> List.first() || ""
+    tokens = label |> String.split(~r/[^a-z]+/, trim: true) |> Enum.filter(&(String.length(&1) >= 4))
+    org = String.downcase(asn_org)
+    tokens != [] and Enum.any?(tokens, &String.contains?(org, &1))
+  end
+
+  def brand_asn?(_, _), do: false
 
   defp hosting_provider?(org) do
     Enum.any?(@hosting_providers, &String.contains?(org, &1))
