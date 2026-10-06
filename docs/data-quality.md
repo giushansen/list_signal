@@ -280,16 +280,14 @@ What changed in the classifier, each rule measured on v6 before it stayed:
 - The ML tier now has per-class floors (`LS.Pipeline.ml_model_for_merge/1`).
   On the rows the heuristic left undecided it was right on Agency 10/12,
   Consulting 12/12, LocalBusiness 7/7, Media 5/5, Education 8/10, and on
-  SaaS 2/14, Ecommerce 2/6, Tool 3/6. Ecommerce needs 0.75, SaaS and the
-  known-weak five 0.70, the rest nothing. The data supports 0.95 for SaaS
-  (78.4% precision offline instead of 73.2%), but `test/ls/provenance_test.exs`
-  pins an ML SaaS call at 0.7 as a shipping path and tests are read-only for
-  agents, so that one is the owner's call.
+  SaaS 2/14, Ecommerce 2/6, Tool 3/6. SaaS needs 0.95 (the owner's call on
+  2026-10-06; it shipped at 0.70 the day before because the provenance test
+  pinned that), Ecommerce 0.75, the known-weak five 0.70, the rest nothing.
 
 Result, offline harness (`mix ls.golden_reclassify --ml`, cached HTML, no
-headers or crawled paths): SaaS precision 58.8% -> 73.2%, Ecommerce 49.1%
+headers or crawled paths): SaaS precision 58.8% -> 78.4%, Ecommerce 49.1%
 -> 77.4%, Consulting 63.3% -> 100%, Agency 56.5% -> 80.0%, LocalBusiness
-recall 39% -> 85%; overall accuracy 50.0% -> 52.6%, coverage 88.9% -> 64.4%.
+recall 39% -> 85%; overall accuracy 50.0% -> 52.2%, coverage 88.9% -> 63.0%.
 The coverage drop is the product of the floors: most of what was dropped
 was wrong, and production keeps the headers and crawled paths the harness
 does not have. Three of the 270 rows that were right are now unclassified

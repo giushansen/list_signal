@@ -154,15 +154,15 @@ defmodule LS.HTTP.BusinessClassifierGoldenV6Test do
   end
 
   describe "the ML tier waits for 0.7 on the classes it gets wrong" do
-    test "Marketplace or Tool at 0.55 with an empty heuristic stays unclassified; at 0.75 it passes; Consulting at 0.55 still passes; SaaS needs 0.7" do
+    test "Marketplace or Tool at 0.55 with an empty heuristic stays unclassified; at 0.75 it passes; Consulting at 0.55 still passes; SaaS needs 0.95" do
       heur = %{business_model: "", industry: "", confidence: 0.2, method: "none"}
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Marketplace", industry: "", ml_confidence: 0.55, ml_bm_confidence: 0.55}) == ""
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Tool", industry: "", ml_confidence: 0.62, ml_bm_confidence: 0.62}) == ""
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Marketplace", industry: "", ml_confidence: 0.75, ml_bm_confidence: 0.75}) == "Marketplace"
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Consulting", industry: "", ml_confidence: 0.55, ml_bm_confidence: 0.55}) == "Consulting"
-      # ML SaaS was right 2 times in 14 on golden v6, 0 of 5 under 0.65; the provenance test pins 0.7 as shipping.
-      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.6, ml_bm_confidence: 0.6}) == ""
-      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.7, ml_bm_confidence: 0.7}) == "SaaS"
+      # ML SaaS was right 2 times in 14 on golden v6 with misses at 0.92; the owner set 0.95 on 2026-10-06.
+      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.92, ml_bm_confidence: 0.92}) == ""
+      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.97, ml_bm_confidence: 0.97}) == "SaaS"
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Ecommerce", industry: "", ml_confidence: 0.7, ml_bm_confidence: 0.7}) == ""
 
       merged = LS.Pipeline.merge_classification(heur, %{business_model: "Marketplace", industry: "", ml_confidence: 0.55, ml_bm_confidence: 0.55, ml_industry_confidence: 0.0})

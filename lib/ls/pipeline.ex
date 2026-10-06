@@ -558,9 +558,9 @@ defmodule LS.Pipeline do
   # offline, all under 0.85; SaaS 2/14 and Ecommerce 2/6 with the misses
   # spread up to 0.92. The head reaches for SaaS on anything technical and
   # for Ecommerce on anything with a product word, so those two need the
-  # heuristic. The v6 data supports 0.95 for SaaS; `test/ls/provenance_test.exs`
-  # pins an ML SaaS call at 0.7 as a shipping path, so SaaS stays at 0.7
-  # until the owner decides (the test is read-only for agents).
+  # heuristic. SaaS at 0.95 was the owner's call on 2026-10-06 (the
+  # provenance test had pinned 0.7 as a shipping path): 73.2% -> 78.4%
+  # SaaS precision offline on v6.
   @ml_class_floor %{
     "Marketplace" => 0.7,
     "Tool" => 0.7,
@@ -568,7 +568,7 @@ defmodule LS.Pipeline do
     "Directory" => 0.7,
     "Newsletter" => 0.7,
     "Ecommerce" => 0.75,
-    "SaaS" => 0.7
+    "SaaS" => 0.95
   }
 
   @doc "Pure: the ML business model this merge may use, or empty."

@@ -36,7 +36,8 @@ defmodule LS.ProvenanceTest do
   describe "classification source" do
     test "names the tier that chose the shipped business model" do
       heur = %{business_model: "", industry: "", confidence: 0.0}
-      ml = %{business_model: "SaaS", industry: "HR software", ml_confidence: 0.7, ml_bm_confidence: 0.7, ml_industry_confidence: 0.5, ml_source: "head_v3_2026-09-06"}
+      # Consulting, not SaaS: since 2026-10-06 ML SaaS ships only at 0.95+ (golden v6: 2 right in 14).
+      ml = %{business_model: "Consulting", industry: "HR software", ml_confidence: 0.7, ml_bm_confidence: 0.7, ml_industry_confidence: 0.5, ml_source: "head_v3_2026-09-06"}
       assert LS.Pipeline.merge_classification(heur, ml).source == "ml:head_v3_2026-09-06"
 
       heur2 = %{business_model: "Ecommerce", industry: "Fashion", confidence: 0.8}
