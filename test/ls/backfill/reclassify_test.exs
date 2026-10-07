@@ -34,6 +34,9 @@ defmodule LS.Backfill.ReclassifyTest do
     assert Reclassify.eligible?(biz(), "2026-10-05 22:00:00")
     refute Reclassify.eligible?(biz(%{http_last_checked_at: "2026-10-06 01:00:00"}), "2026-10-05 22:00:00")
     refute Reclassify.eligible?(biz(%{is_junk: "parked"}), "2026-10-05 22:00:00")
+    # Second pass: only the window the fleet fetched before the fold fix.
+    assert Reclassify.eligible?(biz(%{http_last_checked_at: "2026-10-06 01:00:00"}), "2026-10-05 22:00:00", "2026-10-07 03:00:00")
+    refute Reclassify.eligible?(biz(), "2026-10-05 22:00:00", "2026-10-07 03:00:00")
   end
 
   test "the signal map has the classifier's keys and the body is header-first visible text capped at 500" do
@@ -52,20 +55,21 @@ defmodule LS.Backfill.ReclassifyTest do
     assert LS.HTTP.BusinessClassifier.classify(sig).business_model == ""
   end
 
-  test "a written row carries only classification columns, says none when cleared, and escapes for TabSeparated" do
-    row = Reclassify.row("musicacura.com", %{business_model: "", industry: "", confidence: 0.33, source: ""})
-    assert row.worker == "master"
-    assert row.http_observed == 0
-    assert row.classification_source == "none"
-    assert String.starts_with?(row.pipeline_version, "backfill-")
+  test "a verdict is written as a full copy of the newest real enrich_log row with the overrides, never a hollow row" do
+    cols = ~w(enriched_at worker domain dns_a dns_mx dns_dmarc http_status http_error http_title http_address business_model industry classification_confidence classification_source http_observed pipeline_version)
+    sql = Reclassify.insert_sql(cols, [Reclassify.verdict("musicacura.com", %{business_model: "", industry: "", confidence: 0.33, source: ""}),
+                                       Reclassify.verdict("o'neil.com", %{business_model: "SaaS", industry: "HR", confidence: 0.8, source: "heuristic"})])
 
-    line = Reclassify.tsv_line(%{row | industry: "a\tb\nc"})
-    assert line =~ "musicacura.com\t"
-    assert line =~ "a\\tb\\nc"
-    assert Reclassify.insert_sql() =~ "INSERT INTO enrich_log (domain, enriched_at, worker, http_observed, business_model, industry, classification_confidence, classification_source, pipeline_version) FORMAT TabSeparated"
-
-    labelled = Reclassify.row("x.com", %{business_model: "SaaS", industry: "", confidence: 0.8, source: "heuristic"})
-    assert labelled.classification_source == "heuristic"
+    assert sql =~ "INSERT INTO enrich_log (enriched_at, worker, domain, dns_a, dns_mx, dns_dmarc, http_status, http_error, http_title, http_address, business_model, industry, classification_confidence, classification_source, http_observed, pipeline_version)"
+    assert sql =~ "now() AS enriched_at, 'master' AS worker, d.domain, d.dns_a, d.dns_mx, d.dns_dmarc, CAST(NULL AS Nullable(Int32)) AS http_status, '' AS http_error, d.http_title, d.http_address"
+    assert sql =~ "v.bm AS business_model, v.ind AS industry, v.conf AS classification_confidence, v.src AS classification_source, 0 AS http_observed, 'backfill-"
+    # The source is enrich_log (all columns, so DMARC and the page facts are not blanked), never an earlier backfill row.
+    assert sql =~ "FROM (SELECT * FROM enrich_log"
+    assert sql =~ "WHERE domain IN ('musicacura.com', 'o\\'neil.com') AND pipeline_version NOT LIKE 'backfill-%'"
+    assert sql =~ "ORDER BY enriched_at DESC LIMIT 1 BY domain"
+    # A declined page says none; a quote in a domain is escaped.
+    assert sql =~ "('musicacura.com', '', '', 0.33, 'none')"
+    assert sql =~ "('o\\'neil.com', 'SaaS', 'HR', 0.8, 'heuristic')"
   end
 
   test "the cursor never splits a domain whose stored versions straddle two batches" do

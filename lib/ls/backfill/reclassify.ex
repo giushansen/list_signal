@@ -20,15 +20,32 @@ defmodule LS.Backfill.Reclassify do
 
       LS.Backfill.Reclassify.start()
       LS.Backfill.Reclassify.start(cutoff: "2026-10-05 22:00:00", batch: 1000, pause_ms: 250)
+      LS.Backfill.Reclassify.start(since: "2026-10-05 22:00:00", cutoff: "2026-10-07 03:00:00")
       LS.Backfill.Reclassify.status()
       LS.Backfill.Reclassify.stop()
 
   A domain whose last fetch is after `cutoff` was already judged by the
-  new code and is skipped; so is a page flagged as junk. Rows are written
-  with `worker` "master", `http_observed` 0 and no HTTP columns, so they
-  can never win an HTTP fold, and `pipeline_version` "backfill-<sha>" so a
-  label can be traced to this run. The compactor folds them on its next
-  pass (five minutes).
+  new code and is skipped; so is a page flagged as junk. `since` bounds
+  the window from below for a second pass: the fleet fetched 732K domains
+  between the classifier deploy and the fold fix, and wrote their withheld
+  verdicts as an empty source the fold cannot see, so those are replayed
+  too (112K of them served a stale label on 2026-10-07).
+
+  How a verdict is written: as the liveness pass does it for dead sites, a
+  full copy of the domain's newest real `enrich_log` row with the
+  overrides (`worker` "master", `http_status` NULL, `http_observed` 0,
+  `http_error` empty, the four classification columns, `pipeline_version`
+  "backfill-<sha>"), never a classification-only row. The first run of
+  this module (2026-10-07, 04:45 to 08:05 UTC) wrote hollow rows;
+  `mv_domains` copies every enrich_log insert into `domains`, which is
+  newest-row-wins, so 126,182 domains had a row with no DNS, HTTP or BGP at
+  the top of the store page read and the data-quality checks alerted on
+  three empty columns. The copy is taken from `enrich_log`, not `domains`:
+  `domains` has 56 columns and the mail and page facts added since
+  (DMARC, DKIM, BIMI, address, phone) fold on the same row as `dns_mx`, so
+  a 56-column copy would blank them. A null status keeps the copy out of
+  every HTTP fold; only the classification unit, which keys on
+  "evaluated", takes it. The compactor folds it on its next pass.
   """
 
   require Logger
@@ -36,6 +53,7 @@ defmodule LS.Backfill.Reclassify do
   alias LS.HTTP.BusinessClassifier
 
   @default_cutoff "2026-10-05 22:00:00"
+  @version "backfill-" <> LS.Version.sha()
   @ml_chunk 32
   @ml_floor 0.55
   @stats_key {__MODULE__, :stats}
@@ -48,7 +66,7 @@ defmodule LS.Backfill.Reclassify do
     if running?() do
       {:error, :running}
     else
-      opts = Keyword.merge([cutoff: @default_cutoff, batch: 1000, pause_ms: 250, cursor: ""], opts)
+      opts = Keyword.merge([since: nil, cutoff: @default_cutoff, batch: 1000, pause_ms: 250, cursor: ""], opts)
       {:ok, pid} = Task.start(fn -> run(opts) end)
       :persistent_term.put(@pid_key, pid)
       {:ok, pid}
@@ -77,7 +95,7 @@ defmodule LS.Backfill.Reclassify do
     stats = %{batches: 0, scanned: 0, evaluated: 0, same: 0, cleared: 0, relabeled: 0, added: 0,
               ml_texts: 0, written: 0, errors: 0, cursor: opts[:cursor], started_at: now_s(), finished: false}
     put_stats(stats)
-    Logger.info("[BACKFILL] reclassify started cutoff=#{opts[:cutoff]} batch=#{opts[:batch]}")
+    Logger.info("[BACKFILL] reclassify started since=#{opts[:since]} cutoff=#{opts[:cutoff]} batch=#{opts[:batch]} cursor=#{inspect(opts[:cursor])}")
     loop(opts, stats)
   end
 
@@ -109,7 +127,7 @@ defmodule LS.Backfill.Reclassify do
     case fetch_businesses(domains) do
       {:ok, biz} ->
         items =
-          for p <- pages, b = biz[p.domain], eligible?(b, opts[:cutoff]) do
+          for p <- pages, b = biz[p.domain], eligible?(b, opts[:since], opts[:cutoff]) do
             sig = signals(p, b)
             {b, sig, BusinessClassifier.classify(sig)}
           end
@@ -128,8 +146,8 @@ defmodule LS.Backfill.Reclassify do
             {b, final, decision(b.business_model, final.business_model)}
           end
 
-        rows = for {b, final, d} <- decisions, d != :same, do: row(b.domain, final)
-        write = if rows == [], do: :ok, else: insert_rows(rows)
+        rows = for {b, final, d} <- decisions, d != :same, do: verdict(b.domain, final)
+        write = if rows == [], do: :ok, else: insert_verdicts(rows)
 
         counts = Enum.frequencies_by(decisions, fn {_, _, d} -> d end)
 
@@ -164,8 +182,9 @@ defmodule LS.Backfill.Reclassify do
     end
   end
 
-  @doc "A page is revisited when the new code has not seen it and it is not junk."
-  def eligible?(b, cutoff), do: b.is_junk == "" and b.http_last_checked_at < cutoff
+  @doc "A page is revisited when its last fetch falls in [since, cutoff) and it is not junk."
+  def eligible?(b, since \\ nil, cutoff),
+    do: b.is_junk == "" and b.http_last_checked_at < cutoff and (is_nil(since) or b.http_last_checked_at >= since)
 
   @doc """
   The classifier's signal map, built from the product row and the stored
@@ -199,38 +218,53 @@ defmodule LS.Backfill.Reclassify do
     })
   end
 
-  @doc "The enrich_log row for one verdict: classification columns only."
-  def row(domain, final) do
-    %{
-      domain: domain,
-      enriched_at: now_str(),
-      worker: "master",
-      http_observed: 0,
-      business_model: final.business_model,
-      industry: final.industry,
-      classification_confidence: final.confidence,
-      classification_source: LS.Pipeline.classification_source(final, true),
-      pipeline_version: "backfill-" <> LS.Version.sha()
-    }
+  @doc "One verdict as the VALUES tuple the write joins on: domain and the four classification columns."
+  def verdict(domain, final) do
+    {domain, final.business_model, final.industry, final.confidence, LS.Pipeline.classification_source(final, true)}
   end
 
-  @insert_cols ~w(domain enriched_at worker http_observed business_model industry classification_confidence classification_source pipeline_version)
+  @doc """
+  The INSERT ... SELECT that writes a batch of verdicts: each domain's
+  newest real `enrich_log` row (earlier backfill rows are never a source),
+  copied with the overrides and the verdict joined in from a VALUES table.
+  `cols` is the insertable column list of `enrich_log`.
+  """
+  @spec insert_sql([String.t()], [{String.t(), String.t(), String.t(), number() | nil, String.t()}]) :: String.t()
+  def insert_sql(cols, verdicts) do
+    select =
+      Enum.map_join(cols, ", ", fn
+        "enriched_at" -> "now() AS enriched_at"
+        "worker" -> "'master' AS worker"
+        "http_status" -> "CAST(NULL AS Nullable(Int32)) AS http_status"
+        "http_error" -> "'' AS http_error"
+        "business_model" -> "v.bm AS business_model"
+        "industry" -> "v.ind AS industry"
+        "classification_confidence" -> "v.conf AS classification_confidence"
+        "classification_source" -> "v.src AS classification_source"
+        "http_observed" -> "0 AS http_observed"
+        "pipeline_version" -> "'#{@version}' AS pipeline_version"
+        c -> "d.#{c}"
+      end)
 
-  @doc "The INSERT statement and one TabSeparated line per row."
-  def insert_sql, do: "INSERT INTO #{LS.Schema.Tables.enrich_log()} (#{Enum.join(@insert_cols, ", ")}) FORMAT TabSeparated"
+    values =
+      Enum.map_join(verdicts, ", ", fn {d, bm, ind, conf, src} ->
+        "(#{lit(d)}, #{lit(bm)}, #{lit(ind)}, #{if(is_number(conf), do: conf * 1.0, else: "NULL")}, #{lit(src)})"
+      end)
 
-  def tsv_line(row) do
-    @insert_cols
-    |> Enum.map(fn c -> row |> Map.fetch!(String.to_existing_atom(c)) |> tsv_value() end)
-    |> Enum.join("\t")
+    domains = Enum.map_join(verdicts, ", ", fn {d, _, _, _, _} -> lit(d) end)
+
+    """
+    INSERT INTO #{LS.Schema.Tables.enrich_log()} (#{Enum.join(cols, ", ")})
+    SELECT #{select}
+    FROM (SELECT * FROM #{LS.Schema.Tables.enrich_log()}
+          WHERE domain IN (#{domains}) AND pipeline_version NOT LIKE 'backfill-%'
+          ORDER BY enriched_at DESC LIMIT 1 BY domain) AS d
+    JOIN (SELECT * FROM VALUES('domain String, bm String, ind String, conf Nullable(Float32), src String', #{values})) AS v
+      ON d.domain = v.domain
+    """
   end
 
-  defp tsv_value(nil), do: "\\N"
-  defp tsv_value(v) when is_float(v), do: Float.to_string(v)
-  defp tsv_value(v) when is_integer(v), do: Integer.to_string(v)
-
-  defp tsv_value(v) when is_binary(v),
-    do: v |> String.replace("\\", "\\\\") |> String.replace("\t", "\\t") |> String.replace("\n", "\\n") |> String.replace("\r", "")
+  defp lit(s), do: "'" <> (s |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "\\'")) <> "'"
 
   # The last domain of a page batch may continue into the next batch
   # (several stored versions). Drop it unless the batch was the last one,
@@ -299,10 +333,38 @@ defmodule LS.Backfill.Reclassify do
     end
   end
 
-  defp insert_rows(rows) do
-    case LS.Clickhouse.insert_raw(insert_sql(), Enum.map_join(rows, "\n", &tsv_line/1)) do
-      :ok -> :ok
-      {:error, r} -> Logger.warning("[BACKFILL] insert of #{length(rows)} rows failed: #{inspect(r)}"); {:error, r}
+  defp insert_verdicts(verdicts) do
+    with {:ok, cols} <- log_columns(),
+         {:ok, _} <- LS.Clickhouse.query_raw(insert_sql(cols, verdicts), 120_000) do
+      :ok
+    else
+      {:error, r} -> Logger.warning("[BACKFILL] insert of #{length(verdicts)} verdicts failed: #{inspect(r)}"); {:error, r}
+      other -> Logger.warning("[BACKFILL] insert of #{length(verdicts)} verdicts failed: #{inspect(other)}"); {:error, other}
+    end
+  end
+
+  # The insertable columns of enrich_log, read once from the server (the
+  # same pattern as LS.Recrawl.Liveness): the list is the table's, not a
+  # copy in code that drifts from it.
+  defp log_columns do
+    case :persistent_term.get({__MODULE__, :columns}, nil) do
+      nil ->
+        sql =
+          "SELECT name FROM system.columns WHERE database = currentDatabase() " <>
+            "AND table = '#{LS.Schema.Tables.enrich_log()}' AND default_kind != 'MATERIALIZED' ORDER BY position"
+
+        case LS.Clickhouse.query_raw(sql, 10_000) do
+          {:ok, rows} when rows != [] ->
+            cols = Enum.map(rows, fn [n] -> n end)
+            :persistent_term.put({__MODULE__, :columns}, cols)
+            {:ok, cols}
+
+          {:ok, []} -> {:error, :no_columns}
+          err -> err
+        end
+
+      cols ->
+        {:ok, cols}
     end
   end
 
@@ -351,5 +413,4 @@ defmodule LS.Backfill.Reclassify do
 
   defp put_stats(stats), do: :persistent_term.put(@stats_key, stats)
   defp now_s, do: System.system_time(:second)
-  defp now_str, do: NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
 end
