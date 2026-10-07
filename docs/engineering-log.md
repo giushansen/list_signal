@@ -25,6 +25,29 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-07: a withheld label never reached the product table
+
+The day after the golden v6 classifier shipped, the enrichment log showed
+the fixes working (WooCommerce-only pages called Ecommerce 86.9% -> 26.2%)
+and `businesses` showed nothing: 4.68M WooCommerce-only domains still
+Ecommerce at 97%. The classification fold took the newest row with a
+non-empty label, so a run that read the page and declined looked exactly
+like a failed fetch, and the old label survived with a fresh `as_of`. On 78
+sampled refetched domains, 10 served a label the newest run had withheld;
+8 were Ecommerce and all 8 were wrong when read. `classification_source`
+folded the same way, so it could not even tell the stale ones apart.
+
+Fixed in two parts. The worker writes `classification_source` "none" when
+it evaluated an observed page and declined (`LS.Pipeline.classification_source/2`),
+and the fold keys the four classification columns on "evaluated" (a label,
+or source "none"; `LS.Clickhouse.Compact.evaluated_sql/1`), so a withheld
+verdict clears an older label while a failed, walled or DNS-only row still
+cannot blank anything, which keeps the rule from the h1 incident intact.
+Then `LS.Backfill.Reclassify` revisits the 1.8M stored homepage block sets
+on the master, borrowing the workers' ML heads over erpc, and writes a
+classification-only row wherever the verdict differs from the served label.
+Numbers from the run are in the git note on the backfill commit.
+
 ## 2026-10-05: golden v6 and what it did to the ICP classes
 
 Golden v6 (320 rows from the stored page blocks, ICP-weighted) found the

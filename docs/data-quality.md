@@ -308,3 +308,23 @@ estimate until its next refresh.
 
 All of this is in-sample on v6. Grow v7 from v6's disagreements before
 quoting these as out-of-sample numbers.
+
+## Withheld labels and the product fold (2026-10-07)
+
+A precision fix that works by declining to label does not reach
+`businesses` on its own: the fold used to take the newest row with a
+non-empty label, so "read the page, declined" and "fetch failed" were the
+same empty string and the old label stood. Measured a day after golden v6
+shipped: enrichment decisions moved as designed, the product did not
+(WooCommerce-only domains 97% Ecommerce in `businesses`, 26% in new
+decisions; 8 of 8 sampled stale Ecommerce labels wrong).
+
+Now `classification_source` "none" is the verdict a worker writes for an
+observed page it declined, the fold keys the classification unit on
+"evaluated" (label or "none"), and `LS.Backfill.Reclassify` replays the
+classifier over the stored homepage blocks for every site the new code has
+not fetched yet. When quoting a classifier change, give its effect on
+`enrich_log` (decisions) and on `businesses` (what customers see)
+separately; the second only moves once the fold can see the verdict.
+`classification_source` is not a staleness test: compare the newest
+`enrich_log` row with the product row instead.

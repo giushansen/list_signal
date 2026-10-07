@@ -60,7 +60,10 @@ defmodule LS.ProvenanceTest do
     assert "classification_source" in LS.Clickhouse.history_cols()
     assert "pipeline_version" in LS.Clickhouse.history_cols()
     src = File.read!("lib/ls/clickhouse/compact.ex")
-    assert src =~ "argMaxIf(s_classification_source, s_enriched_at, s_business_model != '') AS classification_source"
+    # Since 2026-10-07 the unit follows the newest EVALUATED row (label, or
+    # source "none"), so a withheld label can clear an older one.
+    assert src =~ ~S|argMaxIf(s_classification_source, s_enriched_at, #{evaluated_sql("s_")}) AS classification_source|
+    assert LS.Clickhouse.compact_sql_for_test(1_700_000_000) =~ "argMaxIf(s_classification_source, s_enriched_at, (s_business_model != '' OR s_classification_source != '')) AS classification_source"
     # The product names them estimated_business_model_evidence and
     # estimated_version (data model v2, 2026-10-01).
     sql = LS.Clickhouse.compact_sql_for_test(1_700_000_000)

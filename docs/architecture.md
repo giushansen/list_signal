@@ -72,7 +72,8 @@ compiled row (one "verified" leg carrying the page facts as observed at
 | newest observed | title, meta, tech, apps, language, pages, phone, address, fingerprint, ETag, simhash | the newest crawl that actually saw the site (2xx/3xx, not a bot wall) |
 | newest non-empty | DNS, RDAP, BGP, ranks, country evidence | a blank never replaces a value |
 | union | emails, social links, subdomains | lists only grow, capped |
-| best | revenue, employees, model, industry | highest confidence wins, ranks seen on the master |
+| best | revenue, employees | highest confidence wins, ranks seen on the master |
+| newest evaluated | model, industry, their confidence and source | the newest crawl on which the classifier reached a verdict: a label, or `classification_source` "none" for "read the page, declined" (2026-10-07). A failed, walled or DNS-only crawl evaluated nothing and keeps what stood; before this, a withheld label looked like one of those and 4.68M stale Ecommerce labels survived every recrawl |
 | newest, excluding 304 (planned) | http_status | a conditional GET is a check, not a status |
 | derived | `estimated_realness`, `dns_tech`, `dns_email_provider`, `estimated_junk` | computed from the merged row (parking nameservers override the page verdict) |
 
@@ -150,7 +151,7 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 | ClickHouse `ls.enrich_log` | append-only log, one row per enrichment pass (was domains_history) | 365-day TTL; the worker's internal column names |
 | ClickHouse `ls.domains` | `ReplacingMergeTree(enriched_at)` MV keyed on domain (was domains_current) | every domain ever crawled, newest row wins |
 | ClickHouse `ls.businesses` | the product table, one row per real business, data model v2 names (`LS.Schema.Columns`) | compiled every 5 min by the compactor; `ReplacingMergeTree(compiled_at)` |
-| ClickHouse `ls.http_pages` | the page as the product keeps it: header, ordered body blocks, footer, JSON-LD, per (domain, page kind) | latest version only; ZSTD; written by workers, never read by the compactor |
+| ClickHouse `ls.http_pages` | the page as the product keeps it: header, ordered body blocks, footer, JSON-LD, per (domain, page kind) | latest version only; ZSTD; written by workers, never read by the compactor; replayed by `LS.Backfill.Reclassify` when the classifier changes |
 | ClickHouse `ls.changes_log` | one row per change of one tracked column on one business (was biz_signal) | keyed (field, value, changed_at, domain) with a per-domain projection; 730-day TTL |
 | ClickHouse `ls.tech_catalog` | mirror of `LS.Tech.Catalog`: the closed list of published tech names with category and ecosystem | synced on master boot |
 | ClickHouse `ls.http_deep_log` / `http_deep_state` | the deep pass: append-only log and current row per domain (were biz_enrichment_log / biz_enrichment) | |

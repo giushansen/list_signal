@@ -449,7 +449,7 @@ defmodule LS.Pipeline do
       business_model: classify_result.business_model,
       industry: classify_result.industry,
       classification_confidence: classify_result.confidence,
-      classification_source: classify_result[:source] || (if classify_result.business_model != "", do: "heuristic", else: ""),
+      classification_source: classification_source(classify_result, observed?(http) == 1),
       http_schema_type: http[:http_schema_type] || "",
       http_og_type: http[:http_og_type] || "",
       bgp_ip: bgp[:bgp_ip] || "",
@@ -531,7 +531,7 @@ defmodule LS.Pipeline do
 
     row
     |> Map.drop([:_ml_text, :_ml_heuristic])
-    |> Map.merge(%{business_model: r.business_model, industry: r.industry, classification_confidence: r.confidence, classification_source: r[:source] || ""})
+    |> Map.merge(%{business_model: r.business_model, industry: r.industry, classification_confidence: r.confidence, classification_source: classification_source(r, row[:http_observed] == 1)})
     |> finalize_pages()
   end
 
@@ -570,6 +570,27 @@ defmodule LS.Pipeline do
     "Ecommerce" => 0.75,
     "SaaS" => 0.95
   }
+
+  @doc """
+  The provenance written next to a classification (2026-10-07).
+
+  "heuristic" or "ml:<head>" names the tier that chose a label. "none"
+  records that the classifier read a real page (`observed?/1`) and declined:
+  the compaction fold treats that as a verdict and clears an older label.
+  "" means the page was never evaluated (fetch failed, walled, DNS only) and
+  the fold keeps whatever stood. Before this, a withheld label looked
+  exactly like a failed fetch, so the golden v6 precision fixes never
+  reached the product table (4.68M WooCommerce-only domains stayed
+  Ecommerce at 97%). Pure.
+  """
+  @spec classification_source(map(), boolean()) :: String.t()
+  def classification_source(result, observed?) do
+    cond do
+      (result[:business_model] || "") != "" -> result[:source] || "heuristic"
+      observed? -> "none"
+      true -> ""
+    end
+  end
 
   @doc "Pure: the ML business model this merge may use, or empty."
   def ml_model_for_merge(ml) do

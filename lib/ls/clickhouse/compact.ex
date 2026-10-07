@@ -129,6 +129,14 @@ defmodule LS.Clickhouse.Compact do
   """
   def observed_sql(prefix \\ ""), do: "(#{prefix}http_status BETWEEN 200 AND 399 AND #{prefix}http_observed = 1)"
 
+  @doc """
+  Rows on which the classifier reached a verdict (2026-10-07): a label, or
+  `classification_source` "none" for "read the page, declined". The
+  classification fold keys on this so a withheld label clears an older one
+  while a failed fetch still cannot.
+  """
+  def evaluated_sql(prefix \\ ""), do: "(#{prefix}business_model != '' OR #{prefix}classification_source != '')"
+
   # ── entry points ─────────────────────────────────────────────────────────
 
   @doc """
@@ -388,9 +396,20 @@ defmodule LS.Clickhouse.Compact do
           arrayFlatten(groupArray(splitByChar('|', s_http_emails))))), 1, 20) AS http_emails_all,
         arraySlice(arrayDistinct(arrayFilter(x -> x != '',
           arrayFlatten(groupArray(splitByChar('|', s_http_social_links))))), 1, 20) AS http_social_links,
-        argMaxIf(s_business_model, s_enriched_at, s_business_model != '') AS business_model,
-        argMaxIf(s_industry, s_enriched_at, s_business_model != '') AS industry,
-        argMaxIf(s_classification_confidence, s_enriched_at, s_business_model != '') AS classification_confidence,
+        /* The classification unit follows the newest row that EVALUATED the
+           page, not the newest row that carries a label (2026-10-07). A
+           label is a verdict; so is "none" in classification_source, which
+           the worker writes when it read a real page and declined. A row
+           with neither (fetch failed, walled, DNS only) never evaluated and
+           keeps whatever stood, which is the no-blanking rule intact.
+           Measured the day after the golden v6 classifier shipped: 4.68M
+           WooCommerce-only domains stayed Ecommerce at 97% in this table
+           while the new code labels 26% of them, because withholding looked
+           like writing nothing. Labels older than provenance (2026-09-09)
+           carry an empty source and still count through the label itself. */
+        argMaxIf(s_business_model, s_enriched_at, #{evaluated_sql("s_")}) AS business_model,
+        argMaxIf(s_industry, s_enriched_at, #{evaluated_sql("s_")}) AS industry,
+        argMaxIf(s_classification_confidence, s_enriched_at, #{evaluated_sql("s_")}) AS classification_confidence,
         argMaxIf(s_bgp_ip, s_enriched_at, s_bgp_asn_number != '') AS bgp_ip,
         argMaxIf(s_bgp_asn_number, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_number,
         argMaxIf(s_bgp_asn_org, s_enriched_at, s_bgp_asn_number != '') AS bgp_asn_org,
@@ -428,7 +447,7 @@ defmodule LS.Clickhouse.Compact do
         argMaxIf(s_dns_ptr, s_enriched_at, s_dns_ptr != '') AS dns_ptr,
         argMaxIf(s_dns_ms_enterprise, s_enriched_at, s_dns_mx != '') AS dns_ms_enterprise,
         maxIf(s_enriched_at, s_dns_a != '') AS dns_last_seen_at,
-        argMaxIf(s_classification_source, s_enriched_at, s_business_model != '') AS classification_source,
+        argMaxIf(s_classification_source, s_enriched_at, #{evaluated_sql("s_")}) AS classification_source,
         argMaxIf(s_pipeline_version, s_enriched_at, s_pipeline_version != '') AS pipeline_version,
         argMaxIf(s_inferred_country, s_enriched_at, s_inferred_country != '') AS inferred_country,
         argMaxIf(s_http_emails, s_enriched_at, s_http_emails != '') AS http_emails,
