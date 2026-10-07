@@ -227,7 +227,11 @@ defmodule LS.Backfill.Reclassify do
   The INSERT ... SELECT that writes a batch of verdicts: each domain's
   newest real `enrich_log` row (earlier backfill rows are never a source),
   copied with the overrides and the verdict joined in from a VALUES table.
-  `cols` is the insertable column list of `enrich_log`.
+  `cols` is the insertable column list of `enrich_log`. The newest
+  timestamp per domain is found first on three narrow columns and the wide
+  row is read only for that one key: reading every stored version of a
+  domain with all 77 columns to then keep one blew the 6 GB server ceiling
+  on the repair of the first run (126K domains, 2026-10-07).
   """
   @spec insert_sql([String.t()], [{String.t(), String.t(), String.t(), number() | nil, String.t()}]) :: String.t()
   def insert_sql(cols, verdicts) do
@@ -257,8 +261,9 @@ defmodule LS.Backfill.Reclassify do
     INSERT INTO #{LS.Schema.Tables.enrich_log()} (#{Enum.join(cols, ", ")})
     SELECT #{select}
     FROM (SELECT * FROM #{LS.Schema.Tables.enrich_log()}
-          WHERE domain IN (#{domains}) AND pipeline_version NOT LIKE 'backfill-%'
-          ORDER BY enriched_at DESC LIMIT 1 BY domain) AS d
+          WHERE (domain, enriched_at) IN (
+            SELECT domain, max(enriched_at) FROM #{LS.Schema.Tables.enrich_log()}
+            WHERE domain IN (#{domains}) AND pipeline_version NOT LIKE 'backfill-%' GROUP BY domain)) AS d
     JOIN (SELECT * FROM VALUES('domain String, bm String, ind String, conf Nullable(Float32), src String', #{values})) AS v
       ON d.domain = v.domain
     """

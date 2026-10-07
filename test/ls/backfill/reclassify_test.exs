@@ -65,8 +65,8 @@ defmodule LS.Backfill.ReclassifyTest do
     assert sql =~ "v.bm AS business_model, v.ind AS industry, v.conf AS classification_confidence, v.src AS classification_source, 0 AS http_observed, 'backfill-"
     # The source is enrich_log (all columns, so DMARC and the page facts are not blanked), never an earlier backfill row.
     assert sql =~ "FROM (SELECT * FROM enrich_log"
-    assert sql =~ "WHERE domain IN ('musicacura.com', 'o\\'neil.com') AND pipeline_version NOT LIKE 'backfill-%'"
-    assert sql =~ "ORDER BY enriched_at DESC LIMIT 1 BY domain"
+    assert sql =~ "WHERE (domain, enriched_at) IN ("
+    assert sql =~ "SELECT domain, max(enriched_at) FROM enrich_log\n        WHERE domain IN ('musicacura.com', 'o\\'neil.com') AND pipeline_version NOT LIKE 'backfill-%' GROUP BY domain"
     # A declined page says none; a quote in a domain is escaped.
     assert sql =~ "('musicacura.com', '', '', 0.33, 'none')"
     assert sql =~ "('o\\'neil.com', 'SaaS', 'HR', 0.8, 'heuristic')"
