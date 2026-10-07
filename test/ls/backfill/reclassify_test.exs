@@ -62,7 +62,8 @@ defmodule LS.Backfill.ReclassifyTest do
 
     assert sql =~ "INSERT INTO enrich_log (enriched_at, worker, domain, dns_a, dns_mx, dns_dmarc, http_status, http_error, http_title, http_address, business_model, industry, classification_confidence, classification_source, http_observed, pipeline_version)"
     assert sql =~ "now() AS enriched_at, 'master' AS worker, d.domain, d.dns_a, d.dns_mx, d.dns_dmarc, CAST(NULL AS Nullable(Int32)) AS http_status, '' AS http_error, d.http_title, d.http_address"
-    assert sql =~ "v.bm AS business_model, v.ind AS industry, v.conf AS classification_confidence, v.src AS classification_source, 0 AS http_observed, 'backfill-"
+    assert sql =~ "v.bm AS business_model, v.ind AS industry, CAST(v.conf AS Nullable(Float32)) AS classification_confidence, v.src AS classification_source, 0 AS http_observed, 'backfill-"
+    assert sql =~ "conf Nullable(Float64), src String'"
     # The source is enrich_log (all columns, so DMARC and the page facts are not blanked), never an earlier backfill row.
     assert sql =~ "FROM (SELECT * FROM enrich_log"
     assert sql =~ "WHERE (domain, enriched_at) IN ("

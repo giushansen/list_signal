@@ -233,6 +233,10 @@ defmodule LS.Backfill.Reclassify do
   domain with all 77 columns to then keep one blew the 6 GB server ceiling
   on the repair of the first run (126K domains, 2026-10-07).
   """
+  # The VALUES column is Float64 and cast in the select: a literal such as
+  # 0.33 "cannot be represented as Nullable(Float32)" to ClickHouse's
+  # VALUES parser (Code 69), which failed every batch of the resumed run
+  # on 2026-10-07 before a row was written.
   @spec insert_sql([String.t()], [{String.t(), String.t(), String.t(), number() | nil, String.t()}]) :: String.t()
   def insert_sql(cols, verdicts) do
     select =
@@ -243,7 +247,7 @@ defmodule LS.Backfill.Reclassify do
         "http_error" -> "'' AS http_error"
         "business_model" -> "v.bm AS business_model"
         "industry" -> "v.ind AS industry"
-        "classification_confidence" -> "v.conf AS classification_confidence"
+        "classification_confidence" -> "CAST(v.conf AS Nullable(Float32)) AS classification_confidence"
         "classification_source" -> "v.src AS classification_source"
         "http_observed" -> "0 AS http_observed"
         "pipeline_version" -> "'#{@version}' AS pipeline_version"
@@ -252,7 +256,7 @@ defmodule LS.Backfill.Reclassify do
 
     values =
       Enum.map_join(verdicts, ", ", fn {d, bm, ind, conf, src} ->
-        "(#{lit(d)}, #{lit(bm)}, #{lit(ind)}, #{if(is_number(conf), do: conf * 1.0, else: "NULL")}, #{lit(src)})"
+        "(#{lit(d)}, #{lit(bm)}, #{lit(ind)}, #{if(is_number(conf), do: Float.round(conf * 1.0, 2), else: "NULL")}, #{lit(src)})"
       end)
 
     domains = Enum.map_join(verdicts, ", ", fn {d, _, _, _, _} -> lit(d) end)
@@ -264,7 +268,7 @@ defmodule LS.Backfill.Reclassify do
           WHERE (domain, enriched_at) IN (
             SELECT domain, max(enriched_at) FROM #{LS.Schema.Tables.enrich_log()}
             WHERE domain IN (#{domains}) AND pipeline_version NOT LIKE 'backfill-%' GROUP BY domain)) AS d
-    JOIN (SELECT * FROM VALUES('domain String, bm String, ind String, conf Nullable(Float32), src String', #{values})) AS v
+    JOIN (SELECT * FROM VALUES('domain String, bm String, ind String, conf Nullable(Float64), src String', #{values})) AS v
       ON d.domain = v.domain
     """
   end
