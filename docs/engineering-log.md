@@ -25,6 +25,35 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-08: the NUC was never idle, the master was logging itself to death
+
+Three findings from one "how is the cluster" question, all pre-existing.
+
+**h1 produces no discovery rows because it is the depth node.** Since
+2026-10-02 the home profile is `LS_LANES=enrichment`; the depth pass
+writes `http_deep_*`, never `enrich_log`, which is where the fleet metrics
+and the 10-06 report looked. Measured: 39,372 domains in 21 hours, about
+37% of the fleet's depth output. What was wrong with it was the browser
+sidecar: `MemoryMax=2500M` from the installer, sized for the 2c/4G duals,
+pinned at 2.62G on a box with 7.9G free, Firefox content processes
+OOM-killed inside the cgroup, 408 batches a day dropping domains at the
+120 s wall, and the "Memory thrashing: lsh1" email (PSI 23% then 49%).
+Fixed at the source: `apply_profile.sh` writes a per-profile drop-in
+(home: 6G/5G), devops 92d863d.
+
+**ClickHouse could not write its own log since 2026-09-23 03:31** and
+sent every failure as a stack trace to stderr: 20,770 journal lines a
+minute, systemd-journald at 95% of a core for 14 days, 4G of journal, and
+the master's app warnings (the backfill's insert failures among them)
+dropped under journald's rate limit. Same class as 2026-08-22; the fix is
+again a restart (8 s, 01:49 UTC), after which the journal runs at 589
+lines a minute and load fell from 6 to 2. The sentinel still has no check
+for journal line rate; it is owed twice now.
+
+**The backfill wrote hollow rows** into a table with a materialized view
+behind it, and a Float32 literal failed every insert of the resumed run;
+both in the 2026-10-07 entry's commits (99e87a3, 65420b2, 487ca9c).
+
 ## 2026-10-07: a withheld label never reached the product table
 
 The day after the golden v6 classifier shipped, the enrichment log showed
