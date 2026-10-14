@@ -25,6 +25,40 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-14: a week later, what the cluster looked like and what it needed
+
+Fleet steady at 950K enrichment rows and 112K depth rows a day; the
+backfill's first pass finished (683 batches after the last resume, 65K
+verdicts) and the second pass over the 732K domains fetched before the
+fold fix started today. Four things needed fixing, none of them from
+last week's work.
+
+- **The browser sidecar leaks into swap.** ny1's, up since 25 September,
+  held 6.2 G in swap at 225 MB RSS; h1's held 19 G a week after its RAM
+  cap was raised. The 2500M cap had been bounding the leak by killing the
+  process; once it could spill to swap it did, and the duals' chronic
+  "stale swap" was mostly this. `MemorySwapMax=1G` and `RuntimeMaxSec=1d`
+  on every node (devops 6fcfab6); ny1 went from 7.6 G to 175 M of swap.
+- **The weekly ClickHouse backup was skipped on 11 October** (54 G free
+  against the 60 G the dump of an 87 G enrich_log needs) and the "stale"
+  alert has fired every six hours since the 13th. The disk is at 76%:
+  ClickHouse 201 G, of which `bak_businesses_v1` is 9.7 G of migration
+  leftover the owner has not yet said to drop. Run by hand today with
+  84 G free.
+- **Two crawlers treated 429 as a quota**: 1,074 refusals in a day, a
+  Paris hosting box on "/" and a Google Cloud box copying the store pages
+  at the full 60 a minute. `LS_PUBLIC_DENY_IPS` answers 403 before any
+  read (32c9ba5); Cloudflare is where an ASN block belongs.
+- **The work queue bulged to 67% on 10 October** and is draining at
+  about 80 a minute net; 21% of the domains enriched on the 13th were
+  enriched twice that day, both times a failed fetch retried by another
+  worker, which is the retry policy working.
+
+Analytics for the record: 1,307 sessions in 30 days, 89 of them viewing a
+second page, 6 Google referrals, 6 signups, one paying account. Outbound
+is the only revenue channel for Q4; the plan is in the artifact linked
+from the project memory.
+
 ## 2026-10-08: the NUC was never idle, the master was logging itself to death
 
 Three findings from one "how is the cluster" question, all pre-existing.
