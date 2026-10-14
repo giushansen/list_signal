@@ -33,9 +33,22 @@ defmodule LSWeb.Plugs.PublicRateLimit do
   def call(conn, _opts) do
     ip = client_ip(conn)
 
-    case if(local?(conn), do: :ok, else: hit(ip, per_min())) do
+    verdict =
+      cond do
+        local?(conn) -> :ok
+        denied?(ip) -> :denied
+        true -> hit(ip, per_min())
+      end
+
+    case verdict do
       :ok ->
         conn
+
+      :denied ->
+        conn
+        |> put_resp_content_type("text/plain")
+        |> send_resp(403, "Forbidden.")
+        |> halt()
 
       :over ->
         Logger.warning("[PUBLIC RATE] #{ip} over #{per_min()}/min on #{conn.request_path}")
@@ -45,6 +58,26 @@ defmodule LSWeb.Plugs.PublicRateLimit do
         |> put_resp_content_type("text/plain")
         |> send_resp(429, "Too many requests. Please keep it under #{per_min()} a minute.")
         |> halt()
+    end
+  end
+
+  @doc """
+  Addresses refused outright, from `LS_PUBLIC_DENY_IPS` (comma-separated).
+
+  Why (2026-10-14): 429 slows a crawler that honours it. Two did not:
+  185.177.72.17 (Bucklog SARL, Paris) went over the limit on "/" 566 times
+  in a day and 23.251.146.115 (Google Cloud) pulled /website, /shopify and
+  /store pages 506 times over it, every day for a week, taking the 60 a
+  minute they were allowed and asking for more. A denied address gets 403
+  and no page, before any ClickHouse read. The list is read per request
+  so it can be changed without a deploy (restart the node to reload the
+  env file). Pure given the env.
+  """
+  @spec denied?(String.t()) :: boolean()
+  def denied?(ip) do
+    case System.get_env("LS_PUBLIC_DENY_IPS") do
+      nil -> false
+      v -> ip in (v |> String.split(",") |> Enum.map(&String.trim/1))
     end
   end
 
