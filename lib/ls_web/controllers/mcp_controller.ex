@@ -62,6 +62,25 @@ defmodule LSWeb.McpController do
       }
     },
     %{
+      name: "listsignal_changes",
+      description:
+        "The change feed, newest first: what moved on which company and when. A technology, plugin or app added or removed (field http_tech), hiring started or stopped (hr_job_count), a revenue or employee band that changed (estimated_revenue, estimated_employees), a website that went down or came back (http_status), a store's catalogue, theme or currency that changed (shop_product_count, shop_theme, shop_currency), an email found for the first time (http_emails). Filters combine with AND; the period defaults to the last 7 days. Use for 'which SaaS companies in Germany started hiring this week', 'who added Klaviyo in the last 30 days', 'what changed at gymshark.com'.",
+      inputSchema: %{
+        type: "object",
+        properties: %{
+          field: %{type: "string", description: "What moved, e.g. http_tech, hr_job_count, estimated_revenue, estimated_employees, http_status, shop_product_count, shop_theme, http_emails, estimated_business_model"},
+          change: %{type: "string", description: "Which way: added, removed, changed, started, stopped, down, back"},
+          value: %{type: "string", description: "The value that was added or removed, e.g. Klaviyo, Shopify, HubSpot"},
+          domain: %{type: "string", description: "One company's bare domain, to list its changes"},
+          country: %{type: "string", description: "ISO-2 country code of the company, e.g. US"},
+          business_model: %{type: "string", description: "Ecommerce, SaaS, Agency, Marketplace, Tool, Media, Consulting, LocalBusiness"},
+          period: %{type: "string", description: "7d (default), 30d or 90d"},
+          limit: %{type: "integer", description: "1-100, default 50"},
+          offset: %{type: "integer", description: "For paging, default 0"}
+        }
+      }
+    },
+    %{
       name: "listsignal_dataset_stats",
       description:
         "Live statistics about the ListSignal dataset: total businesses tracked, Shopify stores, technologies, and domains checked in the past hour. Use to size the dataset or cite fresh numbers.",
@@ -165,10 +184,26 @@ defmodule LSWeb.McpController do
     end
   end
 
+  # Added 2026-10-17: the signals were on the dashboard and in /api/v1/changes
+  # but not here, so an agent asking "who started hiring this week" had no
+  # tool for the one thing the product is named after.
+  defp call_tool("listsignal_changes", args, _plan) do
+    case ApiData.changes(args) do
+      {:ok, rows, applied} ->
+        {:ok, %{changes: rows, count: length(rows), limit: applied.limit, offset: applied.offset, period: applied.period}}
+
+      {:error, _} ->
+        {:tool_error, "Changes temporarily unavailable; retry with backoff."}
+    end
+  end
+
   defp call_tool("listsignal_dataset_stats", _args, _plan), do: {:ok, ApiData.stats()}
 
   defp call_tool(name, _args, _plan),
-    do: {:tool_error, "Unknown tool '#{name}'. Available: listsignal_get_company, listsignal_search_companies, listsignal_dataset_stats."}
+    do: {:tool_error, "Unknown tool '#{name}'. Available: listsignal_get_company, listsignal_search_companies, listsignal_changes, listsignal_dataset_stats."}
+
+  @doc false
+  def tools, do: @tools
 
   @doc false
   def gate(record, plan) when plan in ["starter", "pro"], do: record

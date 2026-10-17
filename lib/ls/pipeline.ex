@@ -306,6 +306,8 @@ defmodule LS.Pipeline do
   and read by `LS.Clickhouse.observed_sql/1`: the change-event producer and
   the compactor's technology fold only trust observed rows. Pure.
   """
+  @stub_title ~r/^(just a moment|bot verification|redirecting|you are being redirected|attention required|access denied|index of \/)/
+
   @spec observed?(map() | nil) :: 0 | 1
   def observed?(http) when is_map(http) do
     status = http[:http_status]
@@ -316,7 +318,7 @@ defmodule LS.Pipeline do
       not is_integer(status) or status < 200 or status > 399 -> 0
       (http[:http_blocked] || "") != "" -> 0
       not is_binary(body) or String.length(body) < 200 -> 0
-      Regex.match?(~r/^(just a moment|bot verification|redirecting|you are being redirected|attention required|access denied|index of \/)/, title) -> 0
+      Regex.match?(@stub_title, title) -> 0
       true -> 1
     end
   rescue
@@ -324,6 +326,34 @@ defmodule LS.Pipeline do
   end
 
   def observed?(_), do: 0
+
+  @doc """
+  A fetch the classifier may pass a verdict on (2026-10-17): an observed
+  page, or a 2xx page that is not walled, carries a real title, is not a
+  JS shell, and still has under 200 characters of text. There is nothing
+  on such a page to classify, and saying so (source "none") lets the fold
+  clear a label an earlier crawl left. gurutulenterprises.com kept
+  "Marketplace" at 0.73 from June on a 19-character page through four
+  later fetches; vendeur.com.br kept it at 1.0 on 7 characters; in one
+  week 28,460 labels sat on pages like these. A JS shell is excluded: the
+  depth lane renders it, and that render is the verdict that counts. Pure.
+  """
+  @spec evaluated?(map() | nil) :: boolean()
+  def evaluated?(http) when is_map(http) do
+    observed?(http) == 1 or thin_but_read?(http)
+  rescue
+    _ -> false
+  end
+
+  def evaluated?(_), do: false
+
+  defp thin_but_read?(http) do
+    status = http[:http_status]
+    title = (http[:http_title] || "") |> to_string() |> String.downcase() |> String.trim()
+
+    is_integer(status) and status >= 200 and status <= 399 and (http[:http_blocked] || "") == "" and
+      title != "" and not Regex.match?(@stub_title, title) and http[:_is_js_site] != true
+  end
 
   @doc """
   Build a complete enrichment row from DNS/HTTP/BGP/RDAP results.
@@ -449,7 +479,7 @@ defmodule LS.Pipeline do
       business_model: classify_result.business_model,
       industry: classify_result.industry,
       classification_confidence: classify_result.confidence,
-      classification_source: classification_source(classify_result, observed?(http) == 1),
+      classification_source: classification_source(classify_result, evaluated?(http)),
       http_schema_type: http[:http_schema_type] || "",
       http_og_type: http[:http_og_type] || "",
       bgp_ip: bgp[:bgp_ip] || "",
