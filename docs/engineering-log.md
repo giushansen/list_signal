@@ -25,6 +25,38 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-17: why nobody pays, what the signals are worth, and a read of 17 live sites
+
+**Accounts.** 25 rows in users: two are the owner's, 23 are signups since
+June, about four a month, 21 of them on gmail.com. 22 of 23 confirmed
+their email (magic links deliver), every one searched three to 28 times
+on the day they signed up, almost all for a single named company or a
+person's name, and none came back. Zero CSV orders, zero exports by
+anyone but the owner, one paywall email each, 56 digest emails that
+brought no one back. They are people, not bots (Mac and Windows
+browsers, typed queries); they are the wrong people (a company lookup
+habit, not a list-building job) arriving in tiny numbers (205 sessions on
+the homepage in 90 days, 27 on the register page, all direct). Umami's
+"signup" event fires more often than accounts appear (56 in September
+against nine accounts), so it counts an attempt, not a success.
+
+**Signals.** The product has them where a logged-in user looks
+(/dashboard/signals, filterable, exportable, 120 to 250 ms for a field or
+period filter, 2.3 s with a country filter) and in /api/v1/changes. The
+API has had two calls in 30 days, both the owner's; MCP has had none and
+had no changes tool at all until today (listsignal_changes, 046ff44).
+
+**Quality, read by hand.** 17 recently fetched sites fetched live and
+compared with the product row: 11 labels right, 3 wrong, 2 unverifiable
+(redirect to Facebook; a shell), 2 unclassified that should be SaaS and
+Ecommerce. The two wrong Marketplace labels were stale labels on pages
+with 7 and 19 characters of text, kept because a thin 2xx page counted
+as "not observed" and therefore never evaluated; 28,460 such labels in
+one week's fetches. Fixed: a thin, unwalled, titled, non-JS 2xx page is
+a verdict (19cbfb9). Industry was wrong on two of 17 (a testing lab
+labeled Beauty), and the contact extractor missed a visible phone and a
+visible info@ address on two sites.
+
 ## 2026-10-14: a week later, what the cluster looked like and what it needed
 
 Fleet steady at 950K enrichment rows and 112K depth rows a day; the
