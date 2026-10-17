@@ -28,11 +28,14 @@ defmodule LSWeb.McpTest do
     assert body["result"]["instructions"] =~ "listsignal_search_companies"
   end
 
-  test "tools/list exposes exactly the three namespaced tools with schemas", %{conn: conn, token: token} do
+  test "tools/list exposes exactly the four namespaced tools with schemas", %{conn: conn, token: token} do
     body = rpc(conn, token, "tools/list") |> json_response(200)
     tools = body["result"]["tools"]
 
+    # listsignal_changes joined 2026-10-17: the change feed had been in the
+    # API since v1 and on the dashboard, and absent here.
     assert Enum.map(tools, & &1["name"]) |> Enum.sort() == [
+             "listsignal_changes",
              "listsignal_dataset_stats",
              "listsignal_get_company",
              "listsignal_search_companies"
