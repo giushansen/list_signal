@@ -136,7 +136,7 @@ curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=K
   <%!-- MCP --%>
   <section class="mb-12" id="mcp">
     <h2 class="font-display text-2xl font-bold mb-4">MCP server, for AI agents</h2>
-    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">ListSignal speaks the Model Context Protocol natively. Point Claude, Cursor, or any MCP client at the endpoint and it gets three tools: <code class="text-white/80">listsignal_get_company</code> (the full record with its recent changes), <code class="text-white/80">listsignal_search_companies</code>, and <code class="text-white/80">listsignal_dataset_stats</code>.</p>
+    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">ListSignal speaks the Model Context Protocol natively. Point Claude, Cursor, or any MCP client at the endpoint and it gets four tools: <code class="text-white/80">listsignal_get_company</code> (the full record with its recent changes), <code class="text-white/80">listsignal_search_companies</code>, <code class="text-white/80">listsignal_changes</code> (the signal feed: what moved, where, when), and <code class="text-white/80">listsignal_dataset_stats</code>.</p>
     <pre phx-no-curly-interpolation class="rounded-xl bg-[#0C1429] border border-white/[0.07] p-5 text-[13px] text-emerald-200/90 overflow-x-auto"><code>{
   "mcpServers": {
     "listsignal": {
@@ -147,6 +147,7 @@ curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=K
   }
 }</code></pre>
     <p class="text-sm text-white/50 mt-3">Streamable HTTP transport, stateless, JSON-RPC 2.0. The same key and quota as the REST API.</p>
+    <p class="text-sm text-white/50 mt-3">Using claude.ai? Its custom connectors cannot send a header. Add the server with the key in the URL instead: <code class="text-white/80">https://listsignal.com/mcp/k/ls_YOUR_KEY</code>. Create a key just for that connector in Settings, so you can revoke it on its own.</p>
   </section>
 
   <%!-- Limits & errors --%>

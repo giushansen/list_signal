@@ -46,6 +46,14 @@ defmodule LSWeb.Router do
     plug LSWeb.Plugs.ApiAuth
   end
 
+  # The same, for clients that cannot send a header (claude.ai custom
+  # connectors, 2026-10-18): the key rides in the path, see KeyFromPath.
+  pipeline :api_v1_keyed do
+    plug :accepts, ["json"]
+    plug LSWeb.Plugs.KeyFromPath
+    plug LSWeb.Plugs.ApiAuth
+  end
+
   # Stripe webhook — BEFORE browser pipeline (no CSRF)
   scope "/webhooks", LSWeb do
     pipe_through :api
@@ -142,6 +150,13 @@ defmodule LSWeb.Router do
 
     post "/", McpController, :handle
     get "/", McpController, :reject_get
+  end
+
+  scope "/mcp/k", LSWeb do
+    pipe_through :api_v1_keyed
+
+    post "/:key", McpController, :handle
+    get "/:key", McpController, :reject_get
   end
 
   # Admin dashboard (internal) — owner-only, gated by LS_ADMIN_EMAILS
