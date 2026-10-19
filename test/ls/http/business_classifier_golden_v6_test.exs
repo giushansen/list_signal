@@ -161,8 +161,9 @@ defmodule LS.HTTP.BusinessClassifierGoldenV6Test do
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Marketplace", industry: "", ml_confidence: 0.75, ml_bm_confidence: 0.75}) == "Marketplace"
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Consulting", industry: "", ml_confidence: 0.55, ml_bm_confidence: 0.55}) == "Consulting"
       # ML SaaS was right 2 times in 14 on golden v6 with misses at 0.92; the owner set 0.95 on 2026-10-06.
-      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.92, ml_bm_confidence: 0.92}) == ""
-      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.97, ml_bm_confidence: 0.97}) == "SaaS"
+      # 2026-10-19: head v4 on e5-small reads SaaS 27 right in 30 at 0.8 on golden v7; owner lowered the floor to 0.8.
+      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.79, ml_bm_confidence: 0.79}) == ""
+      assert LS.Pipeline.ml_model_for_merge(%{business_model: "SaaS", industry: "", ml_confidence: 0.85, ml_bm_confidence: 0.85}) == "SaaS"
       assert LS.Pipeline.ml_model_for_merge(%{business_model: "Ecommerce", industry: "", ml_confidence: 0.7, ml_bm_confidence: 0.7}) == ""
 
       merged = LS.Pipeline.merge_classification(heur, %{business_model: "Marketplace", industry: "", ml_confidence: 0.55, ml_bm_confidence: 0.55, ml_industry_confidence: 0.0})

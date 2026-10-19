@@ -598,7 +598,11 @@ defmodule LS.Pipeline do
     "Directory" => 0.7,
     "Newsletter" => 0.7,
     "Ecommerce" => 0.75,
-    "SaaS" => 0.95
+    # 0.95 from 2026-10-06 (head v3: 2 right in 14 on golden v6). Lowered to
+    # 0.8 on 2026-10-19 with head v4 on e5-small, owner's call: on golden
+    # v7 the head reads SaaS 27 right in 30 at 0.8, 16 in 18 at 0.9, 30 in
+    # 35 at 0.7 (analysis/distill/README.md v4).
+    "SaaS" => 0.8
   }
 
   @doc """

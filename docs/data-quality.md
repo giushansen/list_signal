@@ -350,9 +350,9 @@ What changed, each measured on v7 with `mix ls.golden_reestimate` and
   52.5% and 75.8% at 45% for a MiniLM head trained on the same rows;
   bge-m3 adds one point for five times the parameters. End to end in the
   Elixir harness: coverage 63.7% to 74.4%, accuracy 48.5% to 54.2%,
-  LocalBusiness recall 20/48 to 29/48. The SaaS floor stays at 0.95 (the
-  owner's 2026-10-06 call, pinned by test); the e5 head reads SaaS 27 of
-  30 at 0.8 on v7, which is the number to decide on.
+  LocalBusiness recall 20/48 to 29/48. The SaaS ML floor went from 0.95
+  to 0.8 the same evening on the owner's call: the e5 head reads SaaS 27
+  of 30 at 0.8 on v7.
 - Not done: Ecommerce precision (58%) needs the product count the offline
   harness lacks; Tool and Marketplace are too rare in v7 to tune (11 and
   6 truths); industry labels stay at 40-45% exact-name precision for both

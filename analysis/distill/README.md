@@ -43,9 +43,9 @@ does not fit the 1-core workers.
   30/35, Ecommerce 19/25, Agency 24/28, Consulting 12/15, LocalBusiness
   21/23, Manufacturer 5/5, Junk 9/9, Tool 4/7, Education 2/6.
 - The production floors (`LS.Pipeline.@ml_class_floor`) were set for
-  head v3 and are kept: SaaS 0.95 is the owner's call from 2026-10-06
-  and the pinned test says so. On v7 the e5 head reads SaaS 27 of 30 at
-  0.8 and 16 of 18 at 0.9; lowering the floor is a separate decision.
+  head v3. SaaS moved from 0.95 (owner, 2026-10-06, head v3) to 0.8 on
+  2026-10-19 on the owner's call: on v7 the e5 head reads SaaS 27 of 30
+  at 0.8 and 16 of 18 at 0.9. The others are unchanged.
 
 ## v3 (2026-09-06) — structured hints, Fable teacher, +740 domains (in progress)
 
