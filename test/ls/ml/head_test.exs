@@ -28,12 +28,16 @@ defmodule LS.ML.HeadTest do
 
   test "the shipped weights file loads with the expected 17x384 shape" do
     head = Head.load()
-    assert head, "priv/ml/head_v3.json must load — the ML tier silently falls back to zero-shot cosine without it"
+    assert head, "priv/ml/head_v4.json must load — the ML tier silently falls back to zero-shot cosine without it"
     # 2026-09-06: v3 is trained on text + LS.ML.Features hint. Serving v3 on
     # un-hinted text (or v2 on hinted text) is a shape mismatch that no test
     # on the head alone can see, so the version and the pipeline's builder
     # are pinned together.
-    assert head.version == "head_v3_2026-09-06"
+    # 2026-10-19: v4 is trained on e5-small embeddings of the same hinted
+    # text; the encoder repo in LS.ML.Classifier and this version move
+    # together (v3 + MiniLM is the rollback pair).
+    assert head.version == "head_v4_2026-10-19"
+    assert File.read!("lib/ls/ml/classifier.ex") =~ ~s(@model_repo "intfloat/multilingual-e5-small")
     assert File.read!("lib/ls/pipeline.ex") =~ "LS.ML.Features.text_with_hint(ml_text"
     assert File.read!("analysis/distill/embed_labels.exs") =~ "LS.ML.Features.text_with_hint(r)"
     assert length(head.classes) == 17

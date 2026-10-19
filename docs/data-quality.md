@@ -153,7 +153,7 @@ What v2 established (numbers from `mix ls.golden_reclassify --ml`):
 
 2,200 prod domains teacher-labeled (Haiku full pass + Sonnet consensus on
 uncertain rows + web-verified revenue for 47 high-bracket domains) and
-distilled into a 13-class logistic head over the existing MiniLM embeddings
+distilled into a 13-class logistic head over the existing sentence embeddings (MiniLM then, e5-small since 2026-10-19)
 (`LS.ML.Classifier.embed_batch/1`). On the owner-labeled golden holdout the
 head's confidence is CALIBRATED: conf≥0.5 → 68% precision, conf≥0.7 → 91%.
 Dataset: `analysis/distill/` (git) + `ls.ml_teacher_labels` on prod CH
@@ -308,6 +308,55 @@ estimate until its next refresh.
 
 All of this is in-sample on v6. Grow v7 from v6's disagreements before
 quoting these as out-of-sample numbers.
+
+## Golden v7: the out-of-sample read, the corporate floor, e5-small (2026-10-19)
+
+Golden v7 is 308 rows sampled like v6 but with every earlier labeled
+domain excluded, plus 83 rows whose revenue was checked against registries
+and filings by web search. It is the first out-of-sample read of the v6
+tuning: v6 in-sample said SaaS precision 73.2% and revenue exact 72.6%;
+on v7 production's own predictions read SaaS 78.7% and revenue 56.9%
+(80 over-estimates, 29 under). The classifier gain held; the revenue
+gain did not, because v6 had taught the estimator to doubt enterprise
+signals and the giants (Acciona, Manheim, Kemper, Check Point, DLL) all
+landed in $10M-$100M, while 64 plain sites landed in $1M-$10M on nothing
+but "seven technologies and a DMARC record".
+
+What changed, each measured on v7 with `mix ls.golden_reestimate` and
+`mix ls.golden_reclassify --ml` (numbers in `analysis/golden_set/README.md`):
+
+- **Corporate floor** (`LS.Revenue.Estimator.corporate_facts/1`): facts
+  only a large organisation has (Proofpoint or Mimecast mail, a CSC or
+  MarkMonitor registrar, Pardot or Marketo, OneTrust, UltraDNS, Akamai,
+  Sitecore, BIMI, an EV issuer, a ranked site) are counted, not summed;
+  two with one strong is at least $100M-$1B, four is $1B+. Traffic ranks
+  count once, because news sites rank high on $3M.
+- **Small cap**: $1M-$10M needs one sign of a second person (two emails,
+  an address with a phone, a traffic rank, or the existing moderate and
+  strong facts); otherwise it is under $1M. 24 right, 8 wrong on v7.
+- **Microsoft 365 counted once**: the MX, the DKIM selectors and the two
+  tenant records the setup wizard creates were three votes for mid-market
+  and carried a plumber to $10M-$100M. Now one lean.
+- Revenue exact 62.2% to 74.0%, within one bracket 95.1% to 96.3%, over
+  54 to 19, under 39 to 45; employees exact 56.2% to 73.5%.
+- **Junk**: v7 found 27 non-businesses, none flagged. Newfold "under
+  development", Hostinger default pages, under-construction shells,
+  Aftermarket.com and Polish sale pages, "<domain> is for sale" as the
+  first line: 10 of 27 now, 0 real businesses newly junked.
+- **Encoder**: the ML tier moves from MiniLM to `intfloat/
+  multilingual-e5-small` with head v4 (same size, same 384 dims, a
+  `query: ` prefix). Bake-off in `analysis/distill/README.md`: on v7 the
+  e5 head reads 61.3% raw and 80.4% precision at 60% coverage against
+  52.5% and 75.8% at 45% for a MiniLM head trained on the same rows;
+  bge-m3 adds one point for five times the parameters. End to end in the
+  Elixir harness: coverage 63.7% to 74.4%, accuracy 48.5% to 54.2%,
+  LocalBusiness recall 20/48 to 29/48. The SaaS floor stays at 0.95 (the
+  owner's 2026-10-06 call, pinned by test); the e5 head reads SaaS 27 of
+  30 at 0.8 on v7, which is the number to decide on.
+- Not done: Ecommerce precision (58%) needs the product count the offline
+  harness lacks; Tool and Marketplace are too rare in v7 to tune (11 and
+  6 truths); industry labels stay at 40-45% exact-name precision for both
+  encoders.
 
 ## Withheld labels and the product fold (2026-10-07)
 

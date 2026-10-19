@@ -39,9 +39,11 @@ defmodule LS.HTTP.BusinessClassifier do
       LS.DNS.Parking.parked_ns?(signals[:rdap_nameservers]) -> "parked"
       parking_page?(signals) -> "parked"
       v6_parking_page?(signals) -> "parked"
+      v7_parking_page?(signals) -> "parked"
       default_shopify_page?(signals) -> "placeholder"
       generic_placeholder?(signals) -> "placeholder"
       v6_placeholder?(signals) -> "placeholder"
+      v7_placeholder?(signals) -> "placeholder"
       scam_page?(signals) -> "scam"
       empty_page?(signals) -> "empty"
       true -> ""
@@ -885,6 +887,37 @@ defmodule LS.HTTP.BusinessClassifier do
       # skindeepbodyart.net, scambio-coppia.net).
       (domain != "" and String.replace(body, ~r/\s+/, "") == domain) or
       (domain != "" and title == domain and String.length(body) < 40)
+  end
+
+  # Golden v7 (2026-10-19): 27 of 308 sampled "businesses" were not one and
+  # none was flagged. Hosting default pages (Newfold "under development",
+  # Hostinger "default page" in two languages), "under construction" shells
+  # and the Cloudflare Registrar landing page. Each string names a template.
+  defp v7_placeholder?(signals) do
+    title = s(signals, :http_title) |> String.downcase() |> String.trim()
+    body = s(signals, :body_text) |> String.downcase() |> String.trim()
+
+    String.contains?(body, "this site is under development") or
+      String.contains?(body, "this site is currently under construction") or
+      String.contains?(title, "underconstruction") or
+      title in ["under construction", "site under construction", "website under construction"] or
+      title == "default page" or title == "página por defecto" or
+      String.contains?(body, "upload your website files and start your journey") or
+      String.contains?(body, "cargar los archivos de tu sitio web") or
+      (title == "cloudflare registrar" and String.length(body) < 40)
+  end
+
+  # Golden v7: Aftermarket.com sale pages, a Polish domain-sale offer, and
+  # "<domain> is for sale" as the first line of the body (the v6 rule needed
+  # the "powered by computer.com" footer, which the body snippet cuts off).
+  defp v7_parking_page?(signals) do
+    title = s(signals, :http_title) |> String.downcase()
+    body = s(signals, :body_text) |> String.downcase()
+    domain = s(signals, :domain) |> String.downcase()
+
+    String.starts_with?(title, "aftermarket.com") or
+      String.contains?(title, "oferta sprzedaży domeny") or
+      (domain != "" and String.contains?(body, domain <> " is for sale"))
   end
 
   # Pure: the homepage carries a street address and a phone number.

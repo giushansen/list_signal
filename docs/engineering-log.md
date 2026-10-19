@@ -25,6 +25,32 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-19: golden v7 says the revenue gain was in-sample; corporate floor, small cap, e5-small
+
+Golden v7 (308 rows, none seen before, 83 with web-verified revenue) is
+the first out-of-sample read of the 2026-10-05 tuning. Classifier gains
+held (SaaS precision 78.7% on production's own predictions, Agency 82.8%,
+Consulting 85.0%); the revenue gain did not: exact bracket 56.9% against
+the 72.6% v6 claimed, with 80 over-estimates. Two opposite failures: the
+estimator had learned to doubt enterprise evidence, so Acciona, Manheim,
+Kemper and DLL read $10M-$100M, while 64 sites with "seven technologies
+and a DMARC record" read $1M-$10M and 34 of them were under $1M. Fixes,
+each measured on v7 before it stayed: a corporate floor that counts
+enterprise-only facts instead of summing points, a small cap that asks
+for one sign of a second person, and Microsoft 365 counted once instead
+of three times. Revenue exact 62.2% to 74.0% offline (over 54 to 19),
+employees 56.2% to 73.5%. Junk templates from v7 take the detector from
+0 of 27 to 10 of 27. The ML encoder moves to multilingual-e5-small with
+head v4 after a four-encoder bake-off (80.4% precision at 60% coverage
+against MiniLM's 75.8% at 45%, same model size); coverage 63.7% to 74.4%
+end to end. Not done: Ecommerce precision (58%), still waiting on the
+product count. Details in `docs/data-quality.md` and
+`analysis/distill/README.md` (v4); labels in 6e034b5, tuning in the
+commit after it. Two pinned tests moved under the owner's unlock file:
+`test/ls/ml/head_test.exs` (head version v3 to v4, encoder repo pinned
+alongside). The `.claude/tests-unlock` file from 2026-10-06 is still
+present and should be removed.
+
 ## 2026-10-17: why nobody pays, what the signals are worth, and a read of 17 live sites
 
 **Accounts.** 25 rows in users: two are the owner's, 23 are signups since

@@ -1,5 +1,52 @@
 # Distillation datasets — teacher labels + trained heads
 
+## v4 (2026-10-19) — encoder bake-off, e5-small wins, head v4
+
+The v3 note ended with "the next real gain needs a better encoder than
+MiniLM". Measured on golden v7 (308 rows, labeled 2026-10-19, none of
+them in any training set) with heads trained on the same 6,129 rows
+(teacher v1-v3 plus golden v1-v6 truth, text = `title h1 meta body +
+LS.ML.Features hint` exported by `export_text.exs`, StandardScaler +
+LogisticRegression C=0.05 balanced, picked by 5-fold CV):
+
+| encoder | params / dims | v7 raw | conf >= 0.7 | conf >= 0.9 | SaaS >= 0.8 |
+|---|---|---|---|---|---|
+| MiniLM-L12-v2 (shipped head v3, as is) | 118M / 384 | 56.7% | cov 20%, prec 89.3% | | |
+| MiniLM-L12-v2, retrained | 118M / 384 | 52.5% | cov 45%, prec 75.8% | cov 18%, 82.7% | 10/12 |
+| multilingual-e5-small, 512 tokens | 118M / 384 | 62.1% | cov 51%, prec 84.0% | cov 29%, 89.2% | 22/25 |
+| multilingual-e5-small, 128 tokens / 500 chars (runtime shape) | 118M / 384 | 61.3% | cov 60%, prec 80.4% | cov 33%, 88.2% | 27/30 |
+| bge-m3 | 568M / 1024 | 63.1% | cov 66%, prec 81.2% | cov 44%, 88.0% | 21/26 |
+| gte-multilingual-base | 305M / 768 | crashed in the encoder on CPU and MPS, not scored | | | |
+
+Same architecture family (BERT, 12 layers, 384 hidden) and the same
+output size as MiniLM, so Bumblebee loads it with the existing serving
+code; the only runtime differences are the repo name, the `query: `
+prefix e5 is trained with (added in `sanitize_text/1` so labels and texts
+get it alike), and the industry cosine mapping, recalibrated because e5
+cosines sit in 0.83-0.87 where MiniLM's sat in 0.22-0.49. Embeddings from
+Bumblebee and sentence-transformers agree to cosine 1.000 on three test
+strings. bge-m3 buys one point of raw accuracy for 5x the parameters; it
+does not fit the 1-core workers.
+
+- `bakeoff_2026-10-19.py` — the comparison above (embeddings cached per
+  encoder; coverage-matched precision printed alongside thresholds,
+  because raw logistic confidences are not comparable across encoders).
+- `train_head_v4.py` — the shipped head: e5 at the runtime shape (128
+  tokens, 500 chars), scaler folded into coef/intercept, written to
+  `priv/ml/head_v4.json`; also prints the industry cosine percentiles the
+  new `normalize_score/1` mapping was set from.
+- `export_text.exs` — `mix run --no-start export_text.exs ROWS.jsonl
+  OUT.jsonl`: the exact hinted text the runtime embeds, from enrich_log
+  rows merged with `businesses` counts (product_count, job_count,
+  sitemap_urls).
+- Per class at conf >= 0.7 on v7 (correct/calls, e5 runtime shape): SaaS
+  30/35, Ecommerce 19/25, Agency 24/28, Consulting 12/15, LocalBusiness
+  21/23, Manufacturer 5/5, Junk 9/9, Tool 4/7, Education 2/6.
+- The production floors (`LS.Pipeline.@ml_class_floor`) were set for
+  head v3 and are kept: SaaS 0.95 is the owner's call from 2026-10-06
+  and the pinned test says so. On v7 the e5 head reads SaaS 27 of 30 at
+  0.8 and 16 of 18 at 0.9; lowering the floor is a separate decision.
+
 ## v3 (2026-09-06) — structured hints, Fable teacher, +740 domains (in progress)
 
 - `teacher_labels_v3_2026-09-06.jsonl` — the remainder of the golden v5

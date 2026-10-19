@@ -260,3 +260,35 @@ are where the over-estimates live (see the per-stratum table in
 `docs/data-quality.md`). This is the first out-of-sample read of the v6
 tuning: v6 in-sample claimed SaaS 73.2% and revenue 72.6%; v7 reads 78.7%
 and 56.9%.
+
+After (same session, 2026-10-19, labels frozen in 6e034b5 first; every
+number from the offline harnesses on the v7 rows, so the heuristic sees no
+response headers and the estimator reads the stored enrich_log row):
+
+Revenue, `mix ls.golden_reestimate` (n=246 covered): the code as deployed
+before this session read exact 62.2%, within one bracket 95.1%, 54
+over-estimates against 39 under; after the corporate floor, the small cap
+and the softer Microsoft 365 stack it reads exact 74.0%, within one 96.3%,
+19 over against 45 under. By predicted bracket: <$1M 146/168 right,
+$1M-$10M 21/44, $10M-$100M 11/24, $100M-$1B 1/7, $1B+ 3/3. Employees:
+56.2% exact at sampling to 73.5%, within one 89.2% to 96.0%. What is
+still wrong is mostly under-estimates of mid-size firms with a modest web
+footprint (teamehub, rockpoint, gather) and the 8 foreign SMEs the small
+cap pushes under $1M because their homepage shows no contact data.
+
+Classification, `mix ls.golden_reclassify --ml` (262 truth-known real
+rows): the code as deployed before this session, MiniLM head v3, read
+coverage 63.7% at accuracy 48.5%, junk 0 of 27 flagged; after the v7 junk
+templates and the e5-small encoder with head v4 it reads coverage 74.4% at
+accuracy 54.2%, junk 10 of 27, 1 real business wrongly junked (the same
+one as before). Precision after: SaaS 81.0% (34/42), Consulting 84.2%
+(16/19), Agency 80.6% (25/31), LocalBusiness 78.4% (29/37), Manufacturer
+60.0% (9/15), Ecommerce 58.3% (21/36). Recall LocalBusiness 20/48 to
+29/48, Media 1/12 to 3/12. ML-decided rows (heuristic under 0.55): Agency
+22/27, Consulting 12/14, LocalBusiness 15/20, Media 3/3, Manufacturer
+6/10. The encoder bake-off behind the switch is in
+`analysis/distill/README.md` (v4). Ecommerce did not move: a $0.60 floor
+for single-method calls fixed 3 rows here and broke the pinned
+"schema Product is Ecommerce" test, so it was reverted; the real fix needs
+the product count the offline harness does not have.
+

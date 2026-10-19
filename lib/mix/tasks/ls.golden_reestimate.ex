@@ -21,7 +21,7 @@ defmodule Mix.Tasks.Ls.GoldenReestimate do
   use Mix.Task
 
   @revenue ["<$1M", "$1M-$10M", "$10M-$100M", "$100M-$1B", "$1B+"]
-  @employees ["1-10", "11-50", "51-500", "501-5000", "5000+"]
+  @employees ["1-10", "11-50", "51-500", "501-5000", "5001+"]
 
   @impl true
   def run([csv_path, rows_path]) do

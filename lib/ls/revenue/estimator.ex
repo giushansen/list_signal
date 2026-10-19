@@ -347,9 +347,13 @@ defmodule LS.Revenue.Estimator do
         {add(scores, :mid_market, 5) |> add(:enterprise, 4),
          [{"mx", "Barracuda", :mid_market} | evidence]}
 
+      # Golden v7 (2026-10-19): Microsoft 365 is a plumber's mail as often
+      # as a mid-market firm's. The tenant used to be counted three times
+      # (mx, DKIM selectors, tenant records) and alone carried ten small
+      # firms into $10M-$100M. One lean here; the other two are faint.
       String.contains?(mx, "outlook") or String.contains?(mx, "microsoft") or
       String.contains?(mx, "protection.outlook") ->
-        {add(scores, :mid_market, 4) |> add(:enterprise, 3) |> add(:small, 2),
+        {add(scores, :small, 3) |> add(:mid_market, 3) |> add(:enterprise, 2),
          [{"mx", "Microsoft365", :mid_market} | evidence]}
 
       String.contains?(mx, "google") or String.contains?(mx, "googlemail") or
@@ -427,9 +431,15 @@ defmodule LS.Revenue.Estimator do
     n = if flags == "", do: 0, else: length(String.split(flags, "|", trim: true))
 
     cond do
+      # Two or three records are what Microsoft's own domain wizard sets
+      # up, so most tenants have them (golden v7, 2026-10-19: a plumber,
+      # an insurance agent, a pottery studio and a painting contractor all
+      # carried sipfederation + enterpriseregistration and read
+      # $10M-$100M on that stack alone; 10 wrong against 3 right in the
+      # $10M-$100M bracket). A lean, not a vote for enterprise.
       n >= 2 ->
-        {add(scores, :mid_market, 6) |> add(:enterprise, 6) |> add(:large_enterprise, 2),
-         [{"ms_enterprise", flags, :enterprise} | evidence]}
+        {add(scores, :mid_market, 2) |> add(:enterprise, 2),
+         [{"ms_enterprise", flags, :mid_market} | evidence]}
 
       # autodiscover alone is every Microsoft 365 tenant, a one-person shop
       # included (2026-10-05: it carried a translator and a machining
@@ -439,7 +449,7 @@ defmodule LS.Revenue.Estimator do
          [{"ms_enterprise", flags, :small} | evidence]}
 
       n == 1 ->
-        {add(scores, :small, 2) |> add(:mid_market, 3) |> add(:enterprise, 1),
+        {add(scores, :small, 2) |> add(:mid_market, 2),
          [{"ms_enterprise", flags, :mid_market} | evidence]}
 
       true ->
@@ -558,9 +568,10 @@ defmodule LS.Revenue.Estimator do
       selectors == [] ->
         {scores, evidence}
 
+      # The same tenant the MX already counted (golden v7, 2026-10-19).
       Enum.any?(selectors, &(&1 in ["selector1", "selector2"])) ->
-        {add(scores, :small, 2) |> add(:mid_market, 4) |> add(:enterprise, 2),
-         [{"dkim", "microsoft365", :mid_market} | evidence]}
+        {add(scores, :small, 2) |> add(:mid_market, 1) |> add(:enterprise, 1),
+         [{"dkim", "microsoft365", :small} | evidence]}
 
       Enum.any?(selectors, &(&1 in ["k1", "hs1-", "mte1", "cm", "s1", "mailjet", "sendgrid", "mandrill", "smtpapi", "pm", "everlytickey1"])) ->
         {add(scores, :small, 3) |> add(:mid_market, 3),
@@ -1413,6 +1424,110 @@ defmodule LS.Revenue.Estimator do
   end
 
   # =========================================================================
+  # SIGNAL 17 — The small cap and the corporate floor (2026-10-19, golden v7)
+  # =========================================================================
+  # Golden v7: 64 rows landed in $1M-$10M on nothing but "a few
+  # technologies, a DMARC record, a known nameserver", and 34 of them were
+  # under $1M. The small bracket needs one concrete sign that more than one
+  # person works there: a second contact email, an address with a phone, a
+  # traffic rank, or anything moderate_upward?/strong_upward? already count.
+  # Without one, small is micro. Measured on v7: 24 rows move to the right
+  # bracket, 8 move wrong (foreign SMEs with no contact data on the
+  # homepage), exact 62.2% -> 69.5%.
+  defp small_cap(:small, evidence, signals, capped?) do
+    if small_substance?(signals),
+      do: {:small, evidence, capped?},
+      else: {:micro, [{"small_cap", "no_substance", :micro} | evidence], true}
+  end
+
+  defp small_cap(winner, evidence, _signals, capped?), do: {winner, evidence, capped?}
+
+  @doc "Pure: a sign that a few people work there, enough to keep the small bracket."
+  @spec small_substance?(map()) :: boolean()
+  def small_substance?(signals) do
+    emails = get_str(signals, :http_emails) |> String.split("|", trim: true) |> length()
+    rank = get_int(signals, :tranco_rank)
+
+    emails >= 2 or
+      (get_str(signals, :http_address) != "" and get_str(signals, :http_phone) != "") or
+      (is_integer(rank) and rank > 0) or
+      moderate_upward?(signals) or strong_upward?(signals)
+  end
+
+  # Golden v7: Acciona, Manheim, Kemper, Suncorp Bank and Anheuser-Busch all
+  # read $10M-$100M. Each carries two or more facts that only a large
+  # organisation has (a mail gateway like Proofpoint, a corporate registrar,
+  # Pardot, OneTrust, UltraDNS, an enterprise CDN, a ranked site), yet the
+  # sum of generic mid-market points (Microsoft 365, a schema type, seven
+  # technologies) outvoted them. Facts are counted, not summed: two with one
+  # of them strong is enterprise, four is large enterprise. Traffic ranks
+  # count once however many agree, because a news site ranks high on a $3M
+  # budget (securityweek, frontpagemag, juedische-allgemeine). Microsoft
+  # tenant records and SPF include counts are not facts: every tenant has
+  # the records and SPF counts marketing tools. Measured on v7: 6 rows move
+  # up, all correctly or to within one bracket, 0 move wrong.
+  @strong_facts MapSet.new(~w(mx_gw registrar martech compliance ns cms))
+
+  defp corporate_floor(winner, evidence) do
+    facts = corporate_facts(evidence)
+    n = MapSet.size(facts)
+    strong = facts |> MapSet.intersection(@strong_facts) |> MapSet.size()
+
+    floor =
+      cond do
+        n >= 4 or (strong >= 2 and MapSet.member?(facts, "top_traffic")) -> :large_enterprise
+        n >= 3 or (n >= 2 and strong >= 1) -> :enterprise
+        true -> nil
+      end
+
+    if floor != nil and bracket_index(floor) > bracket_index(winner),
+      do: {floor, [{"corporate_floor", "#{n}_facts", floor} | evidence]},
+      else: {winner, evidence}
+  end
+
+  @doc "Pure: the enterprise-only facts named in an evidence list, as a set of fact names."
+  @spec corporate_facts([{String.t(), String.t() | integer(), atom()}]) :: MapSet.t(String.t())
+  def corporate_facts(evidence) when is_list(evidence) do
+    Enum.reduce(evidence, MapSet.new(), fn
+      {signal, value, _bracket}, acc ->
+        value = to_string(value)
+
+        cond do
+          signal == "tranco" and String.starts_with?(value, ["top_1k", "top_10k"]) ->
+            acc |> MapSet.put("traffic") |> MapSet.put("top_traffic")
+
+          signal == "tranco" and String.starts_with?(value, "top_100k") -> MapSet.put(acc, "traffic")
+          signal == "majestic" and String.starts_with?(value, ["top_5k", "top_50k"]) -> MapSet.put(acc, "traffic")
+          signal == "ref_subnets" and int_at_least?(value, 1000) -> MapSet.put(acc, "traffic")
+          signal == "mx" and value in ["Proofpoint", "Mimecast"] -> MapSet.put(acc, "mx_gw")
+          signal == "registrar" and value in ["CSC", "MarkMonitor"] -> MapSet.put(acc, "registrar")
+          signal == "martech" and value in ["Pardot", "Eloqua", "Marketo"] -> MapSet.put(acc, "martech")
+          signal == "compliance" -> MapSet.put(acc, "compliance")
+          signal == "ns" and value in ["UltraDNS", "Dyn"] -> MapSet.put(acc, "ns")
+          signal == "cdn" and value in ["Akamai", "Imperva"] -> MapSet.put(acc, "cdn")
+          signal == "cms" and value in ["Sitecore", "AEM"] -> MapSet.put(acc, "cms")
+          signal == "bimi" -> MapSet.put(acc, "bimi")
+          signal == "ssl_issuer" and value in ["DigiCert", "GlobalSign", "Entrust"] -> MapSet.put(acc, "ssl")
+          true -> acc
+        end
+
+      _, acc ->
+        acc
+    end)
+  end
+
+  def corporate_facts(_), do: MapSet.new()
+
+  defp int_at_least?(value, min) do
+    case Integer.parse(value) do
+      {n, _} -> n >= min
+      :error -> false
+    end
+  end
+
+  defp bracket_index(bracket), do: Enum.find_index(@brackets, &(&1 == bracket)) || 0
+
+  # =========================================================================
   # RESULT COMPUTATION
   # =========================================================================
 
@@ -1425,6 +1540,8 @@ defmodule LS.Revenue.Estimator do
       probs = softmax(scores)
       {winner, max_prob} = Enum.max_by(probs, fn {_k, v} -> v end)
       {winner, evidence, capped?} = solo_cap(winner, scores, evidence, signals)
+      {winner, evidence, capped?} = small_cap(winner, evidence, signals, capped?)
+      {winner, evidence} = corporate_floor(winner, evidence)
       evidence_density = min(length(evidence) / 10.0, 1.0)
       confidence = Float.round(max_prob * 0.7 + evidence_density * 0.3, 2) |> min(0.99)
       confidence = if capped?, do: min(confidence, 0.6), else: confidence

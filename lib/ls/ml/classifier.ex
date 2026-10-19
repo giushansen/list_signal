@@ -2,9 +2,24 @@ defmodule LS.ML.Classifier do
   @moduledoc """
   Tier 2 classifier using sentence embeddings + cosine similarity.
 
-  Uses `paraphrase-multilingual-MiniLM-L12-v2` to embed page text, then
-  compares against pre-computed label embeddings to classify business model
-  and industry. Multilingual, single forward pass per page, ~50ms on CPU.
+  Uses `intfloat/multilingual-e5-small` to embed page text (since
+  2026-10-19; `paraphrase-multilingual-MiniLM-L12-v2` before), then applies
+  the trained head (`LS.ML.Head`) for the business model and compares
+  against pre-computed label embeddings for the industry. Multilingual,
+  same BERT-L12-H384 architecture and the same 384-dim output as MiniLM,
+  one forward pass per page, ~50ms on CPU.
+
+  ## Why e5 (2026-10-19, golden v7)
+
+  A bake-off on the 6,129 teacher and golden v1-v6 labels, scored on the
+  308 golden v7 rows none of them had seen (`analysis/distill/
+  bakeoff_2026-10-19.py`): a head on MiniLM reads 52.5% raw and 75.8%
+  precision at 45% coverage (conf >= 0.7); the same head on e5-small reads
+  61.3% raw and 80.4% at 60% coverage, SaaS 27 of 30 right at conf >= 0.8
+  against 10 of 12. bge-m3 (568M params, 1024 dims) adds one more point
+  and does not fit the 1-core workers. e5 wants a `query: ` prefix on
+  every text it embeds, labels included; `sanitize_text/1` adds it so no
+  path can forget it.
 
   Only invoked when the heuristic BusinessClassifier returns low confidence.
   """
@@ -12,7 +27,10 @@ defmodule LS.ML.Classifier do
   use GenServer
   require Logger
 
-  @model_repo "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+  @model_repo "intfloat/multilingual-e5-small"
+  # e5 is trained with an instruction prefix; "query: " on both sides is the
+  # documented choice for symmetric tasks (text vs label descriptions).
+  @text_prefix "query: "
   @max_sequence_length 128
   @batch_size 8
 
@@ -189,7 +207,7 @@ defmodule LS.ML.Classifier do
   end
 
   @doc """
-  Raw L2-normalized MiniLM embeddings (384 floats) for a batch of texts.
+  Raw L2-normalized e5-small embeddings (384 floats) for a batch of texts.
 
   This is the feature extractor for the trained classification head (the
   distillation program, docs/data-quality.md): training computes embeddings
@@ -354,7 +372,7 @@ defmodule LS.ML.Classifier do
       end
     end
 
-    String.slice(text, 0, 500)
+    @text_prefix <> String.slice(text, 0, 500)
   end
 
   defp do_classify(text, state) do
@@ -435,10 +453,14 @@ defmodule LS.ML.Classifier do
     |> Enum.max_by(fn {_, score} -> score end)
   end
 
-  # Map cosine similarity (typically 0.1-0.7) to confidence (0.0-1.0)
+  # Map cosine similarity to confidence (0.0-1.0). e5 cosines sit in a
+  # narrow band (golden v7, 254 rows: p10 0.836, p50 0.854, p90 0.872,
+  # against MiniLM's 0.22 / 0.35 / 0.49), so the mapping is set to keep
+  # the industry threshold of 0.35 at the same coverage the MiniLM mapping
+  # `(cos - 0.15) / 0.45` had: about two rows in three, at 45-48%
+  # exact-name precision for both encoders.
   defp normalize_score(cosine_sim) do
-    # Empirical mapping: 0.2 = low, 0.4 = medium, 0.6+ = high
-    score = (cosine_sim - 0.15) / 0.45
+    score = (cosine_sim - 0.82) / 0.08
     score |> max(0.0) |> min(1.0)
   end
 
@@ -452,7 +474,7 @@ defmodule LS.ML.Classifier do
       # Embed all descriptions for this label
       embeddings = descriptions
       |> Enum.map(fn desc ->
-        %{embedding: emb} = Nx.Serving.run(serving, desc)
+        %{embedding: emb} = Nx.Serving.run(serving, sanitize_text(desc))
         emb
       end)
 

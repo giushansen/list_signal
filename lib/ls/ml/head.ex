@@ -1,7 +1,8 @@
 defmodule LS.ML.Head do
   @moduledoc """
-  The trained classification head: a 17-class logistic layer over the MiniLM
-  embeddings `LS.ML.Classifier` already computes.
+  The trained classification head: a 17-class logistic layer over the
+  sentence embeddings `LS.ML.Classifier` already computes (e5-small since
+  v4, MiniLM for v1-v3).
 
   Weights live in `priv/ml/head_v2.json` — trained 2026-08-17 from 4,158
   Claude-teacher-labeled prod domains (distill v1 2,200 + v2 1,962;
@@ -21,7 +22,12 @@ defmodule LS.ML.Head do
 
   require Logger
 
-  @weights_path "ml/head_v3.json"
+  # v4 (2026-10-19): the encoder moved to multilingual-e5-small; the head is
+  # retrained on the same text shape (hinted, 500 chars) over e5 embeddings,
+  # with the StandardScaler folded into the weights so this module stays a
+  # plain linear layer. v3 is the rollback, together with the MiniLM repo
+  # and no "query: " prefix in LS.ML.Classifier; never one without the other.
+  @weights_path "ml/head_v4.json"
 
   @doc """
   Load head weights from priv. Returns `%{classes: [...], coef: tensor,
