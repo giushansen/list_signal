@@ -214,3 +214,49 @@ on the stored enrich_log rows: exact bracket 61.5% -> 72.6%, within one
 86.4% -> 96.2%, over/under 83/22 -> 43/29; employees exact 58.3% -> 72.7%.
 In-sample: v7 must be grown from v6's disagreements before these numbers
 are quoted as out-of-sample.
+
+
+## v7 (2026-10-19) — grown from v6's weak spots, revenue web-verified
+
+`golden_set_v7_2026-10-19.csv` — **308 domains**, sampled from `businesses`
+(alive 2xx, non-empty title, `estimated_junk=''`) restricted to the
+`cityHash64(domain) % 6 = 0` slice of domains with a stored homepage
+decomposition in `http_pages`, by `cityHash64(concat(domain,'gv7'))` order
+within strata, every v1-v6 and teacher-labeled domain excluded (6,419
+names). Strata: SaaS 25 high / 20 low confidence, Ecommerce 15 Shopify /
+25 other, Agency 30, Consulting 20, LocalBusiness 20, Tool 15, Marketplace
+15, Manufacturer 15, unclassified 25, predicted $10M-$100M 30, predicted
+$100M-$1B 25, and 28 "verifiable" domains (Tranco top 500k with no
+verified revenue) so the estimator is scored on companies whose size can
+be checked. The sample is one query per stratum (the 14-way UNION of v6
+OOMs the 6 GB master once the page set is joined in).
+
+Labeling: Claude Fable 5.1 in one session reading the stored blocks per
+domain (`gv7_labels/evidence_2026-10-19.json`, same fields as v6), raw
+labels in `gv7_labels/batch_*.jsonl`, the sampled prediction rows in
+`gv7_labels/sample_2026-10-19.json` and the newest `enrich_log` row per
+domain in `gv7_labels/rows_enrich_log_2026-10-19.jsonl` for
+`mix ls.golden_reestimate`. Revenue and headcount for the 83 rows in the
+two predicted-big strata and the verifiable stratum were checked against
+public sources (company registries, filings, press) by web search in the
+same session; the figure used is in the note. Pages for the offline
+harness in `pages_v7_2026-10-19.tar.gz` (306 of 308 fetched, 288 HTTP 200,
+15 blocked with 403). Notes prefixed `AI: blocks;`. Classes outside the
+taxonomy, kept from v6: `Wholesaler` (6), `Holding` (3). One ISP and one
+bot-challenge page carry size truth but no model truth.
+
+Baseline at freeze (`mix ls.golden_eval`, prod predictions at sampling
+time, which already include the v6 tuning shipped 2026-10-05): junk 9.1%
+(28 rows; v6 was 13.1%); 21 real businesses in the unclassified bucket;
+precision SaaS 78.7% (n=47), Agency 82.8% (n=29), Consulting 85.0%
+(n=20), LocalBusiness 80.8% (n=26), Ecommerce 62.2% (n=37), Tool 62.5%
+(n=8), Manufacturer 55.6% (n=18), Marketplace 28.6% (n=7); confidence
+bands low 69.4% (n=85), high 75.0% (n=112). Recall by true class: SaaS
+37/55, Ecommerce 23/29, Agency 24/32, Consulting 17/27, LocalBusiness
+21/49, Manufacturer 10/16, Media 1/12, Tool 5/11, Wholesaler 0/6,
+Nonprofit 0/5, FinancialInstitution 0/5. Revenue exact bracket 56.9%
+(n=253), 80 over-estimates against 29 under; the two predicted-big strata
+are where the over-estimates live (see the per-stratum table in
+`docs/data-quality.md`). This is the first out-of-sample read of the v6
+tuning: v6 in-sample claimed SaaS 73.2% and revenue 72.6%; v7 reads 78.7%
+and 56.9%.

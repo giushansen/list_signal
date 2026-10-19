@@ -1,0 +1,309 @@
+bucket,domain,url,tranco_rank,predicted_model,model_confidence,predicted_industry,predicted_revenue,revenue_confidence,is_real_business,model_ok,true_model,industry_ok,true_industry,true_revenue,true_employees,notes
+saas_high,teamehub.com,https://teamehub.com/,353901,SaaS,0.84,Productivity,$1M-$10M,0.79,y,y,SaaS,y,Productivity,$10M-$100M,51-500,"AI: blocks; TEAM Software, WorkWave company; workforce mgmt ERP for cleaning/security"
+saas_high,jurvexis.com,https://jurvexis.com/,,SaaS,0.88,Legal,<$1M,0.69,y,y,SaaS,y,Legal,<$1M,1-10,"AI: blocks; legal practice mgmt, domain 2026"
+saas_high,trycake.com,https://trycake.com/,2014902,SaaS,0.81,,$1M-$10M,0.97,y,y,SaaS,,Food & Beverage,$10M-$100M,51-500,"AI: blocks; CAKE restaurant POS (Mad Mobile), Sysco-backed"
+saas_high,scalemodepulse.com,https://scalemodepulse.com/,,SaaS,0.82,,$1M-$10M,0.75,y,y,SaaS,,DevTools,,,AI: blocks; page is a mirror of pump.co cloud cost platform; revenue unknown for this domain
+saas_high,weforge.fit,https://weforge.fit/,,SaaS,0.86,Education,<$1M,0.87,y,y,SaaS,n,Fitness,<$1M,1-10,"AI: blocks; trainer platform, 2026"
+saas_high,mytaskwallet.com,https://mytaskwallet.com/,,SaaS,0.84,,<$1M,0.82,y,y,SaaS,,Productivity,<$1M,1-10,AI: blocks; consumer app with pricing
+saas_high,getthere.com,https://getthere.com/,2700584,SaaS,0.9,,$100M-$1B,0.99,y,y,SaaS,,Travel,$10M-$100M,51-500,"AI: blocks; GetThere corporate travel platform, Serko"
+saas_high,handoff.ai,https://handoff.ai/,497781,SaaS,0.94,,$1M-$10M,0.99,y,y,SaaS,,Construction & Manufacturing,$1M-$10M,11-50,"AI: blocks; AI estimating for builders, 11 jobs, verified 11-50"
+saas_high,gopersist.co,https://gopersist.co/,,SaaS,0.84,,$1M-$10M,0.9,y,y,SaaS,,Marketing,$1M-$10M,11-50,AI: blocks; PersistIQ sales engagement
+saas_high,portsignal.org,https://portsignal.org/,,SaaS,0.79,,<$1M,0.82,y,y,SaaS,,Nonprofit tech,<$1M,1-10,"AI: blocks; one-person LLC, Pantry Route app"
+saas_high,crossance.com,https://crossance.com/,,SaaS,0.99,,<$1M,0.96,y,y,SaaS,,Fintech,<$1M,1-10,AI: blocks; 2026 fintech for Indian exporters
+saas_high,tenance.de,https://tenance.de/,,SaaS,0.84,,<$1M,0.6,y,y,SaaS,,Real Estate,<$1M,1-10,"AI: blocks; proptech, solo"
+saas_high,geup.net,https://geup.net/,,SaaS,0.73,,$100M-$1B,0.88,y,n,Tool,,Education,<$1M,1-10,AI: blocks; desktop geometry software vendor since 2000; estimator said $100M-$1B from NetworkSolutions+age
+saas_high,stratacreatif.com,https://stratacreatif.com/,,SaaS,0.99,,<$1M,0.72,y,y,SaaS,,DevTools,<$1M,1-10,"AI: blocks; self-hosted ITSM, tiny vendor"
+saas_high,fillora.net,https://fillora.net/,,SaaS,0.99,,<$1M,0.79,y,y,SaaS,,HR & Recruiting,<$1M,1-10,"AI: blocks; Chrome extension, waitlist"
+saas_high,yourdebrief.com,https://yourdebrief.com/,,SaaS,0.84,,<$1M,0.66,y,y,SaaS,,HR & Recruiting,<$1M,1-10,AI: blocks; interview review app
+saas_high,bulktify.com,https://bulktify.com/,,SaaS,0.99,,$1M-$10M,0.81,y,y,SaaS,,Ecommerce & Retail,<$1M,1-10,AI: blocks; 2025 wholesale platform startup
+saas_high,vowise.com,https://vowise.com/,3325195,SaaS,0.99,,$1M-$10M,0.59,y,y,SaaS,,Productivity,<$1M,1-10,AI: blocks; voice journal app
+saas_high,cbsmgr.com,https://cbsmgr.com/,,SaaS,0.99,,<$1M,0.8,y,y,SaaS,,DevTools,<$1M,1-10,AI: blocks; $10/mo self-hosted billing
+saas_high,solarapsychics.com,https://solarapsychics.com/,,SaaS,0.72,,$1M-$10M,0.86,y,n,Marketplace,,Media & Entertainment,<$1M,1-10,"AI: blocks; psychic advisor marketplace, 2025"
+saas_high,orionworkforce.com.br,https://orionworkforce.com.br/,,SaaS,0.84,,<$1M,0.8,y,y,SaaS,,HR & Recruiting,<$1M,1-10,"AI: blocks; HR SaaS plus services, 2026"
+saas_high,bangermap.com,https://bangermap.com/,,SaaS,0.77,DevTools,<$1M,0.69,y,n,Tool,n,Marketing,<$1M,1-10,AI: blocks; $49 one-time desktop app
+saas_high,ballthor.com,https://ballthor.com/,,SaaS,0.84,,$1M-$10M,0.94,y,y,SaaS,,Sports,<$1M,1-10,AI: blocks; sports org platform
+saas_high,clinicianteam.com,https://clinicianteam.com/,,SaaS,0.92,Healthcare,$1M-$10M,0.97,y,y,SaaS,y,Healthcare,$10M-$100M,51-500,AI: blocks; ICANotes behavioral health EHR
+saas_high,proxgpt.com,https://proxgpt.com/,,SaaS,0.85,AI & ML,<$1M,0.74,y,y,SaaS,y,AI & ML,<$1M,1-10,AI: blocks; AI media tools
+saas_low,rutta.io,https://rutta.io/,,SaaS,0.65,,<$1M,0.72,y,y,SaaS,,Productivity,<$1M,1-10,AI: blocks; voice input app
+saas_low,asdfghjkl.uk,https://asdfghjkl.uk/,,SaaS,0.46,,<$1M,0.77,n,,,,,,,"AI: blocks; Cloudflare default page, no content"
+saas_low,griffinalgorithm.com,https://griffinalgorithm.com/,,SaaS,0.55,,<$1M,0.83,y,n,Tool,,Productivity,<$1M,1-10,"AI: blocks; DigiCard app, 2019 site"
+saas_low,greatcvai.com,https://greatcvai.com/,2381928,SaaS,0.61,HR & Recruiting,<$1M,0.83,y,y,SaaS,y,HR & Recruiting,<$1M,1-10,AI: blocks; AI resume tool
+saas_low,pridesdate.com,https://pridesdate.com/,514716,SaaS,0.59,,$1M-$10M,0.91,y,n,Community,,Media & Entertainment,,,AI: blocks; LGBTQ dating platform; size unknown
+saas_low,scriptajournal.com,https://scriptajournal.com/,,SaaS,0.62,,<$1M,0.86,y,y,SaaS,,Productivity,<$1M,1-10,AI: blocks; AI journaling app
+saas_low,pickly.com.br,https://pickly.com.br/,,SaaS,0.65,,<$1M,0.79,y,y,SaaS,,Logistics,<$1M,1-10,AI: blocks; parcel pickup point SaaS
+saas_low,oenodpay.com,https://oenodpay.com/,,SaaS,0.55,,<$1M,0.79,y,y,SaaS,,Fintech,<$1M,1-10,"AI: blocks; wallet app, 2025"
+saas_low,rheomyth.com,https://rheomyth.com/,,SaaS,0.55,,<$1M,0.84,y,y,SaaS,,Education,<$1M,1-10,AI: blocks; browser animation editor
+saas_low,myvaultplus.com,https://myvaultplus.com/,,SaaS,0.55,,<$1M,0.86,y,y,SaaS,,Healthcare,<$1M,1-10,AI: blocks; health record portal Nigeria
+saas_low,fellipeguimaraes.com.br,https://fellipeguimaraes.com.br/,,SaaS,0.55,,$1M-$10M,0.61,y,n,Media,,Media & Entertainment,<$1M,1-10,"AI: blocks; personal blog of an entrepreneur, not SaaS"
+saas_low,rtoradar.com.au,https://rtoradar.com.au/,,SaaS,0.65,Legal,$1M-$10M,0.64,y,y,SaaS,n,Education,<$1M,1-10,AI: blocks; RTO compliance SaaS
+saas_low,grandslamgtmvelocity.com,https://grandslamgtmvelocity.com/,,SaaS,0.55,,$1M-$10M,0.8,y,n,Agency,,Marketing,<$1M,1-10,"AI: blocks; outbound services, not software"
+saas_low,formalist.fr,https://formalist.fr/,,SaaS,0.65,,$1M-$10M,0.5,y,y,SaaS,,Legal,<$1M,1-10,AI: blocks; legaltech by a Paris law firm
+saas_low,gutpulse.co.uk,https://gutpulse.co.uk/,,SaaS,0.65,,<$1M,0.78,y,y,SaaS,,Healthcare,<$1M,1-10,"AI: blocks; gut health tracker, one-page site"
+saas_low,sincrio.com,https://sincrio.com/,,SaaS,0.65,Food & Beverage,$1M-$10M,0.55,y,y,SaaS,y,Food & Beverage,<$1M,1-10,AI: blocks; restaurant invoice OCR
+saas_low,dalampartner.com,https://dalampartner.com/,,SaaS,0.6,,$1M-$10M,0.84,y,y,SaaS,,Real Estate,<$1M,1-10,AI: blocks; CRM for Bali villa agencies
+saas_low,lumedis.fr,https://lumedis.fr/,,SaaS,0.65,,<$1M,0.83,y,y,SaaS,,Healthcare,<$1M,1-10,"AI: blocks; dental consent SaaS, 2026"
+saas_low,patsecured.com,https://patsecured.com/,,SaaS,0.58,,<$1M,0.9,y,n,Ecommerce,,Consumer Electronics,<$1M,1-10,AI: blocks; sells a hardware tracker online; not SaaS
+saas_low,ngapung.live,https://ngapung.live/,,SaaS,0.65,,<$1M,0.88,y,n,Tool,,Government & Civic,<$1M,1-10,AI: blocks; free community flood map
+ecom_shopify,gaslandchef.com,https://gaslandchef.com/,3175813,Ecommerce,0.99,,$1M-$10M,0.99,y,y,Ecommerce,,Home & Garden,$1M-$10M,11-50,"AI: blocks; appliance brand DTC, 151 products"
+ecom_shopify,heungyau.com,https://heungyau.com/,3241551,Ecommerce,0.99,,$1M-$10M,0.86,y,y,Ecommerce,,Home & Garden,<$1M,1-10,AI: blocks; small HK incense brand
+ecom_shopify,krzr-druckzone.at,https://krzr-druckzone.at/,,Ecommerce,0.9,,<$1M,0.73,y,y,Ecommerce,,Fashion,<$1M,1-10,"AI: blocks; custom textile print, e.U."
+ecom_shopify,myhomidek.com,https://myhomidek.com/,,Ecommerce,0.99,,<$1M,0.8,y,y,Ecommerce,,Home & Garden,<$1M,1-10,AI: blocks; Shenzhen whiteboard seller DTC
+ecom_shopify,schlusselmobile.com,https://schlusselmobile.com/,,Ecommerce,0.99,,<$1M,0.81,y,y,Ecommerce,,Consumer Electronics,<$1M,1-10,"AI: blocks; phone chargers, 7 products"
+ecom_shopify,gordonsprimegallery.com,https://gordonsprimegallery.com/,,Ecommerce,0.88,,<$1M,0.78,y,y,Ecommerce,,Art,<$1M,1-10,AI: blocks; art prints shop
+ecom_shopify,mechanicsuperstore.com,https://mechanicsuperstore.com/,411755,Ecommerce,0.92,,$1M-$10M,0.99,y,y,Ecommerce,,Automotive,$1M-$10M,11-50,"AI: blocks; car lifts retailer since 2009, 500 products, 1,400 reviews"
+ecom_shopify,elvy.pk,https://elvy.pk/,,Ecommerce,0.99,Ecommerce & Retail,<$1M,0.81,y,y,Ecommerce,n,Fashion,<$1M,1-10,"AI: blocks; wallets, Pakistan"
+ecom_shopify,purse-one.com,https://purse-one.com/,,Ecommerce,0.99,,$1M-$10M,0.72,y,y,Ecommerce,,Fashion,<$1M,1-10,"AI: blocks; small Hungarian bag shop, 14 products"
+ecom_shopify,eroticae.com,https://eroticae.com/,,Ecommerce,0.72,,<$1M,0.6,y,n,Media,,Ecommerce & Retail,<$1M,1-10,"AI: blocks; affiliate discount-code site for 19 shops, not a shop"
+ecom_shopify,thenursewhoknits.ca,https://thenursewhoknits.ca/,,Ecommerce,0.72,,<$1M,0.73,y,y,Ecommerce,,Fashion,<$1M,1-10,AI: blocks; handknit sweaters
+ecom_shopify,playatdmz.com,https://playatdmz.com/,,Ecommerce,0.88,,<$1M,0.59,y,n,LocalBusiness,,Media & Entertainment,<$1M,1-10,AI: blocks; HK hobby store with gaming space; shop secondary
+ecom_shopify,sacredstepsyoga.com,https://sacredstepsyoga.com/,,Ecommerce,0.99,,<$1M,0.73,y,y,Ecommerce,,Fitness,<$1M,1-10,AI: blocks; merch and downloads
+ecom_shopify,joylandialend.com,https://joylandialend.com/,,Ecommerce,0.88,,<$1M,0.86,y,n,LocalBusiness,,Education,<$1M,1-10,AI: blocks; ludoteca workshops Las Palmas; Shopify for bookings
+ecom_shopify,allamericanashley.com,https://allamericanashley.com/,,Ecommerce,0.86,,<$1M,0.61,y,y,Ecommerce,,Home & Garden,<$1M,1-10,"AI: blocks; handmade goods, 61 products"
+ecom_other,dewa6djowopools.com,https://dewa6djowopools.com/,217347,Ecommerce,0.99,,$1M-$10M,0.69,n,,,,,,,AI: blocks; togel gambling spam on a shoe-shop template
+ecom_other,bedlin.eu,https://bedlin.eu/,3293253,Ecommerce,0.72,,$1M-$10M,0.46,y,y,Ecommerce,,Home & Garden,$1M-$10M,11-50,"AI: blocks; Belgian bedding webshop, 25 years, 4,228 urls"
+ecom_other,finoaromaessence.com.br,https://finoaromaessence.com.br/,,Ecommerce,0.72,,<$1M,0.82,y,,,,,,,"AI: blocks; title only, no page text; cannot label"
+ecom_other,ivensmith.com,https://ivensmith.com/,,Ecommerce,0.74,,<$1M,0.75,y,,,,,,,AI: blocks; no page text; cannot label
+ecom_other,gdaconnect.com,https://gdaconnect.com/,3131793,Ecommerce,0.72,Fashion,$1M-$10M,0.95,y,n,Agency,n,Marketing,<$1M,1-10,"AI: blocks; Gloworks creative agency, Mexico; WooCommerce only"
+ecom_other,rmsconstrucoescampinas.com.br,https://rmsconstrucoescampinas.com.br/,,Ecommerce,0.72,,$1M-$10M,0.85,y,n,LocalBusiness,,Construction & Manufacturing,<$1M,1-10,"AI: blocks; construction and maintenance services, Campinas; WooCommerce only"
+ecom_other,tandongems.com,https://tandongems.com/,3064891,Ecommerce,0.8,,$1M-$10M,0.92,y,y,Ecommerce,,Fashion,$1M-$10M,11-50,"AI: blocks; gemstone beads, 5,000 reviews"
+ecom_other,camrade.com,https://camrade.com/,,Ecommerce,0.99,,$1M-$10M,0.89,y,y,Ecommerce,,Consumer Electronics,$1M-$10M,11-50,"AI: blocks; camera bag brand NL, since 1998"
+ecom_other,infinitypg.com,https://infinitypg.com/,,Ecommerce,0.72,,$100M-$1B,0.75,y,n,Manufacturer,,Fashion,$10M-$100M,11-50,"AI: blocks; Infinity Product Group, headwear manufacturer Arkansas; pred Ecommerce $100M-$1B"
+ecom_other,thedreamstore.gr,https://thedreamstore.gr/,1370079,Ecommerce,0.99,Fashion,$1M-$10M,0.86,y,y,Ecommerce,y,Fashion,$1M-$10M,11-50,"AI: blocks; Greek womenswear shop, 1,245 urls"
+ecom_other,andreamonk.co.uk,https://andreamonk.co.uk/,,Ecommerce,0.72,,<$1M,0.87,y,n,LocalBusiness,,Education,<$1M,1-10,AI: blocks; piano teacher with sheet music shop
+ecom_other,snapmagnetusa.com,https://snapmagnetusa.com/,,Ecommerce,0.62,,$1M-$10M,0.61,y,y,Ecommerce,,Home & Garden,<$1M,1-10,AI: blocks; custom magnets online plus event printing
+ecom_other,aplussolutionservices.com,https://aplussolutionservices.com/,,Ecommerce,0.72,,<$1M,0.74,n,,,,,,,"AI: blocks; WordPress default placeholder, lorem ipsum"
+ecom_other,thestylelens.com,https://thestylelens.com/,,Ecommerce,0.72,,<$1M,0.6,y,n,Media,,Fashion,<$1M,1-10,"AI: blocks; fashion blog, WooCommerce only"
+ecom_other,togelsingapuraonline.net,https://togelsingapuraonline.net/,,Ecommerce,0.77,,<$1M,0.78,n,,,,,,,AI: blocks; togel gambling spam
+ecom_other,daikyo-toilet.com,https://daikyo-toilet.com/,,Ecommerce,0.55,,<$1M,0.75,y,n,LocalBusiness,,Home & Garden,<$1M,1-10,AI: blocks; toilet repair company Gunma
+ecom_other,bellavitasemijoias.com.br,https://bellavitasemijoias.com.br/,,Ecommerce,0.59,,$1M-$10M,0.51,y,y,Ecommerce,,Fashion,<$1M,1-10,"AI: blocks; semi-jewelry shop, 2026"
+ecom_other,lunaaminee.co.uk,https://lunaaminee.co.uk/,,Ecommerce,0.9,,<$1M,0.9,y,y,Ecommerce,,Art,<$1M,1-10,"AI: blocks; stickers and pins, solo"
+ecom_other,poteshki.com.ua,https://poteshki.com.ua/,2218351,Ecommerce,0.65,,<$1M,0.69,y,y,Ecommerce,,Home & Garden,$1M-$10M,11-50,"AI: blocks; 10,000 products, Ukraine baby goods"
+ecom_other,kovin8.com,https://kovin8.com/,,Ecommerce,0.72,,<$1M,0.86,y,y,Ecommerce,,Beauty,<$1M,1-10,AI: blocks; razor brand DTC
+ecom_other,sdea-sa.org,https://sdea-sa.org/,,Ecommerce,0.65,,<$1M,0.86,y,n,Nonprofit,,Healthcare,,,"AI: blocks; Saudi diabetes society, donations portal; budget unknown"
+ecom_other,thevideogrid.com,https://thevideogrid.com/,,Ecommerce,0.74,,<$1M,0.71,y,,,,,,,"AI: blocks; nav only, no text; cannot label"
+ecom_other,surga11-co.monster,https://surga11-co.monster/,2685058,Ecommerce,0.77,,<$1M,0.88,n,,,,,,,AI: blocks; gambling spam
+ecom_other,naturopathie-vitalite-sante.fr,https://naturopathie-vitalite-sante.fr/,,Ecommerce,0.72,,$1M-$10M,0.87,y,n,LocalBusiness,,Healthcare,<$1M,1-10,AI: blocks; naturopath practice; WooCommerce only
+ecom_other,brbboxes.co.uk,https://brbboxes.co.uk/,,Ecommerce,0.85,Logistics,<$1M,0.77,y,y,Ecommerce,y,Logistics,<$1M,1-10,"AI: blocks; packaging boxes, makes and sells online"
+agency,sketigo.com,https://sketigo.com/,,Agency,0.61,Ecommerce & Retail,<$1M,0.77,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; web studio PT
+agency,qualicocalgary.com,https://qualicocalgary.com/,,Agency,0.69,Real Estate,$1M-$10M,0.86,y,n,Holding,y,Real Estate,$100M-$1B,501-5000,"AI: blocks; Qualico, integrated real estate developer, 75 years; not an agency"
+agency,alex-birkenstock.com,https://alex-birkenstock.com/,,Agency,0.58,HR & Recruiting,<$1M,0.7,n,,,,,,,AI: blocks; personal portfolio of a job-seeking designer
+agency,visual-tinker.com,https://visual-tinker.com/,,Agency,0.66,Fashion,<$1M,0.87,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; freelance brand designer
+agency,nicoledittrich.de,https://nicoledittrich.de/,,Agency,0.51,Productivity,<$1M,0.7,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; freelance art director
+agency,superbrandhq.com,https://superbrandhq.com/,,Agency,0.66,Marketing,$1M-$10M,0.93,y,y,Agency,y,Marketing,<$1M,1-10,AI: blocks; LA branding studio
+agency,ivanlikhuta.com,https://ivanlikhuta.com/,,Agency,0.73,Media & Entertainment,<$1M,0.82,y,y,Agency,y,Media & Entertainment,<$1M,1-10,AI: blocks; videographer
+agency,inventifysolution.com,https://inventifysolution.com/,,Agency,0.59,Marketing,<$1M,0.83,y,n,Consulting,n,Legal,<$1M,1-10,AI: blocks; patent drawing and IP support services
+agency,vogad.com.br,https://vogad.com.br/,,Agency,0.44,,<$1M,0.83,n,,,,,,,AI: blocks; hosting placeholder
+agency,whynextg.com,https://whynextg.com/,,Agency,0.85,DevTools,$1M-$10M,0.77,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; white-label WordPress dev
+agency,j2bfilms.co.uk,https://j2bfilms.co.uk/,,Agency,0.77,Media & Entertainment,<$1M,0.91,y,y,Agency,y,Media & Entertainment,<$1M,1-10,AI: blocks; aerial photography
+agency,brandinghouz.com,https://brandinghouz.com/,,Agency,0.58,Fashion,<$1M,0.91,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; branding and print services
+agency,sheridanmacreach.com,https://sheridanmacreach.com/,,Agency,0.65,Marketing,$1M-$10M,0.83,y,y,Agency,y,Marketing,<$1M,1-10,AI: blocks; boutique performance marketing
+agency,sabbafama.dk,https://sabbafama.dk/,,Agency,0.74,Marketing,<$1M,0.6,y,y,Agency,y,Marketing,<$1M,1-10,AI: blocks; freelancer
+agency,newlane-creative.nl,https://newlane-creative.nl/,,Agency,0.85,Marketing,<$1M,0.71,y,y,Agency,y,Marketing,<$1M,1-10,AI: blocks; marketing agency NL
+agency,vizstudio.pl,https://vizstudio.pl/,,Agency,0.57,Media & Entertainment,<$1M,0.85,y,y,Agency,y,Media & Entertainment,<$1M,1-10,"AI: blocks; visualization studio PL, thin page"
+agency,bemseutipo.com.br,https://bemseutipo.com.br/,,Agency,0.83,Marketing,<$1M,0.75,y,y,Agency,y,Marketing,<$1M,1-10,AI: blocks; paid traffic agency BR
+agency,sendsys.at,https://sendsys.at/,,Agency,0.72,Ecommerce & Retail,<$1M,0.6,y,y,Agency,n,Marketing,<$1M,1-10,"AI: blocks; smartlake media, five people"
+agency,newfolddigital.com,https://newfolddigital.com/,,Agency,0.71,HR & Recruiting,$10M-$100M,0.82,y,n,SaaS,n,DevTools,$1B+,501-5000,"AI: blocks; Newfold Digital, Bluehost parent, $1.1B revenue, 4,000 to 11,000 staff by source; pred Agency $10M-$100M"
+agency,liftedpeaks.com,https://liftedpeaks.com/,,Agency,0.55,Marketing,$1M-$10M,0.71,y,y,Agency,y,Marketing,<$1M,1-10,AI: blocks; creative marketing agency
+agency,sporteologyglobal.com,https://sporteologyglobal.com/,,Agency,0.6,Media & Entertainment,<$1M,0.88,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; digital marketing India
+agency,evolve-studios.co,https://evolve-studios.co/,,Agency,0.62,Home & Garden,<$1M,0.67,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; PR and talent casting
+agency,luckyhunter-itagency.com,https://luckyhunter-itagency.com/,,Agency,0.85,HR & Recruiting,$1M-$10M,0.64,y,y,Agency,y,HR & Recruiting,<$1M,1-10,AI: blocks; tech recruitment agency UK
+agency,daretodeco.no,https://daretodeco.no/,,Agency,0.67,Ecommerce & Retail,$1M-$10M,0.49,y,y,Agency,n,Home & Garden,<$1M,1-10,"AI: blocks; sales agency for furniture brands, showroom Oslo"
+agency,flavorgroup.com,https://flavorgroup.com/,,Agency,0.59,,<$1M,0.6,y,y,Agency,,Marketing,<$1M,1-10,"AI: blocks; creative agency SF, Webflow template nav"
+agency,scalelinemarketing.com,https://scalelinemarketing.com/,,Agency,0.77,,<$1M,0.69,y,y,Agency,,Marketing,<$1M,1-10,AI: blocks; video production agency
+agency,sven-voss.de,https://sven-voss.de/,,Agency,0.58,DevTools,<$1M,0.75,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; ViableArt web dev
+agency,hrinmotion.ch,https://hrinmotion.ch/,,Agency,0.82,HR & Recruiting,<$1M,0.88,y,n,Consulting,y,HR & Recruiting,<$1M,1-10,AI: blocks; career coaching and placement
+agency,toot.com.sa,https://toot.com.sa/,,Agency,0.55,Construction & Manufacturing,<$1M,0.76,y,n,LocalBusiness,y,Construction & Manufacturing,<$1M,1-10,AI: blocks; construction company KSA; WooCommerce only
+agency,onlydreamtok.com,https://onlydreamtok.com/,,Agency,0.57,Productivity,<$1M,0.96,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; TikTok shop agency
+consulting,beeunified.com,https://beeunified.com/,,Consulting,0.6,Productivity,<$1M,0.58,y,y,Consulting,y,Productivity,<$1M,1-10,AI: blocks; business consulting IT
+consulting,accreditationeduc.com,https://accreditationeduc.com/,,Consulting,0.56,,<$1M,0.89,y,,,,,,,AI: blocks; Wix page with no text; cannot label
+consulting,fetzergrowth.com,https://fetzergrowth.com/,,Consulting,0.73,,<$1M,0.86,y,y,Consulting,,Productivity,<$1M,1-10,"AI: blocks; strategy consulting, 2026"
+consulting,camposemiceliadv.com,https://camposemiceliadv.com/,,Consulting,0.85,Legal,$1M-$10M,0.67,y,y,Consulting,y,Legal,<$1M,1-10,AI: blocks; small law firm Santos; WooCommerce only
+consulting,akcl.co.uk,https://akcl.co.uk/,,Consulting,0.64,,<$1M,0.6,y,y,Consulting,,Fintech,<$1M,1-10,AI: blocks; chartered accountants
+consulting,caajv.com,https://caajv.com/,,Consulting,0.76,Productivity,$1M-$10M,0.83,y,y,Consulting,n,Fintech,<$1M,1-10,AI: blocks; chartered accountants India
+consulting,estprime.com,https://estprime.com/,,Consulting,0.78,Productivity,<$1M,0.75,y,n,LocalBusiness,n,Logistics,,,AI: blocks; logistics outsourcing provider JP; size unknown
+consulting,lindleworks.com,https://lindleworks.com/,,Consulting,0.55,,$1M-$10M,0.74,y,y,Consulting,,DevTools,<$1M,1-10,"AI: blocks; software consulting, thin page"
+consulting,accountingbusinesstax.com,https://accountingbusinesstax.com/,,Consulting,0.79,Fintech,$1M-$10M,0.74,y,y,Consulting,y,Fintech,<$1M,1-10,AI: blocks; outsourced accounting and fractional CFO
+consulting,kdsolutions.org,https://kdsolutions.org/,,Consulting,0.81,Productivity,<$1M,0.94,y,y,Consulting,n,HR & Recruiting,<$1M,1-10,AI: blocks; solo people and culture consultant
+consulting,leonardooliveiraadv.com.br,https://leonardooliveiraadv.com.br/,,Consulting,0.85,Legal,<$1M,0.87,y,y,Consulting,y,Legal,<$1M,1-10,AI: blocks; solo lawyer
+consulting,empirico-mr.com,https://empirico-mr.com/,,Consulting,0.55,,$1M-$10M,0.98,y,y,Consulting,,Marketing,$1M-$10M,11-50,AI: blocks; market research with 24/7 ops centre
+consulting,carmenlucilapsi.com.br,https://carmenlucilapsi.com.br/,,Consulting,0.55,,<$1M,0.74,y,n,LocalBusiness,,Healthcare,<$1M,1-10,AI: blocks; psychologist practice
+consulting,contabsul.com.br,https://contabsul.com.br/,,Consulting,0.64,,$1M-$10M,0.48,y,y,Consulting,,Fintech,<$1M,1-10,AI: blocks; accounting office Porto Alegre
+consulting,amandalambros.com,https://amandalambros.com/,,Consulting,0.68,,<$1M,0.54,y,y,Consulting,,Healthcare,<$1M,1-10,AI: blocks; counsellor and coach
+consulting,kellerlifecoach.ch,https://kellerlifecoach.ch/,,Consulting,0.66,,<$1M,0.75,y,y,Consulting,,Healthcare,<$1M,1-10,AI: blocks; life coach
+consulting,leluco.fi,https://leluco.fi/,,Consulting,0.79,Healthcare,$1M-$10M,0.61,y,n,Agency,n,HR & Recruiting,$1M-$10M,11-50,AI: blocks; doctor staffing company FI
+consulting,oconnorholdingsllc.com,https://oconnorholdingsllc.com/,,Consulting,0.53,Productivity,<$1M,0.75,y,y,Consulting,y,Productivity,<$1M,1-10,AI: blocks; business consulting
+consulting,searchgocloud.com.br,https://searchgocloud.com.br/,,Consulting,0.55,DevTools,$1M-$10M,0.79,y,y,Consulting,y,DevTools,<$1M,1-10,AI: blocks; cloud consulting BR
+consulting,kjhconsulting.net,https://kjhconsulting.net/,,Consulting,0.66,Security,$1M-$10M,0.56,y,y,Consulting,y,Security,<$1M,1-10,AI: blocks; safety training
+localbusiness,relaxetbasta.fr,https://relaxetbasta.fr/,,LocalBusiness,0.88,,<$1M,0.81,y,y,LocalBusiness,,Beauty,<$1M,1-10,AI: blocks; massage therapist
+localbusiness,buffaloduckhomes.com,https://buffaloduckhomes.com/,,LocalBusiness,0.58,Home & Garden,$1M-$10M,0.74,y,y,LocalBusiness,y,Home & Garden,<$1M,1-10,AI: blocks; handyman
+localbusiness,pinedahomes.com,https://pinedahomes.com/,,LocalBusiness,0.63,Real Estate,<$1M,0.81,y,y,LocalBusiness,y,Real Estate,<$1M,1-10,AI: blocks; realtor
+localbusiness,shingleroofingmaine.com,https://shingleroofingmaine.com/,,LocalBusiness,0.75,,,,y,y,LocalBusiness,,Construction & Manufacturing,<$1M,1-10,AI: blocks; roofer
+localbusiness,sparkles-squad.com,https://sparkles-squad.com/,,LocalBusiness,0.82,,<$1M,0.82,y,y,LocalBusiness,,Home & Garden,<$1M,1-10,AI: blocks; cleaning service
+localbusiness,ansiclinic.com,https://ansiclinic.com/,,LocalBusiness,0.62,Healthcare,<$1M,0.76,y,y,LocalBusiness,y,Healthcare,<$1M,1-10,AI: blocks; neurosurgeon clinic info site
+localbusiness,mooresremovals.co.uk,https://mooresremovals.co.uk/,,LocalBusiness,0.59,,<$1M,0.83,y,y,LocalBusiness,,Logistics,<$1M,1-10,AI: blocks; removals
+localbusiness,oparadis-sxm.net,https://oparadis-sxm.net/,,LocalBusiness,0.77,Home & Garden,<$1M,0.82,y,y,LocalBusiness,n,Travel,<$1M,1-10,AI: blocks; bungalow rental
+localbusiness,livolsietfils.fr,https://livolsietfils.fr/,,LocalBusiness,0.55,Food & Beverage,$1M-$10M,0.56,y,y,LocalBusiness,n,Construction & Manufacturing,<$1M,1-10,"AI: blocks; artisan roofing, verified 1-10"
+localbusiness,srpbham.com,https://srpbham.com/,,LocalBusiness,0.68,,<$1M,0.91,y,y,LocalBusiness,,Automotive,<$1M,1-10,AI: blocks; UTV repair
+localbusiness,pretto.fr,https://pretto.fr/,288074,LocalBusiness,0.75,,$10M-$100M,0.99,y,n,FinancialInstitution,,Fintech,$10M-$100M,51-500,"AI: blocks; Pretto online mortgage broker, 100 brokers, EUR 5B financed"
+localbusiness,eightforty.org,https://eightforty.org/,,LocalBusiness,0.6,,<$1M,0.81,y,n,Agency,,Marketing,<$1M,1-10,AI: blocks; web design for tradesmen; not LocalBusiness
+localbusiness,firebirdtechforge.com,https://firebirdtechforge.com/,,LocalBusiness,0.75,,<$1M,0.93,n,,,,,,,"AI: blocks; under construction, Wix template address"
+localbusiness,6ixback.ca,https://6ixback.ca/,,LocalBusiness,0.59,,$1M-$10M,0.55,y,y,LocalBusiness,,Sports,<$1M,1-10,AI: blocks; volleyball drop-ins Toronto
+localbusiness,norwalkfitbodybootcamp.com,https://norwalkfitbodybootcamp.com/,,LocalBusiness,0.68,Food & Beverage,<$1M,0.85,y,y,LocalBusiness,n,Fitness,<$1M,1-10,AI: blocks; gym franchise location; industry Food & Beverage wrong
+localbusiness,as-builtplans.construction,https://as-builtplans.construction/,,LocalBusiness,0.77,Construction & Manufacturing,<$1M,0.79,y,y,LocalBusiness,y,Construction & Manufacturing,<$1M,1-10,AI: blocks; as-built drawings
+localbusiness,mullingarpethospital.ie,https://mullingarpethospital.ie/,,LocalBusiness,0.86,Healthcare,$100M-$1B,0.93,y,y,LocalBusiness,y,Healthcare,$1M-$10M,11-50,"AI: blocks; vet hospital since 1995, part of IVC group; pred $100M-$1B is the group"
+localbusiness,falseallegation.com,https://falseallegation.com/,,LocalBusiness,0.69,,<$1M,0.82,y,n,Nonprofit,,Legal,<$1M,1-10,AI: blocks; volunteer nonprofit
+localbusiness,inkind.uk,https://inkind.uk/,,LocalBusiness,0.82,Healthcare,<$1M,0.69,y,y,LocalBusiness,y,Healthcare,<$1M,1-10,AI: blocks; psychology clinic
+localbusiness,diabetesinsightct.org,https://diabetesinsightct.org/,,LocalBusiness,0.59,Healthcare,<$1M,0.94,y,y,LocalBusiness,y,Healthcare,<$1M,1-10,AI: blocks; medical practice
+tool,expozy.com,https://expozy.com/,,Tool,0.68,Ecommerce & Retail,<$1M,0.76,y,n,SaaS,y,Ecommerce & Retail,<$1M,1-10,AI: blocks; ecommerce platform SaaS; pred Tool
+tool,copaenergiaqsms.com.br,https://copaenergiaqsms.com.br/,,Tool,0.58,,<$1M,0.87,y,,,,,,,"AI: blocks; JS shell, 'Carregando'; cannot label"
+tool,agorainternationalpublishing.com,https://agorainternationalpublishing.com/,,Tool,0.53,Productivity,<$1M,0.79,n,,,,,,,AI: blocks; Lovable generated placeholder
+tool,zomabet.com,https://zomabet.com/,706472,Tool,0.77,,<$1M,0.74,n,,,,,,,"AI: blocks; online casino, Persian; treated as junk"
+tool,intresell.com,https://intresell.com/,,Tool,0.54,Ecommerce & Retail,$1M-$10M,0.86,y,,,,,,,AI: blocks; no content; cannot label
+tool,calculesusalario.com,https://calculesusalario.com/,,Tool,0.82,,<$1M,0.61,y,y,Tool,,Fintech,<$1M,1-10,AI: blocks; free salary calculator
+tool,kurdishautos.com,https://kurdishautos.com/,,Tool,0.83,AI & ML,<$1M,0.82,y,,,,,,,AI: blocks; Wix nav only; cannot label
+tool,ladabo.com,https://ladabo.com/,,Tool,0.71,Fintech,<$1M,0.88,y,y,Tool,y,Fintech,<$1M,1-10,AI: blocks; free calculators
+tool,theses-algerie.com,https://theses-algerie.com/,1010715,Tool,0.58,,<$1M,0.66,y,y,Tool,,Education,<$1M,1-10,AI: blocks; thesis search engine
+tool,link.nyc,https://link.nyc/,925971,Tool,0.42,,$1M-$10M,0.95,y,n,Government,,Government & Civic,,,AI: blocks; LinkNYC public kiosk program (CityBridge); not a Tool
+tool,mywindsock.com,https://mywindsock.com/,521816,Tool,0.83,,$1M-$10M,0.97,y,n,SaaS,,Sports,<$1M,1-10,AI: blocks; cycling weather app with paid plans
+tool,horndb.io,https://horndb.io/,,Tool,0.7,,<$1M,0.75,y,y,Tool,,DevTools,<$1M,1-10,AI: blocks; open source graph database
+tool,gennarocesaro.com,https://gennarocesaro.com/,,Tool,0.56,Marketing,$1M-$10M,0.74,n,,,,,,,AI: blocks; personal portfolio
+tool,scrabcheck.com,https://scrabcheck.com/,,Tool,0.84,,<$1M,0.76,y,y,Tool,,Media & Entertainment,<$1M,1-10,AI: blocks; word checker
+tool,rudronics.com,https://rudronics.com/,2282171,Tool,0.63,DevTools,<$1M,0.53,n,,,,,,,AI: blocks; create-react-app default
+marketplace,infonext.com.br,https://infonext.com.br/,,Marketplace,0.65,Ecommerce & Retail,<$1M,0.79,y,,,,,,,AI: blocks; login page only; cannot label
+marketplace,tweetembed.com,https://tweetembed.com/,,Marketplace,0.45,Marketing,<$1M,0.56,n,,,,,,,AI: blocks; domain for sale
+marketplace,thecmart.com,https://thecmart.com/,,Marketplace,0.62,,<$1M,0.72,y,y,Marketplace,,Ecommerce & Retail,<$1M,1-10,"AI: blocks; community marketplace, meta only"
+marketplace,otoaukcje.com,https://otoaukcje.com/,,Marketplace,0.77,Ecommerce & Retail,<$1M,0.78,n,,,,,,,AI: blocks; redirect shell to a domain marketplace
+marketplace,aedropshippes.com,https://aedropshippes.com/,,Marketplace,0.97,Ecommerce & Retail,<$1M,0.95,y,n,SaaS,y,Ecommerce & Retail,<$1M,1-10,"AI: blocks; dropshipping platform, meta only; not Marketplace"
+marketplace,5starscore.com,https://5starscore.com/,,Marketplace,0.67,Fintech,<$1M,0.79,n,,,,,,,AI: blocks; authentication demo
+marketplace,lakibay.com,https://lakibay.com/,,Marketplace,0.72,Ecommerce & Retail,<$1M,0.74,y,y,Marketplace,y,Ecommerce & Retail,<$1M,1-10,AI: blocks; local classifieds MK
+marketplace,fullstore.app,https://fullstore.app/,1662438,Marketplace,0.97,Ecommerce & Retail,<$1M,0.81,y,n,SaaS,y,Ecommerce & Retail,<$1M,1-10,"AI: blocks; retail performance app, thin"
+marketplace,2wbrands.com,https://2wbrands.com/,,Marketplace,0.54,Ecommerce & Retail,<$1M,0.8,y,n,Agency,y,Ecommerce & Retail,<$1M,1-10,AI: blocks; US retail expansion services; not Marketplace
+marketplace,auctionexchange.co,https://auctionexchange.co/,,Marketplace,0.61,Ecommerce & Retail,<$1M,0.78,y,,,,,,,AI: blocks; meta only; cannot label
+marketplace,atwdemo.com,https://atwdemo.com/,,Marketplace,0.76,Ecommerce & Retail,<$1M,0.78,n,,,,,,,AI: blocks; internal sales portal demo
+marketplace,axelprivatemarket.com,https://axelprivatemarket.com/,3024078,Marketplace,0.5,,<$1M,0.83,y,,,,,,,AI: blocks; no content; cannot label
+marketplace,elementex.io,https://elementex.io/,,Marketplace,0.79,Fintech,<$1M,0.78,y,,,,,,,"AI: blocks; 'Premium Exchanger' crypto, no content; cannot label"
+marketplace,linktournament.com,https://linktournament.com/,,Marketplace,0.58,Ecommerce & Retail,<$1M,0.68,y,n,SaaS,n,Sports,<$1M,1-10,AI: blocks; tennis tournament platform; not Marketplace
+marketplace,webuyanypadel.com,https://webuyanypadel.com/,,Marketplace,0.82,,<$1M,0.6,y,n,Ecommerce,,Sports,<$1M,1-10,AI: blocks; buys and resells rackets
+manufacturer,elecdocor.com,https://elecdocor.com/,,Manufacturer,0.54,,<$1M,0.68,y,n,Wholesaler,,Consumer Electronics,$1M-$10M,11-50,"AI: blocks; appliance wholesale distributor Ecuador, 30 years; not Manufacturer"
+manufacturer,virsapharma.in,https://virsapharma.in/,,Manufacturer,0.62,,<$1M,0.82,y,y,Manufacturer,,Healthcare,,,"AI: blocks; pharma company, thin Wix; size unknown"
+manufacturer,parchkaransanat.com,https://parchkaransanat.com/,,Manufacturer,0.77,Construction & Manufacturing,$1M-$10M,0.67,y,y,Manufacturer,y,Construction & Manufacturing,$1M-$10M,11-50,AI: blocks; rivet manufacturer IR
+manufacturer,veq-acier.com,https://veq-acier.com/,,Manufacturer,0.61,Travel,<$1M,0.81,y,y,Manufacturer,n,Construction & Manufacturing,$1M-$10M,11-50,AI: blocks; metal folding and cladding since 2000
+manufacturer,quickpouchparts.com,https://quickpouchparts.com/,,Manufacturer,0.62,,$1M-$10M,0.81,y,n,LocalBusiness,,Construction & Manufacturing,<$1M,1-10,AI: blocks; parts and service for one machine brand
+manufacturer,oodler.ca,https://oodler.ca/,,Manufacturer,0.72,DevTools,$1M-$10M,0.8,y,n,Agency,y,DevTools,<$1M,1-10,AI: blocks; software dev company; not Manufacturer
+manufacturer,factoryod.com,https://factoryod.com/,,Manufacturer,0.55,,<$1M,0.83,y,y,Manufacturer,,Fashion,<$1M,1-10,AI: blocks; merch production on own floor
+manufacturer,simon-auto-shop.de,https://simon-auto-shop.de/,1226149,Manufacturer,0.62,Construction & Manufacturing,$10M-$100M,0.53,y,n,Ecommerce,n,Automotive,$1M-$10M,11-50,"AI: blocks; starter and alternator shop, 15,515 urls; not Manufacturer"
+manufacturer,sanmatienterprises.net,https://sanmatienterprises.net/,,Manufacturer,0.85,Education,<$1M,0.6,y,y,Manufacturer,y,Education,<$1M,1-10,AI: blocks; lab equipment maker Roorkee
+manufacturer,taishanfactory.com,https://taishanfactory.com/,,Manufacturer,0.52,Productivity,<$1M,0.97,y,,,,,,,"AI: blocks; template text, dubious; cannot label"
+manufacturer,finecolourgems.com,https://finecolourgems.com/,,Manufacturer,0.63,,<$1M,0.91,y,n,Wholesaler,,Fashion,<$1M,1-10,"AI: blocks; gem wholesaler Jaipur, Wix; not Manufacturer"
+manufacturer,ksm-bio.com,https://ksm-bio.com/,,Manufacturer,0.61,,,,y,y,Manufacturer,,Healthcare,$1M-$10M,11-50,"AI: blocks; peptide factory Shenzhen, 5000 sqm"
+manufacturer,shutterguard.com.au,https://shutterguard.com.au/,,Manufacturer,0.62,,$1M-$10M,0.6,y,y,Manufacturer,,Home & Garden,$1M-$10M,11-50,"AI: blocks; roller shutters made locally, Perth since 1989"
+manufacturer,asiarayafoundry.com,https://asiarayafoundry.com/,,Manufacturer,0.8,Construction & Manufacturing,<$1M,0.6,y,y,Manufacturer,y,Construction & Manufacturing,$1M-$10M,11-50,AI: blocks; steel foundry Indonesia
+manufacturer,noma-global.com,https://noma-global.com/,,Manufacturer,0.57,Construction & Manufacturing,<$1M,0.74,y,n,Consulting,n,AI & ML,<$1M,1-10,AI: blocks; AI consulting founded by one person; not Manufacturer
+unclassified,pebblesapp.ca,https://pebblesapp.ca/,,,0,,<$1M,0.58,y,,Tool,,Productivity,<$1M,1-10,AI: blocks; solo family diary app
+unclassified,justbytech.com,https://justbytech.com/,,,,,$1M-$10M,0.83,y,,Manufacturer,,Construction & Manufacturing,,,"AI: blocks; RFID reader maker, lorem ipsum template; size unknown"
+unclassified,k-cap.com,https://k-cap.com/,,,0.47,Home & Garden,$1M-$10M,0.91,y,,LocalBusiness,n,Real Estate,$10M-$100M,11-50,"AI: blocks; Knightstone Capital, Toronto developer, $1.5B built since 2001"
+unclassified,evolutionevolution.com,https://evolutionevolution.com/,,,0.19,,<$1M,0.56,y,,Consulting,,HR & Recruiting,<$1M,1-10,AI: blocks; coaching
+unclassified,allpowdercoatandscreen.com,https://allpowdercoatandscreen.com/,,,0.5,Construction & Manufacturing,$1M-$10M,0.72,y,,LocalBusiness,y,Construction & Manufacturing,$1M-$10M,11-50,AI: blocks; powder coating shop Allen TX
+unclassified,leefomgevingsmanagement.nl,https://leefomgevingsmanagement.nl/,,,0.61,Productivity,$1M-$10M,0.86,y,,Consulting,n,Construction & Manufacturing,$1M-$10M,11-50,AI: blocks; omgevingsmanagement consultancy NL
+unclassified,irislaunch.com,https://irislaunch.com/,,,,,<$1M,0.88,y,,Agency,,Marketing,<$1M,1-10,AI: blocks; landing pages and video ads service
+unclassified,meetafirm.com,https://meetafirm.com/,,,0.3,,<$1M,0.9,y,,Marketplace,,Accounting,<$1M,1-10,"AI: blocks; buy and sell CA firms, Wix thin"
+unclassified,worldskillacademy.com,https://worldskillacademy.com/,,,,,<$1M,0.84,n,,,,,,,AI: blocks; Hostinger default page
+unclassified,acaiciudadreal.com,https://acaiciudadreal.com/,,,0.49,Travel,<$1M,0.75,y,,LocalBusiness,n,Education,<$1M,1-10,AI: blocks; training centre and ecotourism Ciudad Real
+unclassified,guatjesus.com,https://guatjesus.com/,,,,,<$1M,0.65,y,,Nonprofit,,Religion,<$1M,1-10,AI: blocks; micro church
+unclassified,sichifuku.jp,https://sichifuku.jp/,,,0.16,,$1M-$10M,0.82,y,,LocalBusiness,,Religion,$1M-$10M,11-50,"AI: blocks; Buddhist altar goods maker and showroom, two offices"
+unclassified,parkandridegatwickairportparking.co.uk,https://parkandridegatwickairportparking.co.uk/,,,0.16,,<$1M,0.6,y,,LocalBusiness,,Travel,,,AI: blocks; airport parking booking; size unknown
+unclassified,tivigroup.com,https://tivigroup.com/,,,0.41,DevTools,<$1M,0.55,y,,Wholesaler,n,Construction & Manufacturing,$1M-$10M,11-50,AI: blocks; bearings importer BG since 1994
+unclassified,hitsradio.com.co,https://hitsradio.com.co/,,,0.26,,<$1M,0.81,n,,,,,,,AI: blocks; Hostinger default page
+unclassified,feldbakbiler.dk,https://feldbakbiler.dk/,,,0.17,,<$1M,0.84,y,,LocalBusiness,,Automotive,$1M-$10M,1-10,AI: blocks; used car dealer Silkeborg
+unclassified,tryzyvato.com,https://tryzyvato.com/,,,0.52,Productivity,<$1M,0.6,y,,Consulting,n,HR & Recruiting,<$1M,1-10,AI: blocks; leadership coaching
+unclassified,edanimimes.com,https://edanimimes.com/,,,0.02,,<$1M,0.59,y,,Media,,Media & Entertainment,<$1M,1-10,"AI: blocks; children's song publisher, one author"
+unclassified,sikaerp.com,https://sikaerp.com/,,,0.53,Security,<$1M,0.85,y,,,,,,,"AI: blocks; title MeDo, no content; cannot label"
+unclassified,echoryn.net,https://echoryn.net/,,,,,<$1M,0.81,y,,Ecommerce,,Home & Garden,<$1M,1-10,"AI: blocks; design objects brand, account and objects pages, thin"
+unclassified,adugboinsure.com,https://adugboinsure.com/,,,0.55,Healthcare,<$1M,0.87,y,,SaaS,y,Healthcare,<$1M,1-10,AI: blocks; health insurance platform Nigeria
+unclassified,bomenmuseum.nl,https://bomenmuseum.nl/,,,,,$100M-$1B,0.63,y,,Nonprofit,,Media & Entertainment,$1M-$10M,11-50,"AI: blocks; arboretum foundation, 29 ha park"
+unclassified,futuregridlabs.com,https://futuregridlabs.com/,,,0.34,,<$1M,0.75,y,,SaaS,,Media & Entertainment,<$1M,1-10,AI: blocks; white label iGaming platform vendor
+unclassified,financemarket.it,https://financemarket.it/,,,0.28,,<$1M,0.67,n,,,,,,,AI: blocks; spam blog on expired domain
+unclassified,cs-plus.net,https://cs-plus.net/,,,0.32,,<$1M,0.65,y,,LocalBusiness,,Education,<$1M,1-10,AI: blocks; pottery studio and classes Fukuoka
+rev_10m_100m,babybox.fi,https://babybox.fi/,,,0.15,,$10M-$100M,0.78,y,,Media,,Marketing,$1M-$10M,1-10,"AI: blocks; Nordic Family Group AB: 32.8 MSEK revenue, 7 employees (2025)"
+rev_10m_100m,mssmyorkville.ca,https://mssmyorkville.ca/,,,0.36,Ecommerce & Retail,$10M-$100M,0.72,y,,LocalBusiness,n,Food & Beverage,$1M-$10M,11-50,"AI: blocks; omakase restaurant, three locations"
+rev_10m_100m,wmuoaklands.com,https://wmuoaklands.com/,,,0.4,Education,$10M-$100M,0.78,y,,Education,y,Education,$100M-$1B,501-5000,AI: blocks; Western Michigan University subsite
+rev_10m_100m,roxburymgt.com,https://roxburymgt.com/,,LocalBusiness,0.85,Real Estate,$10M-$100M,0.64,y,y,LocalBusiness,y,Real Estate,,11-50,"AI: blocks; apartment manager LA, five offices; revenue unknown"
+rev_10m_100m,eastlandtoyota.co.nz,https://eastlandtoyota.co.nz/,,,0.18,,$10M-$100M,0.96,y,,LocalBusiness,,Automotive,$10M-$100M,51-500,"AI: blocks; 120 staff, five stores; zoominfo $24M"
+rev_10m_100m,elementasmartworkspaces.com,https://elementasmartworkspaces.com/,,,0.49,Productivity,$10M-$100M,0.82,y,,LocalBusiness,n,Real Estate,$10M-$100M,51-500,"AI: blocks; Elementa Workspace, ex Landmark Space, 31 locations, 51-200 staff"
+rev_10m_100m,code9.co.nz,https://code9.co.nz/,,,,,$10M-$100M,0.84,y,,LocalBusiness,,Security,$1M-$10M,11-50,AI: blocks; alarm monitoring NZ
+rev_10m_100m,highwayreeferparking.com,https://highwayreeferparking.com/,,LocalBusiness,0.58,,$10M-$100M,0.76,y,n,Marketplace,,Logistics,$10M-$100M,11-50,"AI: blocks; Truck Parking Club: $10.2M revenue, 42 staff, $2.25M raised"
+rev_10m_100m,sari4dpro.com,https://sari4dpro.com/,94940,,0.72,Media & Entertainment,$10M-$100M,0.59,n,,,,,,,AI: blocks; togel gambling
+rev_10m_100m,uticomputadores.com,https://uticomputadores.com/,,Consulting,0.85,Productivity,$10M-$100M,0.62,y,y,Consulting,n,IT consulting & cybersecurity,$1M-$10M,11-50,"AI: blocks; IT support BR, 15 years"
+rev_10m_100m,galatadergisi.org,https://galatadergisi.org/,,,,,$10M-$100M,0.85,y,,Media,,Media & Entertainment,<$1M,1-10,"AI: blocks; Turkish magazine, meta only"
+rev_10m_100m,felixplomberie.fr,https://felixplomberie.fr/,,LocalBusiness,0.59,,$10M-$100M,0.57,y,y,LocalBusiness,,Home & Garden,<$1M,1-10,AI: blocks; plumber Merignac
+rev_10m_100m,harol.nl,https://harol.nl/,,LocalBusiness,0.53,Home & Garden,$10M-$100M,0.91,y,n,Manufacturer,y,Home & Garden,$10M-$100M,51-500,"AI: blocks; Harol Consyst 29.9M EUR + Harol Belgie 35.6M EUR (2025), 186 FTE; not LocalBusiness"
+rev_10m_100m,rockpoint.pl,https://rockpoint.pl/,535852,,0.66,Fashion,$10M-$100M,0.68,y,,Ecommerce,n,Sports,$10M-$100M,51-500,"AI: blocks; Rock Point a.s., 38 stores, about 500 staff"
+rev_10m_100m,lavalavocats.ca,https://lavalavocats.ca/,,Ecommerce,0.99,Fashion,$10M-$100M,0.67,n,,,,,,,"AI: blocks; dropship pet store on a former law firm domain, copied Amazon text"
+rev_10m_100m,yosef-ins.co.il,https://yosef-ins.co.il/,,,0.62,Fintech,$10M-$100M,0.61,y,,Consulting,y,Fintech,<$1M,1-10,AI: blocks; insurance agent IL
+rev_10m_100m,weszlo.com,https://weszlo.com/,59013,Media,0.85,,$10M-$100M,0.99,y,y,Media,,Media & Entertainment,$1M-$10M,11-50,"AI: blocks; Polish sports site, tranco 59k"
+rev_10m_100m,smarkia.com,https://smarkia.com/,,,0.43,Security,$10M-$100M,0.88,y,,SaaS,n,Energy & engineering services,$1M-$10M,51-500,"AI: blocks; $9.1M revenue 2024, 61 staff"
+rev_10m_100m,tecko.io,https://tecko.io/,,Education,0.68,Education,$10M-$100M,0.92,y,n,SaaS,y,Education,<$1M,1-10,AI: blocks; sign-in page only
+rev_10m_100m,acciona.com,https://acciona.com/,51544,,0.3,,$10M-$100M,0.99,y,,Holding,,Energy & engineering services,$1B+,5001+,"AI: blocks; Acciona SA, 19B EUR revenue"
+rev_10m_100m,utande.co.zw,https://utande.co.zw/,40820,,0.48,Security,$10M-$100M,0.89,y,,,n,Telecom,$10M-$100M,51-500,"AI: blocks; Dandemutande ISP, $14M, 117 staff; no ISP label in vocab"
+rev_10m_100m,wholesumbilling.com,https://wholesumbilling.com/,,,0.55,Healthcare,$10M-$100M,0.91,y,,Consulting,y,Healthcare,$1M-$10M,11-50,AI: blocks; medical billing services
+rev_10m_100m,manheim.com,https://manheim.com/,15904,,0,,$10M-$100M,0.98,y,,Marketplace,,Automotive,$1B+,5001+,"AI: blocks; Manheim, Cox Automotive, 100+ locations"
+rev_10m_100m,triadtechnologies.com,https://triadtechnologies.com/,469387,Ecommerce,0.85,,$10M-$100M,0.98,y,n,Wholesaler,,Construction & Manufacturing,$10M-$100M,51-500,"AI: blocks; $38M revenue, 140-200 staff, 6 offices; not Ecommerce"
+rev_10m_100m,sjkotipolku.fi,https://sjkotipolku.fi/,,,,,$10M-$100M,0.82,y,,LocalBusiness,,Real Estate,$1M-$10M,1-10,"AI: blocks; municipal housing company, 700 flats"
+rev_10m_100m,sealionmedya.com,https://sealionmedya.com/,,Agency,0.81,Media & Entertainment,$10M-$100M,0.46,y,y,Agency,n,Marketing,<$1M,1-10,AI: blocks; agency Ankara
+rev_10m_100m,midlighting.co.uk,https://midlighting.co.uk/,,,0.53,Home & Garden,$10M-$100M,0.79,y,,Manufacturer,y,Home & Garden,$1M-$10M,11-50,AI: blocks; luminaire maker UK
+rev_10m_100m,juedische-allgemeine.de,https://juedische-allgemeine.de/,52177,,0.01,,$10M-$100M,0.91,y,,Media,,Media & Entertainment,$1M-$10M,11-50,AI: blocks; weekly newspaper
+rev_10m_100m,traugottinc.com,https://traugottinc.com/,,LocalBusiness,0.75,,$10M-$100M,0.84,y,y,LocalBusiness,,Construction & Manufacturing,$1M-$10M,51-500,"AI: blocks; $9.3M revenue, 60 staff"
+rev_10m_100m,peri.es,https://peri.es/,,Manufacturer,0.62,,$10M-$100M,0.99,y,y,Manufacturer,,Construction & Manufacturing,$10M-$100M,51-500,"AI: blocks; PERI SAU, 65 staff, 6-30M EUR; group subsidiary"
+rev_100m_1b,projectworkweek.com,https://projectworkweek.com/,,,0.74,Productivity,$100M-$1B,0.78,y,,,,,<$1M,1-10,"AI: blocks; 21 day challenge, no content; cannot label model"
+rev_100m_1b,dr-buca.com,https://dr-buca.com/,,,,,$100M-$1B,0.52,y,,LocalBusiness,,Healthcare,<$1M,1-10,AI: blocks; gynaecology practice RS
+rev_100m_1b,sumashuku.jp,https://sumashuku.jp/,,Education,0.85,Education,$100M-$1B,0.68,y,y,Education,y,Education,$1M-$10M,51-500,AI: blocks; private junior and senior high school
+rev_100m_1b,apurposefulpaw.com,https://apurposefulpaw.com/,,,0.49,Marketing,$100M-$1B,0.77,n,,,,,,,AI: blocks; under development
+rev_100m_1b,nkinter.co.jp,https://nkinter.co.jp/,,,0.43,Ecommerce & Retail,$100M-$1B,0.52,y,,Holding,y,Ecommerce & Retail,$10M-$100M,51-500,"AI: blocks; NK Group, 19 Softbank shops plus docomo, restaurants, 13 businesses"
+rev_100m_1b,lioserum.com.br,https://lioserum.com.br/,,Manufacturer,0.51,Beauty,$100M-$1B,0.7,y,n,Wholesaler,n,Healthcare,$1M-$10M,11-50,AI: blocks; lab reagent supplier; not Manufacturer
+rev_100m_1b,vacuumwaste.com.au,https://vacuumwaste.com.au/,,,0.39,Construction & Manufacturing,$100M-$1B,0.62,y,,LocalBusiness,y,Construction & Manufacturing,$1M-$10M,11-50,"AI: blocks; 16 staff, under $5M, winding up 2025"
+rev_100m_1b,caliachey.com,https://caliachey.com/,,,0.49,Marketing,$100M-$1B,0.74,n,,,,,,,AI: blocks; under development
+rev_100m_1b,budweisertours.com,https://budweisertours.com/,616895,,,,$100M-$1B,0.73,y,,Manufacturer,,Food & Beverage,$1B+,5001+,AI: blocks; Anheuser-Busch brewery tours subsite; parent
+rev_100m_1b,reidsvillenissan.com,https://reidsvillenissan.com/,,LocalBusiness,0.58,,$100M-$1B,0.93,y,y,LocalBusiness,,Automotive,$10M-$100M,11-50,AI: blocks; single Nissan dealership
+rev_100m_1b,meltzerlippe.com,https://meltzerlippe.com/,,,0.34,,$100M-$1B,0.72,y,,Consulting,,Legal,$10M-$100M,51-500,"AI: blocks; law firm, 80+ attorneys"
+rev_100m_1b,pakweg.nl,https://pakweg.nl/,,,,,$100M-$1B,0.66,y,,Agency,,Web design & development agency,<$1M,1-10,AI: blocks; DNN web design
+rev_100m_1b,bohren.org,https://bohren.org/,,,0.49,Marketing,$100M-$1B,0.92,n,,,,,,,AI: blocks; under development
+rev_100m_1b,irishexaminer.com,https://irishexaminer.com/,13960,,0,,$100M-$1B,0.87,y,,Media,,Media & Entertainment,$10M-$100M,51-500,"AI: blocks; Irish Examiner, part of Irish Times DAC (112.7M EUR, 802 staff group-wide)"
+rev_100m_1b,novoconnect-bh.com,https://novoconnect-bh.com/,,,0.62,Legal,$100M-$1B,0.66,y,,,n,Healthcare,$1B+,5001+,"AI: blocks; Novo Nordisk portal, disclaimer page only; parent for size"
+rev_100m_1b,ventas-food.com,https://ventas-food.com/,,,0.59,Ecommerce & Retail,$100M-$1B,0.66,y,,Wholesaler,n,Food & Beverage,$1M-$10M,11-50,AI: blocks; IFS food broker Bremen
+rev_100m_1b,vinotjulien.fr,https://vinotjulien.fr/,,LocalBusiness,0.71,,$100M-$1B,0.58,y,y,LocalBusiness,,Home & Garden,<$1M,1-10,AI: blocks; roofer and plumber
+rev_100m_1b,silversmithsupply.com,https://silversmithsupply.com/,,,0.6,Ecommerce & Retail,$100M-$1B,0.72,y,,Ecommerce,n,Fashion,<$1M,1-10,AI: blocks; eBay store
+rev_100m_1b,teen-house.com,https://teen-house.com/,,,,,$100M-$1B,0.85,n,,,,,,,AI: blocks; domain for sale
+rev_100m_1b,infocentricity.com,https://infocentricity.com/,,,,,$100M-$1B,0.97,y,,SaaS,,Fintech,$1B+,501-5000,"AI: blocks; FICO, $1.7B revenue, 3,500 staff"
+rev_100m_1b,y-vamp.com,https://y-vamp.com/,,Manufacturer,0.77,Legal,$100M-$1B,0.81,y,y,Manufacturer,n,Security,<$1M,1-10,"AI: blocks; video recorder maker, 2018 copyright"
+rev_100m_1b,hennessypackaging.com,https://hennessypackaging.com/,,Ecommerce,0.69,,$100M-$1B,0.55,y,n,Manufacturer,,Logistics,$1M-$10M,11-50,"AI: blocks; Hennessy Timber Group, est $3.8M, 12-20 staff; not Ecommerce"
+rev_100m_1b,anasabdin.com,https://anasabdin.com/,,Agency,0.59,AI & ML,$100M-$1B,0.61,n,,,,,,,AI: blocks; personal artist portfolio
+rev_100m_1b,stonebridgefishinglakes.co.uk,https://stonebridgefishinglakes.co.uk/,,,0.44,Travel,$100M-$1B,0.61,y,,LocalBusiness,y,Travel,<$1M,1-10,AI: blocks; glamping and fishing lakes
+rev_100m_1b,biolan-france.com,https://biolan-france.com/,,Ecommerce,0.72,,$100M-$1B,0.52,y,y,Ecommerce,,Home & Garden,$10M-$100M,51-500,"AI: blocks; Biolan Oy shop; 27.8M EUR, 73 staff (2025)"
+verifiable,vector.co,https://vector.co/,33248,SaaS,0.58,,$10M-$100M,0.67,y,y,SaaS,,Marketing,$1M-$10M,11-50,AI: blocks; ABM startup
+verifiable,unemat.br,https://unemat.br/,57917,,0.25,,$10M-$100M,0.81,y,,Education,,Education,,501-5000,"AI: blocks; state university; budget near $100M, bracket unsure"
+verifiable,gather.town,https://gather.town/,25044,SaaS,0.55,,$10M-$100M,0.92,y,y,SaaS,,Productivity,$10M-$100M,51-500,AI: blocks; $77M raised
+verifiable,staycity.com,https://staycity.com/,263158,,0.51,Travel,$10M-$100M,0.56,y,,LocalBusiness,y,Travel,$100M-$1B,501-5000,"AI: blocks; aparthotel chain, ~$480M, 600-1,360 staff"
+verifiable,casinodelsol.com,https://casinodelsol.com/,259632,,0.37,Travel,$10M-$100M,0.97,y,,LocalBusiness,y,Travel,$100M-$1B,501-5000,AI: blocks; tribal casino resort
+verifiable,tu-braunschweig.de,https://tu-braunschweig.de/,32296,Education,0.84,Education,$10M-$100M,0.96,y,y,Education,y,Education,$100M-$1B,501-5000,AI: blocks; TU Braunschweig
+verifiable,unu.edu,https://unu.edu/,13422,Education,0.65,Education,$10M-$100M,0.99,y,y,Education,y,Education,$10M-$100M,501-5000,AI: blocks; UN University
+verifiable,travelhx.com,https://travelhx.com/,226938,,0.57,Travel,$10M-$100M,0.99,y,,LocalBusiness,y,Travel,$100M-$1B,501-5000,"AI: blocks; HX Expeditions, ex Hurtigruten Expeditions"
+verifiable,dllgroup.com,https://dllgroup.com/,297095,,0.77,DevTools,$10M-$100M,0.99,y,,FinancialInstitution,n,Fintech,$1B+,5001+,"AI: blocks; DLL, Rabobank subsidiary"
+verifiable,nasdaqbaltic.com,https://nasdaqbaltic.com/,234390,,,,$100M-$1B,0.96,y,,FinancialInstitution,,Fintech,$1M-$10M,51-500,"AI: blocks; Nasdaq Baltic exchanges, local entities"
+verifiable,suncorpbank.com.au,https://suncorpbank.com.au/,63573,,,,$10M-$100M,0.99,y,,FinancialInstitution,,Fintech,$1B+,501-5000,"AI: blocks; Suncorp Bank, now ANZ"
+verifiable,tagdeliver.com,https://tagdeliver.com/,20435,Agency,0.85,Marketing,$10M-$100M,0.8,n,,,,,,,AI: blocks; ad-serving infrastructure domain
+verifiable,mentor.com,https://mentor.com/,118089,Manufacturer,0.56,AI & ML,$10M-$100M,0.74,y,n,SaaS,n,DevTools,$1B+,5001+,"AI: blocks; Siemens EDA, ex Mentor Graphics"
+verifiable,wplace.live,https://wplace.live/,44151,SaaS,0.65,,$10M-$100M,0.74,y,n,Tool,,Media & Entertainment,,1-10,AI: blocks; collaborative pixel canvas
+verifiable,4shared.com,https://4shared.com/,3881,,,,$100M-$1B,0.99,y,,SaaS,,Productivity,,11-50,AI: blocks; file hosting; revenue unknown
+verifiable,all-british-casino.com,https://all-british-casino.com/,129800,Directory,0.63,Ecommerce & Retail,$100M-$1B,0.64,n,,,,,,,AI: blocks; Sedo parked
+verifiable,perion.com,https://perion.com/,111225,,0.73,Marketing,$10M-$100M,0.99,y,,SaaS,y,Marketing,$100M-$1B,501-5000,"AI: blocks; $439.9M revenue, 511 staff (2025)"
+verifiable,extension.org,https://extension.org/,41272,,0.54,DevTools,$10M-$100M,0.98,y,,Nonprofit,n,Education,$10M-$100M,11-50,AI: blocks; $11.7M revenue 2024
+verifiable,neoflex.ru,https://neoflex.ru/,66284,,0.38,DevTools,$10M-$100M,0.99,y,,Consulting,n,IT consulting & cybersecurity,$10M-$100M,501-5000,"AI: blocks; 5.4B RUB revenue 2024, about $60M"
+verifiable,frontpagemag.com,https://frontpagemag.com/,41289,,0.69,Media & Entertainment,$10M-$100M,0.91,y,,Media,y,Media & Entertainment,$1M-$10M,11-50,AI: blocks; David Horowitz Freedom Center project
+verifiable,krem.com,https://krem.com/,70683,,0,,$10M-$100M,0.89,y,,Media,,Media & Entertainment,$10M-$100M,51-500,AI: blocks; Tegna TV station Spokane
+verifiable,checkpoint.com,https://checkpoint.com/,364,,0.82,Security,$10M-$100M,0.73,y,,SaaS,y,Security,$1B+,5001+,"AI: blocks; Check Point, $2.6B"
+verifiable,thieme-connect.de,https://thieme-connect.de/,29380,Ecommerce,0.55,,$10M-$100M,0.84,y,,,,Media & Entertainment,$100M-$1B,501-5000,"AI: blocks; bot challenge page; Thieme group 172.7M EUR, 1,000+ staff"
+verifiable,securityweek.com,https://securityweek.com/,16940,,0.67,Security,$10M-$100M,0.81,y,,Media,y,Security,$1M-$10M,11-50,AI: blocks; Wired Business Media
+verifiable,aidungeon.com,https://aidungeon.com/,32634,,0.72,AI & ML,$10M-$100M,0.98,y,,SaaS,n,Media & Entertainment,$1M-$10M,11-50,"AI: blocks; Latitude, $7M+ ARR, under 20 people"
+verifiable,r7-office.ru,https://r7-office.ru/,65825,Ecommerce,0.55,,$10M-$100M,0.96,y,n,SaaS,,Productivity,$10M-$100M,51-500,AI: blocks; Russian office suite vendor
+verifiable,kemper.com,https://kemper.com/,84115,,0.26,,$10M-$100M,0.97,y,,FinancialInstitution,,Fintech,$1B+,5001+,AI: blocks; Kemper Corporation
+verifiable,themoneytizer.com,https://themoneytizer.com/,37231,,0.82,Fintech,$10M-$100M,0.89,y,,SaaS,n,Marketing,$10M-$100M,51-500,"AI: blocks; ad platform, Azerion group"

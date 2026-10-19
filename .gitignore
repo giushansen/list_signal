@@ -79,3 +79,5 @@ run_mac_worker.sh
 
 # golden v6 raw homepages: unpack pages_v6_2026-10-05.tar.gz here for the harness
 analysis/golden_set/pages_v6/
+# golden v7 raw homepages: unpack pages_v7_2026-10-19.tar.gz here for the harness
+analysis/golden_set/pages_v7/
