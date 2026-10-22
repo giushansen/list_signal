@@ -25,6 +25,31 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-22: fleet cut from 13 workers to 6 plus h1, with the numbers that allowed it
+
+Workers had been input-starved since October 9: the queue averaged 2 to 30
+items, output tracked discovery inflow exactly (450 a minute on average,
+640 at the recrawl bursts) and each of the 11 duals did about 35 rows a
+minute against a safe envelope of 130 to 160 fetches a minute per IP. The
+certificate poller is not the limit: 19 of 19 logs active, all within a few
+hundred entries of their heads, 15 new domains a second written after
+filtering. The two 1-core nodes did half a dual's work and swapped 1.1 GB
+of 2 GB once the e5 encoder loaded. Shut down and powered off, in order:
+services stopped and disabled, the master's worker health map cleared with
+`LS.Cluster.Inserter.forget_worker/1`, WireGuard peers removed on the
+master (config backed up as wg0.conf.bak-2026-10-22), then destroyed in
+Vultr by the owner: sg1, syd1, ny3, chi3, chi2, dal2, par2. Left: ny1, ny2,
+par1, chi1, sg2, dal1 (one dual per region for IP diversity) and h1. Capacity
+after the cut: 6 x 130 = 780 fetches a minute, 1.1M a day, against about
+900K a day of recrawl (scheduler cap 12,500 per half hour) plus new domains;
+browser lane under one render a minute per sidecar. Saves about $107 a
+month of a $323 bill. During the shutdown Erlang `global` briefly
+partitioned par1 and h1 off the master ("disconnected ... to prevent
+overlapping partitions"); both were back within a minute without a
+restart. Still to do by the owner: delete the seven bot-*.listsignal.com A
+records at Cloudflare. If the queue ever sits above a few hours of work,
+add a $17 dual in the starved region before anything else.
+
 ## 2026-10-19: golden v7 says the revenue gain was in-sample; corporate floor, small cap, e5-small
 
 Golden v7 (308 rows, none seen before, 83 with web-verified revenue) is

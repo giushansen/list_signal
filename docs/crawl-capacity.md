@@ -11,6 +11,8 @@ Per-node HTTP fetch rates and refusal rates, all 11 fetching nodes:
 | Node | Source IP type | Fetches/min | 429 rate | Hard blocks |
 |------|---------------|------------:|---------:|------------:|
 | ny1, ny2, chi1, chi2, par1 | datacenter | 128–161 | 0.69–0.99% | 0 |
+
+(Rows for sg1, syd1, chi2, dal2 and par2 are kept as measurements; those nodes were destroyed on 2026-10-22 when the fleet went from 13 workers to 6 plus h1, see docs/engineering-log.md.)
 | sg1, syd1 | datacenter (1-core) | 136 | 0.41–0.50% | 0 |
 | dal1, dal2 | datacenter | 20–24 | 0.58–0.75% | 0 |
 | **h1 (NUC)** | **residential** | 132 | **1.00%** | 0 |
