@@ -1,0 +1,5631 @@
+{
+ "Braze": {
+  "source": "webappanalyzer",
+  "wa_name": "Braze",
+  "cats": [
+   "Marketing automation",
+   "Analytics"
+  ],
+  "script": [
+   "js\\.appboycdn\\.com/web-sdk/([\\d.]+)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.braze.com",
+  "description": "Braze is a customer engagement platform that delivers messaging experiences across push, email, in-product, and more.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Constant Contact": {
+  "source": "webappanalyzer",
+  "wa_name": "Constant Contact",
+  "cats": [
+   "Marketing automation",
+   "Email"
+  ],
+  "script": [
+   "\\.ctctcdn\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.constantcontact.com",
+  "description": "Constant Contact is a marketing automation and email marketing solution.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Campaign Monitor": {
+  "source": "webappanalyzer",
+  "wa_name": "Campaign Monitor",
+  "cats": [
+   "Marketing automation",
+   "Email"
+  ],
+  "script": [
+   "\\.createsend1\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.campaignmonitor.com",
+  "description": "Campaign Monitor is a global technology company that provides an email marketing platform.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "GetResponse": {
+  "source": "webappanalyzer",
+  "wa_name": "GetResponse",
+  "cats": [
+   "Marketing automation",
+   "Email"
+  ],
+  "script": [
+   "\\.getresponse\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.getresponse.com",
+  "description": "GetResponse is an email marketing app that allows you to create a mailing list and capture data onto it.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Aweber": {
+  "source": "webappanalyzer",
+  "wa_name": "Aweber",
+  "cats": [
+   "Marketing automation",
+   "Email"
+  ],
+  "script": [
+   "\\.aweber\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.aweber.com",
+  "description": "AWeber is an email marketing service.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "6sense": {
+  "source": "webappanalyzer",
+  "wa_name": "6sense",
+  "cats": [
+   "Marketing automation",
+   "Personalisation"
+  ],
+  "script": [
+   "\\.6sc\\.co/"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.6sc\\.co/"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://6sense.com",
+  "description": "6sense is a B2B predictive intelligence platform for marketing and sales.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Demandbase": {
+  "source": "webappanalyzer",
+  "wa_name": "Demandbase",
+  "cats": [
+   "Analytics",
+   "Personalisation"
+  ],
+  "script": [
+   "\\.engagio\\.com/",
+   "\\.demandbase\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.demandbase.com",
+  "description": "Demandbase is a targeting and personalization platform for business-to-business companies.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Clearbit Reveal": {
+  "source": "webappanalyzer",
+  "wa_name": "Clearbit Reveal",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "reveal\\.clearbit\\.com/v[(0-9)]/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://clearbit.com/#reveal",
+  "description": "Clearbit Reveal identifies anonymous visitors to websites.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Leadfeeder": {
+  "source": "webappanalyzer",
+  "wa_name": "Leadfeeder",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "\\.leadfeeder\\.com/"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.(?:lfeeder|leadfeeder)\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.leadfeeder.com",
+  "description": "Leadfeeder is a B2B visitor identification software that tracks and identifies companies that visit your website.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "HighLevel": {
+  "source": "webappanalyzer",
+  "wa_name": "HighLevel",
+  "cats": [
+   "Marketing automation",
+   "CRM"
+  ],
+  "script": [
+   "\\.leadconnectorhq\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.gohighlevel.com",
+  "description": "HighLevel is an all-in-one marketing and automation platform designed for marketing agencies and small businesses to manage CRM, marketing campaigns, sales funn",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "ClickFunnels": {
+  "source": "webappanalyzer",
+  "wa_name": "ClickFunnels",
+  "cats": [
+   "Marketing automation",
+   "Page builders"
+  ],
+  "script": [],
+  "meta": {
+   "cf:app_domain:": [
+    "app\\.clickfunnels\\.com"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.clickfunnels.com",
+  "description": "ClickFunnels is an online sales funnel builder that helps businesses market, sell, and deliver their products online.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Instapage": {
+  "source": "webappanalyzer",
+  "wa_name": "Instapage",
+  "cats": [
+   "Page builders",
+   "A/B Testing",
+   "Analytics"
+  ],
+  "script": [
+   "heatmap-events-collector\\.instapage\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Lua",
+   "Node.js"
+  ],
+  "saas": true,
+  "website": "https://instapage.com",
+  "description": "Instapage is a cloud-based landing page platform designed for marketing teams and agencies.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Bitrix24": {
+  "source": "webappanalyzer",
+  "wa_name": "Bitrix24",
+  "cats": [
+   "CRM"
+  ],
+  "script": [
+   "\\.bitrix24\\..+/bitrix/js/crm/form_loader\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.bitrix24.com",
+  "description": "Bitrix24 is a set of tools for the organization and management of business processes.",
+  "category": "crm",
+  "ecosystem": ""
+ },
+ "Keap": {
+  "source": "webappanalyzer",
+  "wa_name": "Keap",
+  "cats": [
+   "CRM"
+  ],
+  "script": [
+   "\\.infusionsoft\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://keap.com",
+  "description": "Keap offers an email marketing and sales platform for small businesses, including products to manage customers, customer relationship management, marketing, and",
+  "category": "crm",
+  "ecosystem": ""
+ },
+ "Act-On": {
+  "source": "webappanalyzer",
+  "wa_name": "Act-On",
+  "cats": [
+   "Marketing automation"
+  ],
+  "script": [
+   "/cdnr/\\d+/acton/bn/tracker/\\d+"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://act-on.com",
+  "description": "Act-On is a cloud-based SaaS product for marketing automation.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "SharpSpring": {
+  "source": "webappanalyzer",
+  "wa_name": "SharpSpring",
+  "cats": [
+   "Marketing automation"
+  ],
+  "script": [
+   "\\.marketingautomation\\.services.+(?:ver=)([\\d.]+)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://sharpspring.com",
+  "description": "SharpSpring is a cloud-based marketing tool that offers customer relationship management, marketing automation, mobile and social marketing, sales team automati",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Dotdigital": {
+  "source": "webappanalyzer",
+  "wa_name": "Dotdigital",
+  "cats": [
+   "Marketing automation",
+   "Analytics"
+  ],
+  "script": [
+   "js/_dmptv([\\d.]+)\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://dotdigital.com",
+  "description": "Dotdigital is an all-in-one cloud-based customer engagement multichannel marketing platform.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Insider": {
+  "source": "webappanalyzer",
+  "wa_name": "Insider",
+  "cats": [
+   "Customer data platform"
+  ],
+  "script": [
+   "api\\.useinsider\\.\\w+/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://useinsider.com",
+  "description": "Insider is the first integrated Growth Management Platform helping digital marketers drive growth across the funnel, from Acquisition to Activation, Retention, ",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Cordial": {
+  "source": "webappanalyzer",
+  "wa_name": "Cordial",
+  "cats": [
+   "Personalisation",
+   "Marketing automation"
+  ],
+  "script": [
+   "\\.cordial\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://cordial.com",
+  "description": "Cordial is a cross-channel marketing and customer engagement platform for enterprise brands to send personalized email, SMS, mobile push notifications.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Sailthru": {
+  "source": "webappanalyzer",
+  "wa_name": "Sailthru",
+  "cats": [
+   "Marketing automation",
+   "Email",
+   "Personalisation"
+  ],
+  "script": [
+   "ak\\.sail-horizon\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.sailthru.com",
+  "description": "Sailthru is a marketing automation software and multi-channel personalisation tool that serves ecommerce and media brands.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Benchmark": {
+  "source": "webappanalyzer",
+  "wa_name": "Benchmark",
+  "cats": [
+   "Email"
+  ],
+  "script": [
+   "\\.benchmarkemail\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.benchmarkemail.com",
+  "description": "Benchmark is an email marketing tool used to create, send, and manage email campaigns, track performance metrics, and support audience communication through aut",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Encharge": {
+  "source": "webappanalyzer",
+  "wa_name": "Encharge",
+  "cats": [
+   "Marketing automation",
+   "Email"
+  ],
+  "script": [
+   "resources-app\\.encharge\\.io/(?:encharge-tracking|embed-production)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://encharge.io",
+  "description": "Encharge is a marketing automation platform that sends behavior-based emails and tracks website visitor activity.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Chatra": {
+  "source": "webappanalyzer",
+  "wa_name": "Chatra",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "call\\.chatra\\.io/chatra\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://chatra.com",
+  "description": "Chatra is a cloud-based live chat platform aimed at small businesses and ecommerce retailers.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "LivePerson": {
+  "source": "webappanalyzer",
+  "wa_name": "LivePerson",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "\\.(?:liveperson|contactatonce)?\\.(?:com|net|co\\.uk)/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.liveperson.com",
+  "description": "LivePerson is a tool for conversational chatbots and messaging.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "UserLike": {
+  "source": "webappanalyzer",
+  "wa_name": "UserLike",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "//userlike-cdn-widgets\\."
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://userlike.com",
+  "description": "Userlike is a cloud-based live chat solution that can be integrated with existing websites.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Freshchat": {
+  "source": "webappanalyzer",
+  "wa_name": "Freshchat",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "wchat\\.freshchat\\.com/js/widget\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.freshworks.com/live-chat-software/",
+  "description": "Freshchat is a cloud-hosted live messaging and engagement application.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Re:amaze": {
+  "source": "webappanalyzer",
+  "wa_name": "Re:amaze",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "\\.reamaze\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.reamaze.com",
+  "description": "Re:amaze is a multi-brand customer service, live chat, and help desk solution.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "ChatBot": {
+  "source": "webappanalyzer",
+  "wa_name": "ChatBot",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "cdn\\.chatbot\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.chatbot.com",
+  "description": "ChatBot is a framework for AI chatbots, enabling users to create chatbots for various web services.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Collect.chat": {
+  "source": "webappanalyzer",
+  "wa_name": "Collect.chat",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "collectorcdn\\.com/launcher\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://collect.chat",
+  "description": "Collect.chat is an interactive chatbot that collects data from website visitors.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Landbot": {
+  "source": "webappanalyzer",
+  "wa_name": "Landbot",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "\\.landbot\\.io/.*-([\\d\\.]+)\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://landbot.io",
+  "description": "Landbot is a no code conversational chatbots, conversational landing pages and website, interactive survey and lead generation bot.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Trengo": {
+  "source": "webappanalyzer",
+  "wa_name": "Trengo",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "\\.widget\\.trengo\\.eu/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://trengo.com",
+  "description": "Trengo is an omnichannel communication platform that unifies all messaging channels into one single view.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "authorize.net": {
+  "source": "webappanalyzer",
+  "wa_name": "authorize.net",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "\\.authorize\\.net/"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.authorize\\.net\\s"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.authorize.net",
+  "description": "Authorize.net is a secure online payment gateway service that enables businesses to accept payments through various channels, such as ecommerce websites, mobile",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Checkout.com": {
+  "source": "webappanalyzer",
+  "wa_name": "Checkout.com",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "cdn\\.checkout\\.com/js/.+js(?:\\?ver=)?([\\d\\.]+)?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.checkout.com",
+  "description": "Checkout.com is an international payment platform that processes different payment methods across a variety of currencies.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Amazon Pay": {
+  "source": "webappanalyzer",
+  "wa_name": "Amazon Pay",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "/amazonpayments(?:\\.min)?\\.js",
+   "\\.payments-amazon\\.com/"
+  ],
+  "meta": {
+   "id": [
+    "amazon-payments-metadata"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://pay.amazon.com",
+  "description": "Amazon Pay is an online payments processing service that is owned by Amazon. It lets you use the payment methods associated with your Amazon account to make pay",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Google Pay": {
+  "source": "webappanalyzer",
+  "wa_name": "Google Pay",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "pay\\.google\\.com/([a-z/]+)/pay\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://pay.google.com",
+  "description": "Google Pay is a digital wallet platform and online payment system developed by Google to power in-app and tap-to-pay purchases on mobile devices, enabling users",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Paddle": {
+  "source": "webappanalyzer",
+  "wa_name": "Paddle",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "cdn\\.paddle\\.com/paddle/paddle\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://paddle.com/",
+  "description": "Paddle is a billing and payment gateway for B2B SaaS companies.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Chargebee": {
+  "source": "webappanalyzer",
+  "wa_name": "Chargebee",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "js\\.chargebee\\.com/v([\\d.]+)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.chargebee.com",
+  "description": "Chargebee is a PCI Level 1 certified recurring billing platform for SaaS and subscription-based businesses.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Bolt": {
+  "source": "webappanalyzer",
+  "wa_name": "Bolt Payments",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "connect\\.bolt\\.com/",
+   "account\\.bolt\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.bolt.com/",
+  "description": "Bolt powers a checkout experience designed to convert shoppers.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Cybersource": {
+  "source": "webappanalyzer",
+  "wa_name": "Cybersource",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "cybersource\\..+\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.cybersource.com/",
+  "description": "Cybersource is an ecommerce credit card payment system solution.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Moneris": {
+  "source": "webappanalyzer",
+  "wa_name": "Moneris",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.moneris\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.moneris.com",
+  "description": "Moneris (formerly Moneris Solutions) is Canada's largest financial technology company that specialises in payment processing.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "PagSeguro": {
+  "source": "webappanalyzer",
+  "wa_name": "PagSeguro",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "\\.pagseguro\\.uol\\.com\\.br/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://pagseguro.uol.com.br",
+  "description": "PagSeguro is an online or mobile payment-based ecommerce service for commercial operations.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "LayBuy": {
+  "source": "webappanalyzer",
+  "wa_name": "LayBuy",
+  "cats": [
+   "Buy now pay later"
+  ],
+  "script": [
+   "\\.laybuy\\.com/",
+   "/wp-content/plugins/woo-laybuy/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.laybuy.com",
+  "description": "Laybuy is a payment service that lets you receive your purchase now and spread the total cost over 6 weekly automatic payments interest free.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Clearpay": {
+  "source": "webappanalyzer",
+  "wa_name": "Clearpay",
+  "cats": [
+   "Payment processors",
+   "Buy now pay later"
+  ],
+  "script": [
+   "static\\.afterpay\\.com/shopify-clearpay-javascript\\.js",
+   "\\.clearpay\\.co\\.uk/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.clearpay.co.uk",
+  "description": "Clearpay is the UK and EU brand of Afterpay, a buy-now-pay-later payment service that lets shoppers split purchases into interest-free instalments.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Klarna Checkout": {
+  "source": "webappanalyzer",
+  "wa_name": "Klarna Checkout",
+  "cats": [
+   "Payment processors",
+   "Buy now pay later"
+  ],
+  "script": [
+   "\\.klarnaservices\\.com/lib\\.js"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.klarna(?:cdn|services)\\.(?:net|com)"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.klarna.com/international/",
+  "description": "Klarna Checkout is a complete payment solution where Klarna handles a store's entire checkout.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Gumroad": {
+  "source": "webappanalyzer",
+  "wa_name": "Gumroad",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "gumroad\\.com/js/gumroad\\.js",
+   "gumroad\\.com/js/gumroad-embed\\.js",
+   "gumroad\\.com/packs/js/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://gumroad.com",
+  "description": "Gumroad is a self-publishing digital marketplace platform to sell digital services such as books, memberships, courses and other digital services.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Sellfy": {
+  "source": "webappanalyzer",
+  "wa_name": "Sellfy",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "sellfy\\.com/js/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://sellfy.com",
+  "description": "Sellfy is an ecommerce platform designed specifically for selling digital products, such as music, illustrations, photos, books or videos in digital files.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Salesforce Commerce Cloud": {
+  "source": "webappanalyzer",
+  "wa_name": "Salesforce Commerce Cloud",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "/demandware\\.static/"
+  ],
+  "meta": {},
+  "headers": {
+   "server": [
+    "Demandware eCommerce Server"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Salesforce"
+  ],
+  "saas": true,
+  "website": "https://demandware.com",
+  "description": "Salesforce Commerce Cloud is a cloud-based software-as-a-service (SaaS) ecommerce solution.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Shopware": {
+  "source": "webappanalyzer",
+  "wa_name": "Shopware",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "(?:(shopware)|/web/cache/[0-9]{10}_.+)\\.js",
+   "/jquery\\.shopware\\.min\\.js",
+   "/engine/Shopware/"
+  ],
+  "meta": {
+   "application-name": [
+    "Shopware"
+   ]
+  },
+  "headers": {
+   "sw-context-token": [
+    "^[\\w]{32}$"
+   ],
+   "sw-language-id": [
+    "^[a-fA-F0-9]{32}$"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP",
+   "MySQL",
+   "jQuery",
+   "Symfony"
+  ],
+  "saas": true,
+  "website": "https://www.shopware.com",
+  "description": "Shopware is an enterprise-level ecommerce platform.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Squarespace Commerce": {
+  "source": "webappanalyzer",
+  "wa_name": "Squarespace Commerce",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "assets\\.squarespace\\.\\w+/universal/scripts-compressed/commerce-\\w+-min\\.[\\w+\\-]+\\.js"
+  ],
+  "meta": {},
+  "headers": {
+   "server": [
+    "Squarespace"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Squarespace"
+  ],
+  "saas": true,
+  "website": "https://www.squarespace.com/ecommerce-website",
+  "description": "Squarespace Commerce is an ecommerce platform designed to facilitate the creation of websites and online stores, with domain registration and web hosting includ",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Big Cartel": {
+  "source": "webappanalyzer",
+  "wa_name": "Big Cartel",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "Big Cartel"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.bigcartel.com",
+  "description": "Big Cartel is a cloud-hosted ecommerce platform.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Teachable": {
+  "source": "webappanalyzer",
+  "wa_name": "Teachable",
+  "cats": [
+   "LMS"
+  ],
+  "script": [],
+  "meta": {
+   "asset_host": [
+    "\\.teachablecdn\\.com"
+   ]
+  },
+  "headers": {},
+  "cookies": {
+   "_gat_teachableTracker": [
+    "\\d+"
+   ]
+  },
+  "implies": [],
+  "saas": true,
+  "website": "https://teachable.com",
+  "description": "Teachable is a learning management system or LMS platform.",
+  "category": "education",
+  "ecosystem": ""
+ },
+ "Thinkific": {
+  "source": "webappanalyzer",
+  "wa_name": "Thinkific",
+  "cats": [
+   "LMS"
+  ],
+  "script": [
+   "cdn(?:-themes)?\\.thinkific\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.thinkific.com",
+  "description": "Thinkific is a software platform that enables entrepreneurs to create, market, sell, and deliver their own online courses.",
+  "category": "education",
+  "ecosystem": ""
+ },
+ "LearnWorlds": {
+  "source": "webappanalyzer",
+  "wa_name": "LearnWorlds",
+  "cats": [
+   "LMS"
+  ],
+  "script": [
+   "cdn\\.mycourse\\.app/v([\\d\\.]+)/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.learnworlds.com",
+  "description": "LearnWorlds is a powerful yet lightweight, user-friendly, white-labeled cloud-based LMS ideal for versatile employee training.",
+  "category": "education",
+  "ecosystem": ""
+ },
+ "Moodle": {
+  "source": "webappanalyzer",
+  "wa_name": "Moodle",
+  "cats": [
+   "LMS"
+  ],
+  "script": [],
+  "meta": {
+   "keywords": [
+    "^moodle"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://moodle.org",
+  "description": "Moodle is a free and open-source Learning Management System (LMS) written in PHP and distributed under the GNU General Public License.",
+  "category": "education",
+  "ecosystem": ""
+ },
+ "Canvas LMS": {
+  "source": "webappanalyzer",
+  "wa_name": "Canvas LMS",
+  "cats": [
+   "LMS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-canvas-meta": [
+    "login/canvas"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Ruby on Rails",
+   "React"
+  ],
+  "saas": true,
+  "website": "https://www.instructure.com/canvas",
+  "description": "Canvas LMS is a web-based learning management system, or LMS.",
+  "category": "education",
+  "ecosystem": ""
+ },
+ "Vue Storefront": {
+  "source": "webappanalyzer",
+  "wa_name": "Vue Storefront",
+  "cats": [
+   "Ecommerce frontends"
+  ],
+  "script": [
+   "vsf-layout"
+  ],
+  "meta": {
+   "generator": [
+    "^Vue Storefront ([0-9.]+)?$"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Vue.js"
+  ],
+  "saas": false,
+  "website": "https://www.vuestorefront.io/",
+  "description": "Vue Storefront is a frontend platform for headless ecommerce.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Hyvä": {
+  "source": "webappanalyzer",
+  "wa_name": "Hyva Themes",
+  "cats": [
+   "Ecommerce frontends"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-built-with": [
+    "^Hyva Themes$"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Magento",
+   "Tailwind CSS",
+   "Alpine.js"
+  ],
+  "saas": false,
+  "website": "https://hyva.io",
+  "description": "Hyva Themes is a performance-optimised theme for Magento 2 which eliminated the third-party libraries and having only two dependencies Alpine.js and Tailwind CS",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "VTEX": {
+  "source": "webappanalyzer",
+  "wa_name": "VTEX",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^VTEX IO$"
+   ],
+   "powered": [
+    "vtex"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://vtex.com/",
+  "description": "VTEX is an ecommerce software that manages multiple online stores.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Loja Integrada": {
+  "source": "webappanalyzer",
+  "wa_name": "Loja Integrada",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "vtex-integrated-store"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://lojaintegrada.com.br",
+  "description": "Loja Integrada is an all-in-one platform for building and managing online stores, tailored for the Brazilian market.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "WiziShop": {
+  "source": "webappanalyzer",
+  "wa_name": "WiziShop",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^WiziServer$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://wizishop.com",
+  "description": "WiziShop is an ecommerce solution provider.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Shoptet": {
+  "source": "webappanalyzer",
+  "wa_name": "Shoptet",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "^https?://cdn\\.myshoptet\\.com/"
+  ],
+  "meta": {
+   "web_author": [
+    "^Shoptet"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://www.shoptet.cz",
+  "description": "Shoptet is an ecommerce solutions from store builder, inventory management of online payments.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Sylius": {
+  "source": "webappanalyzer",
+  "wa_name": "Sylius",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [
+   "syliusshop/script\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Symfony"
+  ],
+  "saas": false,
+  "website": "https://sylius.com",
+  "description": "Sylius is an open-source ecommerce framework based on Symfony full stack.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Spryker": {
+  "source": "webappanalyzer",
+  "wa_name": "Spryker",
+  "cats": [
+   "Ecommerce",
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "spryker"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.spryker.com",
+  "description": "Spryker is a ecommerce technology platform that enables global enterprises to build transactional business models.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "OXID eShop": {
+  "source": "webappanalyzer",
+  "wa_name": "OXID eShop",
+  "cats": [
+   "Ecommerce"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {},
+  "cookies": {
+   "sid_key": [
+    "oxid"
+   ]
+  },
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://www.oxid-esales.com",
+  "description": "OXID eShop is a free, open source ecommerce solution built using object oriented programming and PHP.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Hostinger Website Builder": {
+  "source": "webappanalyzer",
+  "wa_name": "Hostinger Website Builder",
+  "cats": [
+   "Page builders"
+  ],
+  "script": [
+   "userapp\\.zyrosite\\.com/"
+  ],
+  "meta": {
+   "generator": [
+    "Hostinger Website Builder"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Vue.js"
+  ],
+  "saas": true,
+  "website": "https://www.hostinger.com",
+  "description": "Hostinger Website Builder is a web-based platform that allows users to create and design websites without needing to write code or have extensive technical know",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Strikingly": {
+  "source": "webappanalyzer",
+  "wa_name": "Strikingly",
+  "cats": [
+   "CMS"
+  ],
+  "script": [
+   "\\.strikinglycdn\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://strikingly.com",
+  "description": "",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "WebNode": {
+  "source": "webappanalyzer",
+  "wa_name": "WebNode",
+  "cats": [
+   "CMS",
+   "Page builders"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "^Webnode(?:\\s([\\d.]+))?$"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.webnode.com",
+  "description": "Webnode is a drag-and-drop online website builder.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Duda": {
+  "source": "webappanalyzer",
+  "wa_name": "Duda",
+  "cats": [
+   "CMS",
+   "Page builders"
+  ],
+  "script": [
+   "dd-cdn\\.multiscreensite\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.duda.co",
+  "description": "Duda is a user-friendly website builder and CMS platform that enables businesses and individuals to create responsive, mobile-friendly websites without extensiv",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "WordPress.com": {
+  "source": "webappanalyzer",
+  "wa_name": "WordPress.com",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "host-header": [
+    "WordPress\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "WordPress"
+  ],
+  "saas": false,
+  "website": "https://wordpress.com",
+  "description": "WordPress.com is a platform for self-publishing that is popular for blogging and other works.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "WP Engine": {
+  "source": "webappanalyzer",
+  "wa_name": "WP Engine",
+  "cats": [
+   "PaaS",
+   "Hosting"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "WP Engine"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "WordPress"
+  ],
+  "saas": false,
+  "website": "https://wpengine.com",
+  "description": "WP Engine is a website hosting provider.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Flywheel": {
+  "source": "webappanalyzer",
+  "wa_name": "Flywheel",
+  "cats": [
+   "PaaS",
+   "Hosting"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-fw-server": [
+    "^Flywheel(?:/([\\d.]+))?"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "WordPress"
+  ],
+  "saas": false,
+  "website": "https://getflywheel.com",
+  "description": "",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Pantheon": {
+  "source": "webappanalyzer",
+  "wa_name": "Pantheon",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^Pantheon"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP",
+   "Nginx",
+   "MariaDB",
+   "Fastly"
+  ],
+  "saas": false,
+  "website": "https://pantheon.io/",
+  "description": "Pantheon is a WebOps (Website Operations) and Management Platform for WordPress and Drupal.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "SiteGround": {
+  "source": "webappanalyzer",
+  "wa_name": "SiteGround",
+  "cats": [
+   "PaaS",
+   "Hosting"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "host-header": [
+    "192fc2e7e50945beb8231a492d6a8024|b7440e60b07ee7b8044761568fab26e8|624d5be7be38418a3e2a818cc8b7029b|6b7412fb82ca5edfd0917e3957f05d89"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.siteground.com",
+  "description": "SiteGround is a web hosting service.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Bluehost": {
+  "source": "webappanalyzer",
+  "wa_name": "Bluehost",
+  "cats": [
+   "Hosting"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "host-header": [
+    "c2hhcmVkLmJsdWVob3N0LmNvbQ=="
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.bluehost.com",
+  "description": "Bluehost is a large web host known for its WordPress expertise, variety of “one-stop-shop” services, and bargain prices.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Hostinger": {
+  "source": "webappanalyzer",
+  "wa_name": "Hostinger",
+  "cats": [
+   "Hosting"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "platform": [
+    "hostinger"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.hostinger.com",
+  "description": "Hostinger is an employee-owned Web hosting provider and internet domain registrar.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Cloudways": {
+  "source": "webappanalyzer",
+  "wa_name": "Cloudways",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "cache-provider": [
+    "CLOUDWAYS-CACHE-DE"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.cloudways.com",
+  "description": "Cloudways offers managed cloud-hosting services for WordPress sites on a cloud server where multiple copies of your content will be replicated throughout your c",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Pressable": {
+  "source": "webappanalyzer",
+  "wa_name": "Pressable",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "host-header": [
+    "^Pressable"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "WordPress"
+  ],
+  "saas": false,
+  "website": "https://pressable.com",
+  "description": "Pressable is a managed hoting platform for WordPress.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Adobe Experience Manager": {
+  "source": "webappanalyzer",
+  "wa_name": "Adobe Experience Manager",
+  "cats": [
+   "CMS"
+  ],
+  "script": [
+   "/etc/designs/",
+   "/etc/clientlibs/",
+   "/etc\\.clientlibs/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Java"
+  ],
+  "saas": true,
+  "website": "https://www.adobe.com/marketing/experience-manager.html",
+  "description": "Adobe Experience Manager (AEM) is a content management solution for building websites, mobile apps and forms.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Contentful": {
+  "source": "webappanalyzer",
+  "wa_name": "Contentful",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^Contentful Images API$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.contentful.com",
+  "description": "Contentful is an API-first content management platform to create, manage and publish content on any digital channel.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Sanity": {
+  "source": "webappanalyzer",
+  "wa_name": "Sanity",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "cdn\\.sanity\\.io"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.sanity.io",
+  "description": "Sanity is a platform for structured content. It comes with an open-source, headless CMS that can be customized with Javascript, a real-time hosted data store an",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Liferay": {
+  "source": "webappanalyzer",
+  "wa_name": "Liferay",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "liferay-portal": [
+    "[a-z\\s]+([\\d.]+)"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Java"
+  ],
+  "saas": false,
+  "website": "https://www.liferay.com/",
+  "description": "Liferay is an open-source company that provides free documentation and paid professional service to users of its software.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Pimcore": {
+  "source": "webappanalyzer",
+  "wa_name": "Pimcore",
+  "cats": [
+   "CMS",
+   "Ecommerce"
+  ],
+  "script": [
+   "/pimcorecore/js/targeting\\.js"
+  ],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "^pimcore$"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://pimcore.com/en/digital-experience-platform",
+  "description": "Pimcore is an open-source digital platform that aggregates, enriches, and manages enterprise data and provides up-to-date, consistent, and personalised experien",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Statamic": {
+  "source": "webappanalyzer",
+  "wa_name": "Statamic",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "^Statamic$"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP",
+   "Laravel"
+  ],
+  "saas": false,
+  "website": "https://statamic.com",
+  "description": "Statamic is an open-source and self-hosted content management system based on the PHP programming language.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "October CMS": {
+  "source": "webappanalyzer",
+  "wa_name": "October CMS",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "OctoberCMS"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Laravel"
+  ],
+  "saas": false,
+  "website": "https://octobercms.com",
+  "description": "October is a free, open-source, self-hosted CMS platform based on the Laravel PHP Framework.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Grav": {
+  "source": "webappanalyzer",
+  "wa_name": "Grav",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "GravCMS(?:\\s([\\d.]+))?"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://getgrav.org",
+  "description": "Grav is a modern, open-source flat-file CMS designed for speed and flexibility, enabling easy website creation and management without needing a database.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Silverstripe": {
+  "source": "webappanalyzer",
+  "wa_name": "Silverstripe",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "^SilverStripe"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://www.silverstripe.org/",
+  "description": "Silverstripe CMS is a free and open source Content Management System and Framework for creating and maintaining websites and web applications.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "ProcessWire": {
+  "source": "webappanalyzer",
+  "wa_name": "ProcessWire",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "ProcessWire CMS"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://processwire.com/",
+  "description": "ProcessWire is an open source content management system (CMS) and framework (CMF).",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "MODX": {
+  "source": "webappanalyzer",
+  "wa_name": "MODX",
+  "cats": [
+   "CMS"
+  ],
+  "script": [
+   "/assets/components/templates/"
+  ],
+  "meta": {
+   "generator": [
+    "MODX[^\\d.]*([\\d.]+)?"
+   ]
+  },
+  "headers": {
+   "x-powered-by": [
+    "^MODX"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": true,
+  "website": "https://modx.com/content-management-framework",
+  "description": "MODX (originally MODx) is an open source content management system and web application framework for publishing content on the World Wide Web and intranets.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Bolt CMS": {
+  "source": "webappanalyzer",
+  "wa_name": "Bolt CMS",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "^Bolt"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://bolt.cm",
+  "description": "Bolt is an open-source content management system (CMS) focused on simplicity and flexibility for developers building and managing websites and web applications.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Plone": {
+  "source": "webappanalyzer",
+  "wa_name": "Plone",
+  "cats": [
+   "CMS"
+  ],
+  "script": [
+   "^/\\+\\+resource\\+\\+"
+  ],
+  "meta": {
+   "generator": [
+    "Plone"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Python"
+  ],
+  "saas": false,
+  "website": "https://plone.org/",
+  "description": "Plone is a free and open source content management system (CMS) built on top of the Zope application server.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "1C-Bitrix": {
+  "source": "webappanalyzer",
+  "wa_name": "1C-Bitrix",
+  "cats": [
+   "CMS",
+   "Ecommerce"
+  ],
+  "script": [
+   "bitrix(?:\\.info/|/js/main/core)"
+  ],
+  "meta": {},
+  "headers": {
+   "set-cookie": [
+    "BITRIX_"
+   ],
+   "x-powered-cms": [
+    "Bitrix Site Manager"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": true,
+  "website": "https://www.1c-bitrix.ru",
+  "description": "1C-Bitrix is a system of web project management, universal software for the creation, support and successful development of corporate websites and online stores",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Divi": {
+  "source": "webappanalyzer",
+  "wa_name": "Divi",
+  "cats": [
+   "Page builders",
+   "WordPress themes",
+   "WordPress plugins"
+  ],
+  "script": [
+   "Divi/js/custom\\.(?:min|unified)\\.js\\?ver=([\\d.]+)"
+  ],
+  "meta": {
+   "generator": [
+    "Divi(?:\\sv\\.([\\d\\.]+))?"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.elegantthemes.com/gallery/divi",
+  "description": "Divi is a WordPress Theme and standalone WordPress plugin from Elegant themes that allows users to build websites using the visual drag-and-drop Divi page build",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "Bricks": {
+  "source": "webappanalyzer",
+  "wa_name": "Bricks",
+  "cats": [
+   "Page builders",
+   "WordPress themes"
+  ],
+  "script": [
+   "/wp-content/themes/bricks/assets/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://bricksbuilder.io",
+  "description": "Bricks is a premium WordPress theme that lets you visually build performant WordPress sites.",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "Astra": {
+  "source": "webappanalyzer",
+  "wa_name": "Astra",
+  "cats": [
+   "WordPress themes"
+  ],
+  "script": [
+   "themes/astra\\S*\\.js(?:\\?ver=([0-9.]+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://wpastra.com/",
+  "description": "Astra is a fast, lightweight, and highly customizable WordPress Theme.",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "GeneratePress": {
+  "source": "webappanalyzer",
+  "wa_name": "GeneratePress",
+  "cats": [
+   "WordPress themes"
+  ],
+  "script": [
+   "themes/generatepress\\S*\\.js(?:\\?ver=([0-9.]+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://generatepress.com",
+  "description": "GeneratePress is a lightweight WordPress theme that focuses on speed, stability, and accessibility",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "Kadence": {
+  "source": "webappanalyzer",
+  "wa_name": "Kadence WP Kadence",
+  "cats": [
+   "WordPress themes"
+  ],
+  "script": [
+   "/wp-content/themes/kadence/.+navigation\\.min\\.js(?:\\?ver=([\\d\\.]+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.kadencewp.com/kadence-theme",
+  "description": "Kadence WP Kadence is a multipurpose WordPress theme that is available for free download and also offers a pro version.",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "Oxygen": {
+  "source": "webappanalyzer",
+  "wa_name": "Oxygen",
+  "cats": [
+   "Page builders",
+   "WordPress plugins"
+  ],
+  "script": [
+   "wp-content/plugins/oxygen"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://oxygenbuilder.com",
+  "description": "Oxygen Builder is a tool to build a WordPress website.",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "Visual Composer": {
+  "source": "webappanalyzer",
+  "wa_name": "Visual Composer",
+  "cats": [
+   "Page builders"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "Powered by Visual Composer Website Builder"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "WordPress",
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://visualcomposer.com",
+  "description": "Visual Composer is an all-in-one web design tool for anyone who uses WordPress.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Spectra": {
+  "source": "webappanalyzer",
+  "wa_name": "Spectra",
+  "cats": [
+   "WordPress plugins"
+  ],
+  "script": [
+   "/wp-content/plugins/ultimate-addons-for-gutenberg/.+\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Gutenberg"
+  ],
+  "saas": false,
+  "website": "https://wpspectra.com",
+  "description": "Spectra is a WordPress plugin that provides a collection of new and enhanced blocks for the Gutenberg editor.",
+  "category": "tools",
+  "ecosystem": "wordpress"
+ },
+ "Blocksy": {
+  "source": "webappanalyzer",
+  "wa_name": "Blocksy",
+  "cats": [
+   "WordPress themes"
+  ],
+  "script": [
+   "/wp-content/themes/blocksy/(?:.+main\\.js(?:\\?ver=([\\d\\.]+)))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://creativethemes.com/blocksy",
+  "description": "Blocksy is a modern and lightweight WordPress theme designed for a variety of websites, including blogs, portfolios, ecommerce stores, and business websites.",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "OceanWP": {
+  "source": "webappanalyzer",
+  "wa_name": "OceanWP",
+  "cats": [
+   "WordPress themes"
+  ],
+  "script": [
+   "themes/oceanwp\\S*\\.js(?:\\?ver=([0-9.]+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://oceanwp.org",
+  "description": "OceanWP is a fast-loading WordPress theme that has great support for third-party plugins and drag-and-drop page builders.",
+  "category": "builder",
+  "ecosystem": "wordpress"
+ },
+ "Hostinger Horizons": {
+  "source": "webappanalyzer",
+  "wa_name": "Hostinger Horizons",
+  "cats": [
+   "Page builders"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "^Hostinger Horizons$"
+   ]
+  },
+  "headers": {
+   "x-powered-by": [
+    "^Hostinger Horizons$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.hostinger.com/horizons",
+  "description": "Hostinger Horizons is a no-code web app builder designed to simplify web application creation without requiring programming knowledge.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Lovable": {
+  "source": "webappanalyzer",
+  "wa_name": "Lovable",
+  "cats": [
+   "Page builders",
+   "Artificial Intelligence"
+  ],
+  "script": [
+   "\\.lovable\\.app/"
+  ],
+  "meta": {
+   "author": [
+    "lovable"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://lovable.dev",
+  "description": "Lovable is an AI-powered collaborative page builder for generating UI components, projects, and templates in real time.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Base44": {
+  "source": "webappanalyzer",
+  "wa_name": "Base44",
+  "cats": [
+   "CMS"
+  ],
+  "script": [],
+  "meta": {
+   "apple-mobile-web-app-title": [
+    "base44"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://base44.com/",
+  "description": "Base44 is an AI-powered, no-code platform that lets users build functional web apps from natural language prompts instead of writing code.",
+  "category": "cms",
+  "ecosystem": ""
+ },
+ "Adalo": {
+  "source": "webappanalyzer",
+  "wa_name": "Adalo",
+  "cats": [
+   "Page builders"
+  ],
+  "script": [
+   "assets\\.adalo\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.adalo.com",
+  "description": "Adalo is a no-code platform enabling the creation of mobile and web applications.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Cargo": {
+  "source": "webappanalyzer",
+  "wa_name": "Cargo",
+  "cats": [
+   "Page builders"
+  ],
+  "script": [
+   "(?<!elo\\.io)/cargo\\."
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://cargo.site",
+  "description": "Cargo is a professional site building platform for designers and artists.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Adobe Portfolio": {
+  "source": "webappanalyzer",
+  "wa_name": "Adobe Portfolio",
+  "cats": [
+   "Page builders"
+  ],
+  "script": [],
+  "meta": {
+   "twitter:site": [
+    "@AdobePortfolio"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://portfolio.adobe.com",
+  "description": "Adobe Portfolio is an Adobe platform that allows you to create a web page where you can show your projects, creations, and the services you offer.",
+  "category": "builder",
+  "ecosystem": ""
+ },
+ "Contentsquare": {
+  "source": "webappanalyzer",
+  "wa_name": "Contentsquare",
+  "cats": [
+   "Analytics",
+   "A/B Testing"
+  ],
+  "script": [
+   "\\.contentsquare\\.net/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://contentsquare.com",
+  "description": "Contentsquare is an enterprise-level UX optimisation platform.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Glassbox": {
+  "source": "webappanalyzer",
+  "wa_name": "Glassbox",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "cdn\\.glassboxcdn\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.glassbox.com",
+  "description": "Glassbox is an Israeli software company. It sells session-replay analytics software and services.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Smartlook": {
+  "source": "webappanalyzer",
+  "wa_name": "Smartlook",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "\\.smartlook\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.smartlook.com",
+  "description": "Smartlook is a qualitative analytics solution for websites and mobile apps.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Yandex Metrica": {
+  "source": "webappanalyzer",
+  "wa_name": "Yandex.Metrika",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "mc\\.yandex\\.ru/metrika/(?:tag|watch)\\.js",
+   "cdn\\.jsdelivr\\.net/npm/yandex\\-metrica\\-watch/(?:tag|watch)\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://metrika.yandex.com",
+  "description": "Yandex.Metrica is a free web analytics service that tracks and reports website traffic.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Baidu Analytics": {
+  "source": "webappanalyzer",
+  "wa_name": "Baidu Analytics (百度统计)",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "hm\\.baidu\\.com/hm?\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://tongji.baidu.com/",
+  "description": "Baidu Analytics (百度统计) is a free tool for tracking and reporting traffic data of users visiting your site.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Kameleoon": {
+  "source": "webappanalyzer",
+  "wa_name": "Kameleoon",
+  "cats": [
+   "A/B Testing"
+  ],
+  "script": [
+   "\\.kameleoon\\.\\w+/kameleoon\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://kameleoon.com/",
+  "description": "Kameleoon is a personalisation technology platform for real-time omnichannel optimisation and conversion.",
+  "category": "ab_testing",
+  "ecosystem": ""
+ },
+ "LaunchDarkly": {
+  "source": "webappanalyzer",
+  "wa_name": "LaunchDarkly",
+  "cats": [
+   "Feature management"
+  ],
+  "script": [
+   "(?:\\.|\\-)launchdarkly(?:\\.com/|\\-sdk\\.)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://launchdarkly.com",
+  "description": "LaunchDarkly is a continuous delivery and feature flags as a service platform that integrates into a company's current development cycle.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Split": {
+  "source": "webappanalyzer",
+  "wa_name": "Split",
+  "cats": [
+   "Feature management",
+   "A/B Testing"
+  ],
+  "script": [
+   "\\.split\\.io/(?:sdk/split-([\\d\\.]+)\\.min\\.js)?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.split.io",
+  "description": "Split is a feature delivery platform that powers feature flag management, software experimentation, and continuous delivery.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Dynatrace RUM": {
+  "source": "webappanalyzer",
+  "wa_name": "Dynatrace RUM",
+  "cats": [
+   "RUM"
+  ],
+  "script": [
+   "/ruxitagentjs_(?:.+)_(?:.+)\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Dynatrace"
+  ],
+  "saas": true,
+  "website": "https://www.dynatrace.com/platform/real-user-monitoring",
+  "description": "Dynatrace RUM is an AI powered, full stack, automated real user monitoring platform built by Dynatrace.",
+  "category": "performance",
+  "ecosystem": ""
+ },
+ "BugSnag": {
+  "source": "webappanalyzer",
+  "wa_name": "BugSnag",
+  "cats": [
+   "Analytics",
+   "Issue trackers"
+  ],
+  "script": [
+   "/bugsnag.*\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://bugsnag.com",
+  "description": "Bugsnag is a cross-platform error monitoring, reporting, and resolution software.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Cloudflare Browser Insights": {
+  "source": "webappanalyzer",
+  "wa_name": "Cloudflare Browser Insights",
+  "cats": [
+   "Analytics",
+   "RUM"
+  ],
+  "script": [
+   "static\\.cloudflareinsights\\.com/beacon(?:\\.min)?\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.cloudflare.com",
+  "description": "Cloudflare Browser Insights is a tool that measures the performance of websites from the perspective of users.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "June": {
+  "source": "webappanalyzer",
+  "wa_name": "June",
+  "cats": [
+   "Analytics",
+   "Customer data platform"
+  ],
+  "script": [
+   "static\\.june\\.so/analytics\\.js/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://june.so",
+  "description": "June is a product analytics for subscription businesses. It automatically generates graphs of the metrics users should track by connecting their segment account",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Vercel Analytics": {
+  "source": "webappanalyzer",
+  "wa_name": "Vercel Analytics",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "/va/script\\.js",
+   "/_vercel/insights/script\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://vercel.com/analytics",
+  "description": "",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "mParticle": {
+  "source": "webappanalyzer",
+  "wa_name": "mParticle",
+  "cats": [
+   "Customer data platform"
+  ],
+  "script": [
+   "\\.mparticle\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.mparticle.com",
+  "description": "mParticle is a mobile-focused event tracking and data ingestion tool.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Nosto": {
+  "source": "webappanalyzer",
+  "wa_name": "Nosto",
+  "cats": [
+   "Personalisation",
+   "A/B Testing"
+  ],
+  "script": [
+   "connect\\.nosto\\.\\w+/"
+  ],
+  "meta": {
+   "nosto-version": [
+    "([\\d.]+)"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.nosto.com",
+  "description": "Nosto is an ecommerce platform providing product recommendations based on individual behavioral data.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Usercentrics": {
+  "source": "webappanalyzer",
+  "wa_name": "Usercentrics",
+  "cats": [
+   "Cookie compliance"
+  ],
+  "script": [
+   "\\.usercentrics\\.eu/.+\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://usercentrics.com",
+  "description": "Usercentrics is a SaaS enterprise solution for Consent Management (CMP) that helps enterprise customers to obtain, manage and document the user consent.",
+  "category": "consent",
+  "ecosystem": ""
+ },
+ "Didomi": {
+  "source": "webappanalyzer",
+  "wa_name": "Didomi",
+  "cats": [
+   "Cookie compliance"
+  ],
+  "script": [
+   "sdk\\.privacy-center\\.org/.*/loader\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.didomi.io/en/consent-preference-management",
+  "description": "Didomi is a consent management platform helping brands and businesses collect, store and leverage their customer consents.",
+  "category": "consent",
+  "ecosystem": ""
+ },
+ "Osano": {
+  "source": "webappanalyzer",
+  "wa_name": "Osano",
+  "cats": [
+   "Cookie compliance"
+  ],
+  "script": [
+   "cmp\\.osano\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.osano.com",
+  "description": "Osano is a data privacy platform that helps your website become compliant with laws such as GDPR and CCPA.",
+  "category": "consent",
+  "ecosystem": ""
+ },
+ "Termly": {
+  "source": "webappanalyzer",
+  "wa_name": "Termly",
+  "cats": [
+   "Cookie compliance"
+  ],
+  "script": [
+   "app\\.termly\\.io/embed\\.min\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://termly.io/",
+  "description": "Termly provides free website policy resources and web-based policy creation software.",
+  "category": "consent",
+  "ecosystem": ""
+ },
+ "CookieFirst": {
+  "source": "webappanalyzer",
+  "wa_name": "CookieFirst",
+  "cats": [
+   "Cookie compliance"
+  ],
+  "script": [
+   "consent\\.cookiefirst\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://cookiefirst.com",
+  "description": "CookieFirst is an GDPR and CCPA compliant consent management platform.",
+  "category": "consent",
+  "ecosystem": ""
+ },
+ "DataDome": {
+  "source": "webappanalyzer",
+  "wa_name": "DataDome",
+  "cats": [
+   "Security"
+  ],
+  "script": [
+   "^https://ct\\.datadome\\.co/[a-z]\\.js$"
+  ],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^DataDome$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://datadome.co",
+  "description": "DataDome is a cybersecurity platform that specialises in bot protection and mitigation, offering advanced solutions to safeguard websites and mobile application",
+  "category": "security",
+  "ecosystem": ""
+ },
+ "PerimeterX": {
+  "source": "webappanalyzer",
+  "wa_name": "PerimeterX",
+  "cats": [
+   "Security"
+  ],
+  "script": [
+   "client\\.a\\.pxi\\.pub/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.perimeterx.com",
+  "description": "PerimeterX is a provider of scalable, behavior-based threat protection technology for the web, cloud, and mobile.",
+  "category": "security",
+  "ecosystem": ""
+ },
+ "Arkose Labs": {
+  "source": "webappanalyzer",
+  "wa_name": "Arkose Labs",
+  "cats": [
+   "Security"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.arkoselabs\\.com"
+   ],
+   "content-security-policy-report-only": [
+    "\\.arkoselabs\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.arkoselabs.com",
+  "description": "Arkose Labs is a toolkit for fraud prevention that provides solutions to detect and mitigate malicious activity across digital platforms.",
+  "category": "security",
+  "ecosystem": ""
+ },
+ "CleanTalk": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "fd\\.cleantalk\\.org/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "security",
+  "ecosystem": "",
+  "description": ""
+ },
+ "Norton Shopping Guarantee": {
+  "source": "webappanalyzer",
+  "wa_name": "Norton Shopping Guarantee",
+  "cats": [
+   "Security"
+  ],
+  "script": [
+   "nsg\\.symantec\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Cart Functionality"
+  ],
+  "saas": true,
+  "website": "https://norton.buysafe.com",
+  "description": "Norton Shopping Guarantee offering a third-party shopping guarantee to customers provides added protection and validation that you are safe to buy from.",
+  "category": "security",
+  "ecosystem": ""
+ },
+ "Klevu": {
+  "source": "webappanalyzer",
+  "wa_name": "Klevu",
+  "cats": [
+   "Search engines"
+  ],
+  "script": [
+   "js\\.klevu\\.\\w+/klevu-js-v([\\d.]+)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.klevu.com",
+  "description": "Klevu is a highly advanced AI-Powered search solution for ecommerce platforms.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Constructor.io": {
+  "source": "webappanalyzer",
+  "wa_name": "Constructor.io",
+  "cats": [
+   "Search engines"
+  ],
+  "script": [
+   "\\.cnstrc\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://constructor.io/",
+  "description": "Constructor.io is a site search and merchandising platform designed to help ecommerce.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Doofinder": {
+  "source": "webappanalyzer",
+  "wa_name": "Doofinder",
+  "cats": [
+   "Search engines"
+  ],
+  "script": [
+   "cdn\\.doofinder\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.doofinder.com",
+  "description": "Doofinder is a search site solution that enables users to include advanced and smart search engine capabilities in their ecommerce website.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Typesense": {
+  "source": "webappanalyzer",
+  "wa_name": "Typesense",
+  "cats": [
+   "Search engines"
+  ],
+  "script": [
+   "/typesense@([\\d\\.]+)/dist/typesense\\.min\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://typesense.org",
+  "description": "Typesense is an open-source, typo-tolerant search-engine optimized for speed and relevance.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Swiftype": {
+  "source": "webappanalyzer",
+  "wa_name": "Swiftype",
+  "cats": [
+   "Search engines"
+  ],
+  "script": [
+   "swiftype\\.com/embed\\.js$"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://swiftype.com",
+  "description": "Swiftype provides search software for organisations, websites, and computer programs.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Addsearch": {
+  "source": "webappanalyzer",
+  "wa_name": "Addsearch",
+  "cats": [
+   "Search engines"
+  ],
+  "script": [
+   "//addsearch\\.com/js/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.addsearch.com/",
+  "description": "Addsearch is a site search solution for small and large websites.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Unbxd": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "libraries\\.unbxdapi\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "search",
+  "ecosystem": "",
+  "description": ""
+ },
+ "Findify": {
+  "source": "webappanalyzer",
+  "wa_name": "Findify",
+  "cats": [
+   "Search engines",
+   "Personalisation"
+  ],
+  "script": [
+   "@findify/bundle@([\\d.]+)/dist/.+\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.findify.io",
+  "description": "Findify is an intelligent ecommerce search, navigation and personalisation solution.",
+  "category": "search",
+  "ecosystem": ""
+ },
+ "Fresha": {
+  "source": "webappanalyzer",
+  "wa_name": "Fresha",
+  "cats": [
+   "Appointment scheduling"
+  ],
+  "script": [
+   "\\.fresha\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.fresha.com",
+  "description": "Fresha is a leading marketplace enabling consumers to discover, book, and pay for local beauty and wellness services.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Cloudbeds": {
+  "source": "webappanalyzer",
+  "wa_name": "Cloudbeds",
+  "cats": [
+   "Appointment scheduling"
+  ],
+  "script": [
+   "\\.cloudbeds\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.cloudbeds.com",
+  "description": "Cloudbeds is a cloud-based hotel management platform which includes tools for managing reservations, availability, rates, distribution channels, payments, guest",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Mews": {
+  "source": "webappanalyzer",
+  "wa_name": "Mews",
+  "cats": [
+   "Appointment scheduling"
+  ],
+  "script": [
+   "\\.mews\\.li/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.mews.com",
+  "description": "Mews is a hospitalitions service that enables hotels to track their bookings.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Lodgify": {
+  "source": "webappanalyzer",
+  "wa_name": "Lodgify",
+  "cats": [
+   "Reservations & delivery"
+  ],
+  "script": [
+   "\\.lodgify\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.lodgify.com",
+  "description": "Lodgify is a platform facilitating vacation rentals and bookings.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Cvent": {
+  "source": "webappanalyzer",
+  "wa_name": "Cvent",
+  "cats": [
+   "Appointment scheduling",
+   "Ticket booking"
+  ],
+  "script": [
+   "\\.cvent-assets\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.cvent.com",
+  "description": "Cvent is an event management software that offers a platform for managing in-person, virtual, and hybrid events.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Tito": {
+  "source": "webappanalyzer",
+  "wa_name": "Tito",
+  "cats": [
+   "Ticket booking"
+  ],
+  "script": [
+   "js\\.tito\\.io/v([\\d.]+)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://ti.to",
+  "description": "Tito is an event software platform that provides a solution for selling tickets online.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Boulevard": {
+  "source": "webappanalyzer",
+  "wa_name": "Boulevard",
+  "cats": [
+   "Appointment scheduling"
+  ],
+  "script": [
+   "\\.joinboulevard\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.joinblvd.com",
+  "description": "Boulevard is a business management platform tailored to streamline appointment-based operations, specifically designed for the wellness industry.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Zenoti": {
+  "source": "webappanalyzer",
+  "wa_name": "Zenoti",
+  "cats": [
+   "Appointment scheduling"
+  ],
+  "script": [],
+  "meta": {
+   "author": [
+    "^zenoti$"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.zenoti.com/",
+  "description": "Zenoti is a cloud-based business software for spas, salons, and medspas, providing tools for managing appointment books, employee scheduling, and enabling onlin",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Bookly": {
+  "source": "webappanalyzer",
+  "wa_name": "Bookly",
+  "cats": [
+   "Appointment scheduling",
+   "WordPress plugins"
+  ],
+  "script": [
+   "/wp-content/plugins/bookly-responsive-appointment-booking-tool/.+\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.booking-wp-plugin.com",
+  "description": "Bookly is a WordPress scheduling plugin that allows you to accept online reservations on your website and automate your booking system.",
+  "category": "booking",
+  "ecosystem": "wordpress"
+ },
+ "Chili Piper": {
+  "source": "webappanalyzer",
+  "wa_name": "Chili Piper",
+  "cats": [
+   "Appointment scheduling"
+  ],
+  "script": [
+   "js\\.chilipiper\\.com/marketing\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.chilipiper.com/",
+  "description": "Chili Piper is a suite of automated scheduling tools that help revenue teams convert leads.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Momence": {
+  "source": "webappanalyzer",
+  "wa_name": "Momence",
+  "cats": [
+   "Appointment scheduling",
+   "Ticket booking"
+  ],
+  "script": [
+   "//momence\\.com/plugin/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://momence.com",
+  "description": "Momence is an all-in-one toolbox for gyms and studios, enabling scheduling of online and in-person classes, events, appointments, and experiences.",
+  "category": "booking",
+  "ecosystem": ""
+ },
+ "Tally": {
+  "source": "webappanalyzer",
+  "wa_name": "Tally",
+  "cats": [
+   "Surveys"
+  ],
+  "script": [
+   "//tally\\.so/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://tally.so/",
+  "description": "Tally is the simplest way to create free forms & surveys. Create any type of form in seconds, without knowing how to code, and for free.",
+  "category": "forms",
+  "ecosystem": ""
+ },
+ "Qualtrics": {
+  "source": "webappanalyzer",
+  "wa_name": "Qualtrics",
+  "cats": [
+   "Surveys"
+  ],
+  "script": [
+   "\\.qualtrics\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.qualtrics.com",
+  "description": "Qualtrics is an cloud-based platform for creating and distributing web-based surveys.",
+  "category": "forms",
+  "ecosystem": ""
+ },
+ "Survicate": {
+  "source": "webappanalyzer",
+  "wa_name": "Survicate",
+  "cats": [
+   "Surveys"
+  ],
+  "script": [
+   "\\.survicate\\.com/"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "api\\.survicate\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://survicate.com",
+  "description": "Survicate is an all-in-one customer feedback tool that allows you collect feedback.",
+  "category": "forms",
+  "ecosystem": ""
+ },
+ "Sprig": {
+  "source": "webappanalyzer",
+  "wa_name": "Sprig",
+  "cats": [
+   "Surveys",
+   "Analytics"
+  ],
+  "script": [
+   "cdn\\.userleap\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://sprig.com",
+  "description": "Sprig is a UX analysis and management tool to understand what motivates customers to sign up, engage, and remain loyal to products.",
+  "category": "forms",
+  "ecosystem": ""
+ },
+ "Hotjar Feedback": {
+  "source": "webappanalyzer",
+  "wa_name": "Hotjar Incoming Feedback",
+  "cats": [
+   "Surveys"
+  ],
+  "script": [
+   "\\.hotjar\\.com/preact-incoming-feedback"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.hotjar.com",
+  "description": "Hotjar Incoming Feedback is a widget that sits at the edge of a page.",
+  "category": "forms",
+  "ecosystem": ""
+ },
+ "Basin": {
+  "source": "webappanalyzer",
+  "wa_name": "Basin",
+  "cats": [
+   "Form builders"
+  ],
+  "script": [
+   "js\\.usebasin\\.com/v([\\d\\.]+)\\.min\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://usebasin.com",
+  "description": "Basin is a plug-and-play form backend for designers and developers, allowing users to collect submissions and track conversions without coding.",
+  "category": "forms",
+  "ecosystem": ""
+ },
+ "Greenhouse": {
+  "source": "webappanalyzer",
+  "wa_name": "Greenhouse",
+  "cats": [
+   "Recruitment & staffing"
+  ],
+  "script": [
+   "\\.greenhouse\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.greenhouse.io",
+  "description": "Greenhouse is an applicant tracking and hiring tool. Greenhouse features automated workflow, recruitment analytics, CRM, and onboarding.",
+  "category": "hr",
+  "ecosystem": ""
+ },
+ "Lever": {
+  "source": "webappanalyzer",
+  "wa_name": "Lever",
+  "cats": [
+   "Recruitment & staffing"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.lever\\.co"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.lever.co",
+  "description": "Lever is a software company headquartered in San Francisco, California and Toronto, Canada that provides an applicant tracking system for hiring.",
+  "category": "hr",
+  "ecosystem": ""
+ },
+ "BambooHR": {
+  "source": "webappanalyzer",
+  "wa_name": "BambooHR",
+  "cats": [
+   "Recruitment & staffing"
+  ],
+  "script": [
+   "\\.bamboohr\\.com/"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.bamboohr\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.bamboohr.com",
+  "description": "BambooHR is an American technology company that provides human resources software as a service.",
+  "category": "hr",
+  "ecosystem": ""
+ },
+ "SmartRecruiters": {
+  "source": "webappanalyzer",
+  "wa_name": "SmartRecruiters",
+  "cats": [
+   "Recruitment & staffing"
+  ],
+  "script": [
+   "\\.smartrecruiters\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.smartrecruiters.com",
+  "description": "SmartRecruiters is a web-based talent acquisition platform.",
+  "category": "hr",
+  "ecosystem": ""
+ },
+ "JazzHR": {
+  "source": "webappanalyzer",
+  "wa_name": "JazzHR",
+  "cats": [
+   "Recruitment & staffing"
+  ],
+  "script": [
+   "app\\.jazz\\.co/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.jazzhr.com",
+  "description": "JazzHR is SaaS recruiting software to source talent, conduct interviews and hires.",
+  "category": "hr",
+  "ecosystem": ""
+ },
+ "Feefo": {
+  "source": "webappanalyzer",
+  "wa_name": "Feefo",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.feefo\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.feefo.com",
+  "description": "Feefo is a cloud-based consumer review and rating management software.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Junip": {
+  "source": "webappanalyzer",
+  "wa_name": "Junip",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.juniphq\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://junip.co",
+  "description": "Junip provider of a ecommerce brand review platform designed to share customers' story, send review requests and display review content.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Birdeye": {
+  "source": "webappanalyzer",
+  "wa_name": "Birdeye",
+  "cats": [
+   "Marketing automation",
+   "Widgets"
+  ],
+  "script": [
+   "birdeye\\.com/embed"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://birdeye.com",
+  "description": "Birdeye is an all-in-one customer experience platform.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Senja": {
+  "source": "webappanalyzer",
+  "wa_name": "Senja",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.senja\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://senja.io",
+  "description": "Senja is a platform that enables the collection, management, and sharing of social proof to grow businesses.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Stamped": {
+  "source": "webappanalyzer",
+  "wa_name": "Stamped",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.stamped\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://stamped.io/",
+  "description": "Stamped is a provider of reviews and ratings solution.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Avis Vérifiés": {
+  "source": "webappanalyzer",
+  "wa_name": "Avis Verifies",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.avis-verifies\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.netreviews.com",
+  "description": "Avis Verifies is a complete solution for managing your customer reviews.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Trusted Shops": {
+  "source": "webappanalyzer",
+  "wa_name": "Trusted Shops",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "widgets\\.trustedshops\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.trustedshops.co.uk",
+  "description": "Trusted Shops is a company that acts as a 3'rd party representing the common interests of both consumers and retailers.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "ShopperApproved": {
+  "source": "webappanalyzer",
+  "wa_name": "ShopperApproved",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.shopperapproved\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.shopperapproved.com",
+  "description": "ShopperApproved is a platform that enhances eCommerce traffic, sales, and conversions by leveraging trust signals, user-generated content, and social proof.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Clutch": {
+  "source": "webappanalyzer",
+  "wa_name": "Clutch",
+  "cats": [
+   "Reviews",
+   "Widgets"
+  ],
+  "script": [
+   "//widget\\.clutch\\.co/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://clutch.co/content/add-review-widget-your-website",
+  "description": "Clutch review widgets are stand-alone applications that you can embed on your website to show your dynamic ratings and reviews.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Kaltura": {
+  "source": "webappanalyzer",
+  "wa_name": "Kaltura",
+  "cats": [
+   "Video players",
+   "Livestreaming"
+  ],
+  "script": [
+   "api\\.kaltura\\.(?:nordu\\.net|com)/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://corp.kaltura.com",
+  "description": "Kaltura is a video content management platform that allows users to upload, manage, share, publish, and stream videos.",
+  "category": "video",
+  "ecosystem": ""
+ },
+ "AudioEye": {
+  "source": "webappanalyzer",
+  "wa_name": "AudioEye",
+  "cats": [
+   "Accessibility"
+  ],
+  "script": [
+   "(?:\\.)?audioeye\\.com/(?:ae\\.js)?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.audioeye.com",
+  "description": "AudioEye is an accessibility overlay which claims to provide ADA and WCAG accessibility compliance.",
+  "category": "accessibility",
+  "ecosystem": ""
+ },
+ "Recite Me": {
+  "source": "webappanalyzer",
+  "wa_name": "Recite Me",
+  "cats": [
+   "Accessibility"
+  ],
+  "script": [
+   "api\\.reciteme\\.com/asset/js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://reciteme.com/",
+  "description": "Recite Me is a web accessibility overlay that claims to allow website visitors to customize a site in a way that works for them.",
+  "category": "accessibility",
+  "ecosystem": ""
+ },
+ "All in One Accessibility": {
+  "source": "webappanalyzer",
+  "wa_name": "All in One Accessibility",
+  "cats": [
+   "Accessibility"
+  ],
+  "script": [
+   "\\.skynettechnologies\\.com/accessibility/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.skynettechnologies.com/all-in-one-accessibility",
+  "description": "All in One Accessibility is a website accessibility widget developed by Skynet Technologies to enhance compliance with WCAG 2.0, 2.1, 2.2, and ADA accessibility",
+  "category": "accessibility",
+  "ecosystem": ""
+ },
+ "Texthelp": {
+  "source": "webappanalyzer",
+  "wa_name": "Texthelp",
+  "cats": [
+   "Accessibility"
+  ],
+  "script": [
+   "browsealoud\\.com/.*/browsealoud\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.texthelp.com/en-gb/products/browsealoud/",
+  "description": "TextHelp is a literacy, accessibility and dyslexia software developer for people with reading and writing difficulties.",
+  "category": "accessibility",
+  "ecosystem": ""
+ },
+ "Siteimprove": {
+  "source": "webappanalyzer",
+  "wa_name": "Siteimprove",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "(?:\\.|//)siteimprove(?:analytics)?\\.com/js/siteanalyze"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.siteimprove.com",
+  "description": "Siteimprove is a digital analytics and content QA platform.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Impact": {
+  "source": "webappanalyzer",
+  "wa_name": "Impact",
+  "cats": [
+   "Affiliate programs"
+  ],
+  "script": [
+   "d\\.impactradius-event\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://impact.com/",
+  "description": "Impact helps businesses contract and pay partners.",
+  "category": "affiliate",
+  "ecosystem": ""
+ },
+ "ReferralCandy": {
+  "source": "webappanalyzer",
+  "wa_name": "ReferralCandy",
+  "cats": [
+   "Referral marketing",
+   "Loyalty & rewards"
+  ],
+  "script": [
+   "\\.referralcandy\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.referralcandy.com",
+  "description": "ReferralCandy is a marketing platform that gets shoppers to refer their friends.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Tapfiliate": {
+  "source": "webappanalyzer",
+  "wa_name": "Tapfiliate",
+  "cats": [
+   "Affiliate programs"
+  ],
+  "script": [
+   "\\.tapfiliate\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://tapfiliate.com",
+  "description": "Tapfiliate is a cloud-based affiliate marketing software that helps businesses to create, track, and optimise their own affiliate marketing programs.",
+  "category": "affiliate",
+  "ecosystem": ""
+ },
+ "FirstPromoter": {
+  "source": "webappanalyzer",
+  "wa_name": "FirstPromoter",
+  "cats": [
+   "Affiliate programs"
+  ],
+  "script": [
+   "cdn\\.firstpromoter\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://firstpromoter.com",
+  "description": "FirstPromoter is a software platform that helps businesses to create, manage and track their affiliate marketing programs.",
+  "category": "affiliate",
+  "ecosystem": ""
+ },
+ "Mention Me": {
+  "source": "webappanalyzer",
+  "wa_name": "Mention Me",
+  "cats": [
+   "Referral marketing"
+  ],
+  "script": [
+   "\\.mention-me\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.mention-me.com",
+  "description": "Mention Me is a referral marketing platform for conversion-obsessed ecommerce brands.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Friendbuy": {
+  "source": "webappanalyzer",
+  "wa_name": "Friendbuy",
+  "cats": [
+   "Referral marketing"
+  ],
+  "script": [
+   "\\.cloudfront\\.net/js/friendbuy\\.min\\.js",
+   "static\\.fbot\\.me/friendbuy\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.friendbuy.com",
+  "description": "Friendbuy is a cloud-based referral marketing solution designed to help ecommerce businesses of all sizes.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Extole": {
+  "source": "webappanalyzer",
+  "wa_name": "Extole",
+  "cats": [
+   "Referral marketing",
+   "Loyalty & rewards"
+  ],
+  "script": [
+   "\\.(?:extole|xtlo)\\.(?:com|net)/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.extole.com",
+  "description": "Extole is an online marketing platform that enables brands and businesses to get new customers through loyalty and referral programs.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Post Affiliate Pro": {
+  "source": "webappanalyzer",
+  "wa_name": "Post Affiliate Pro",
+  "cats": [
+   "Affiliate programs"
+  ],
+  "script": [
+   "postaffiliatepro\\.com/scripts/trackjs\\.js",
+   "(?:affiliate|associate)\\..+/scripts/trackjs\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.postaffiliatepro.com",
+  "description": "Post Affiliate Pro is a software built for online stores and ecommerce websites that need to track and monitor their affiliate network.",
+  "category": "affiliate",
+  "ecosystem": ""
+ },
+ "AWIN": {
+  "source": "webappanalyzer",
+  "wa_name": "AWIN",
+  "cats": [
+   "Affiliate programs"
+  ],
+  "script": [
+   "zanox\\.com/scripts/zanox\\.js$"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.awin.com",
+  "description": "AWIN is a global affiliate marketing network.",
+  "category": "affiliate",
+  "ecosystem": ""
+ },
+ "Sovrn Commerce": {
+  "source": "webappanalyzer",
+  "wa_name": "Sovrn//Commerce",
+  "cats": [
+   "Affiliate programs"
+  ],
+  "script": [
+   "(?:^[^/]*//[^/]*viglink\\.com/api/|vglnk\\.js)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.sovrn.com/publishers/commerce/",
+  "description": "Sovrn//Commerce is  a content monetization tool for publishers.",
+  "category": "affiliate",
+  "ecosystem": ""
+ },
+ "Viral Loops": {
+  "source": "webappanalyzer",
+  "wa_name": "Viral Loops",
+  "cats": [
+   "Referral marketing"
+  ],
+  "script": [
+   "app\\.viral-loops\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://viral-loops.com",
+  "description": "Viral Loops is a viral and referral marketing platform to launch ranking competitions, sweepstakes, pre-launch and referral programs.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Yotpo Loyalty": {
+  "source": "webappanalyzer",
+  "wa_name": "Yotpo Loyalty & Referrals",
+  "cats": [
+   "Loyalty & rewards"
+  ],
+  "script": [
+   "cdn(?:-loyalty)?\\.(?:swellrewards|yotpo)\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.yotpo.com/platform/loyalty/",
+  "description": "Yotpo is a user-generated content marketing platform.",
+  "category": "loyalty",
+  "ecosystem": ""
+ },
+ "Smile": {
+  "source": "webappanalyzer",
+  "wa_name": "Smile",
+  "cats": [
+   "Loyalty & rewards"
+  ],
+  "script": [
+   "\\.(?:smile|sweettooth)\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://smile.io",
+  "description": "Smile is a provider of ecommerce loyalty programs.",
+  "category": "loyalty",
+  "ecosystem": ""
+ },
+ "Rise.ai": {
+  "source": "webappanalyzer",
+  "wa_name": "Rise.ai",
+  "cats": [
+   "Loyalty & rewards",
+   "Referral marketing"
+  ],
+  "script": [
+   "strn\\.rise-ai\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://rise.ai",
+  "description": "Rise.ai is a strategic re-engagement solution that provides brands and retailers with a unique currency of their own.",
+  "category": "loyalty",
+  "ecosystem": ""
+ },
+ "Amazon Advertising": {
+  "source": "webappanalyzer",
+  "wa_name": "Amazon Advertising",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.amazon-adsystem\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://advertising.amazon.com",
+  "description": "Amazon Advertising (formerly AMS or Amazon Marketing Services) is a service that works in a similar way to pay-per-click ads on Google.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Mediavine": {
+  "source": "webappanalyzer",
+  "wa_name": "Mediavine",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.mediavine\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.mediavine.com",
+  "description": "Mediavine is a full service ad management platform.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "theTradeDesk": {
+  "source": "webappanalyzer",
+  "wa_name": "theTradeDesk",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.adsrvr\\.org/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.thetradedesk.com",
+  "description": "theTradeDesk is an technology company that markets a software platform used by digital ad buyers to purchase data-driven digital advertising campaigns across va",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "StackAdapt": {
+  "source": "webappanalyzer",
+  "wa_name": "StackAdapt",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "srv\\.stackadapt\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.stackadapt.com",
+  "description": "StackAdapt is a platform that provides a content advertising strategy solution for planning, executing, and optimizing digital campaigns.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Yandex.Direct": {
+  "source": "webappanalyzer",
+  "wa_name": "Yandex.Direct",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "//an\\.yandex\\.ru/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://ads.yandex.com",
+  "description": "Yandex Direct is the platform designed for sponsored ad management.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "LinkedIn Ads": {
+  "source": "webappanalyzer",
+  "wa_name": "Linkedin Ads",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "px\\.ads\\.linkedin\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://business.linkedin.com/marketing-solutions/ads",
+  "description": "Linkedin Ads is a paid marketing tool that offers access to Linkedin social networks through various sponsored posts and other methods.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Twitter Ads": {
+  "source": "webappanalyzer",
+  "wa_name": "Twitter Ads",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "static\\.ads-twitter\\.com/uwt\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://ads.twitter.com",
+  "description": "Twitter Ads is an advertising platform for Twitter 'microblogging' system.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Snap Pixel": {
+  "source": "webappanalyzer",
+  "wa_name": "Snap Pixel",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "intg\\.snapchat\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://businesshelp.snapchat.com/s/article/snap-pixel-about",
+  "description": "Snap Pixel is a piece of JavaScript code that helps advertisers measure the cross-device impact of campaigns.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Google Ads": {
+  "source": "webappanalyzer",
+  "wa_name": "Google Ads Conversion Tracking",
+  "cats": [
+   "Analytics"
+  ],
+  "script": [
+   "\\.googleadservices\\.com/pagead/conversion_async\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Google Ads"
+  ],
+  "saas": true,
+  "website": "https://support.google.com/google-ads/answer/1722022",
+  "description": "Google Ads Conversion Tracking is a free tool that shows you what happens after a customer interacts with your ads.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Google Ad Manager": {
+  "source": "webappanalyzer",
+  "wa_name": "DoubleClick for Publishers (DFP)",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "googletagservices\\.com/tag/js/gpt(?:_mobile)?\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.google.com/dfp",
+  "description": "DoubleClick for Publishers (DFP) is a hosted ad serving platform that streamlines your ad management.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Prebid": {
+  "source": "webappanalyzer",
+  "wa_name": "Prebid",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "/prebid\\.js",
+   "adnxs\\.com/[^\"]*(?:prebid|/pb\\.js)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://prebid.org",
+  "description": "Prebid is an open-source header bidding wrapper. It forms the core of our Nucleus ad platform, helping maximize revenue and performance for publishers.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "PubMatic": {
+  "source": "webappanalyzer",
+  "wa_name": "PubMatic",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "https?://[^/]*\\.pubmatic\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.pubmatic.com/",
+  "description": "PubMatic is a company that develops and implements online advertising software and strategies for the digital publishing and advertising industry.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "OpenX": {
+  "source": "webappanalyzer",
+  "wa_name": "OpenX",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "https?://[^/]*\\.openx\\.net",
+   "https?://[^/]*\\.servedbyopenx\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://openx.com",
+  "description": "OpenX is a programmatic advertising technology company.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Sovrn": {
+  "source": "webappanalyzer",
+  "wa_name": "Sovrn",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.(?:linksmart|lijit)\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.sovrn.com",
+  "description": "Sovrn is a advertising products and services provider for publishers.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Adform": {
+  "source": "webappanalyzer",
+  "wa_name": "Adform",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.adform\\.net/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://site.adform.com",
+  "description": "Adform is an all-in-one platform for digital advertising.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Smart Ad Server": {
+  "source": "webappanalyzer",
+  "wa_name": "Smart Ad Server",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.sascdn\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://smartadserver.com",
+  "description": "Smart Ad Server is an adserving and RTB platform.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Sharethrough": {
+  "source": "webappanalyzer",
+  "wa_name": "Sharethrough",
+  "cats": [
+   "Advertising"
+  ],
+  "script": [
+   "\\.sharethrough\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.sharethrough.com",
+  "description": "Sharethrough is a software company that powers in-feed advertising for brands and publishers.",
+  "category": "ads",
+  "ecosystem": ""
+ },
+ "Google Sign-in": {
+  "source": "webappanalyzer",
+  "wa_name": "Google Sign-in",
+  "cats": [
+   "Authentication"
+  ],
+  "script": [
+   "accounts\\.google\\.com/gsi/client"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://developers.google.com/identity/sign-in/web",
+  "description": "Google Sign-In is a secure authentication system that reduces the burden of login for users, by enabling them to sign in with their Google account.",
+  "category": "auth",
+  "ecosystem": ""
+ },
+ "LinkedIn Sign-in": {
+  "source": "webappanalyzer",
+  "wa_name": "Linkedin Sign-in",
+  "cats": [
+   "Authentication"
+  ],
+  "script": [
+   "platform\\.linkedin\\.com/(?:.*)?(?:in\\.js(?:\\?version)?([\\d.]+)?|litms/utag/[^?]+\\.js(?:\\?cb=[\\d]+)?)"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.linkedin.com/developers",
+  "description": "Linkedin Sign-In is an authentication system that reduces the burden of login for users, by enabling them to sign in with their Linkedin account.",
+  "category": "auth",
+  "ecosystem": ""
+ },
+ "Azure": {
+  "source": "webappanalyzer",
+  "wa_name": "Azure",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^Windows-Azure"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://azure.microsoft.com",
+  "description": "Azure is a cloud computing service for building, testing, deploying, and managing applications and services through Microsoft-managed data centers.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Heroku": {
+  "source": "webappanalyzer",
+  "wa_name": "Heroku",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "via": [
+    "[\\d.-]+ vegur$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.heroku.com/",
+  "description": "Heroku is a cloud platform as a service (PaaS) supporting several programming languages.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Fly.io": {
+  "source": "webappanalyzer",
+  "wa_name": "Fly.io",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^Fly/[\\w]+\\s\\(.*\\)$"
+   ],
+   "via": [
+    "^.*\\sfly\\.io$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://fly.io",
+  "description": "Fly is a platform for running full stack apps and databases.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Railway": {
+  "source": "webappanalyzer",
+  "wa_name": "Railway",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^railway$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://railway.app",
+  "description": "Railway is a cloud platform that simplifies building, deploying, and managing applications with easy setup and scalable infrastructure.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Cloudflare Workers": {
+  "source": "webappanalyzer",
+  "wa_name": "Cloudflare Workers",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {
+   "runtime": [
+    "^Cloudflare Workers$"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Cloudflare"
+  ],
+  "saas": true,
+  "website": "https://workers.cloudflare.com",
+  "description": "Cloudflare Workers is a serverless execution environment that allows you to create entirely new applications or augment existing ones without configuring or mai",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "GitHub Pages": {
+  "source": "webappanalyzer",
+  "wa_name": "GitHub Pages",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^GitHub\\.com$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://pages.github.com/",
+  "description": "GitHub Pages is a static site hosting service.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Deno Deploy": {
+  "source": "webappanalyzer",
+  "wa_name": "Deno Deploy",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^deno/*"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Deno"
+  ],
+  "saas": true,
+  "website": "https://deno.land/",
+  "description": "Deno Deploy is a distributed system that runs JavaScript, TypeScript, and WebAssembly at the edge, worldwide.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Hetzner": {
+  "source": "webappanalyzer",
+  "wa_name": "Hetzner",
+  "cats": [
+   "Hosting",
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "HeRay"
+   ],
+   "x-powered-by": [
+    "Hetzner"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.hetzner.com",
+  "description": "Hetzner provides dedicated hosting, shared web hosting, virtual private servers, managed servers, domain names, SSL certificates, storage boxes, and cloud.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "Plivo": {
+  "source": "webappanalyzer",
+  "wa_name": "Plivo",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "cdn\\.plivo\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.plivo.com",
+  "description": "Plivo is a global platform that provides SMS and voice call services for businesses of all sizes to connect with customers worldwide.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Invoca": {
+  "source": "webappanalyzer",
+  "wa_name": "Invoca",
+  "cats": [
+   "Marketing automation",
+   "Analytics"
+  ],
+  "script": [
+   "\\.dialogtech\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.invoca.com",
+  "description": "Invoca is an AI-powered call tracking and conversational analytics company.",
+  "category": "marketing",
+  "ecosystem": ""
+ },
+ "Agora": {
+  "source": "webappanalyzer",
+  "wa_name": "Agora",
+  "cats": [
+   "PaaS"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.agora\\.io"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://www.agora.io",
+  "description": "Agora is a real-time engagement platform that provides infrastructure for interactive communication across applications.",
+  "category": "hosting",
+  "ecosystem": ""
+ },
+ "CometChat": {
+  "source": "webappanalyzer",
+  "wa_name": "CometChat",
+  "cats": [
+   "Live chat"
+  ],
+  "script": [
+   "widget-js\\.cometchat\\.io"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.cometchat.com",
+  "description": "CometChat is a SaaS solution that provides apps and websites with scalable text, voice, and video chat functionality.",
+  "category": "chat",
+  "ecosystem": ""
+ },
+ "Disqus": {
+  "source": "webappanalyzer",
+  "wa_name": "Disqus",
+  "cats": [
+   "Comment systems"
+  ],
+  "script": [
+   "disqus_url"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://disqus.com",
+  "description": "Disqus is a worldwide blog comment hosting service for web sites and online communities that use a networked platform.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "Commento": {
+  "source": "webappanalyzer",
+  "wa_name": "Commento",
+  "cats": [
+   "Comment systems"
+  ],
+  "script": [
+   "cdn\\.commento\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://commento.io",
+  "description": "Commento is a tool for fostering discussion and improving engagement on websites.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "Discourse": {
+  "source": "webappanalyzer",
+  "wa_name": "Discourse",
+  "cats": [
+   "Message boards"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "Discourse(?: ?/?([\\d.]+\\d))?"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Ruby on Rails"
+  ],
+  "saas": false,
+  "website": "https://discourse.org",
+  "description": "Discourse is an open-source internet forum and mailing list management software application.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "Vanilla": {
+  "source": "webappanalyzer",
+  "wa_name": "Vanilla",
+  "cats": [
+   "Message boards"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "Vanilla"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://vanillaforums.org",
+  "description": "Vanilla is a both a cloud-based (SaaS) open-source community forum software.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "vBulletin": {
+  "source": "webappanalyzer",
+  "wa_name": "vBulletin",
+  "cats": [
+   "Message boards"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "vBulletin ?([\\d.]+)?"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP"
+  ],
+  "saas": false,
+  "website": "https://www.vbulletin.com",
+  "description": "vBulletin is tool that is used to create and manage online forums or discussion boards. It is written in PHP and uses a MySQL database server.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "Invision Power Board": {
+  "source": "webappanalyzer",
+  "wa_name": "Invision Power Board",
+  "cats": [
+   "Message boards"
+  ],
+  "script": [
+   "jscripts/ips_"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "PHP",
+   "MySQL"
+  ],
+  "saas": false,
+  "website": "https://invisioncommunity.com",
+  "description": "Invision Power Board is a commercial Internet forum software developed by Invision Community (formerly Invision Power Services).",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "NodeBB": {
+  "source": "webappanalyzer",
+  "wa_name": "NodeBB",
+  "cats": [
+   "Message boards"
+  ],
+  "script": [
+   "/nodebb\\.min\\.js\\?"
+  ],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "^NodeBB$"
+   ]
+  },
+  "cookies": {},
+  "implies": [
+   "Node.js"
+  ],
+  "saas": true,
+  "website": "https://nodebb.org",
+  "description": "NodeBB forum software is powered by Node.js and built on either a Redis or MongoDB database.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "Mastodon": {
+  "source": "webappanalyzer",
+  "wa_name": "Mastodon",
+  "cats": [
+   "Message boards"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "^Mastodon$"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://joinmastodon.org",
+  "description": "Mastodon is a free and open-source self-hosted social networking service.",
+  "category": "community",
+  "ecosystem": ""
+ },
+ "GiveWP": {
+  "source": "webappanalyzer",
+  "wa_name": "GiveWP",
+  "cats": [
+   "Fundraising & donations",
+   "WordPress plugins"
+  ],
+  "script": [
+   "/wp-content/plugins/give/.+give\\.js(?:\\?ver=(\\d+(?:\\.\\d+)+))?"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://givewp.com",
+  "description": "GiveWP is a donation plugin for WordPress.",
+  "category": "donations",
+  "ecosystem": "wordpress"
+ },
+ "Fundraise Up": {
+  "source": "webappanalyzer",
+  "wa_name": "Fundraise Up",
+  "cats": [
+   "Fundraising & donations"
+  ],
+  "script": [
+   "\\.fundraiseup\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://fundraiseup.com",
+  "description": "Fundraise Up is a platform for online donations.",
+  "category": "donations",
+  "ecosystem": ""
+ },
+ "Network for Good": {
+  "source": "webappanalyzer",
+  "wa_name": "Network for Good",
+  "cats": [
+   "Fundraising & donations"
+  ],
+  "script": [
+   "\\.networkforgood\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.networkforgood.com",
+  "description": "Network for Good is an American certified B Corporation software company that offers fundraising software and coaching for charities and non-profit organisation",
+  "category": "donations",
+  "ecosystem": ""
+ },
+ "Qgiv": {
+  "source": "webappanalyzer",
+  "wa_name": "Qgiv",
+  "cats": [
+   "Fundraising & donations"
+  ],
+  "script": [
+   "//secure\\.qgiv\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.qgiv.com",
+  "description": "Qgiv is an online fundraising platform helping nonprofit, faith-based, healthcare, and education organisations raise funds.",
+  "category": "donations",
+  "ecosystem": ""
+ },
+ "Liberapay": {
+  "source": "webappanalyzer",
+  "wa_name": "Liberapay",
+  "cats": [
+   "Payment processors"
+  ],
+  "script": [
+   "//liberapay\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://liberapay.com/",
+  "description": "Liberapay is a non-profit organisation subscription payment platform.",
+  "category": "payments",
+  "ecosystem": ""
+ },
+ "Narvar": {
+  "source": "webappanalyzer",
+  "wa_name": "Narvar",
+  "cats": [
+   "Returns",
+   "Shipping carriers"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.narvar\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://corp.narvar.com",
+  "description": "Narvar is a customer experience platform that helps retailers inspire long-term customer loyalty, at all steps of the post-purchase journey.",
+  "category": "shipping",
+  "ecosystem": ""
+ },
+ "Shipup": {
+  "source": "webappanalyzer",
+  "wa_name": "Shipup",
+  "cats": [
+   "Shipping carriers"
+  ],
+  "script": [
+   "\\.shipup\\.co/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.shipup.co",
+  "description": "Shipup is a system that enables users to track shipping packages, providing real-time updates on delivery status and location.",
+  "category": "shipping",
+  "ecosystem": ""
+ },
+ "Packlink PRO": {
+  "source": "webappanalyzer",
+  "wa_name": "Packlink PRO",
+  "cats": [
+   "Shopify apps",
+   "Shipping carriers"
+  ],
+  "script": [
+   "packlink-spf-pro\\.appspot\\.com/.+myshopify\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Shopify"
+  ],
+  "saas": true,
+  "website": "https://apps.shopify.com/packlink-pro",
+  "description": "Packlink PRO is a multicarrier shipping solutions for ecommerce and marketplaces.",
+  "category": "tools",
+  "ecosystem": "shopify"
+ },
+ "ReturnGO": {
+  "source": "webappanalyzer",
+  "wa_name": "ReturnGO",
+  "cats": [
+   "Returns"
+  ],
+  "script": [
+   "\\.returngo\\.ai/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://returngo.ai",
+  "description": "ReturnGO's AI-driven returns management platform significantly improves customer lifetime value and post-purchase experience.",
+  "category": "shipping",
+  "ecosystem": ""
+ },
+ "Deliverr": {
+  "source": "webappanalyzer",
+  "wa_name": "Deliverr",
+  "cats": [
+   "Fulfilment"
+  ],
+  "script": [
+   "fast-tags\\.deliverr\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Cart Functionality"
+  ],
+  "saas": false,
+  "website": "https://deliverr.com",
+  "description": "Deliverr is a fulfilment service that facilitates shipping services for ecommerce businesses.",
+  "category": "shipping",
+  "ecosystem": ""
+ },
+ "Zonos": {
+  "source": "webappanalyzer",
+  "wa_name": "Zonos",
+  "cats": [
+   "Cross border ecommerce"
+  ],
+  "script": [
+   "\\.zonos\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://zonos.com",
+  "description": "Zonos is a cross-border ecommerce software and app solution for companies with international business.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Global-e": {
+  "source": "webappanalyzer",
+  "wa_name": "Global-e",
+  "cats": [
+   "Cross border ecommerce"
+  ],
+  "script": [
+   "\\.global-e\\.com"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.global-e.com",
+  "description": "Global-e is a provider of cross-border ecommerce solutions.",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Flow": {
+  "source": "webappanalyzer",
+  "wa_name": "Flow",
+  "cats": [
+   "Cross border ecommerce"
+  ],
+  "script": [
+   "(?:shopify-)?cdn\\.flow\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.flow.io/",
+  "description": "Flow is an ecommerce platform that enables brands and retailers to sell their merchandise to customers internationally by creating localized shopping experience",
+  "category": "ecommerce",
+  "ecosystem": ""
+ },
+ "Track123": {
+  "source": "webappanalyzer",
+  "wa_name": "Track123",
+  "cats": [
+   "Shopify apps",
+   "Shipping carriers"
+  ],
+  "script": [
+   "track123\\.com\\/common\\/checkout-script-loader\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.track123.com",
+  "description": "Track123 is a product under Lingxing, founded in September 2021, with a focus on providing all-in-one tracking and management services for cross-border sellers.",
+  "category": "tools",
+  "ecosystem": "shopify"
+ },
+ "Extend": {
+  "source": "webappanalyzer",
+  "wa_name": "Extend",
+  "cats": [
+   "Fulfilment"
+  ],
+  "script": [
+   "sdk\\.helloextend\\.com/extend-sdk-client/v([\\d.]+)/extend-sdk-client\\.min\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.extend.com",
+  "description": "Extend is a service that offers brands product and shipping protection, creating a new revenue source while enhancing customer loyalty and trust.",
+  "category": "shipping",
+  "ecosystem": ""
+ },
+ "GitBook": {
+  "source": "webappanalyzer",
+  "wa_name": "GitBook",
+  "cats": [
+   "Documentation"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "GitBook ([\\d.]+)?"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.gitbook.com",
+  "description": "GitBook is a command-line tool for creating documentation using Git and Markdown.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "ReadMe": {
+  "source": "webappanalyzer",
+  "wa_name": "ReadMe",
+  "cats": [
+   "Documentation",
+   "CMS"
+  ],
+  "script": [
+   "/cdn\\.readme\\.io/js/"
+  ],
+  "meta": {
+   "readme-deploy": [
+    "^[\\d\\.]+$"
+   ],
+   "readme-version": [
+    "^[\\d\\.]+$"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://readme.com",
+  "description": "ReadMe is a content management system that businesses use to create and manage technical or API documentation.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Docusaurus": {
+  "source": "webappanalyzer",
+  "wa_name": "Docusaurus",
+  "cats": [
+   "Documentation",
+   "Static site generator"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "^Docusaurus(?: v(.+))?$"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "React",
+   "Webpack"
+  ],
+  "saas": false,
+  "website": "https://docusaurus.io/",
+  "description": "Docusaurus is a tool for teams to publish documentation websites.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Atlassian Jira": {
+  "source": "webappanalyzer",
+  "wa_name": "Atlassian Jira",
+  "cats": [
+   "Issue trackers"
+  ],
+  "script": [],
+  "meta": {
+   "application-name": [
+    "JIRA"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Java"
+  ],
+  "saas": false,
+  "website": "https://www.atlassian.com/software/jira",
+  "description": "",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Hund.io": {
+  "source": "webappanalyzer",
+  "wa_name": "Hund.io",
+  "cats": [
+   "Issue trackers"
+  ],
+  "script": [
+   "\\.hund\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://hund.io",
+  "description": "Hund.io is an automated status pages with monitoring.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Better Stack": {
+  "source": "webappanalyzer",
+  "wa_name": "Better Stack",
+  "cats": [
+   "Issue trackers"
+  ],
+  "script": [
+   "//(?:uptime\\.)?(?:betteruptime|betterstack)\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://betterstack.com/uptime",
+  "description": "Better Stack is the all-in-one infrastructure monitoring platform for your incident management, uptime monitoring, and status pages.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "UptimeRobot": {
+  "source": "webappanalyzer",
+  "wa_name": "UptimeRobot",
+  "cats": [
+   "Issue trackers"
+  ],
+  "script": [
+   "\\.uptimerobot\\.com/"
+  ],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "\\.uptimerobot\\.com"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://uptimerobot.com",
+  "description": "UptimeRobot is a web-based software that is designed to monitor the sites frequently to check whether any site is down owing to server problem or any bug in cod",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Canny": {
+  "source": "webappanalyzer",
+  "wa_name": "Canny",
+  "cats": [
+   "Issue trackers"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "content-security-policy": [
+    "//canny\\.io"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://canny.io",
+  "description": "Canny is a cloud-based solution that helps small to large businesses collect, analyse, prioritise and track user feedback to make informed product decisions.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Frill": {
+  "source": "webappanalyzer",
+  "wa_name": "Frill",
+  "cats": [
+   "Reviews"
+  ],
+  "script": [
+   "\\.frill\\.co/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://frill.co",
+  "description": "Frill is a platform that connects customers and businesses by enabling customers to provide feedback.",
+  "category": "reviews",
+  "ecosystem": ""
+ },
+ "Sleekplan": {
+  "source": "webappanalyzer",
+  "wa_name": "Sleekplan",
+  "cats": [
+   "Issue trackers"
+  ],
+  "script": [
+   "\\.sleekplan\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://sleekplan.com",
+  "description": "Sleekplan is a customer feedback and product management platform that enables businesses to collect, analyse, and act upon user feedback, prioritise feature req",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "LaunchNotes": {
+  "source": "webappanalyzer",
+  "wa_name": "LaunchNotes",
+  "cats": [
+   "Feature management"
+  ],
+  "script": [
+   "\\.launchnotes\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://launchnotes.com",
+  "description": "LaunchNotes is a platform that aligns teams with product development and release pipelines while keeping users informed and engaged with product updates.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Noticeable": {
+  "source": "webappanalyzer",
+  "wa_name": "Noticeable",
+  "cats": [
+   "Feature management"
+  ],
+  "script": [
+   "sdk\\.noticeable\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://noticeable.io",
+  "description": "Noticeable is a platform that simplifies product updates and company announcements while enhancing user communication and feedback analysis.",
+  "category": "devtools",
+  "ecosystem": ""
+ },
+ "Userflow": {
+  "source": "webappanalyzer",
+  "wa_name": "Userflow",
+  "cats": [
+   "User onboarding"
+  ],
+  "script": [
+   "\\.userflow\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://userflow.com",
+  "description": "Userflow is a user onboarding software for building product tours and onboarding checklists, tailored to your app and your users.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Chameleon": {
+  "source": "webappanalyzer",
+  "wa_name": "Chameleon",
+  "cats": [
+   "User onboarding"
+  ],
+  "script": [
+   "\\.trychameleon\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.trychameleon.com",
+  "description": "Chameleon is a sophisticated no-code platform for product success, empowering SaaS teams to build self-service user onboarding, feature adoption, and feedback c",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Whatfix": {
+  "source": "webappanalyzer",
+  "wa_name": "Whatfix",
+  "cats": [
+   "User onboarding"
+  ],
+  "script": [
+   "\\.whatfix\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://whatfix.com",
+  "description": "Whatfix is a SaaS based platform which provides in-app guidance and performance support for web applications and software products.",
+  "category": "analytics",
+  "ecosystem": ""
+ },
+ "Smartling": {
+  "source": "webappanalyzer",
+  "wa_name": "Smartling",
+  "cats": [
+   "Translation"
+  ],
+  "script": [
+   "\\.smartling\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.smartling.com",
+  "description": "Smartling is a cloud-based translation management system.",
+  "category": "translation",
+  "ecosystem": ""
+ },
+ "GTranslate app": {
+  "source": "webappanalyzer",
+  "wa_name": "GTranslate app",
+  "cats": [
+   "Shopify apps",
+   "Translation"
+  ],
+  "script": [
+   "gtranslate\\.io/shopify/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://apps.shopify.com/multilingual-shop-by-gtranslate",
+  "description": "GTranslate app is a website translator which can translate any website to any language automatically.",
+  "category": "translation",
+  "ecosystem": "shopify"
+ },
+ "Linguise": {
+  "source": "webappanalyzer",
+  "wa_name": "Linguise",
+  "cats": [
+   "Translation"
+  ],
+  "script": [
+   "/modules/mod_linguise/assets/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "website": "https://www.linguise.com",
+  "description": "Linguise is an automatic translation service with a front-end translation editor.",
+  "category": "translation",
+  "ecosystem": ""
+ },
+ "SvelteKit": {
+  "source": "webappanalyzer",
+  "wa_name": "SvelteKit",
+  "cats": [
+   "UI frameworks"
+  ],
+  "script": [],
+  "meta": {
+   "generator": [
+    "SvelteKit"
+   ]
+  },
+  "headers": {},
+  "cookies": {},
+  "implies": [
+   "Svelte",
+   "Vite"
+  ],
+  "saas": false,
+  "website": "https://kit.svelte.dev",
+  "description": "SvelteKit is the official Svelte framework for building web applications with a flexible filesystem-based routing.",
+  "category": "framework",
+  "ecosystem": ""
+ },
+ "Inertia.js": {
+  "source": "webappanalyzer",
+  "wa_name": "Inertia.js",
+  "cats": [
+   "JavaScript frameworks"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "vary": [
+    "X-Inertia"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://inertiajs.com",
+  "description": "Inertia.js is a protocol for creating monolithic single-page applications.",
+  "category": "framework",
+  "ecosystem": ""
+ },
+ "bun": {
+  "source": "webappanalyzer",
+  "wa_name": "bun",
+  "cats": [
+   "Programming languages"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "x-powered-by": [
+    "Bun"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://bun.sh",
+  "description": "Bun is a fast JavaScript runtime compatible with Node.js and Deno.",
+  "category": "framework",
+  "ecosystem": ""
+ },
+ "Python": {
+  "source": "webappanalyzer",
+  "wa_name": "Python",
+  "cats": [
+   "Programming languages"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "(?:^|\\s)Python(?:/([\\d.]+))?"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://python.org",
+  "description": "Python is an interpreted and general-purpose programming language.",
+  "category": "framework",
+  "ecosystem": ""
+ },
+ "Ruby": {
+  "source": "webappanalyzer",
+  "wa_name": "Ruby",
+  "cats": [
+   "Programming languages"
+  ],
+  "script": [],
+  "meta": {},
+  "headers": {
+   "server": [
+    "(?:Mongrel|Ruby(?:/([\\d\\.]+))?)"
+   ]
+  },
+  "cookies": {},
+  "implies": [],
+  "saas": false,
+  "website": "https://ruby-lang.org",
+  "description": "Ruby is an open-source object-oriented programming language.",
+  "category": "framework",
+  "ecosystem": ""
+ },
+ "Trustindex": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "cdn\\.trustindex\\.io/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "reviews",
+  "ecosystem": "",
+  "description": ""
+ },
+ "TrustedSite": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "cdn\\.trustedsite\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "security",
+  "ecosystem": "",
+  "description": ""
+ },
+ "Umami": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "cloud\\.umami\\.is/script\\.js"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "analytics",
+  "ecosystem": "",
+  "description": ""
+ },
+ "CallRail": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "cdn\\.callrail\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "analytics",
+  "ecosystem": "",
+  "description": ""
+ },
+ "Leadoo": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "bot\\.leadoo\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "chat",
+  "ecosystem": "",
+  "description": ""
+ },
+ "CCM19": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "cloud\\.ccm19\\.de/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "consent",
+  "ecosystem": "",
+  "description": ""
+ },
+ "Hostinger Reach": {
+  "source": "listsignal-mined",
+  "cats": [],
+  "script": [
+   "cdn-reach\\.hostinger\\.com/"
+  ],
+  "meta": {},
+  "headers": {},
+  "cookies": {},
+  "implies": [],
+  "saas": true,
+  "category": "marketing",
+  "ecosystem": "",
+  "description": ""
+ }
+}

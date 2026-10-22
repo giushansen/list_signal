@@ -25,6 +25,22 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-22: a second detection layer from the open fingerprint base, 505 to 780 published technologies
+
+The tech list grew by hand, a session at a time. Compared on the 616
+cached golden homepages: our 230 rules find 2.9 technologies a page, the
+community continuation of Wappalyzer (enthec/webappanalyzer, 7,647 entries,
+GPL-3 data we keep as a file) finds 4.5, but its surplus is mostly jQuery
+plugins and implied MySQL, and it misses nine vendors our pages carry. The
+merge keeps our rules, adds `LS.HTTP.Fingerprints` reading a curated 275
+vendors (script hosts, meta, headers, cookies only; CDN and library noise
+and anything needing a rendered page left out; one false positive found in
+review removed) and 14 DNS verification tokens. 2.87 to 3.02 technologies
+a page, 91 new detections on 80 of 616 pages, 1.1 ms a page. Study and the
+manual-versus-automated answer in `analysis/tech/README.md`: a quarterly
+script run and diff review is enough; the thing worth building is a
+script-host column so unknown vendors can be ranked by adoption.
+
 ## 2026-10-22: fleet cut from 13 workers to 6 plus h1, with the numbers that allowed it
 
 Workers had been input-starved since October 9: the queue averaged 2 to 30

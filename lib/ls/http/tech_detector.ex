@@ -1,5 +1,5 @@
 defmodule LS.HTTP.TechDetector do
-  @moduledoc "Zero-false-positive technology detection from HTML and headers. ~230 technologies."
+  @moduledoc "Zero-false-positive technology detection from HTML and headers: ~230 hand-written rules here, plus the data-driven vendor fingerprints in `LS.HTTP.Fingerprints` (2026-10-22)."
 
   def detect(response) do
     body = safe_body(response.body)
@@ -19,6 +19,7 @@ defmodule LS.HTTP.TechDetector do
       |> from_inline(inline)
       |> from_html(html)
       |> from_urls(urls)
+      |> Kernel.++(LS.HTTP.Fingerprints.detect(srcs, meta_map(metas), hmap(headers), cookie_names(headers)))
       |> Enum.uniq() |> Enum.sort()
     cdn = detect_cdn(headers)
     blocked = detect_blocked(html, headers)
@@ -131,6 +132,26 @@ defmodule LS.HTTP.TechDetector do
     end)
   end
   defp set_cookies(_), do: []
+
+  # Cookie names from the Set-Cookie headers, lowercased, for the fingerprint layer.
+  defp cookie_names(hdrs) do
+    hdrs
+    |> set_cookies()
+    |> Enum.map(fn c -> c |> String.split("=", parts: 2) |> hd() |> String.trim() |> String.downcase() end)
+    |> Enum.reject(&(&1 == ""))
+  end
+
+  # `<meta>` tags as a lowercase name/property -> content map, for the fingerprint layer.
+  defp meta_map(metas) do
+    Enum.reduce(metas, %{}, fn tag, acc ->
+      with [_, name] <- Regex.run(~r/\b(?:name|property|http-equiv)\s*=\s*["']([^"']+)["']/i, tag),
+           [_, content] <- Regex.run(~r/\bcontent\s*=\s*["']([^"']*)["']/i, tag) do
+        Map.put_new(acc, String.downcase(name), content)
+      else
+        _ -> acc
+      end
+    end)
+  end
 
   # =========================================================================
   # SCRIPT SRC (the most reliable signal)
