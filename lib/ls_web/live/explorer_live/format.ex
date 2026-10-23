@@ -100,6 +100,32 @@ defmodule LSWeb.ExplorerLive.Format do
     end
   end
 
+  @doc """
+  The business model to show for a row. A $1B+ company is a large enterprise
+  before it is anything the page classifier guessed: google.com read
+  "Directory" at 66% (2026-10-23). Below 0.8 confidence the guess is replaced
+  by "Enterprise"; the raw label stays in the data and the API.
+  """
+  def model_label(model, revenue, confidence) do
+    conf = to_float(confidence)
+    if revenue == "$1B+" and conf < 0.8, do: "Enterprise", else: model || ""
+  end
+
+  @doc "Shown revenue: the verified bracket when there is one, else the estimate."
+  def shown_revenue(row), do: if((row["verified_revenue"] || "") != "", do: row["verified_revenue"], else: row["estimated_revenue"] || "")
+
+  @doc """
+  SEO score cell. A site in the Tranco top 10,000 is not scored: the heuristic
+  (h1, meta, alt text) reads google.com at 43 in red, which is noise to a
+  buyer and a credibility cost to us.
+  """
+  def seo_cell(v, tranco_rank) do
+    rank = to_int(tranco_rank)
+    if rank > 0 and rank <= 10_000,
+      do: Phoenix.HTML.raw(~s(<span class="text-gray-600" title="not scored for top 10,000 sites">n/a</span>)),
+      else: seo_cell(v)
+  end
+
   def seo_cell(nil), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
   def seo_cell(""), do: Phoenix.HTML.raw(~s(<span class="text-gray-600">-</span>))
 

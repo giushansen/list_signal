@@ -25,6 +25,24 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-23: the dashboard opened on google.com; the default ranking now puts the prospect first
+
+A customer's first page was `ORDER BY tranco_rank`: google.com, "Directory,
+Marketing, 66%", "$1B+", SEO 43 in red. Nobody we sell to cold-emails
+Google, and a wrong label on the most famous site on earth costs more
+credibility than a hundred right ones on unknown shops. Two changes, both
+in the explorer only (the data and the API are unchanged): the default
+order is a target score (revenue $1M-$100M +3, an ICP class +2, an email
++2, a phone +1, Tranco 100K-1M +1, fresh within 30 days +1, known country
++1; Tranco top 1,000 -4, $1B+ -6), freshest first on ties; and a $1B+
+company shows "Enterprise" instead of a page classifier's guess below 0.8
+confidence, with the SEO score not shown for the Tranco top 10,000.
+Measured on production: 0.87 s for the default page and 0.76 s for a
+filtered page, against 0.09 s for the Tranco sort. The first page is now
+hotels, shops and SaaS in the $1M-$100M brackets with contacts. Column
+sorts still give the plain sort. The classifier's labels on giants are a
+data problem left open (Check Point read Ecommerce on golden v7).
+
 ## 2026-10-22: a second detection layer from the open fingerprint base, 505 to 780 published technologies
 
 The tech list grew by hand, a session at a time. Compared on the 616

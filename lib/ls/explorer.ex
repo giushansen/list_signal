@@ -9,10 +9,38 @@ defmodule LS.Explorer do
   @query_timeout 20_000
   @export_timeout 60_000
 
-  # `domain` is appended to the ORDER BY as a tiebreaker: tranco_rank has huge NULL
-  # ties, and without a deterministic order the same row can appear on two pages or
-  # on none.
-  @order_by "tranco_rank ASC NULLS LAST, domain ASC"
+  # The default ranking (2026-10-23). Until then the first page was
+  # `ORDER BY tranco_rank`, so a new customer opened the dashboard on
+  # google.com, "Directory, Marketing, 66%", an SEO score of 43 in red.
+  # Nobody we sell to cold-emails Google. The default now ranks what the
+  # ICP reaches for: a mid-size business ($1M-$100M), in a class a list
+  # buyer sells to, with a way to contact it, refreshed recently, in a known
+  # country, and demotes the giants (top 1,000 Tranco, $1B+). Ties break on
+  # freshness, then domain, so pagination stays stable. Measured on
+  # production (26.5M rows, 2026-10-23): 1.0 s for the first page against
+  # 0.16 s for the plain Tranco sort; the scored columns are all narrow.
+  # Sorting a column header still gives the plain sort of that column.
+  @icp_models ~w(SaaS Ecommerce Agency Consulting LocalBusiness Manufacturer)
+
+  @doc "The target score SQL: higher is a better cold-outreach prospect. `p` prefixes column names."
+  def target_score_sql(p \\ "") do
+    models = Enum.map_join(@icp_models, ", ", &"'#{&1}'")
+
+    """
+    (multiIf(#{p}estimated_revenue IN ('$1M-$10M', '$10M-$100M'), 3, #{p}estimated_revenue = '<$1M', 1, #{p}estimated_revenue = '$100M-$1B', 0, #{p}estimated_revenue = '$1B+', -6, 0)
+     + if(#{p}estimated_business_model IN (#{models}), 2, if(#{p}estimated_business_model = '', -1, 0))
+     + if(notEmpty(#{p}http_emails), 2, 0) + if(#{p}http_phone != '', 1, 0)
+     + multiIf(#{p}tranco_rank = 0 OR #{p}tranco_rank IS NULL, 0, #{p}tranco_rank <= 1000, -4, #{p}tranco_rank <= 10000, -1, #{p}tranco_rank <= 100000, 0, #{p}tranco_rank <= 1000000, 1, 0)
+     + if(#{p}http_last_checked_at >= now() - INTERVAL 30 DAY, 1, 0)
+     + if(#{p}estimated_country != '', 1, 0))
+    """
+    |> String.replace(~r/\s+/, " ")
+    |> String.trim()
+  end
+
+  # `domain` ends every ORDER BY as a tiebreaker: without a deterministic order
+  # the same row can appear on two pages or on none.
+  defp default_order(p \\ ""), do: "#{target_score_sql(p)} DESC, #{p}http_last_checked_at DESC, #{p}domain ASC"
 
   # domains_current is a ReplacingMergeTree and we deliberately do not use FINAL
   # (too expensive at 82M rows), so a domain re-enriched since the last merge still
@@ -40,7 +68,7 @@ defmodule LS.Explorer do
     domain http_title http_tech estimated_business_model estimated_industry
     estimated_revenue estimated_employees http_language http_last_checked_at
     verified_revenue verified_revenue_evidence verified_employees verified_employees_evidence
-    tranco_rank majestic_rank http_response_ms
+    tranco_rank majestic_rank http_response_ms estimated_business_model_confidence
     shop_product_count shop_price_avg hr_job_count http_deep_seo_score http_deep_pricing_points
     http_deep_last_seen_at estimated_country dns_email_provider
   )
@@ -148,8 +176,8 @@ defmodule LS.Explorer do
   @doc "Columns the UI may offer as sortable headers."
   def sortable_columns, do: Map.keys(@sortable)
 
-  defp order_clause(nil, _dir), do: @order_by
-  defp order_clause("", _dir), do: @order_by
+  defp order_clause(nil, _dir), do: default_order()
+  defp order_clause("", _dir), do: default_order()
 
   defp order_clause(column, dir) do
     case Map.fetch(@sortable, column) do
@@ -160,7 +188,7 @@ defmodule LS.Explorer do
         "#{sql_column} #{direction} NULLS LAST, domain ASC"
 
       :error ->
-        @order_by
+        default_order()
     end
   end
 
@@ -356,11 +384,7 @@ defmodule LS.Explorer do
   defp and_where(""), do: ""
   defp and_where("WHERE " <> rest), do: "AND #{rest}"
 
-  defp qualified_order_by do
-    @order_by
-    |> String.replace("tranco_rank", "d.tranco_rank")
-    |> String.replace(~r/(?<![\w.])domain\b/, "d.domain")
-  end
+  defp qualified_order_by, do: default_order("d.")
 
   def export_rows(filters, limit) do
     where = build_where(filters)
@@ -384,7 +408,7 @@ defmodule LS.Explorer do
     WITH exported AS (
       SELECT domain FROM businesses
       #{where}
-      ORDER BY #{@order_by}
+      ORDER BY #{default_order()}
       LIMIT #{limit}
     )
     SELECT #{cols}

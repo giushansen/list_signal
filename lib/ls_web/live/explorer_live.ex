@@ -1052,7 +1052,7 @@ defmodule LSWeb.ExplorerLive do
                           </div>
                         </td>
                         <td class="px-3 py-2.5 truncate text-gray-300"><%= country_flag(row["estimated_country"]) %> <%= row["estimated_country"] %></td>
-                        <td class="px-3 py-2.5 truncate text-gray-400"><%= row["estimated_business_model"] %></td>
+                        <td class="px-3 py-2.5 truncate text-gray-400"><%= model_label(row["estimated_business_model"], shown_revenue(row), row["estimated_business_model_confidence"]) %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400"><%= row["estimated_industry"] %></td>
                         <td class="px-3 py-2.5 truncate text-gray-300" title={verified_title(row, "revenue")}><%= LS.Verification.display(row, :revenue) %><%= if LS.Verification.verified?(row, :revenue), do: " ✓" %></td>
                         <td class="px-3 py-2.5 truncate text-gray-400" title={verified_title(row, "employees")}><%= LS.Verification.display(row, :employees) %><%= if LS.Verification.verified?(row, :employees), do: " ✓" %></td>
@@ -1060,7 +1060,7 @@ defmodule LSWeb.ExplorerLive do
                         <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_num(row["shop_product_count"]) %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums text-gray-300"><%= depth_money(row["shop_price_avg"]) %></td>
                         <td class="px-3 py-2.5 text-right tabular-nums"><%= if to_int(row["hr_job_count"]) > 0 do %><span class="text-emerald-400"><%= row["hr_job_count"] %></span><% else %><span class="text-gray-600">-</span><% end %></td>
-                        <td class="px-3 py-2.5 text-right tabular-nums"><%= seo_cell(row["http_deep_seo_score"]) %></td>
+                        <td class="px-3 py-2.5 text-right tabular-nums"><%= seo_cell(row["http_deep_seo_score"], row["tranco_rank"]) %></td>
                         <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= freshness_label(row["http_last_checked_at"]) %></td>
                         <td class="px-3 py-2.5 text-[11px] truncate text-gray-500"><%= format_response_time(row["http_response_ms"]) %></td>
                       </tr>
@@ -1127,7 +1127,7 @@ defmodule LSWeb.ExplorerLive do
 
                   <%!-- Classification: Business + Industry + Confidence on one line --%>
                   <div class="grid grid-cols-3 gap-2.5">
-                    <.detail_card icon="🏢" label="Business Model" value={@detail["estimated_business_model"]} />
+                    <.detail_card icon="🏢" label="Business Model" value={model_label(@detail["estimated_business_model"], shown_revenue(@detail), @detail["estimated_business_model_confidence"])} />
                     <.detail_card icon="🏭" label="Industry" value={@detail["estimated_industry"]} />
                     <.detail_card icon="🎯" label="Confidence" value={format_pct(@detail["estimated_business_model_confidence"])} />
                   </div>
