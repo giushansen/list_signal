@@ -300,13 +300,16 @@ defmodule LS.Cluster.WorkerAgent do
     # 2. Classify
     issuers = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d[:ctl_issuer] || ""} end)
     refresh = for d <- domains, d[:source] == :recrawl, into: MapSet.new(), do: d[:ctl_domain] || d[:domain]
+    # The homepage simhash from the last check, for refresh items only, so
+    # the HTTP stage can skip the secondary pages of an unchanged site.
+    prev_simhash = for d <- domains, d[:source] == :recrawl, is_integer(d[:prev_simhash]), d[:prev_simhash] > 0, into: %{}, do: {d[:ctl_domain] || d[:domain], d[:prev_simhash]}
     {http_cands, bgp_cands, skipped} = classify(dns_results, issuers, refresh)
     rdap_cands = classify_rdap(dns_results)
     unresolved = for d <- domains, dom = d[:ctl_domain] || d[:domain], not Map.has_key?(dns_results, dom), do: dom
     skipped = Map.put(skipped, :unresolved, unresolved)
 
     # 3. Parallel: HTTP + BGP + RDAP
-    http_task = Task.async(fn -> enrich_http(http_cands, http_c) end)
+    http_task = Task.async(fn -> enrich_http(http_cands, http_c, prev_simhash) end)
     bgp_task = Task.async(fn -> enrich_bgp(bgp_cands) end)
     rdap_task = Task.async(fn -> enrich_rdap(rdap_cands, rdap_c) end)
 
@@ -514,9 +517,9 @@ defmodule LS.Cluster.WorkerAgent do
   # HTTP
   # ==========================================================================
 
-  defp enrich_http([], _), do: %{}
+  defp enrich_http([], _, _), do: %{}
 
-  defp enrich_http(cands, conc) do
+  defp enrich_http(cands, conc, prev_simhash) do
     bound = http_stage_timeout(length(cands))
     deadline = System.monotonic_time(:millisecond) + bound
 
@@ -524,7 +527,7 @@ defmodule LS.Cluster.WorkerAgent do
       Task.async_stream(
         cands,
         fn {d, ip} ->
-          r = do_http(d, ip)
+          r = do_http(d, ip, Map.get(prev_simhash, d))
           Cache.http_insert(d)
           {d, r}
         end,
@@ -560,7 +563,7 @@ defmodule LS.Cluster.WorkerAgent do
     {res, max(total - n, 0)}
   end
 
-  defp do_http(domain, ip), do: LS.Pipeline.http(domain, ip)
+  defp do_http(domain, ip, prev_simhash), do: LS.Pipeline.http(domain, ip, prev_simhash: prev_simhash)
 
   # ==========================================================================
   # RDAP

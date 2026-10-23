@@ -25,6 +25,30 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-23: what a refresh costs, and secondary pages skipped when the homepage is unchanged
+
+Measured before touching it: a refreshed domain in the discovery lane
+costs the node budget (120 fetches a minute, the per-IP envelope) one
+robots.txt request (24-hour cache, so always a miss at a 14-day cadence),
+one homepage request, and, only for the domains that link a login or a
+pricing page, up to two more. Redirect hops ride on the same slot. That is
+about 2 slots a domain, which is why six workers do 40 to 58 rows a minute
+each and no setting on the fetch side moves it: robots.txt is the opt-out
+the /bot page promises and RFC 9309 says not to cache it past a day, and
+the per-IP rate is the rule that keeps our addresses off blocklists. The
+probe of 160 tier-A domains through the real client found the homepage
+unchanged for most and a login or pricing path on one domain in sixteen,
+so the one lever left in the lane is small: the stored homepage simhash
+now rides along on every refresh item (`stale_domains` returns it, the
+worker passes it to `LS.Pipeline.http/3`), and
+`LS.Pipeline.refetch_secondary?/2` skips the two pages when the new text
+is within Hamming distance 3 of the stored one. Anything unknown refetches.
+9% of tier-A rows carry a hash today (the column is from 2026-10-01), so
+the saving starts at near zero and reaches its ceiling, a few percent of
+refresh fetches, after one full cadence. The honest conclusion for the
+owner: with six IPs the refresh rate is fixed at about 300K a day; the
+tier re-cut decides who gets it, and only more IPs raise it.
+
 ## 2026-10-23: refresh tiers re-cut for six workers, online businesses with money first
 
 With six workers the fleet refreshes about 300K businesses a day after new

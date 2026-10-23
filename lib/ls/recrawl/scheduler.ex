@@ -159,10 +159,12 @@ defmodule LS.Recrawl.Scheduler do
         # Only the quota left in this tick: the third block of the first
         # multi-block ticks pushed 22,491 and 18,921 live names into a
         # 12,500 plan (2026-10-03). The rest stay due and lead the next tick.
-        added = domains |> Enum.take(quota_left(enqueued)) |> Enum.reduce(0, fn {domain, tier}, acc ->
+        added = domains |> Enum.take(quota_left(enqueued)) |> Enum.reduce(0, fn {domain, tier, simhash}, acc ->
           # Use the same :ctl_domain key CTL items carry so the worker pipeline
           # (enrich_dns/merge_results) can read it uniformly regardless of source.
-          data = %{ctl_domain: domain, source: :recrawl, tier: tier}
+          # The stored homepage simhash lets the worker skip the secondary
+          # pages of an unchanged site (2026-10-23).
+          data = %{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}
           # This IS the schedule: stale_domains already selected only domains
           # past their cadence, so the daily and tier rings have nothing to add.
           case LS.Cluster.WorkQueue.enqueue(data, force: true) do

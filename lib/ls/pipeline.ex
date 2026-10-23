@@ -133,7 +133,7 @@ defmodule LS.Pipeline do
   Returns a map with all http_* fields, schema, classification-ephemeral fields.
   Used by both Pipeline.run and WorkerAgent.do_http.
   """
-  def http(domain, ip \\ nil) do
+  def http(domain, ip \\ nil, opts \\ []) do
     ip = ip || (case Resolver.lookup(domain) do {:ok, %{a: [i | _]}} -> i; _ -> nil end)
     if is_nil(ip) do
       %{http_error: "no_ip"}
@@ -194,8 +194,12 @@ defmodule LS.Pipeline do
           }
           # Best-effort, fully fault-isolated secondary-page enrichment. MUST be the
           # last thing that can touch the homepage result; on any failure it returns
-          # `result` untouched.
-          enhance_with_secondary_pages(result, domain, ip)
+          # `result` untouched. Skipped on a refresh whose homepage text has not
+          # changed since the last check (2026-10-23): the fold keeps the tech
+          # those pages added last time, and the two fetches go back to the budget.
+          if refetch_secondary?(opts[:prev_simhash], result.http_body_simhash),
+            do: enhance_with_secondary_pages(result, domain, ip),
+            else: result
         {:error, reason, _} -> %{http_error: to_string(reason)}
         {:error, reason} -> %{http_error: to_string(reason)}
       end
@@ -203,6 +207,27 @@ defmodule LS.Pipeline do
   rescue
     e -> %{http_error: "crash:#{Exception.message(e)}"}
   end
+
+  @doc """
+  Pure: whether a refresh should fetch the login and pricing pages again.
+
+  Why (2026-10-23, six workers): a refreshed domain costs the node budget
+  one robots.txt request, one homepage and, for the fifth with such a
+  page, up to two secondary fetches. Most refreshes find the homepage text
+  unchanged (the compactor marks about ten unchanged domains for every
+  changed one per pass), and an unchanged homepage has unchanged login and
+  pricing pages for the purpose they serve here, which is tech detection
+  only. `prev` is the simhash stored at the last check (0 or nil when the
+  row predates the column, or on first contact), `new` the one just
+  computed; Hamming distance 3 is the near-duplicate threshold the hash was
+  built for. Anything unknown refetches, so the rule can only ever save
+  work, never hide a change.
+  """
+  @spec refetch_secondary?(term(), term()) :: boolean()
+  def refetch_secondary?(prev, new) when is_integer(prev) and prev > 0 and is_integer(new) and new > 0,
+    do: LS.HTTP.Simhash.distance(prev, new) > 3
+
+  def refetch_secondary?(_, _), do: true
 
   # ===========================================================================
   # PRIVATE — secondary-page enrichment (login + pricing)

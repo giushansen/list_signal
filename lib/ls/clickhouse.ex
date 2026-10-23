@@ -603,8 +603,8 @@ defmodule LS.Clickhouse do
     c = LS.Crawl.Tiers.cadence_days(:c)
 
     """
-    SELECT domain, tier FROM (
-      SELECT domain, #{LS.Crawl.Tiers.tier_sql()} AS tier, http_last_checked_at
+    SELECT domain, tier, http_body_simhash FROM (
+      SELECT domain, #{LS.Crawl.Tiers.tier_sql()} AS tier, http_last_checked_at, http_body_simhash
       FROM #{LS.Schema.Tables.businesses()}
       WHERE estimated_junk = '' AND http_error != 'robots_disallow' AND http_blocked = ''
         AND (http_status IS NULL OR http_status NOT IN (403, 503))
@@ -620,16 +620,22 @@ defmodule LS.Clickhouse do
   @doc """
   Businesses due for a refresh under their tier cadence (LS.Crawl.Tiers: A
   14 days, B 90, C 180), most valuable tier first, oldest first, as
-  `{domain, tier}`. Until 2026-10-03 this read the 57 GB `domains` table
+  `{domain, tier, simhash}`. The stored homepage simhash rides along so the
+  worker can tell an unchanged page from a changed one without a second
+  query (2026-10-23, `LS.Pipeline.refetch_secondary?/2`). Until 2026-10-03 this read the 57 GB `domains` table
   FINAL for 5,000 rows every six hours with a 7/30-day rule.
   """
-  @spec stale_domains(pos_integer(), non_neg_integer()) :: {:ok, [{String.t(), String.t()}]} | {:error, term()}
+  @spec stale_domains(pos_integer(), non_neg_integer()) :: {:ok, [{String.t(), String.t(), non_neg_integer()}]} | {:error, term()}
   def stale_domains(limit, offset \\ 0) do
     case query_raw(stale_domains_sql(limit, offset), 120_000) do
-      {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t] -> {d, t} end)}
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t, s] -> {d, t, to_simhash(s)} end)}
       err -> err
     end
   end
+
+  defp to_simhash(s) when is_integer(s), do: s
+  defp to_simhash(s) when is_binary(s), do: (case Integer.parse(s) do {n, _} -> n; :error -> 0 end)
+  defp to_simhash(_), do: 0
 
   # ── Pipeline 2: enrichment queue + compaction ──
 
