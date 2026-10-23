@@ -203,7 +203,7 @@ defmodule LS.Cluster.Compactor do
         b = LS.Cluster.CrawlDedup.mark_tier_b(Map.get(by, "b", []))
         c = LS.Cluster.CrawlDedup.mark_tier_c(Map.get(by, "c", []))
         a = length(Map.get(by, "a", []))
-        if a + b + c > 0, do: Logger.info("[COMPACT] tiers: #{a} A (14d), #{b} B (60d), #{c} C (120d)")
+        if a + b + c > 0, do: Logger.info("[COMPACT] tiers: #{a} A (#{LS.Crawl.Tiers.cadence_days(:a)}d), #{b} B (#{LS.Crawl.Tiers.cadence_days(:b)}d), #{c} C (#{LS.Crawl.Tiers.cadence_days(:c)}d)")
         {a, b, c}
 
       {:error, reason} ->

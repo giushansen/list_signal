@@ -12,28 +12,36 @@ defmodule LS.Crawl.Tiers do
   have cost 1.04M fetches a day, 2.8 times the refresh budget. So: three
   tiers, by what a customer buys.
 
-    A  an ICP business with money or motion: revenue over $1M, open jobs,
-       a catalogue, a reachable contact. About 6M sites. Every 14 days.
-    B  the other ICP businesses, and the sites the classifier abstained on
-       (which may be ICP). About 9M. Every 60 days.
-    C  non-ICP models (local business, media, community, education,
-       government...) and the top 100K ranked sites, which are not the
-       target market and do not change as businesses. Every 120 days.
+    A  an online business with money: Ecommerce, SaaS, Tool or
+       Marketplace with revenue over $1M, open jobs or a catalogue.
+       3.1M sites. Every 14 days.
+    B  the other online businesses, and the sites the classifier abstained
+       on (which may be one). 9.7M. Every 90 days.
+    C  everything that sells in person or by hand (local business, agency,
+       consulting, manufacturer, media, education, government...) and the
+       top 100K ranked sites. 10.3M. Every 180 days.
 
-  The change-aware rings sit on top: a tier-A site whose last two crawls
-  were unchanged still drifts to 28-35 days by itself, and a site that just
-  changed goes back to 7 whatever its tier. Junk and walled sites are not
-  refreshed by schedule at all; a certificate re-sighting or the browser
-  lane handles them.
+  Re-cut on 2026-10-23, after the fleet went from 13 workers to 6: the
+  first cut (ICP incl. Agency and Consulting, a contact counting as
+  motion, 14/60/120) asked for 773K refreshes a day against a 600K
+  ceiling and about 300K of real capacity, so the queue grew 25K an hour
+  and the scheduler paused itself at its 150K headroom. A contact alone no
+  longer buys the fortnight: 2.7M Ecommerce sites had only an email or a
+  phone. Nominal demand is now 223K + 107K + 57K = 387K a day, and the
+  change-aware rings take unchanged tier-A sites to 28-35 days by
+  themselves, so the expected steady state is about 300K. A site that just
+  changed goes back to 7 days whatever its tier. Junk and walled sites are
+  not refreshed by schedule at all; a certificate re-sighting or the
+  browser lane handles them.
   """
 
   alias LS.Schema.Tables
 
-  @icp ~w(Ecommerce SaaS Tool Marketplace Agency Consulting)
-  @cadence_days %{a: 14, b: 60, c: 120}
+  @icp ~w(Ecommerce SaaS Tool Marketplace)
+  @cadence_days %{a: 14, b: 90, c: 180}
   @top_rank 100_000
 
-  @doc "Business models that are the target market."
+  @doc "Business models refreshed as online businesses: the ones a list buyer sells to and that change on the web."
   @spec icp_models() :: [String.t()]
   def icp_models, do: @icp
 
@@ -53,18 +61,18 @@ defmodule LS.Crawl.Tiers do
 
     cond do
       is_integer(rank) and rank > 0 and rank <= @top_rank -> :c
-      model in @icp and motion?(b) -> :a
+      model in @icp and money?(b) -> :a
       model in @icp or model == "" -> :b
       true -> :c
     end
   end
 
-  defp motion?(b) do
+  # Revenue over $1M, open jobs or a catalogue. A contact address or phone
+  # is not money: 2.7M Ecommerce sites had nothing else (2026-10-23).
+  defp money?(b) do
     (get(b, :estimated_revenue) || "") not in ["", "<$1M"] or
       (get(b, :hr_job_count) || 0) > 0 or
-      (get(b, :shop_product_count) || 0) > 0 or
-      List.wrap(get(b, :http_emails)) != [] or
-      (get(b, :http_phone) || "") != ""
+      (get(b, :shop_product_count) || 0) > 0
   end
 
   defp get(b, key), do: Map.get(b, key) || Map.get(b, Atom.to_string(key))
@@ -77,7 +85,7 @@ defmodule LS.Crawl.Tiers do
   def tier_sql do
     "multiIf(tranco_rank IS NOT NULL AND tranco_rank > 0 AND tranco_rank <= #{@top_rank}, 'c', " <>
       "estimated_business_model IN (#{icp_sql()}) AND (estimated_revenue NOT IN ('', '<$1M') OR coalesce(hr_job_count, 0) > 0 " <>
-      "OR coalesce(shop_product_count, 0) > 0 OR notEmpty(http_emails) OR http_phone != ''), 'a', " <>
+      "OR coalesce(shop_product_count, 0) > 0), 'a', " <>
       "estimated_business_model IN (#{icp_sql()}) OR estimated_business_model = '', 'b', 'c')"
   end
 

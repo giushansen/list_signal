@@ -619,7 +619,7 @@ defmodule LS.Clickhouse do
 
   @doc """
   Businesses due for a refresh under their tier cadence (LS.Crawl.Tiers: A
-  14 days, B 60, C 120), most valuable tier first, oldest first, as
+  14 days, B 90, C 180), most valuable tier first, oldest first, as
   `{domain, tier}`. Until 2026-10-03 this read the 57 GB `domains` table
   FINAL for 5,000 rows every six hours with a 7/30-day rule.
   """

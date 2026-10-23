@@ -1,7 +1,7 @@
 defmodule LS.Recrawl.Scheduler do
   @moduledoc """
   Tiered re-crawl scheduler: enqueues the businesses whose refresh cadence
-  has elapsed (LS.Crawl.Tiers: A 14 days, B 60, C 120), most valuable tier
+  has elapsed (LS.Crawl.Tiers: A 14 days, B 90, C 180 since 2026-10-23), most valuable tier
   first, every six hours, with `force: true` so the daily and tier rings
   do not second-guess the schedule. The stable and dormant rings still
   apply: an unchanged site drifts to 28-35 or 60-90 days by itself.
@@ -94,7 +94,7 @@ defmodule LS.Recrawl.Scheduler do
 
   defp do_check(state) do
     depth = LS.Cluster.WorkQueue.stats()[:queue_depth] || 0
-    Logger.info("[RECRAWL] Checking for due businesses (tiers 14/60/120 days, queue depth #{depth})")
+    Logger.info("[RECRAWL] Checking for due businesses (tiers #{LS.Crawl.Tiers.cadence_days(:a)}/#{LS.Crawl.Tiers.cadence_days(:b)}/#{LS.Crawl.Tiers.cadence_days(:c)} days, queue depth #{depth})")
 
     if depth > @queue_headroom do
       Logger.info("[RECRAWL] Queue holds #{depth}, over the #{@queue_headroom} headroom: no refresh this tick")

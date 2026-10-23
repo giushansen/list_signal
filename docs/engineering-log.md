@@ -25,6 +25,28 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-23: refresh tiers re-cut for six workers, online businesses with money first
+
+With six workers the fleet refreshes about 300K businesses a day after new
+domains, and the tiers from 2026-10-03 asked for 773K: tier A (ICP with
+money or a contact, 14 days) alone held 8.1M sites, 2.7M of them Ecommerce
+with nothing but an email or a phone. The queue grew 25K an hour until the
+scheduler paused itself at its 150K headroom and items started aging past
+the 24-hour TTL, which is a random refresh lottery rather than a cadence.
+Re-cut by what changes on the web and what a buyer pays for: A is
+Ecommerce, SaaS, Tool or Marketplace with revenue over $1M, jobs or a
+catalogue (3.1M, 14 days); B the rest of those models and the unclassified
+(9.7M, 90 days); C everything that sells in person or by hand, Agency and
+Consulting included, plus the top 100K (10.3M, 180 days). Nominal demand
+387K a day, about 300K once unchanged tier-A sites drift to 28-35 days by
+the rings. Pinned tier tests updated under the owner's unlock at the
+owner's request. The tier_b and tier_c dedup rings still cover 70 and 140
+days, so a certificate re-sighting can refresh a B or C site a little
+before its cadence; harmless, and not worth re-aligning persisted blooms.
+Expected in production: the queue draining from 390K toward the 150K
+headroom within a day, tier-A rows the majority of refreshes, offline
+classes a few percent.
+
 ## 2026-10-23: the dashboard opened on google.com; the default ranking now puts the prospect first
 
 A customer's first page was `ORDER BY tranco_rank`: google.com, "Directory,

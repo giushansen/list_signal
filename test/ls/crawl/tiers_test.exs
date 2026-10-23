@@ -9,14 +9,22 @@ defmodule LS.Crawl.TiersTest do
   sites would have cost 2.8 times the refresh budget (1.04M fetches a day
   against 367K). Three tiers by what a customer buys: A 14 days, B 60,
   C 120. The Elixir and SQL forms must agree, so the same cases drive both.
+
+  2026-10-23, at the owner's request after the fleet went from 13 workers
+  to 6: A is the online business with money (Ecommerce, SaaS, Tool,
+  Marketplace; revenue, jobs or a catalogue), a contact alone no longer
+  buys the fortnight, Agency and Consulting wait with the offline classes,
+  and the cadences are 14, 90 and 180.
   """
 
   @cases [
     {%{estimated_business_model: "SaaS", estimated_revenue: "$1M-$10M"}, :a},
     {%{estimated_business_model: "Ecommerce", shop_product_count: 120}, :a},
-    {%{estimated_business_model: "Agency", hr_job_count: 3}, :a},
-    {%{estimated_business_model: "Consulting", http_emails: ["a@b.example"]}, :a},
-    {%{estimated_business_model: "Tool", http_phone: "+33 1 23"}, :a},
+    {%{estimated_business_model: "Agency", hr_job_count: 3}, :c},
+    {%{estimated_business_model: "Consulting", http_emails: ["a@b.example"]}, :c},
+    {%{estimated_business_model: "Tool", http_phone: "+33 1 23"}, :b},
+    {%{estimated_business_model: "Ecommerce", http_emails: ["shop@b.example"], http_phone: "+1 555"}, :b},
+    {%{estimated_business_model: "Marketplace", hr_job_count: 1}, :a},
     {%{estimated_business_model: "SaaS", estimated_revenue: "<$1M"}, :b},
     {%{estimated_business_model: ""}, :b},
     {%{estimated_business_model: "LocalBusiness", estimated_revenue: "$10M-$100M"}, :c},
@@ -29,10 +37,10 @@ defmodule LS.Crawl.TiersTest do
     assert Tiers.tier(%{"estimated_business_model" => "SaaS", "estimated_revenue" => "$1M-$10M"}) == :a
   end
 
-  test "cadences are 14, 60 and 120 days and the top rank goes to C" do
+  test "cadences are 14, 90 and 180 days and the top rank goes to C" do
     assert Tiers.cadence_days(:a) == 14
-    assert Tiers.cadence_days(:b) == 60
-    assert Tiers.cadence_days(:c) == 120
+    assert Tiers.cadence_days(:b) == 90
+    assert Tiers.cadence_days(:c) == 180
     assert Tiers.tier_sql() =~ "tranco_rank <= 100000, 'c'"
   end
 
@@ -44,7 +52,7 @@ defmodule LS.Crawl.TiersTest do
     assert sql =~ "http_blocked = ''"
     assert sql =~ "ORDER BY tier ASC, http_last_checked_at ASC"
     assert sql =~ "LIMIT 1000"
-    assert sql =~ "multiIf(tier = 'a', 14, tier = 'b', 60, 120) DAY"
+    assert sql =~ "multiIf(tier = 'a', 14, tier = 'b', 90, 180) DAY"
   end
 
   test "the compiled-tiers query reads the pass window and skips junk" do

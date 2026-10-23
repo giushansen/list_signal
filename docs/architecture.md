@@ -292,10 +292,15 @@ row volume.
 ### Refresh tiers (2026-10-03)
 
 `LS.Crawl.Tiers` decides how often a known business is refreshed, by what
-a customer buys: A, an ICP model with money or motion (revenue over $1M,
-jobs, a catalogue, a reachable contact), every 14 days; B, the other ICP
-businesses and the unclassified ones, every 60; C, non-ICP models and the
-top 100K sites, every 120. The compactor marks every compiled B and C
+a customer buys. Since 2026-10-23: A, an online business with money
+(Ecommerce, SaaS, Tool or Marketplace with revenue over $1M, jobs or a
+catalogue), every 14 days; B, the other online businesses and the
+unclassified ones, every 90; C, the classes that sell in person or by hand
+(local business, agency, consulting, manufacturer, media, education...)
+and the top 100K sites, every 180. Before that it was ICP-or-contact at
+14/60/120, which asked for 773K refreshes a day against about 300K of
+real capacity once the fleet was six workers; the re-cut asks for 387K
+nominal, about 300K after the change-aware rings. The compactor marks every compiled B and C
 business into two more rings in `LS.Cluster.CrawlDedup` (7 windows of 10
 and 20 days), so a certificate re-sighting of a known business waits its
 cadence; `LS.Recrawl.Scheduler` enqueues what is due every six hours, most
