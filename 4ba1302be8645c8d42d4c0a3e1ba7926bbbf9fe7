@@ -1,0 +1,1 @@
+2026-10-24 12:28 UTC, first full 2h window with the index live: rows == distinct domains on every worker and fleet-wide (ratio 1.000; 1.046 and 1.27 in the two windows before). 16,748 surplus items returned to the front, 63 cut to the tail, 0 requeues.
