@@ -68,6 +68,10 @@ defmodule LS.Cluster.WorkerAgent do
       rdap_concurrency: rdap_c, batch_size: batch,
       total_enriched: 0, total_batches: 0, current_batch: nil, draining: false,
       inflight: 0, max_inflight: parallel_batches(),
+      # Share of dequeued names that become HTTP candidates, learned from
+      # each batch; sizes the next dequeue (dequeue_size/3). 0.4 is the
+      # 2026-10-24 fleet average (290-620 of 1,000).
+      cand_ratio: 0.4,
       start_time: System.monotonic_time(:second),
       last_stages: nil, last_samples: %{}, errors: []
     }
@@ -179,16 +183,21 @@ defmodule LS.Cluster.WorkerAgent do
     queue = {LS.Cluster.WorkQueue, s.master_node}
     cyc = Map.get(stages, :cycle_ms, 0)
     known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
-    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms)")
+    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms | cands #{stages.http.input} cap #{stages.http[:cap]} surplus #{stages.http[:surplus]} cut #{stages.http[:cut]})")
     # The verdicts travel with the rows so the gate can remember them
     # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
     GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved])})
+    # What this batch could not fetch goes back: untouched surplus to the
+    # front, deadline-cut candidates to the tail (2026-10-24).
+    LS.Cluster.WorkQueue.requeue(queue, Map.get(skipped, :returned_front, []), :front)
+    LS.Cluster.WorkQueue.requeue(queue, Map.get(skipped, :returned_tail, []), :tail)
     errors = (batch_errors ++ s.errors) |> Enum.take(@max_errors)
     new_s = finished(%{s |
       total_enriched: s.total_enriched + length(results),
       total_batches: s.total_batches + 1,
       last_stages: stages,
       last_samples: samples,
+      cand_ratio: Map.get(stages.http, :cand_ratio, s.cand_ratio),
       errors: errors
     })
     unless new_s.draining, do: send(self(), :pull_work)
@@ -212,18 +221,27 @@ defmodule LS.Cluster.WorkerAgent do
   @impl true
   def handle_info(_msg, s), do: {:noreply, s}
 
+  # Every two minutes a running batch tells the master it is alive, so the
+  # 10-minute in-flight timeout only fires for a dead worker (2026-10-24).
+  @heartbeat_ms 120_000
+
   defp start_batch(s) do
     queue = {LS.Cluster.WorkQueue, s.master_node}
     parent = self()
     %{http_concurrency: hc, rdap_concurrency: rc, batch_size: bs} = s
     dc = max(div(s.dns_concurrency, s.max_inflight), 50)
+    want = dequeue_size(http_candidate_cap(), s.cand_ratio, bs)
     spawn_link(fn ->
       try do
-        case GenServer.call(queue, {:dequeue, bs}, 15_000) do
+        case GenServer.call(queue, {:dequeue, want}, 15_000) do
           {:ok, bid, domains} ->
-            Logger.info("Batch #{bid}: #{length(domains)} domains")
+            Logger.info("Batch #{bid}: #{length(domains)} domains (asked #{want})")
+            # apply_interval dies with this process, so a crashed batch
+            # stops beating and the master requeues it as before.
+            {:ok, beat} = :timer.apply_interval(@heartbeat_ms, GenServer, :cast, [queue, {:heartbeat, bid}])
             t0 = System.monotonic_time(:millisecond)
             {results, stages, samples, errors, skipped} = enrich_batch(domains, hc, dc, rc)
+            :timer.cancel(beat)
             stages = Map.put(stages, :cycle_ms, System.monotonic_time(:millisecond) - t0)
             send(parent, {:batch_done, bid, results, stages, samples, errors, skipped})
           {:empty, []} ->
@@ -304,7 +322,14 @@ defmodule LS.Cluster.WorkerAgent do
     # the HTTP stage can skip the secondary pages of an unchanged site.
     prev_simhash = for d <- domains, d[:source] == :recrawl, is_integer(d[:prev_simhash]), d[:prev_simhash] > 0, into: %{}, do: {d[:ctl_domain] || d[:domain], d[:prev_simhash]}
     {http_cands, bgp_cands, skipped} = classify(dns_results, issuers, refresh)
-    rdap_cands = classify_rdap(dns_results)
+    # Only as many fetches as this batch's share of the node budget can
+    # finish inside the master's in-flight window (2026-10-24). The surplus
+    # goes back to the front of the queue untouched, see :batch_done.
+    cap = http_candidate_cap()
+    {http_cands, surplus} = split_candidates(http_cands, cap)
+    cand_set = MapSet.new(http_cands, fn {d, _ip} -> d end)
+    # RDAP is politeness-limited to 2/s: only for domains that get a row.
+    rdap_cands = classify_rdap(dns_results) |> Enum.filter(&MapSet.member?(cand_set, &1))
     unresolved = for d <- domains, dom = d[:ctl_domain] || d[:domain], not Map.has_key?(dns_results, dom), do: dom
     skipped = Map.put(skipped, :unresolved, unresolved)
 
@@ -336,21 +361,35 @@ defmodule LS.Cluster.WorkerAgent do
     {bgp_us, bgp_res} = :timer.tc(fn -> await_stage(bgp_task, "bgp", 120_000) end)
     {rdap_us, rdap_res} = :timer.tc(fn -> await_stage(rdap_task, "rdap", rdap_timeout) end)
 
-    http_err = length(http_cands) - map_size(http_res)
+    # Candidates the stage deadline cut while in flight: no row (a row with
+    # no HTTP outcome advanced http_last_checked_at and hid the site from
+    # its refresh for a whole cadence, 150K rows a day on 2026-10-23), and
+    # back to the tail of the queue instead.
+    cut = unfetched(http_cands, http_res)
+    fetched = http_cands -- cut
+    http_err = length(cut)
     errors = if http_err > 0 do
-      [%{time: now_iso(), msg: "HTTP: #{http_err}/#{length(http_cands)} failed", stage: "http"} | errors]
+      [%{time: now_iso(), msg: "HTTP: #{http_err}/#{length(http_cands)} not fetched by the deadline", stage: "http"} | errors]
     else
       errors
     end
 
+    by_domain = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d} end)
+    skipped =
+      skipped
+      |> Map.put(:returned_front, for({d, _ip} <- surplus, item = by_domain[d], do: item))
+      |> Map.put(:returned_tail, for({d, _ip} <- cut, item = by_domain[d], do: item))
+
     # 4. Merge (reputation + classification + scoring happen here)
     {merge_us, merged} =
-      :timer.tc(fn -> merge_results(rows_to_write(domains, dns_results, http_cands), dns_results, http_res, bgp_res, rdap_res, worker) end)
+      :timer.tc(fn -> merge_results(rows_to_write(domains, dns_results, fetched), dns_results, http_res, bgp_res, rdap_res, worker) end)
 
     stages = %{
       dns: %{input: length(domains), output: map_size(dns_results), ms: div(dns_us, 1000)},
       http: %{input: length(http_cands), output: map_size(http_res), ms: div(http_us, 1000),
-              filtered: length(domains) - length(http_cands)},
+              filtered: length(domains) - length(http_cands) - length(surplus),
+              surplus: length(surplus), cut: length(cut), cap: cap,
+              cand_ratio: candidate_ratio(length(http_cands) + length(surplus), length(domains))},
       bgp: %{input: length(bgp_cands), output: map_size(bgp_res), ms: div(bgp_us, 1000)},
       rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
               rate_limited: length(rdap_cands) - map_size(rdap_res)},
@@ -466,23 +505,71 @@ defmodule LS.Cluster.WorkerAgent do
   def prefetch_verdict(_domain, _mx, _txt, _ip, _issuer, true), do: :crawl
   def prefetch_verdict(domain, mx, txt, ip, issuer, false), do: DomainFilter.verdict(domain, mx, txt, ip, issuer)
 
+  # What one HTTP candidate costs in budget slots. Measured 2026-10-23 on a
+  # 160-domain probe and again 2026-10-24 in the batch logs: robots.txt
+  # (cached 24 h, so always a miss at first contact and at any refresh 14
+  # days or more apart), the homepage, and about a tenth of a login or
+  # pricing page. The previous figure of 1.5 assumed robots.txt was free;
+  # with it the deadline cut 100 to 235 of every 290 to 622 candidates and
+  # those became hollow rows.
+  @slots_per_candidate 2.2
+  # The share of the master's 10-minute in-flight timeout a batch may spend
+  # fetching: DNS takes up to 30 s, merge and ML up to 60 s, 90 s margin.
+  @http_window_ms 420_000
+
   @doc false
   # Pure: how long the HTTP stage may take for `n` candidates, each fetch
   # paced by the node budget, with a minute of slack for the slow tail.
-  # A candidate costs its homepage slot plus, for the fifth or so that have
-  # a contact or pricing page, up to two secondary fetches: 1.5 slots each.
   # The rate a batch can count on is the node ceiling divided by the
   # batches running at once (2026-10-03): with two batches sharing 120 a
   # minute, a 345-candidate stage sized for the whole ceiling ran into its
   # deadline at 319.5 s on ny1 and lost its tail.
   def http_stage_timeout(n, per_min \\ div(LS.HTTP.NodeBudget.lane_limit(:discovery), parallel_batches())),
-    do: max(120_000, div(n * 90_000, max(per_min, 1)) + 60_000)
+    do: max(120_000, round(n * @slots_per_candidate * 60_000 / max(per_min, 1)) + 60_000)
+
+  @doc """
+  Pure: how many HTTP candidates one batch may carry so that its fetches,
+  at `per_min` slots a minute and #{@slots_per_candidate} slots each, finish
+  inside `window_ms`. Two batches sharing 120 a minute: 190 each.
+  """
+  @spec http_candidate_cap(pos_integer(), pos_integer()) :: pos_integer()
+  def http_candidate_cap(per_min \\ div(LS.HTTP.NodeBudget.lane_limit(:discovery), parallel_batches()), window_ms \\ @http_window_ms),
+    do: max(trunc(max(per_min, 1) * window_ms / 60_000 / @slots_per_candidate), 20)
+
+  @doc "Pure: the candidates this batch fetches, and the surplus it hands back untouched."
+  @spec split_candidates([term()], pos_integer()) :: {[term()], [term()]}
+  def split_candidates(cands, cap) when is_list(cands) and is_integer(cap) and cap > 0, do: Enum.split(cands, cap)
+
+  @doc "Pure: candidates the stage never returned a result for, success or error."
+  @spec unfetched([{String.t(), term()}], map()) :: [{String.t(), term()}]
+  def unfetched(cands, http_res) when is_list(cands) and is_map(http_res),
+    do: Enum.reject(cands, fn {d, _ip} -> Map.has_key?(http_res, d) end)
+
+  @doc """
+  Pure: how many domains to dequeue so that, at the share of them that
+  usually pass the gate (`ratio`), the batch lands near its candidate cap
+  instead of resolving 1,000 names to fetch 190. Bounded to [100, max].
+  """
+  @spec dequeue_size(pos_integer(), number(), pos_integer()) :: pos_integer()
+  def dequeue_size(cap, ratio, max) when is_integer(cap) and is_number(ratio) and is_integer(max) do
+    r = ratio |> max(0.1) |> min(1.0)
+    cap |> Kernel./(r) |> Float.ceil() |> trunc() |> max(100) |> min(max)
+  end
 
   @doc false
-  # Pure: the domains that get a row. Fetched or attempted ones (HTTP has
-  # something to say, including the error), blocklisted ones (the flag is
-  # the data). Filtered and unresolved domains write nothing: a row with
-  # DNS fields only used to REPLACE a good `domains` row with a hollow one.
+  # Pure: the share of a batch that became HTTP candidates, clamped so one
+  # odd batch cannot swing the next dequeue to an extreme.
+  def candidate_ratio(_cands, 0), do: 0.4
+  def candidate_ratio(cands, domains) when is_integer(cands) and is_integer(domains),
+    do: (cands / domains) |> max(0.1) |> min(1.0)
+
+  @doc false
+  # Pure: the domains that get a row. Fetched ones (HTTP has something to
+  # say, including the error), blocklisted ones (the flag is the data).
+  # Filtered and unresolved domains write nothing: a row with DNS fields
+  # only used to REPLACE a good `domains` row with a hollow one. Since
+  # 2026-10-24 the caller passes only candidates the stage returned a
+  # result for; a candidate the deadline cut goes back to the queue.
   def rows_to_write(domains, dns_results, http_cands) do
     attempted = MapSet.new(http_cands, fn {d, _ip} -> d end)
 

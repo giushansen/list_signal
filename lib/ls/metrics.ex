@@ -254,6 +254,43 @@ defmodule LS.Metrics do
   @doc "WorkQueue depth/fill, safe when not running."
   def queue, do: safe_stats(LS.Cluster.WorkQueue)
 
+  @doc """
+  Crawl hygiene over the last `hours` (2026-10-24): rows written by fleet
+  workers, distinct domains behind them, and hollow rows (no HTTP status
+  and no error, a fetch that never happened). On 2026-10-23 the ratio was
+  2.0 (444,252 rows for 222,320 domains) and 34% of rows were hollow, and
+  nothing said so. Nil when ClickHouse does not answer.
+  """
+  @spec crawl_hygiene(pos_integer()) :: %{rows: non_neg_integer(), domains: non_neg_integer(), hollow: non_neg_integer()} | nil
+  def crawl_hygiene(hours \\ 2) do
+    sql =
+      "SELECT count(), uniqExact(domain), countIf((http_status IS NULL OR http_status = 0) AND http_error = '') " <>
+        "FROM enrich_log WHERE enriched_at > now() - INTERVAL #{i(hours)} HOUR AND #{fleet_rows()}"
+
+    case ch_rows(sql) do
+      [[rows, domains, hollow]] -> %{rows: to_i(rows), domains: to_i(domains), hollow: to_i(hollow)}
+      _ -> nil
+    end
+  end
+
+  @doc """
+  The refresh scheduler's last completed tick, as seconds ago, with the VM
+  uptime for the boot grace. The stamp lives in `persistent_term`, so a
+  scheduler process that crash-loops (2026-10-23: two hours, every five
+  minutes, zero refreshes, no alert) still reads as silent.
+  """
+  @spec recrawl() :: %{last_tick_age_s: non_neg_integer() | nil, vm_uptime_s: non_neg_integer()}
+  def recrawl do
+    {wall_ms, _} = :erlang.statistics(:wall_clock)
+    age =
+      case :persistent_term.get({LS.Recrawl.Scheduler, :last_tick}, nil) do
+        t when is_integer(t) -> max(System.system_time(:second) - t, 0)
+        _ -> nil
+      end
+
+    %{last_tick_age_s: age, vm_uptime_s: div(wall_ms, 1000)}
+  end
+
   @doc "Per-worker quarantine/health from the Inserter quality guard."
   def worker_health do
     try do

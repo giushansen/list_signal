@@ -148,7 +148,9 @@ defmodule LS.Alerts do
       verification: Metrics.verification(),
       verification_freshness: Metrics.verification_freshness(),
       poller: Metrics.poller(),
-      ctl_diff: LS.CTL.LogList.diff_current()
+      ctl_diff: LS.CTL.LogList.diff_current(),
+      crawl_hygiene: Metrics.crawl_hygiene(2),
+      recrawl: Metrics.recrawl()
     }
   end
 
@@ -181,6 +183,8 @@ defmodule LS.Alerts do
     |> unmonitored(m)
     |> watchdog(m)
     |> data_check(m)
+    |> crawl_hygiene(m)
+    |> recrawl_silent(m)
     |> Enum.sort_by(&(&1.severity == :critical), :desc)
   end
 
@@ -606,6 +610,78 @@ defmodule LS.Alerts do
     ]
 
   defp queue(acc, _), do: acc
+
+  # ── crawl hygiene (2026-10-24) ──
+  #
+  # Found by hand, a day late: 444,252 rows for 222,320 distinct domains in
+  # 24 h (batches past the 10-minute in-flight timeout were requeued and a
+  # second node fetched the same sites, the Vultr abuse-report pattern), and
+  # 150K rows with no HTTP status and no error (the stage deadline's cut
+  # tail, written anyway). A healthy fleet sits near 1.0 and under 1%.
+  @dup_ratio_ceiling 1.10
+  @hollow_pct_ceiling 5.0
+  @hygiene_min_rows 5_000
+
+  @doc false
+  def dup_ratio_ceiling, do: @dup_ratio_ceiling
+  @doc false
+  def hollow_pct_ceiling, do: @hollow_pct_ceiling
+
+  defp crawl_hygiene(acc, %{crawl_hygiene: %{rows: r, domains: d, hollow: h}})
+       when is_integer(r) and is_integer(d) and is_integer(h) and r >= @hygiene_min_rows and d > 0 do
+    ratio = r / d
+    hollow_pct = 100 * h / r
+
+    acc =
+      if ratio > @dup_ratio_ceiling,
+        do: [
+          al(
+            :critical,
+            "crawl_duplicates",
+            "Duplicate fetches across the fleet",
+            "#{fmt(r)} rows for #{fmt(d)} distinct domains in 2h (#{Float.round(ratio, 2)}x); two nodes are visiting the same sites, check batch cycle time against the in-flight timeout"
+          )
+          | acc
+        ],
+        else: acc
+
+    if hollow_pct > @hollow_pct_ceiling,
+      do: [
+        al(
+          :warning,
+          "crawl_hollow",
+          "Hollow rows",
+          "#{Float.round(hollow_pct, 1)}% of #{fmt(r)} rows in 2h have no HTTP status and no error; the HTTP stage is cutting candidates at its deadline"
+        )
+        | acc
+      ],
+      else: acc
+  end
+
+  defp crawl_hygiene(acc, _), do: acc
+
+  # The refresh scheduler ticks every 30 minutes. Two hours without a
+  # completed tick, once the VM has been up that long, is a crash loop or
+  # a hang, and the signal product is not being refreshed.
+  @recrawl_silence_s 2 * 3_600
+
+  defp recrawl_silent(acc, %{recrawl: %{last_tick_age_s: age, vm_uptime_s: up}})
+       when is_integer(up) and up > @recrawl_silence_s and (is_nil(age) or age > @recrawl_silence_s) do
+    [
+      al(
+        :critical,
+        "recrawl_silent",
+        "Refresh scheduler silent",
+        if(is_nil(age),
+          do: "no refresh tick has completed since boot #{div(up, 3600)}h ago",
+          else: "last refresh tick completed #{div(age, 60)} min ago; expected every 30"
+        )
+      )
+      | acc
+    ]
+  end
+
+  defp recrawl_silent(acc, _), do: acc
 
   defp reputation(acc, %{reputation_ages: ages}) do
     for {name, age} <- ages, is_integer(age) and age > @reputation_age_ceiling_h, reduce: acc do

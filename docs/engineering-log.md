@@ -25,6 +25,54 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-24: half the rows were duplicate fetches, a third were hollow; batches now fit the budget and heartbeat
+
+Found while checking why the scheduler had paused for 12 hours. Over the
+previous 24 hours the fleet wrote 444,252 rows for 222,320 distinct
+domains, and 150,530 rows had no HTTP status and no error. Three causes,
+one root: every batch was a full 1,000 names since the fleet cut, which no
+longer fit one batch's share of the node budget.
+
+- **Duplicates.** A batch of 290 to 622 HTTP candidates at 60 slots a
+  minute ran 11 to 22 minutes. `WorkQueue` requeued it at the 10-minute
+  in-flight timeout, skipping only domains in the 30-minute
+  `recently_crawled` table, which is filled at completion, so everything
+  still in flight went to a second node: 692K requeued against 343K
+  completed in 18 hours, about 75K domains a day visited from two of our
+  IPs 20 minutes to 6 hours apart. That is the pattern of the 2026-08-28
+  Vultr abuse report. Fix: the worker heartbeats every running batch every
+  two minutes (`WorkQueue.heartbeat/2`), and the timeout only fires for a
+  batch nobody is beating for.
+- **Hollow rows.** `http_stage_timeout/2` counted 1.5 slots per candidate;
+  a first contact costs about 2.1 (robots.txt is never cached at first
+  contact, see 2026-10-23). The deadline cut 100 to 235 candidates per
+  batch and `rows_to_write/3` wrote them because they were "attempted".
+  Those rows advanced `http_last_checked_at`: 8,175 of the 27,827 tier A
+  businesses touched that day got nothing else, so the scheduler believed
+  they were refreshed. Fix: 2.2 slots per candidate in the bound,
+  `http_candidate_cap/2` limits a batch to what its share finishes inside a
+  7-minute window (190 at 60 a minute), the dequeue asks for only as many
+  names as reach that cap at the learned pass rate (`dequeue_size/3`), the
+  surplus goes back to the front of the queue untouched
+  (`WorkQueue.requeue/3`), and a cut candidate gets no row and goes to the
+  tail. Pinned bound assertions updated under the owner's unlock.
+- **Tier A paused.** The scheduler's 150K headroom rule stopped all refresh
+  while certificate inflow (470 to 565 a minute) alone outran six workers
+  (300 to 350 a minute). The queue is now keyed `{priority, id}`: tier A
+  refreshes are priority 0 and dequeue first, and the scheduler admits up to
+  4,500 of them per tick whatever the queue holds (216K a day, the 14-day
+  plan for 3.13M). B and C still yield over the headroom.
+
+Also measured, for the record: by TLD, issuer, name shape, certificate
+size, registration age and registrar, new domains come back as a real page
+40 to 55% of the time everywhere (the 2026-10-02 finding holds); ICP yield
+is 4.3% and tier A 0.4% of new-domain rows. The real distinct productive
+fetch rate was 151K a day, not the 400 rows a minute the row count
+suggested. Alerts `crawl_duplicates`, `crawl_hollow` and `recrawl_silent`
+and `test/ls/data_contract_crawl_hygiene_test.exs` now watch all three.
+
+---
+
 ## 2026-10-23: what a refresh costs, and secondary pages skipped when the homepage is unchanged
 
 Measured before touching it: a refreshed domain in the discovery lane

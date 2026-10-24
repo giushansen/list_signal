@@ -119,11 +119,21 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    every SAN in each certificate, then filters obvious junk and enqueues
    `%{ctl_domain: d, source: :ctl}` items.
 2. **Queueing** — `LS.Cluster.WorkQueue` is a bounded in-memory queue
-   (ETS, 3M cap, 24h TTL). When full, `enqueue/1` returns `:queue_full` and
-   the item is dropped — inflow shedding is deliberate.
-3. **Pulling** — each `LS.Cluster.WorkerAgent` requests batches (default
-   1000 domains) from the master. In-flight batches are tracked; a batch not
-   completed within 10 minutes is requeued (worker died).
+   (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). Tier A
+   refreshes are priority 0 and dequeue before everything else; the rest is
+   FIFO (2026-10-24). When full, `enqueue/1` returns `:queue_full` and the
+   item is dropped: inflow shedding is deliberate.
+3. **Pulling** — each `LS.Cluster.WorkerAgent` asks for as many names as
+   reach its HTTP candidate cap at the learned pass rate (about 475 for a
+   cap of 190, `dequeue_size/3`), never more than `LS_BATCH_SIZE`. The cap
+   is what one batch's share of the node budget fetches inside a 7-minute
+   window at 2.2 slots a candidate (`http_candidate_cap/2`); candidates
+   past it go back to the front of the queue untouched, candidates the
+   stage deadline cut go to the tail and write no row. A running batch
+   heartbeats the master every two minutes; a batch with no heartbeat for
+   10 minutes is requeued (worker died). Before 2026-10-24 the timeout
+   fired on live 11-22 minute batches and a second node fetched the same
+   sites.
 4. **Enrichment** — per batch, on the worker:
    - **DNS** (`LS.DNS.Resolver`) — A/AAAA/MX/TXT/CNAME via *pinned* local
      Unbound. Runs for every domain.

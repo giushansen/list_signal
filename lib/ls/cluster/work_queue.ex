@@ -15,7 +15,28 @@ defmodule LS.Cluster.WorkQueue do
 
   - Hard cap: max 5M domains in queue (~600MB RAM)
   - TTL eviction: domains older than 24h get dropped hourly
-  - In-flight tracking: timed-out batches get requeued after 10min
+  - In-flight tracking: timed-out batches get requeued after 10min, unless
+    the worker is still heartbeating for them (see below)
+
+  ## Order (2026-10-24)
+
+  The table is an ordered_set keyed by `{priority, id}`. Priority 0 is the
+  refresh of a tier A business (`LS.Crawl.Tiers`: an online business with
+  revenue, jobs or a catalogue), the rows customers pay to see change;
+  everything else is 1. Within a priority the id is monotonic, so it is
+  FIFO. A worker that dequeued more than its fetch budget can finish hands
+  the surplus back with `requeue/2` to the FRONT of its priority (a negative
+  monotonic id), so nothing it never touched waits a second time behind
+  400K newer names.
+
+  ## Heartbeat (2026-10-24)
+
+  Workers cast `heartbeat/1` for a running batch every two minutes. The
+  in-flight timeout only fires for a batch nobody is heartbeating. Before
+  this, a batch that legitimately ran 11 to 22 minutes was requeued at 10,
+  the worker finished it anyway, and a second node fetched the same 1,000
+  sites again: 221,932 of 444,252 rows on 2026-10-23 were duplicates, the
+  same two-IP pattern as the 2026-08-28 Vultr abuse report.
 
   ## Stats
 
@@ -55,6 +76,13 @@ defmodule LS.Cluster.WorkQueue do
   @ttl_ms 86_400_000               # 24 hours
   @cleanup_interval_ms 3_600_000   # 1 hour
   @inflight_check_ms 60_000        # 1 minute
+
+  @doc "The in-flight timeout: a batch with no heartbeat for this long is requeued."
+  def batch_timeout_ms, do: @batch_timeout_ms
+
+  # Queue key priorities. 0 dequeues before 1.
+  @prio_refresh_a 0
+  @prio_default 1
 
   # Counter indices
   @rate_window_ms 20_000
@@ -144,13 +172,50 @@ defmodule LS.Cluster.WorkQueue do
         :recently_crawled
 
       true ->
-        id = :erlang.unique_integer([:monotonic, :positive])
         now = System.system_time(:millisecond)
-        :ets.insert(@queue_table, {id, domain_data, now})
+        :ets.insert(@queue_table, {tail_key(domain_data), domain_data, now})
         :counters.add(counter_ref(), @idx_enqueued, 1)
         :ok
     end
   end
+
+  @doc """
+  Pure: where an item sorts. A tier A refresh (`source: :recrawl`, `tier:
+  "a"`) is 0 and dequeues before everything else; the rest is 1. The
+  scheduler marks tier A on the item, so the queue never has to look a
+  domain up to know what it is.
+  """
+  @spec priority(map()) :: 0 | 1
+  def priority(%{source: :recrawl, tier: "a"}), do: @prio_refresh_a
+  def priority(%{"source" => :recrawl, "tier" => "a"}), do: @prio_refresh_a
+  def priority(_), do: @prio_default
+
+  @doc "Pure: a key that sorts after every item of the same priority already queued."
+  @spec tail_key(map()) :: {0 | 1, integer()}
+  def tail_key(data), do: {priority(data), :erlang.unique_integer([:monotonic, :positive])}
+
+  @doc "Pure: a key that sorts before every item of the same priority already queued."
+  @spec front_key(map()) :: {0 | 1, integer()}
+  def front_key(data), do: {priority(data), -:erlang.unique_integer([:monotonic, :positive])}
+
+  @doc """
+  Hand items back from a worker. `:front` for domains the worker dequeued
+  and never touched (over its fetch budget for the batch): they keep their
+  place. `:tail` for domains whose fetch the stage deadline cut while in
+  flight: they may have received a request, so they wait their turn again
+  and a second contact is hours away, never minutes. No dedup check here,
+  like `requeue_timed_out/1`: these items passed the gate when they were
+  first enqueued.
+  """
+  @spec requeue(GenServer.server(), [map()], :front | :tail) :: :ok
+  def requeue(server \\ __MODULE__, items, where) when is_list(items) and where in [:front, :tail] do
+    if items != [], do: GenServer.cast(server, {:requeue, items, where})
+    :ok
+  end
+
+  @doc "A worker says it is still working on this batch; resets its in-flight clock."
+  @spec heartbeat(GenServer.server(), integer()) :: :ok
+  def heartbeat(server \\ __MODULE__, batch_id), do: GenServer.cast(server, {:heartbeat, batch_id})
 
   @doc "Dequeue a batch of domains. Called by workers."
   def dequeue(count) do
@@ -211,6 +276,9 @@ defmodule LS.Cluster.WorkQueue do
       total_dequeued: 0,
       total_completed: 0,
       total_requeued: 0,
+      total_returned_front: 0,
+      total_returned_tail: 0,
+      total_heartbeats: 0,
       start_time: System.monotonic_time(:second),
       # Trailing-window rates (not lifetime averages) — truthful right after a
       # restart. rate_sample = {mono_seconds, enqueued_then, completed_then}.
@@ -267,6 +335,9 @@ defmodule LS.Cluster.WorkQueue do
 
     stats = %{
       queue_depth: queue_size,
+      # Tier A refreshes waiting (priority 0). An ordered_set bounds the scan
+      # to the matching key range.
+      queue_depth_priority: :ets.select_count(@queue_table, [{{{@prio_refresh_a, :_}, :_, :_}, [], [true]}]),
       queue_pct: if(max_queue_size() > 0, do: Float.round(queue_size / max_queue_size() * 100, 1), else: 0.0),
       queue_max: max_queue_size(),
       queue_memory_mb: queue_mem_mb,
@@ -275,6 +346,9 @@ defmodule LS.Cluster.WorkQueue do
       total_dequeued: state.total_dequeued,
       total_completed: state.total_completed,
       total_requeued: state.total_requeued,
+      total_returned_front: state.total_returned_front,
+      total_returned_tail: state.total_returned_tail,
+      total_heartbeats: state.total_heartbeats,
       total_dropped: total_dropped,
       total_deduped: total_deduped,
       total_deduped_stable: total_deduped_stable,
@@ -318,14 +392,54 @@ defmodule LS.Cluster.WorkQueue do
         # Requeue all items
         now = System.system_time(:millisecond)
         Enum.each(items, fn {_old_id, data, _old_ts} ->
-          new_id = :erlang.unique_integer([:monotonic, :positive])
-          :ets.insert(@queue_table, {new_id, data, now})
+          :ets.insert(@queue_table, {tail_key(data), data, now})
         end)
         {:noreply, %{state | total_requeued: state.total_requeued + length(items)}}
 
       [] ->
         {:noreply, state}
     end
+  end
+
+  # A worker hands back what it dequeued and could not fetch this batch.
+  def handle_cast({:requeue, items, where}, state) when is_list(items) do
+    now = System.system_time(:millisecond)
+    key = if where == :front, do: &front_key/1, else: &tail_key/1
+
+    n =
+      Enum.count(items, fn
+        %{} = data when is_map_key(data, :ctl_domain) or is_map_key(data, :domain) ->
+          :ets.insert(@queue_table, {key.(data), data, now})
+          true
+
+        _ ->
+          false
+      end)
+
+    state =
+      if where == :front,
+        do: %{state | total_returned_front: state.total_returned_front + n},
+        else: %{state | total_returned_tail: state.total_returned_tail + n}
+
+    {:noreply, state}
+  end
+
+  # A running batch resets its in-flight clock. Unknown ids (already
+  # completed, or requeued before the worker's first beat) are ignored.
+  def handle_cast({:heartbeat, batch_id}, state) do
+    now = System.system_time(:millisecond)
+
+    case :ets.update_element(@inflight_table, batch_id, {3, now}) do
+      true -> {:noreply, %{state | total_heartbeats: state.total_heartbeats + 1}}
+      false -> {:noreply, state}
+    end
+  end
+
+  # Anything else cast at the queue (an older or newer worker release) is
+  # dropped, never a crash of the queue every worker depends on.
+  def handle_cast(other, state) do
+    Logger.warning("WorkQueue ignored cast #{inspect(other, limit: 3)}")
+    {:noreply, state}
   end
 
   # TTL cleanup — drop domains older than 24h
@@ -455,8 +569,7 @@ defmodule LS.Cluster.WorkQueue do
       end
 
       Enum.each(needed, fn {_old_id, data, _old_ts} ->
-        new_id = :erlang.unique_integer([:monotonic, :positive])
-        :ets.insert(@queue_table, {new_id, data, now})
+        :ets.insert(@queue_table, {tail_key(data), data, now})
       end)
 
       count + length(needed)
@@ -464,6 +577,12 @@ defmodule LS.Cluster.WorkQueue do
   rescue
     _ -> 0
   end
+
+  @doc false
+  # Pure: is a batch past its in-flight timeout? `last_beat_ms` is the
+  # dequeue time or the latest heartbeat, whichever is newer.
+  @spec timed_out?(integer(), integer(), pos_integer()) :: boolean()
+  def timed_out?(last_beat_ms, now_ms, timeout_ms \\ @batch_timeout_ms), do: now_ms - last_beat_ms >= timeout_ms
 
   @doc false
   # Record each completed result's domain so a late timeout cannot re-crawl it.
