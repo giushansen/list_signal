@@ -50,6 +50,15 @@ defmodule LS.Recrawl.SchedulerTierALaneTest do
     assert LS.Clickhouse.stale_domains_sql(10, 0, ["c", "zzz"]) =~ "AND tier IN ('c')"
   end
 
+  test "a business fetched in the last day is never due, whatever its compiled stamp says" do
+    # 2026-10-24 14:00-16:00 local, after the priority lane shipped: 12K
+    # known businesses fetched twice by two nodes 40-80 minutes apart. The
+    # refresh had landed in enrich_log; the compiled row still said overdue.
+    sql = LS.Clickhouse.stale_domains_sql(1000, 0, ["a"])
+    assert sql =~ "AND domain NOT IN (SELECT domain FROM enrich_log WHERE enriched_at >= now() - INTERVAL 1 DAY)"
+    assert LS.Clickhouse.stale_domains_sql(1000) =~ "NOT IN (SELECT domain FROM enrich_log"
+  end
+
   test "the tier A block is a little over the allowance, never the whole batch" do
     plan = Scheduler.plan()
     assert Scheduler.a_block() >= plan.tier_a_per_tick

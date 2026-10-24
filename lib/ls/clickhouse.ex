@@ -602,6 +602,12 @@ defmodule LS.Clickhouse do
     a = LS.Crawl.Tiers.cadence_days(:a)
     b = LS.Crawl.Tiers.cadence_days(:b)
     c = LS.Crawl.Tiers.cadence_days(:c)
+    # Due means not fetched in the last day, whatever the compiled row says
+    # (2026-10-24 afternoon): a refresh lands in enrich_log within minutes
+    # but http_last_checked_at moves only at the next compaction pass, so
+    # once tier A was fetched within its tick the same oldest rows came back
+    # the next tick and a second node fetched them again, 40 to 80 minutes
+    # apart (12K pairs in 2 h). The last-day set is ~300-450K names, ~1 s.
     # One lane at a time (2026-10-24): the due list is tier-ordered and 3.1M
     # tier A rows were overdue, so a tick that wanted B and C read four
     # blocks of A, resolved 37,500 names on the master and admitted none.
@@ -621,6 +627,7 @@ defmodule LS.Clickhouse do
         AND http_last_checked_at < now() - INTERVAL #{a} DAY
     )
     WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY#{lane}
+      AND domain NOT IN (SELECT domain FROM #{LS.Schema.Tables.enrich_log()} WHERE enriched_at >= now() - INTERVAL 1 DAY)
     ORDER BY tier ASC, http_last_checked_at ASC, domain
     LIMIT #{limit} OFFSET #{offset}
     SETTINGS max_threads = 2, max_execution_time = 110
