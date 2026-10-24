@@ -117,10 +117,15 @@ defmodule LS.Cluster.CrawlDedup do
     # of a known business waits its tier's cadence instead of 7 days. Tier
     # A is governed by the daily ring and the stable ring alone. Bypassed by
     # `force: true` (the scheduler IS the tier schedule) and by :hot.
-    # 7 windows of 10 days: a member for 60-70 days; 7 of 20: 120-140.
-    # Capacity 8M per window at 1% is ~10 MB each, ~134 MB for both rings.
-    tier_b: %{key: {__MODULE__, :tier_b}, windows: 7, period_s: 10 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_b_blooms.bin", counter: {__MODULE__, :tier_b_marked}},
-    tier_c: %{key: {__MODULE__, :tier_c}, windows: 7, period_s: 20 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_c_blooms.bin", counter: {__MODULE__, :tier_c_marked}}
+    # 10 windows of 10 days: a member for 90-100 days; 10 of 20: 180-200,
+    # matching the 90/180-day cadences of 2026-10-23 (the rings were 7
+    # windows for the 60/120 cadences before). Capacity 8M per window at
+    # 1% is ~10 MB each, ~190 MB for both rings. The compactor marks what
+    # it compiles; `backfill_tiers/0` marks everything else once, placed by
+    # its last check so each releases on its own cadence (2026-10-24: the
+    # tier C ring held 2.8M of 10.3M and 56K re-sightings a day got through).
+    tier_b: %{key: {__MODULE__, :tier_b}, windows: 10, period_s: 10 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_b_blooms.bin", counter: {__MODULE__, :tier_b_marked}},
+    tier_c: %{key: {__MODULE__, :tier_c}, windows: 10, period_s: 20 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_c_blooms.bin", counter: {__MODULE__, :tier_c_marked}}
   }
   @ring_names Map.keys(@rings)
   @backfill_shards 16
@@ -198,11 +203,11 @@ defmodule LS.Cluster.CrawlDedup do
   def tiered?(domain),
     do: Application.get_env(:ls, :tier_rings, true) and (in_ring?(:tier_b, domain) or in_ring?(:tier_c, domain))
 
-  @doc "Mark tier B businesses (60-70 days). Returns how many were written."
+  @doc "Mark tier B businesses (90-100 days). Returns how many were written."
   @spec mark_tier_b([String.t()]) :: non_neg_integer()
   def mark_tier_b(domains), do: mark(:tier_b, domains)
 
-  @doc "Mark tier C businesses (120-140 days). Returns how many were written."
+  @doc "Mark tier C businesses (180-200 days). Returns how many were written."
   @spec mark_tier_c([String.t()]) :: non_neg_integer()
   def mark_tier_c(domains), do: mark(:tier_c, domains)
 
@@ -228,6 +233,82 @@ defmodule LS.Cluster.CrawlDedup do
   end
 
   defp mark(_, _), do: 0
+
+  @doc false
+  # Mark into an older window of a ring, so the entry releases when that
+  # window rotates out rather than a full span from now. Used by the
+  # backfill; index 0 is the current window.
+  def mark_into(name, index, domains) when is_integer(index) and index >= 0 and is_list(domains) do
+    case :persistent_term.get(@rings[name].key, nil) do
+      %{blooms: blooms} when index < length(blooms) ->
+        bloom = Enum.at(blooms, index)
+        n = domains |> Enum.filter(&(is_binary(&1) and &1 != "")) |> Enum.map(&Bloom.put(bloom, &1)) |> length()
+        :counters.add(ring_counter(name), 1, n)
+        n
+
+      _ ->
+        0
+    end
+  end
+
+  @doc """
+  Pure: which window of a ring a business last checked at `checked_unix`
+  belongs to, given the ring's `rotated_at` (start of window 0) and period.
+  Checked after the rotation: window 0. Each full period before it: one
+  window older. `nil` when it is older than the ring holds (already due).
+  """
+  @spec window_index(integer(), pos_integer(), integer(), pos_integer()) :: non_neg_integer() | nil
+  def window_index(rotated_at, period_s, checked_unix, windows) do
+    cond do
+      checked_unix >= rotated_at -> 0
+      true ->
+        i = div(rotated_at - checked_unix, period_s) + 1
+        if i < windows, do: i, else: nil
+    end
+  end
+
+  @doc """
+  Mark every non-junk tier B and C business into its ring, placed by its
+  last check (2026-10-24). One pass over `businesses` per ring window and
+  hash shard (8), so no result set is larger than about half a million
+  names. Returns `%{tier_b: n, tier_c: n}`. Safe to run again: a bloom
+  insert is idempotent.
+  """
+  @spec backfill_tiers() :: %{tier_b: non_neg_integer(), tier_c: non_neg_integer()}
+  def backfill_tiers do
+    for {name, tier} <- [tier_b: "b", tier_c: "c"], into: %{} do
+      %{windows: windows, period_s: period} = @rings[name]
+      %{rotated_at: at} = :persistent_term.get(@rings[name].key)
+
+      total =
+        for i <- 0..(windows - 1), shard <- 0..7, reduce: 0 do
+          acc ->
+            {from, to} = window_bounds(at, period, i)
+            # 8 shards: one tier C window held 4.1M businesses on prod, so a
+            # shard is about 500K names, a few tens of MB through the client.
+            sql = LS.Crawl.Tiers.backfill_sql(tier, from, to, shard, 8)
+
+            case LS.Clickhouse.query_raw(sql, 180_000) do
+              {:ok, rows} ->
+                n = mark_into(name, i, Enum.map(rows, &hd/1))
+                if shard == 7, do: Logger.info("🔁 CrawlDedup backfill #{name} window #{i}: #{acc + n} marked so far")
+                acc + n
+
+              {:error, reason} ->
+                Logger.warning("🔁 CrawlDedup backfill #{name} window #{i} shard #{shard} failed: #{inspect(reason) |> String.slice(0, 200)}")
+                acc
+            end
+        end
+
+      {name, total}
+    end
+  end
+
+  @doc false
+  # Pure: the last-check interval `[from, to)` of ring window `i`; window 0
+  # is open-ended (`to` nil, anything checked since the rotation).
+  def window_bounds(rotated_at, _period_s, 0), do: {rotated_at, nil}
+  def window_bounds(rotated_at, period_s, i) when i > 0, do: {rotated_at - i * period_s, rotated_at - (i - 1) * period_s}
 
   defp ring_counter(name), do: :persistent_term.get(@rings[name].counter, nil) || init_ring_counter(name)
 
@@ -389,8 +470,12 @@ defmodule LS.Cluster.CrawlDedup do
     windows = @rings[name].windows
 
     case :erlang.binary_to_term(bin, [:safe]) do
-      %{v: 1, rotated_at: at, blooms: bins} when is_integer(at) and is_list(bins) and length(bins) == windows ->
+      # A ring saved with fewer windows than configured (the tier rings
+      # went from 7 to 10 on 2026-10-24) keeps its entries; the missing,
+      # oldest windows start empty rather than throwing the whole ring away.
+      %{v: 1, rotated_at: at, blooms: bins} when is_integer(at) and is_list(bins) and length(bins) <= windows and bins != [] ->
         blooms = Enum.map(bins, fn b -> case Bloom.from_binary(b) do {:ok, f} -> f; :error -> new_bloom(name) end end)
+        blooms = blooms ++ for(_ <- 1..(windows - length(blooms))//1, do: new_bloom(name))
         {:ok, rotate_ring(name, %{blooms: blooms, rotated_at: at}, now)}
 
       _ ->

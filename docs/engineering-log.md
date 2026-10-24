@@ -63,6 +63,27 @@ longer fit one batch's share of the node budget.
   4,500 of them per tick whatever the queue holds (216K a day, the 14-day
   plan for 3.13M). B and C still yield over the headroom.
 
+Second commit the same day, the three smaller leaks, with the owner's one
+condition: a business we decide not to fetch must still get its hostnames.
+That path existed in part (a suppressed sighting is written to `ctl_log`
+and the fold unions those hosts into `ctl_subdomains`) but the pass only
+recompiled domains `enrich_log` touched, so a new host on an unfetched
+business waited for its next fetch, up to its cadence. The compaction
+domain set now has a fourth leg, `sightings_with_new_hosts_sql/2`:
+businesses whose window sightings name a host the compiled row lacks. A
+renewal repeating the same hosts costs its log row and nothing else. Then:
+the tier rings go from 7 to 10 windows (90-100 and 180-200 days, matching
+the 10-23 cadences; a saved 7-window ring is padded, not discarded) and
+`CrawlDedup.backfill_tiers/0` marks every existing B and C business into
+the window its last check belongs to (the tier C ring held 2.8M of 10.3M);
+a page that comes back parked or placeholder goes to the dormant ring at
+completion (`WorkQueue.remember_junk/1`; a 404 or 5xx does not, that is the
+down/back signal); and the measured low-yield list gains GlobalSign Atlas
+R46 (13.7% real pages, 0.2% ICP) and .top (21.3%, 1.2%). Not done, on
+purpose: poller-side name verdicts. The master has no Tranco table, so it
+cannot apply the exceptions the worker applies (abc.xyz is Tranco-ranked),
+and the saving was about 1% of fetches.
+
 Also measured, for the record: by TLD, issuer, name shape, certificate
 size, registration age and registrar, new domains come back as a real page
 40 to 55% of the time everywhere (the 2026-10-02 finding holds); ICP yield

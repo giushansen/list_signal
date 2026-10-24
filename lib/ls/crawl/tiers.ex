@@ -89,6 +89,25 @@ defmodule LS.Crawl.Tiers do
       "estimated_business_model IN (#{icp_sql()}) OR estimated_business_model = '', 'b', 'c')"
   end
 
+  @doc """
+  Non-junk businesses of one slow tier whose last check falls in
+  `[from_unix, to_unix)` (`to_unix` nil: no upper bound), one hash shard of
+  `total`. Feeds `LS.Cluster.CrawlDedup.backfill_tiers/0`, which places each
+  in the ring window its age belongs to.
+  """
+  @spec backfill_sql(String.t(), integer(), integer() | nil, non_neg_integer(), pos_integer()) :: String.t()
+  def backfill_sql(tier, from_unix, to_unix, shard, total) when tier in ["b", "c"] do
+    upper = if to_unix, do: " AND http_last_checked_at < toDateTime(#{to_unix})", else: ""
+
+    """
+    SELECT domain FROM #{Tables.businesses()}
+    WHERE #{tier_sql()} = '#{tier}' AND estimated_junk = ''
+      AND http_last_checked_at >= toDateTime(#{from_unix})#{upper}
+      AND cityHash64(domain) % #{total} = #{shard}
+    SETTINGS max_threads = 2, max_execution_time = 170
+    """
+  end
+
   @doc "Domain and tier of every non-junk business compiled in the window."
   @spec compiled_tiers_sql(integer(), integer()) :: String.t()
   def compiled_tiers_sql(since_unix, until_unix) do

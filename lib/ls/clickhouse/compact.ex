@@ -284,6 +284,34 @@ defmodule LS.Clickhouse.Compact do
     "INSERT INTO #{Tables.businesses()} (#{cols})\n" <> fold_select_sql(since_unix, until_unix, max_s)
   end
 
+  @doc """
+  Known businesses whose certificate sightings in the window name a host
+  the compiled row does not have yet (2026-10-24). A suppressed sighting
+  writes to `ctl_log` and nothing else, and the pass only recompiled what
+  `enrich_log` touched, so a new "app." or "careers." host on a business
+  the rings kept from being fetched waited for its next fetch, up to its
+  whole cadence. Now it recompiles the business in the same pass and the
+  `ctl_subdomains` set signal fires; a renewal that repeats the same hosts
+  costs nothing beyond its log row.
+  """
+  @spec sightings_with_new_hosts_sql(integer(), integer() | nil) :: String.t()
+  def sightings_with_new_hosts_sql(since_unix, until_unix \\ nil) do
+    upper = if until_unix, do: " AND seen_at < toDateTime(#{until_unix})", else: ""
+    window = "seen_at >= toDateTime(#{since_unix})#{upper}"
+
+    """
+    SELECT c.domain FROM (
+      SELECT domain, arrayDistinct(arrayFilter(x -> x != '', arrayFlatten(groupArray(splitByChar('|', ctl_subdomains))))) AS subs
+      FROM #{Tables.ctl_log()} WHERE #{window} GROUP BY domain
+    ) AS c
+    INNER JOIN (
+      SELECT domain, ctl_subdomains FROM #{Tables.businesses()}
+      WHERE domain IN (SELECT domain FROM #{Tables.ctl_log()} WHERE #{window})
+    ) AS b ON b.domain = c.domain
+    WHERE arrayExists(x -> NOT has(b.ctl_subdomains, x), c.subs)
+    """
+  end
+
   @doc false
   def fold_select_sql(since_unix, until_unix \\ nil, max_s \\ 1190) do
     enrich_log = Tables.enrich_log()
@@ -299,6 +327,8 @@ defmodule LS.Clickhouse.Compact do
       SELECT domain FROM #{Tables.http_deep_state()} WHERE enriched_at >= toDateTime(#{since_unix})#{upper}
       UNION DISTINCT
       SELECT domain FROM #{Tables.verified_facts()} WHERE fetched_at >= toDateTime(#{since_unix})#{String.replace(upper, "enriched_at", "fetched_at")}
+      UNION DISTINCT
+      #{sightings_with_new_hosts_sql(since_unix, until_unix)}
       """
 
     # Two scalar sets, computed once per pass:

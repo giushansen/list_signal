@@ -26,8 +26,8 @@ defmodule LS.Cluster.TierRingsTest do
 
     now = System.system_time(:second)
     :persistent_term.put(@daily_key, for(_ <- 1..8, do: Bloom.new(10_000, 0.01)))
-    :persistent_term.put(@b_key, %{blooms: for(_ <- 1..7, do: Bloom.new(10_000, 0.01)), rotated_at: now})
-    :persistent_term.put(@c_key, %{blooms: for(_ <- 1..7, do: Bloom.new(10_000, 0.01)), rotated_at: now})
+    :persistent_term.put(@b_key, %{blooms: for(_ <- 1..10, do: Bloom.new(10_000, 0.01)), rotated_at: now})
+    :persistent_term.put(@c_key, %{blooms: for(_ <- 1..10, do: Bloom.new(10_000, 0.01)), rotated_at: now})
     :persistent_term.put(@hot_key, %{blooms: for(_ <- 1..4, do: Bloom.new(10_000, 0.01)), rotated_at: now})
     Application.put_env(:ls, :tier_rings, true)
     :ok
@@ -64,22 +64,22 @@ defmodule LS.Cluster.TierRingsTest do
     assert CrawlDedup.tiered?("flagged.example")
   end
 
-  test "tier B releases after 60-70 days and tier C after 120-140" do
+  test "tier B releases after 90-100 days and tier C after 180-200 (2026-10-24, was 60-70 / 120-140 for the 10-03 cadences)" do
     now = System.system_time(:second)
     CrawlDedup.mark_tier_b(["b.example"])
     CrawlDedup.mark_tier_c(["c.example"])
     b = :persistent_term.get(@b_key)
     c = :persistent_term.get(@c_key)
 
-    six = CrawlDedup.rotate_ring(:tier_b, b, now + 6 * 10 * 86_400)
-    assert Enum.any?(six.blooms, &Bloom.member?(&1, "b.example")), "day 60: still held"
-    seven = CrawlDedup.rotate_ring(:tier_b, b, now + 7 * 10 * 86_400)
-    refute Enum.any?(seven.blooms, &Bloom.member?(&1, "b.example")), "day 70: released"
+    nine = CrawlDedup.rotate_ring(:tier_b, b, now + 9 * 10 * 86_400)
+    assert Enum.any?(nine.blooms, &Bloom.member?(&1, "b.example")), "day 90: still held"
+    ten = CrawlDedup.rotate_ring(:tier_b, b, now + 10 * 10 * 86_400)
+    refute Enum.any?(ten.blooms, &Bloom.member?(&1, "b.example")), "day 100: released"
 
-    six_c = CrawlDedup.rotate_ring(:tier_c, c, now + 6 * 20 * 86_400)
-    assert Enum.any?(six_c.blooms, &Bloom.member?(&1, "c.example")), "day 120: still held"
-    seven_c = CrawlDedup.rotate_ring(:tier_c, c, now + 7 * 20 * 86_400)
-    refute Enum.any?(seven_c.blooms, &Bloom.member?(&1, "c.example")), "day 140: released"
+    nine_c = CrawlDedup.rotate_ring(:tier_c, c, now + 9 * 20 * 86_400)
+    assert Enum.any?(nine_c.blooms, &Bloom.member?(&1, "c.example")), "day 180: still held"
+    ten_c = CrawlDedup.rotate_ring(:tier_c, c, now + 10 * 20 * 86_400)
+    refute Enum.any?(ten_c.blooms, &Bloom.member?(&1, "c.example")), "day 200: released"
   end
 
   test "the stats report both rings" do

@@ -379,6 +379,7 @@ defmodule LS.Cluster.WorkQueue do
     :ets.delete(@inflight_table, batch_id)
     mark_recently_crawled(results)
     remember_skipped(skipped)
+    remember_junk(results)
     LS.Cluster.Inserter.insert(results)
     {:noreply, %{state | total_completed: state.total_completed + length(results)}}
   end
@@ -511,6 +512,34 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   def remember_skipped(_), do: :ok
+
+  @doc false
+  # A fetched page that is parked or a placeholder is not a business, and a
+  # certificate renewal used to fetch it again a week later (2026-10-24:
+  # 8.6K junk rows a day, a third of them repeats). It sleeps 60-90 days in
+  # the dormant ring; the scheduler never selects junk anyway. A page that
+  # merely failed (404, 5xx, timeout) is NOT put to sleep: for a known
+  # business that is the down/back signal customers pay for.
+  def remember_junk(results) when is_list(results) do
+    case junk_domains(results) do
+      [] -> 0
+      junk -> LS.Cluster.CrawlDedup.mark_dormant(junk)
+    end
+  end
+
+  def remember_junk(_), do: 0
+
+  @doc "Pure: the domains of the rows whose page came back as junk (parked, placeholder)."
+  @spec junk_domains([map()]) :: [String.t()]
+  def junk_domains(results) when is_list(results) do
+    for %{} = r <- results,
+        (r[:is_junk] || r["is_junk"] || "") != "",
+        d = r[:domain] || r[:ctl_domain],
+        is_binary(d) and d != "",
+        do: d
+  end
+
+  def junk_domains(_), do: []
 
   defp counter_ref do
     :persistent_term.get(@counter_table)

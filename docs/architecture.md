@@ -311,9 +311,14 @@ and the top 100K sites, every 180. Before that it was ICP-or-contact at
 14/60/120, which asked for 773K refreshes a day against about 300K of
 real capacity once the fleet was six workers; the re-cut asks for 387K
 nominal, about 300K after the change-aware rings. The compactor marks every compiled B and C
-business into two more rings in `LS.Cluster.CrawlDedup` (7 windows of 10
-and 20 days), so a certificate re-sighting of a known business waits its
-cadence; `LS.Recrawl.Scheduler` enqueues what is due every six hours, most
+business into two more rings in `LS.Cluster.CrawlDedup` (10 windows of 10
+and 20 days since 2026-10-24, so 90-100 and 180-200 days; a one-off
+`CrawlDedup.backfill_tiers/0` places every existing B and C business by its
+last check), so a certificate re-sighting of a known business waits its
+cadence. The sighting is still logged, and a sighting that names a host the
+business does not have yet recompiles it in the next compaction pass
+(`Compact.sightings_with_new_hosts_sql/2`), so hostnames keep flowing for a
+business the rings keep from being fetched; `LS.Recrawl.Scheduler` enqueues what is due every six hours, most
 valuable tier first, up to 150K per run, with `force: true`, which bypasses
 the daily and tier rings but not the stable and dormant ones. Before this,
 refreshes were whatever CT re-emitted after the 7-day ring, about a month

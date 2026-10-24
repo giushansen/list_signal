@@ -80,8 +80,13 @@ defmodule LS.HTTP.DomainFilter do
   # (5K a day); everything else sat at 10% or more. These are settled
   # skips (the dormant ring, 60-90 days): about 16K fetches a day saved
   # for under 1K businesses.
-  @low_yield_tlds ~w(xyz)
-  @low_yield_issuers ["ZeroSSL"]
+  # 2026-10-24, on 216K new-domain fetches in a day: GlobalSign Atlas R46
+  # DV certificates came back as a real page 13.7% of the time and an ICP
+  # business 0.2% (818 fetches, 1 tier A); .top 21.3% and 1.2% (249). The
+  # rest of the TLD, issuer, name-shape and registrar features sat at 40-55%
+  # real pages and were left alone.
+  @low_yield_tlds ~w(xyz top)
+  @low_yield_issuers ["ZeroSSL", "GlobalSign Atlas R46"]
 
   @doc "True when the name or its certificate issuer is in a measured low-yield bucket."
   @spec low_yield?(String.t(), String.t() | nil) :: boolean()
