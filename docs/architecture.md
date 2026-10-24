@@ -121,7 +121,10 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 2. **Queueing** — `LS.Cluster.WorkQueue` is a bounded in-memory queue
    (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). Tier A
    refreshes are priority 0 and dequeue before everything else; the rest is
-   FIFO (2026-10-24). When full, `enqueue/1` returns `:queue_full` and the
+   FIFO (2026-10-24). A side table keyed by domain holds every domain that
+   is queued or in flight, and `enqueue/2` refuses a second copy whoever
+   asks, `force` included (`:already_queued`), so one domain is in one place
+   across the fleet. When full, `enqueue/1` returns `:queue_full` and the
    item is dropped: inflow shedding is deliberate.
 3. **Pulling** — each `LS.Cluster.WorkerAgent` asks for as many names as
    reach its HTTP candidate cap at the learned pass rate (about 475 for a

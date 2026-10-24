@@ -29,6 +29,17 @@ defmodule LS.Cluster.WorkQueue do
   monotonic id), so nothing it never touched waits a second time behind
   400K newer names.
 
+  ## One domain, one place (2026-10-24)
+
+  A side table keyed by domain says whether it is queued or in flight.
+  `enqueue/2` (forced or not) and `requeue/3` refuse a domain already
+  there, so the queue never holds two copies and never re-admits a domain
+  a worker is fetching. Released when its batch completes, fails, is
+  requeued by the timeout, or its item ages past the TTL; an hourly sweep
+  drops any row without an item. Without it 2,180 tier B and C businesses
+  were fetched twice by two nodes in two hours: still waiting from one
+  scheduler tick when the next tick selected them again.
+
   ## Heartbeat (2026-10-24)
 
   Workers cast `heartbeat/1` for a running batch every two minutes. The
@@ -48,6 +59,14 @@ defmodule LS.Cluster.WorkQueue do
 
   @queue_table :work_queue
   @inflight_table :work_inflight
+  # One row per domain that is queued or in flight (2026-10-24). The queue
+  # itself is keyed by {priority, id}, so without this the same domain could
+  # sit in it twice: a certificate sighting and a forced refresh, or a tier B
+  # item still waiting when the next tick selected it again (2,180 pairs
+  # fetched twice by two nodes in the two hours after the lane shipped).
+  # enqueue/2 and requeue/3 refuse a domain already here; dequeue marks it
+  # in flight; complete, fail and the TTL sweep release it.
+  @index_table :work_queue_index
   # Domains whose results were inserted recently. The requeue path consults it
   # so a timed-out batch never re-crawls what already succeeded, see
   # requeue_timed_out/1 and the 2026-08-28 Vultr abuse report.
@@ -92,6 +111,7 @@ defmodule LS.Cluster.WorkQueue do
   @idx_deduped_stable 4
   @idx_deduped_dormant 5
   @idx_deduped_tier 6
+  @idx_already_queued 7
 
   # ==========================================================================
   # CLIENT API
@@ -116,7 +136,7 @@ defmodule LS.Cluster.WorkQueue do
   `LS.Cluster.CrawlDedup` saw this domain enqueued within its 3.5-7 day
   window and suppressed the repeat visit (counted as `total_deduped`).
   """
-  @spec enqueue(map(), keyword()) :: :ok | :queue_full | :recently_crawled
+  @spec enqueue(map(), keyword()) :: :ok | :queue_full | :recently_crawled | :already_queued
   def enqueue(domain_data, opts \\ [])
 
   def enqueue(domain_data, opts) when is_map(domain_data) and is_list(opts) do
@@ -171,12 +191,41 @@ defmodule LS.Cluster.WorkQueue do
         :counters.add(counter_ref(), @idx_deduped, 1)
         :recently_crawled
 
+      # Already queued or in flight (2026-10-24): one domain, one place,
+      # whoever asks and whatever `force` says. `:already_queued` is not an
+      # error; the scheduler counts it as "not added" and reads on.
+      not :ets.insert_new(@index_table, {domain, :queued}) ->
+        :counters.add(counter_ref(), @idx_already_queued, 1)
+        :already_queued
+
       true ->
         now = System.system_time(:millisecond)
         :ets.insert(@queue_table, {tail_key(domain_data), domain_data, now})
         :counters.add(counter_ref(), @idx_enqueued, 1)
         :ok
     end
+  end
+
+  @doc "Pure-ish: is this domain queued or in flight right now?"
+  @spec queued?(term()) :: boolean()
+  def queued?(domain) when is_binary(domain) and domain != "", do: :ets.member(@index_table, domain)
+  def queued?(_), do: false
+
+  defp index_domain(data) when is_map(data), do: data[:ctl_domain] || data[:domain]
+  defp index_domain(_), do: nil
+
+  defp index_release(items) when is_list(items) do
+    Enum.each(items, fn
+      {_key, data, _ts} -> if d = index_domain(data), do: :ets.delete(@index_table, d)
+      _ -> :ok
+    end)
+  end
+
+  defp index_set(items, state) when is_list(items) and state in [:queued, :inflight] do
+    Enum.each(items, fn
+      {_key, data, _ts} -> if d = index_domain(data), do: :ets.insert(@index_table, {d, state})
+      _ -> :ok
+    end)
   end
 
   @doc """
@@ -255,10 +304,11 @@ defmodule LS.Cluster.WorkQueue do
     :ets.new(@queue_table, [:ordered_set, :public, :named_table,
       read_concurrency: true, write_concurrency: true])
     :ets.new(@inflight_table, [:set, :public, :named_table])
+    :ets.new(@index_table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
     :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
-    ref = :counters.new(6, [:write_concurrency])
+    ref = :counters.new(7, [:write_concurrency])
     :persistent_term.put(@counter_table, ref)
 
     schedule_cleanup()
@@ -303,6 +353,7 @@ defmodule LS.Cluster.WorkQueue do
 
         # Track in-flight
         :ets.insert(@inflight_table, {batch_id, items, now})
+        index_set(items, :inflight)
 
         {:reply, {:ok, batch_id, domains},
           %{state | total_dequeued: state.total_dequeued + length(items)}}
@@ -326,6 +377,7 @@ defmodule LS.Cluster.WorkQueue do
     total_deduped_stable = :counters.get(ref, @idx_deduped_stable)
     total_deduped_dormant = :counters.get(ref, @idx_deduped_dormant)
     total_deduped_tier = :counters.get(ref, @idx_deduped_tier)
+    total_already_queued = :counters.get(ref, @idx_already_queued)
 
     # Lifetime averages kept for reference; the dashboard uses the windowed rates
     # below (total/uptime lied for hours after every restart — cold dedup cache
@@ -346,6 +398,8 @@ defmodule LS.Cluster.WorkQueue do
       total_dequeued: state.total_dequeued,
       total_completed: state.total_completed,
       total_requeued: state.total_requeued,
+      total_already_queued: total_already_queued,
+      queue_index_size: :ets.info(@index_table, :size),
       total_returned_front: state.total_returned_front,
       total_returned_tail: state.total_returned_tail,
       total_heartbeats: state.total_heartbeats,
@@ -366,7 +420,7 @@ defmodule LS.Cluster.WorkQueue do
 
   @impl true
   def handle_cast({:complete, batch_id, results}, state) do
-    :ets.delete(@inflight_table, batch_id)
+    release_batch(batch_id)
     mark_recently_crawled(results)
 
     # Forward to inserter
@@ -376,7 +430,7 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   def handle_cast({:complete, batch_id, results, skipped}, state) do
-    :ets.delete(@inflight_table, batch_id)
+    release_batch(batch_id)
     mark_recently_crawled(results)
     remember_skipped(skipped)
     remember_junk(results)
@@ -395,6 +449,7 @@ defmodule LS.Cluster.WorkQueue do
         Enum.each(items, fn {_old_id, data, _old_ts} ->
           :ets.insert(@queue_table, {tail_key(data), data, now})
         end)
+        index_set(items, :queued)
         {:noreply, %{state | total_requeued: state.total_requeued + length(items)}}
 
       [] ->
@@ -410,8 +465,21 @@ defmodule LS.Cluster.WorkQueue do
     n =
       Enum.count(items, fn
         %{} = data when is_map_key(data, :ctl_domain) or is_map_key(data, :domain) ->
-          :ets.insert(@queue_table, {key.(data), data, now})
-          true
+          # The batch's complete cast released these; take the slot back,
+          # unless something else queued the domain in between.
+          case index_domain(data) do
+            d when is_binary(d) and d != "" ->
+              if :ets.insert_new(@index_table, {d, :queued}) do
+                :ets.insert(@queue_table, {key.(data), data, now})
+                true
+              else
+                :counters.add(counter_ref(), @idx_already_queued, 1)
+                false
+              end
+
+            _ ->
+              false
+          end
 
         _ ->
           false
@@ -473,6 +541,9 @@ defmodule LS.Cluster.WorkQueue do
     if dropped > 0 do
       Logger.info("🧹 WorkQueue TTL cleanup: dropped #{dropped} stale domains")
     end
+
+    orphans = reconcile_index()
+    if orphans > 0, do: Logger.warning("🧹 WorkQueue index: #{orphans} rows had no queued or in-flight item")
 
     schedule_cleanup()
     {:noreply, state}
@@ -564,9 +635,41 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   defp cleanup_expired(cutoff) do
+    expired = :ets.select(@queue_table, [{{:"$1", :"$2", :"$3"}, [{:<, :"$3", cutoff}], [:"$_"]}])
+    index_release(expired)
+
     :ets.select_delete(@queue_table, [
       {{:"$1", :"$2", :"$3"}, [{:<, :"$3", cutoff}], [true]}
     ])
+  rescue
+    _ -> 0
+  end
+
+  # A batch is done: forget it and free its domains for the next request.
+  defp release_batch(batch_id) do
+    case :ets.take(@inflight_table, batch_id) do
+      [{^batch_id, items, _ts}] -> index_release(items)
+      _ -> :ok
+    end
+  end
+
+  @doc false
+  # Drop index rows whose domain is neither queued nor in flight. Nothing
+  # should produce them (every path above keeps the two in step), but an
+  # index row that outlives its item would block that domain for good, so
+  # the hourly sweep checks. Returns how many were dropped.
+  def reconcile_index do
+    live =
+      :ets.foldl(fn {_k, data, _ts}, acc -> if(d = index_domain(data), do: MapSet.put(acc, d), else: acc) end, MapSet.new(), @queue_table)
+
+    live =
+      :ets.foldl(
+        fn {_bid, items, _ts}, acc -> Enum.reduce(items, acc, fn {_k, data, _}, a -> if(d = index_domain(data), do: MapSet.put(a, d), else: a) end) end,
+        live,
+        @inflight_table
+      )
+
+    :ets.foldl(fn {d, _state}, n -> if MapSet.member?(live, d), do: n, else: (:ets.delete(@index_table, d); n + 1) end, 0, @index_table)
   rescue
     _ -> 0
   end
@@ -597,9 +700,13 @@ defmodule LS.Cluster.WorkQueue do
         Logger.info("⏱️  Requeue skipped #{length(done)} already-crawled domains")
       end
 
+      index_release(done)
+
       Enum.each(needed, fn {_old_id, data, _old_ts} ->
         :ets.insert(@queue_table, {tail_key(data), data, now})
       end)
+
+      index_set(needed, :queued)
 
       count + length(needed)
     end)

@@ -190,7 +190,12 @@ defmodule LS.Recrawl.Scheduler do
         # Resolve on the master first (LS.Recrawl.Liveness, 2026-10-03): a
         # dead name gets its check recorded here and never costs a worker
         # batch. A suspect resolver sends the whole block on, as before.
-        # Only as many as this lane can still enqueue are resolved.
+        # Only as many as this lane can still enqueue are resolved, and
+        # nothing the queue already holds (WorkQueue.queued?/1): a tier B
+        # item waits hours behind discovery and its compiled row still says
+        # due at the next tick.
+        domains = Enum.reject(domains, fn {d, _tier, _simhash} -> LS.Cluster.WorkQueue.queued?(d) end)
+
         {domains, dead_recorded} =
           case LS.Recrawl.Liveness.partition(Enum.take(domains, target - enqueued)) do
             {:ok, live, dead_list} ->

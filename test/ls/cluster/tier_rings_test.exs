@@ -51,9 +51,12 @@ defmodule LS.Cluster.TierRingsTest do
   end
 
   test "a change puts a tiered business back on the fast schedule" do
-    CrawlDedup.mark_tier_c(["moving.example"])
-    CrawlDedup.mark_hot(["moving.example"])
-    assert :ok = LS.Cluster.WorkQueue.enqueue(%{ctl_domain: "moving.example", source: :ctl})
+    # 2026-10-24: "moving.example" is also enqueued by crawl_rings_test and
+    # the queue now refuses a second copy of a queued domain, so this one
+    # gets its own name.
+    CrawlDedup.mark_tier_c(["moving-tier.example"])
+    CrawlDedup.mark_hot(["moving-tier.example"])
+    assert :ok = LS.Cluster.WorkQueue.enqueue(%{ctl_domain: "moving-tier.example", source: :ctl})
   end
 
   test "the flag turns the tier gate off without losing the marks" do

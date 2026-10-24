@@ -85,6 +85,21 @@ purpose: poller-side name verdicts. The master has no Tranco table, so it
 cannot apply the exceptions the worker applies (abc.xyz is Tranco-ranked),
 and the saving was about 1% of fetches.
 
+Third and fourth commits, same day, from the two-hour check: 29,801 rows
+for 23,497 domains, 0.1% hollow, 219 distinct fetches a minute, zero
+in-flight requeues, but still 1.27 rows per domain. First cause: the due
+query ordered by `http_last_checked_at`, which moves only when compaction
+compiles the new row, so once tier A was fetched inside its tick the same
+oldest rows came back the next tick (fixed: nothing fetched in the last day
+is due). Second cause, visible once the first was gone: tier B and C items
+still waiting behind discovery when the next tick selected them again,
+2,180 pairs in two hours. The queue had no notion of "already here". It
+now keeps one row per domain, queued or in flight (`:work_queue_index`),
+and `enqueue/2` and `requeue/3` refuse a second copy whatever `force`
+says; the scheduler skips queued domains before resolving them. One
+pinned fixture name was changed under the owner's unlock because two test
+modules enqueued the same domain and the second is now refused by design.
+
 Also measured, for the record: by TLD, issuer, name shape, certificate
 size, registration age and registrar, new domains come back as a real page
 40 to 55% of the time everywhere (the 2026-10-02 finding holds); ICP yield
