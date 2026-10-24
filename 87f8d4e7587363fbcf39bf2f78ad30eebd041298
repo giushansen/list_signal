@@ -1,0 +1,1 @@
+2026-10-24 12:28 UTC, 2h window with all four commits live: 30,367 rows for 30,367 distinct domains (ratio 1.000, was 2.00), 1 hollow row (was 34%), 229 distinct fetches/min fleet-wide (was 105), 0 in-flight requeues, 680 heartbeats, scheduler 4,500 A + ~8,000 B/C per tick, no deadline cuts on full batches.
