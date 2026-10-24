@@ -117,14 +117,24 @@ defmodule LS.Recrawl.Scheduler do
   defp do_check(state) do
     depth = LS.Cluster.WorkQueue.stats()[:queue_depth] || 0
     Logger.info("[RECRAWL] Checking for due businesses (tiers #{LS.Crawl.Tiers.cadence_days(:a)}/#{LS.Crawl.Tiers.cadence_days(:b)}/#{LS.Crawl.Tiers.cadence_days(:c)} days, queue depth #{depth})")
-
     over = depth > @queue_headroom
 
     if over,
       do: Logger.info("[RECRAWL] Queue holds #{depth}, over the #{@queue_headroom} headroom: tier A only this tick")
 
-    {enqueued, a_enqueued, dead} = passes(0, 0, 0, 0, over)
-    Logger.info("[RECRAWL] Tick done: enqueued #{enqueued} live (tier A #{a_enqueued}, B/C #{enqueued - a_enqueued}), #{dead} dead recorded on the master")
+    # Two lanes, each reading only its own tiers (2026-10-24). Tier A first,
+    # up to its allowance whatever the queue holds; B and C with what is
+    # left of the tick, only under the headroom (admit?/3 is the rule).
+    {a_enqueued, a_dead, a_full} = lane(["a"], @tier_a_per_tick, a_block())
+
+    {bc_enqueued, bc_dead} =
+      if a_full or not admit?("b", 0, over),
+        do: {0, 0},
+        else: lane(["b", "c"], quota_left(a_enqueued), @batch_size) |> then(fn {n, d, _} -> {n, d} end)
+
+    enqueued = a_enqueued + bc_enqueued
+    dead = a_dead + bc_dead
+    Logger.info("[RECRAWL] Tick done: enqueued #{enqueued} live (tier A #{a_enqueued}, B/C #{bc_enqueued}), #{dead} dead recorded on the master")
     # Survives a restart of this process: LS.Metrics.recrawl/0 reads it so
     # a crash loop (2026-10-23) cannot hide behind a fresh uptime.
     :persistent_term.put({__MODULE__, :last_tick}, System.system_time(:second))
@@ -136,47 +146,53 @@ defmodule LS.Recrawl.Scheduler do
       total_checks: state.total_checks + 1,
       last_check_at: DateTime.utc_now(),
       last_batch_size: enqueued}
-  catch
-    {:queue_full, enqueued, a_enqueued, dead} ->
-      %{state |
-        total_enqueued: state.total_enqueued + enqueued,
-        total_enqueued_a: Map.get(state, :total_enqueued_a, 0) + a_enqueued,
-        total_dead: Map.get(state, :total_dead, 0) + dead,
-        total_checks: state.total_checks + 1,
-        last_check_at: DateTime.utc_now(),
-        last_batch_size: enqueued}
   end
 
   @doc "Pure: how many live names this tick may still enqueue."
   @spec quota_left(non_neg_integer()) :: non_neg_integer()
   def quota_left(enqueued), do: max(@batch_size - enqueued, 0)
 
-  # One block of the due list per pass, at the next offset; stops at the
-  # live target, at the end of the due list, or after @max_passes blocks.
-  # Over the headroom only tier A is admitted, so the tick also stops once
-  # the tier A allowance is spent (the due list is tier-ordered: the first
-  # non-A row means no A is left).
-  defp passes(pass, enqueued, a_enqueued, dead, _over) when pass >= @max_passes or enqueued >= @batch_size,
-    do: {enqueued, a_enqueued, dead}
+  @doc """
+  Pure: how many tier A rows one pass reads. A quarter more than the
+  allowance covers the dead share of a known business (a few percent)
+  without resolving 12,500 names on the master to use 4,500.
+  """
+  @spec a_block() :: pos_integer()
+  def a_block, do: min(@batch_size, @tier_a_per_tick + div(@tier_a_per_tick, 4))
 
-  defp passes(_pass, enqueued, a_enqueued, dead, true) when a_enqueued >= @tier_a_per_tick,
-    do: {enqueued, a_enqueued, dead}
+  # One lane: blocks of `block` rows from the due list restricted to
+  # `tiers`, at successive offsets, until `target` live names are enqueued,
+  # the list ends, or @max_passes blocks were read. Returns
+  # `{enqueued, dead_recorded, queue_full?}`.
+  defp lane(_tiers, target, _block) when target <= 0, do: {0, 0, false}
 
-  defp passes(pass, enqueued, a_enqueued, dead, over) do
-    case LS.Clickhouse.stale_domains(@batch_size, pass * @batch_size) do
+  defp lane(tiers, target, block) do
+    try do
+      passes(tiers, target, block, 0, 0, 0)
+    catch
+      {:queue_full, enqueued, dead} -> {enqueued, dead, true}
+    end
+  end
+
+  defp passes(_tiers, target, _block, pass, enqueued, dead) when pass >= @max_passes or enqueued >= target,
+    do: {enqueued, dead, false}
+
+  defp passes(tiers, target, block, pass, enqueued, dead) do
+    case LS.Clickhouse.stale_domains(block, pass * block, tiers) do
       {:ok, []} ->
-        Logger.info("[RECRAWL] No stale domains found at offset #{pass * @batch_size}")
-        {enqueued, a_enqueued, dead}
+        Logger.info("[RECRAWL] No stale #{Enum.join(tiers, "/")} domains found at offset #{pass * block}")
+        {enqueued, dead, false}
 
       {:ok, domains} ->
         count = length(domains)
-        Logger.info("[RECRAWL] Found #{count} stale domains at offset #{pass * @batch_size}, pass #{pass + 1}/#{@max_passes}")
+        Logger.info("[RECRAWL] Found #{count} stale #{Enum.join(tiers, "/")} domains at offset #{pass * block}, pass #{pass + 1}/#{@max_passes}")
 
         # Resolve on the master first (LS.Recrawl.Liveness, 2026-10-03): a
         # dead name gets its check recorded here and never costs a worker
         # batch. A suspect resolver sends the whole block on, as before.
+        # Only as many as this lane can still enqueue are resolved.
         {domains, dead_recorded} =
-          case LS.Recrawl.Liveness.partition(domains) do
+          case LS.Recrawl.Liveness.partition(Enum.take(domains, target - enqueued)) do
             {:ok, live, dead_list} ->
               case LS.Recrawl.Liveness.record_dead(dead_list) do
                 {:ok, n} -> {live, n}
@@ -187,49 +203,37 @@ defmodule LS.Recrawl.Scheduler do
 
             {:error, :resolver_suspect} ->
               Logger.error("[RECRAWL] master resolver failed an anchor name; sending all #{count} to workers")
-              {domains, 0}
+              {Enum.take(domains, target - enqueued), 0}
           end
 
-        # Only the quota left in this tick: the third block of the first
-        # multi-block ticks pushed 22,491 and 18,921 live names into a
-        # 12,500 plan (2026-10-03). The rest stay due and lead the next tick.
-        {added, added_a} =
-          Enum.reduce(domains, {0, 0}, fn {domain, tier, simhash}, {acc, acc_a} ->
-            cond do
-              acc >= quota_left(enqueued) ->
-                {acc, acc_a}
-
-              not admit?(tier, a_enqueued + acc_a, over) ->
-                {acc, acc_a}
-
-              true ->
-                # Use the same :ctl_domain key CTL items carry so the worker pipeline
-                # (enrich_dns/merge_results) can read it uniformly regardless of source.
-                # The stored homepage simhash lets the worker skip the secondary
-                # pages of an unchanged site (2026-10-23). The tier rides along
-                # so the queue can put tier A first (WorkQueue.priority/1).
-                data = %{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}
-                # This IS the schedule: stale_domains already selected only domains
-                # past their cadence, so the daily and tier rings have nothing to add.
-                case LS.Cluster.WorkQueue.enqueue(data, force: true) do
-                  :ok -> {acc + 1, if(tier == "a", do: acc_a + 1, else: acc_a)}
-                  :queue_full ->
-                    Logger.warning("[RECRAWL] WorkQueue full, stopping enqueue at #{enqueued + acc}")
-                    throw({:queue_full, enqueued + acc, a_enqueued + acc_a, dead + dead_recorded})
-                  _ -> {acc, acc_a}
-                end
+        added =
+          Enum.reduce(domains, 0, fn {domain, tier, simhash}, acc ->
+            # Use the same :ctl_domain key CTL items carry so the worker pipeline
+            # (enrich_dns/merge_results) can read it uniformly regardless of source.
+            # The stored homepage simhash lets the worker skip the secondary
+            # pages of an unchanged site (2026-10-23). The tier rides along
+            # so the queue can put tier A first (WorkQueue.priority/1).
+            data = %{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}
+            # This IS the schedule: stale_domains already selected only domains
+            # past their cadence, so the daily and tier rings have nothing to add.
+            case LS.Cluster.WorkQueue.enqueue(data, force: true) do
+              :ok -> acc + 1
+              :queue_full ->
+                Logger.warning("[RECRAWL] WorkQueue full, stopping enqueue at #{enqueued + acc}")
+                throw({:queue_full, enqueued + acc, dead + dead_recorded})
+              _ -> acc
             end
           end)
 
-        Logger.info("[RECRAWL] Enqueued #{added}/#{count} stale domains, #{added_a} tier A (#{dead_recorded} dead recorded on the master)")
+        Logger.info("[RECRAWL] Enqueued #{added}/#{count} stale #{Enum.join(tiers, "/")} domains (#{dead_recorded} dead recorded on the master)")
 
-        if count < @batch_size,
-          do: {enqueued + added, a_enqueued + added_a, dead + dead_recorded},
-          else: passes(pass + 1, enqueued + added, a_enqueued + added_a, dead + dead_recorded, over)
+        if count < block,
+          do: {enqueued + added, dead + dead_recorded, false},
+          else: passes(tiers, target, block, pass + 1, enqueued + added, dead + dead_recorded)
 
       {:error, reason} ->
         Logger.error("[RECRAWL] ClickHouse query failed: #{inspect(reason)}")
-        {enqueued, a_enqueued, dead}
+        {enqueued, dead, false}
     end
   end
 end

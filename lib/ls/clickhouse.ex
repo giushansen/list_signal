@@ -597,10 +597,20 @@ defmodule LS.Clickhouse do
   # robots.txt opt-out is a promise on /bot; 429 is kept on purpose, one
   # polite request after two months is what "come back later" asks for
   # (2026-08-02: excluding it would silently lose 388K domains).
-  def stale_domains_sql(limit, offset \\ 0) when is_integer(limit) and limit > 0 and is_integer(offset) and offset >= 0 do
+  def stale_domains_sql(limit, offset \\ 0, tiers \\ nil)
+      when is_integer(limit) and limit > 0 and is_integer(offset) and offset >= 0 and (is_nil(tiers) or is_list(tiers)) do
     a = LS.Crawl.Tiers.cadence_days(:a)
     b = LS.Crawl.Tiers.cadence_days(:b)
     c = LS.Crawl.Tiers.cadence_days(:c)
+    # One lane at a time (2026-10-24): the due list is tier-ordered and 3.1M
+    # tier A rows were overdue, so a tick that wanted B and C read four
+    # blocks of A, resolved 37,500 names on the master and admitted none.
+    lane =
+      case tiers && Enum.filter(tiers, &(&1 in ["a", "b", "c"])) do
+        nil -> ""
+        [] -> "\n      AND 0"
+        valid -> "\n      AND tier IN (#{Enum.map_join(valid, ", ", &"'#{&1}'")})"
+      end
 
     """
     SELECT domain, tier, http_body_simhash FROM (
@@ -610,7 +620,7 @@ defmodule LS.Clickhouse do
         AND (http_status IS NULL OR http_status NOT IN (403, 503))
         AND http_last_checked_at < now() - INTERVAL #{a} DAY
     )
-    WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY
+    WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY#{lane}
     ORDER BY tier ASC, http_last_checked_at ASC, domain
     LIMIT #{limit} OFFSET #{offset}
     SETTINGS max_threads = 2, max_execution_time = 110
@@ -626,8 +636,8 @@ defmodule LS.Clickhouse do
   FINAL for 5,000 rows every six hours with a 7/30-day rule.
   """
   @spec stale_domains(pos_integer(), non_neg_integer()) :: {:ok, [{String.t(), String.t(), non_neg_integer()}]} | {:error, term()}
-  def stale_domains(limit, offset \\ 0) do
-    case query_raw(stale_domains_sql(limit, offset), 120_000) do
+  def stale_domains(limit, offset \\ 0, tiers \\ nil) do
+    case query_raw(stale_domains_sql(limit, offset, tiers), 120_000) do
       {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t, s] -> {d, t, to_simhash(s)} end)}
       err -> err
     end

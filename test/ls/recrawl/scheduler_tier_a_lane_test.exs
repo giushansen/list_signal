@@ -34,6 +34,29 @@ defmodule LS.Recrawl.SchedulerTierALaneTest do
     assert plan.tier_a_per_day == plan.runs_per_day * plan.tier_a_per_tick
   end
 
+  test "each lane reads only its own tiers from the due list, so no pass resolves names it cannot admit" do
+    # First tick on 2026-10-24: 3.1M tier A rows were overdue and sorted first, so
+    # the three passes after the allowance resolved 37,500 names and admitted none.
+    a = LS.Clickhouse.stale_domains_sql(5_625, 0, ["a"])
+    assert a =~ "AND tier IN ('a')"
+    assert a =~ "ORDER BY tier ASC, http_last_checked_at ASC, domain"
+    bc = LS.Clickhouse.stale_domains_sql(12_500, 12_500, ["b", "c"])
+    assert bc =~ "AND tier IN ('b', 'c')"
+    refute LS.Clickhouse.stale_domains_sql(1000) =~ "tier IN"
+    # Only the three known tiers reach the SQL; anything else selects nothing.
+    hostile = LS.Clickhouse.stale_domains_sql(10, 0, ["a') OR 1=1 --"])
+    refute hostile =~ "1=1"
+    assert hostile =~ "AND 0"
+    assert LS.Clickhouse.stale_domains_sql(10, 0, ["c", "zzz"]) =~ "AND tier IN ('c')"
+  end
+
+  test "the tier A block is a little over the allowance, never the whole batch" do
+    plan = Scheduler.plan()
+    assert Scheduler.a_block() >= plan.tier_a_per_tick
+    assert Scheduler.a_block() <= div(plan.tier_a_per_tick * 3, 2)
+    assert Scheduler.a_block() <= plan.batch_size
+  end
+
   test "the item the scheduler builds for tier A lands in the priority lane" do
     item = %{ctl_domain: "shop.example", source: :recrawl, tier: "a", prev_simhash: 12_345}
     assert LS.Cluster.WorkQueue.priority(item) == 0

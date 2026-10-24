@@ -79,7 +79,8 @@ the window its last check belongs to (the tier C ring held 2.8M of 10.3M);
 a page that comes back parked or placeholder goes to the dormant ring at
 completion (`WorkQueue.remember_junk/1`; a 404 or 5xx does not, that is the
 down/back signal); and the measured low-yield list gains GlobalSign Atlas
-R46 (13.7% real pages, 0.2% ICP) and .top (21.3%, 1.2%). Not done, on
+R46 (13.7% real pages, 0.2% ICP); .top (21.3%) turned out to be an
+unlisted TLD already, a settled skip by the existing rule. Not done, on
 purpose: poller-side name verdicts. The master has no Tranco table, so it
 cannot apply the exceptions the worker applies (abc.xyz is Tranco-ranked),
 and the saving was about 1% of fetches.
