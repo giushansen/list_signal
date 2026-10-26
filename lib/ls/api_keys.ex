@@ -11,14 +11,23 @@ defmodule LS.ApiKeys do
       slow an API response or drop one.
     * **We never store a key.** Only its SHA-256. The plaintext appears once
       at creation; `prefix` exists so users can tell keys apart.
-    * **Quotas are per plan, not per key** (a user's keys share the pool),
-      monthly, calendar-based ("YYYY-MM"), so a reset is just a new period
-      string, no cron.
+    * **Quotas are per user, not per key.** A user may hold several active
+      keys (one per connector: Claude Code, claude.ai, a CRM), each named
+      and revocable alone, but they all draw from one monthly pool sized by
+      the plan. Without that, N free keys would mean N times the free
+      quota. Monthly, calendar-based ("YYYY-MM"), so a reset is just a new
+      period string, no cron.
+    * **The per-minute rate limit stays per key.** It is an abuse guard on a
+      single client's burst, not billing, so one runaway connector cannot
+      lock the user's other keys out.
+    * **Names are unique among a user's active keys** (partial unique index
+      in migration 20261026100000). Revoking frees the name, so rotation is
+      revoke + create under the same label.
 
-  The free tier is deliberately real (1,000 lookups/month): agent
-  directories and the public-apis list only accept products a bot can
-  actually try, and a generous free tier is the discovery funnel for the
-  paid API.
+  The free tier is deliberately real (1,000 lookups/month, no contact
+  emails): agent directories and the public-apis list only accept products
+  a bot can actually try, and a generous free tier is the discovery funnel
+  for the paid API.
   """
 
   import Ecto.Query
@@ -35,12 +44,15 @@ defmodule LS.ApiKeys do
   # ── Key lifecycle ─────────────────────────────────────────────────────────
 
   @doc """
-  Create a key for a user. Returns `{:ok, plaintext, key}`: the plaintext
-  is shown once and never stored. One active key per user keeps the UI and
-  the quota model trivial; revoke-and-recreate is the rotation story.
+  Create a named key for a user. Returns `{:ok, plaintext, key}`: the
+  plaintext is shown once and never stored. `{:error, :already_has_key}`
+  when the user already holds an active key under that name; revoke it to
+  reuse the label. A blank name becomes "default".
   """
   def create_key(user, name \\ "default") do
-    if active_key_for_user(user.id) do
+    name = normalize_name(name)
+
+    if active_key_named?(user.id, name) do
       {:error, :already_has_key}
     else
       plaintext = "ls_" <> Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
@@ -55,9 +67,34 @@ defmodule LS.ApiKeys do
       |> Repo.insert()
       |> case do
         {:ok, key} -> {:ok, plaintext, key}
-        err -> err
+        {:error, %Ecto.Changeset{} = cs} -> if name_taken?(cs), do: {:error, :already_has_key}, else: {:error, cs}
       end
     end
+  rescue
+    # Two concurrent creates with the same name: the pre-check passed for
+    # both, the partial unique index stopped the second. Same answer.
+    Ecto.ConstraintError -> {:error, :already_has_key}
+  end
+
+  defp normalize_name(name) do
+    case name |> to_string() |> String.trim() do
+      "" -> "default"
+      n -> String.slice(n, 0, 80)
+    end
+  end
+
+  defp name_taken?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:name, {_, opts}} -> opts[:constraint] == :unique
+      _ -> false
+    end)
+  end
+
+  defp active_key_named?(user_id, name) do
+    Repo.exists?(
+      from k in ApiKey,
+        where: k.user_id == ^user_id and k.name == ^name and is_nil(k.revoked_at)
+    )
   end
 
   def revoke_key(%ApiKey{} = key) do
@@ -66,11 +103,24 @@ defmodule LS.ApiKeys do
     |> Repo.update()
   end
 
-  def active_key_for_user(user_id) do
-    Repo.one(
+  @doc "A user's active keys, oldest first."
+  def list_keys(user_id) do
+    Repo.all(
       from k in ApiKey,
         where: k.user_id == ^user_id and is_nil(k.revoked_at),
-        limit: 1
+        order_by: [asc: k.inserted_at]
+    )
+  end
+
+  @doc """
+  One of the user's own active keys by id, or nil. Scoped to the user on
+  purpose: the Settings page revokes by id, and an id from another account
+  must never resolve.
+  """
+  def get_key(user_id, key_id) do
+    Repo.one(
+      from k in ApiKey,
+        where: k.id == ^key_id and k.user_id == ^user_id and is_nil(k.revoked_at)
     )
   end
 
@@ -104,8 +154,27 @@ defmodule LS.ApiKeys do
     ) || 0
   end
 
-  @doc "true when the key's plan has monthly calls left."
-  def within_quota?(key, plan), do: usage_this_month(key.id) < monthly_quota(plan)
+  @doc """
+  Calls this month across ALL of a user's keys, revoked ones included: a
+  key revoked mid-month already spent its calls, and spending must not
+  vanish with the key.
+  """
+  def user_usage_this_month(user_id) do
+    Repo.one(
+      from u in ApiUsage,
+        join: k in ApiKey,
+        on: k.id == u.api_key_id,
+        where: k.user_id == ^user_id and u.period == ^current_period(),
+        select: sum(u.calls)
+    ) || 0
+  end
+
+  @doc """
+  true when the plan has monthly calls left. Measured on the OWNER's total,
+  not this key's, so a second key is a second connector, never a second
+  quota.
+  """
+  def within_quota?(key, plan), do: user_usage_this_month(key.user_id) < monthly_quota(plan)
 
   @doc """
   Record one successful call, off the request path. A lost increment under

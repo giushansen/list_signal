@@ -17,9 +17,13 @@ defmodule LS.ApiKeys.ApiKey do
   def changeset(key, attrs) do
     key
     |> cast(attrs, [:user_id, :key_hash, :prefix, :name])
-    |> validate_required([:user_id, :key_hash, :prefix])
-    |> validate_length(:name, max: 80)
+    |> validate_required([:user_id, :key_hash, :prefix, :name])
+    |> validate_length(:name, min: 1, max: 80)
+    # Names are labels a user types; control characters would corrupt the
+    # Settings list and the audit rows that carry the key prefix beside them.
+    |> validate_format(:name, ~r/^[^\x00-\x1F\x7F]+$/, message: "contains control characters")
     |> unique_constraint(:key_hash)
+    |> unique_constraint([:user_id, :name], message: "an active key with this name already exists")
   end
 end
 

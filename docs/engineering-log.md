@@ -25,6 +25,23 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-26: several API keys per user; the quota follows the user, not the key
+
+The owner's one key served Claude Code, claude.ai and the Glama health
+check at once, and /developers told users to "make a key per connector so
+it can be revoked alone", which the code forbade (`create_key` refused a
+second active key). Keys are now named, unique among a user's active keys
+(partial unique index, migration 20261026100000), and revoking frees the
+name. The commercial invariant moved with it: `within_quota?/2` now sums
+the month across all of the owner's keys, revoked ones included, so a
+second key is a second connector and never a second quota (a free user
+with ten keys still has 1,000 calls). The per-minute limit stays per key,
+an abuse guard, so one runaway connector cannot lock the others out.
+Production had exactly one key (the owner's) when this landed, so nothing
+migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
+
+---
+
 ## 2026-10-26: the due list had a head of zombies; failed DNS on a refresh now records the check
 
 Day-and-a-half check after the 10-24 fixes: rows per distinct domain

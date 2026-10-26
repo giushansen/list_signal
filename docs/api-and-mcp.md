@@ -35,8 +35,12 @@ Key decisions and why:
   valid per spec, works with Claude/Cursor/most clients via API-key
   headers, and needs zero new infrastructure. OAuth 2.1 + Dynamic Client
   Registration is Phase 2 and unlocks the ChatGPT connector surface.
-- **Keys**: `ls_` + 24 random bytes; only the SHA-256 stored; one active
-  key per user; revoke-and-recreate is rotation.
+- **Keys**: `ls_` + 24 random bytes; only the SHA-256 stored. A user may
+  hold several named keys (one per connector: Claude Code, claude.ai, a
+  CRM), names unique among their active keys, each revocable alone. All of
+  a user's keys share the plan's monthly quota; the per-minute rate limit
+  is per key. Rotation is revoke + create under the same name
+  (2026-10-26, migration 20261026100000).
 
 ## MCP client config
 
