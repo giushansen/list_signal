@@ -25,6 +25,25 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-26: API keys can be shown again; the hash still does the authenticating
+
+Keys were hash-only, the GitHub model, and the owner could not read his
+own key back from Settings after creation. For a product whose keys get
+pasted into claude.ai, Smithery and a CRM by one or two people, that was a
+support ticket dressed as a security property. `api_keys.encrypted_key`
+(migration 20261026120000) now holds an AES-256-GCM copy, keyed from
+`secret_key_base` with a fixed salt the way `Phoenix.Token` is, so no new
+secret exists to provision. Auth never reads it; only the owner's Settings
+page does, behind sudo mode, through `ApiKeys.reveal/1`, which answers
+`:unavailable` for the two keys that predate the column or after a
+`SECRET_KEY_BASE` rotation, and Settings then says to rotate the key.
+`backfill_plaintext/2` filled those two production keys and refuses any
+plaintext whose hash does not match. Pinned in
+`test/ls/api_keys_reveal_test.exs` and the Settings flow in
+`test/ls_web/live/api_key_reveal_live_test.exs`.
+
+---
+
 ## 2026-10-26: several API keys per user; the quota follows the user, not the key
 
 The owner's one key served Claude Code, claude.ai and the Glama health

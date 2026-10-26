@@ -32,7 +32,7 @@ defmodule LS.ApiKeys do
 
   import Ecto.Query
   alias LS.Repo
-  alias LS.ApiKeys.{ApiKey, ApiUsage}
+  alias LS.ApiKeys.{ApiKey, ApiUsage, Vault}
 
   @monthly_quota %{"free" => 1_000, "starter" => 5_000, "pro" => 25_000}
   # Requests per minute, enforced in-memory per node (abuse guard, not billing).
@@ -61,6 +61,7 @@ defmodule LS.ApiKeys do
       |> ApiKey.changeset(%{
         user_id: user.id,
         key_hash: :crypto.hash(:sha256, plaintext),
+        encrypted_key: Vault.encrypt(plaintext),
         prefix: String.slice(plaintext, 0, 11),
         name: name
       })
@@ -95,6 +96,37 @@ defmodule LS.ApiKeys do
       from k in ApiKey,
         where: k.user_id == ^user_id and k.name == ^name and is_nil(k.revoked_at)
     )
+  end
+
+  @doc """
+  The key's plaintext for the owner's Settings page, or `:unavailable` for
+  a key created before plaintexts were kept (2026-10-26) or written under a
+  rotated `secret_key_base`. Never used by the auth path.
+  """
+  @spec reveal(ApiKey.t()) :: {:ok, String.t()} | :unavailable
+  def reveal(%ApiKey{encrypted_key: nil}), do: :unavailable
+
+  def reveal(%ApiKey{encrypted_key: blob}) do
+    case Vault.decrypt(blob) do
+      {:ok, plain} -> {:ok, plain}
+      :error -> :unavailable
+    end
+  end
+
+  @doc """
+  Store the plaintext of a key that predates the vault, for the two keys
+  that existed when it shipped. Refuses anything whose hash does not match
+  the stored hash, so a wrong or made-up plaintext can never be attached
+  to a key.
+  """
+  def backfill_plaintext(%ApiKey{} = key, plaintext) when is_binary(plaintext) do
+    if :crypto.hash(:sha256, plaintext) == key.key_hash do
+      key
+      |> Ecto.Changeset.change(encrypted_key: Vault.encrypt(plaintext))
+      |> Repo.update()
+    else
+      {:error, :mismatch}
+    end
   end
 
   def revoke_key(%ApiKey{} = key) do

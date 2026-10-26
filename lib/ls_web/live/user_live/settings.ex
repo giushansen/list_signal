@@ -48,13 +48,25 @@ defmodule LSWeb.UserLive.Settings do
           <%= if @api_keys != [] do %>
             <ul class="space-y-2.5 mb-5">
               <%= for key <- @api_keys do %>
-                <li class="flex items-center justify-between gap-4 flex-wrap text-[13px]">
-                  <div>
-                    <span class="text-white font-medium"><%= key.name %></span>
-                    <code class="text-white/60 ml-2"><%= key.prefix %>...</code>
-                    <span class="text-white/35 ml-2">created <%= Calendar.strftime(key.inserted_at, "%b %d, %Y") %> &middot; <%= Map.get(@api_key_usage, key.id, 0) %> calls this month</span>
+                <li class="text-[13px]">
+                  <div class="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <span class="text-white font-medium"><%= key.name %></span>
+                      <code class="text-white/60 ml-2"><%= key.prefix %>...</code>
+                      <span class="text-white/35 ml-2">created <%= Calendar.strftime(key.inserted_at, "%b %d, %Y") %> &middot; <%= Map.get(@api_key_usage, key.id, 0) %> calls this month</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                      <%= if Map.has_key?(@revealed, key.id) do %>
+                        <button phx-click="hide_api_key" phx-value-id={key.id} class="text-white/60 hover:text-white font-medium">Hide</button>
+                      <% else %>
+                        <button phx-click="reveal_api_key" phx-value-id={key.id} class="text-emerald-400 hover:text-emerald-300 font-medium">Show</button>
+                      <% end %>
+                      <button phx-click="revoke_api_key" phx-value-id={key.id} data-confirm={"Revoke #{key.name}? Anything using it stops working immediately."} class="text-red-400 hover:text-red-300 font-medium">Revoke</button>
+                    </div>
                   </div>
-                  <button phx-click="revoke_api_key" phx-value-id={key.id} data-confirm={"Revoke #{key.name}? Anything using it stops working immediately."} class="text-red-400 hover:text-red-300 font-medium">Revoke</button>
+                  <%= if plain = Map.get(@revealed, key.id) do %>
+                    <code class="block mt-2 text-[13px] text-white bg-black/30 rounded px-3 py-2 select-all break-all"><%= plain %></code>
+                  <% end %>
                 </li>
               <% end %>
             </ul>
@@ -313,6 +325,29 @@ defmodule LSWeb.UserLive.Settings do
     |> assign(:api_usage, LS.ApiKeys.user_usage_this_month(user.id))
     |> assign(:api_quota, LS.ApiKeys.monthly_quota(User.effective_plan(user)))
     |> assign(:new_api_key, nil)
+    |> assign_new(:revealed, fn -> %{} end)
+  end
+
+  # Showing a key again is an owner-only read behind sudo mode; the id is
+  # resolved through the owner's own keys like revocation is.
+  def handle_event("reveal_api_key", %{"id" => id}, socket) do
+    user = socket.assigns.current_scope.user
+
+    with %{} = key <- LS.ApiKeys.get_key(user.id, id),
+         {:ok, plain} <- LS.ApiKeys.reveal(key) do
+      {:noreply, assign(socket, :revealed, Map.put(socket.assigns.revealed, key.id, plain))}
+    else
+      nil ->
+        {:noreply, put_flash(socket, :error, "That key was not found.")}
+
+      :unavailable ->
+        {:noreply,
+         put_flash(socket, :error, "This key was created before keys could be shown again. Revoke it and create a new one.")}
+    end
+  end
+
+  def handle_event("hide_api_key", %{"id" => id}, socket) do
+    {:noreply, assign(socket, :revealed, Map.delete(socket.assigns.revealed, id))}
   end
 
   @impl true

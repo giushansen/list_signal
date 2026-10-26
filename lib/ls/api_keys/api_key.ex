@@ -8,6 +8,9 @@ defmodule LS.ApiKeys.ApiKey do
   schema "api_keys" do
     belongs_to :user, LS.Accounts.User
     field :key_hash, :binary
+    # Reversible copy, see LS.ApiKeys.Vault. nil for keys created before
+    # 2026-10-26; Settings shows those as "rotate to see".
+    field :encrypted_key, :binary
     field :prefix, :string
     field :name, :string, default: "default"
     field :revoked_at, :utc_datetime
@@ -16,7 +19,7 @@ defmodule LS.ApiKeys.ApiKey do
 
   def changeset(key, attrs) do
     key
-    |> cast(attrs, [:user_id, :key_hash, :prefix, :name])
+    |> cast(attrs, [:user_id, :key_hash, :encrypted_key, :prefix, :name])
     |> validate_required([:user_id, :key_hash, :prefix, :name])
     |> validate_length(:name, min: 1, max: 80)
     # Names are labels a user types; control characters would corrupt the
