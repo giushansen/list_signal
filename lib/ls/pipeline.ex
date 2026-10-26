@@ -206,9 +206,14 @@ defmodule LS.Pipeline do
           # `result` untouched. Skipped on a refresh whose homepage text has not
           # changed since the last check (2026-10-23): the fold keeps the tech
           # those pages added last time, and the two fetches go back to the budget.
-          if refetch_secondary?(opts[:prev_simhash], result.http_body_simhash),
-            do: enhance_with_secondary_pages(result, domain, ip),
-            else: result
+          due = refetch_secondary?(opts[:prev_simhash], result.http_body_simhash)
+          result = Map.put(result, :_secondary_due, due)
+
+          cond do
+            Keyword.get(opts, :secondary, true) == false -> result
+            due -> enhance_with_secondary_pages(result, domain, ip)
+            true -> result
+          end
         {:error, reason, _} -> %{http_error: to_string(reason)}
         {:error, reason} -> %{http_error: to_string(reason)}
       end
@@ -277,6 +282,10 @@ defmodule LS.Pipeline do
   rescue
     _ -> []
   end
+
+  @doc "The secondary pages for a finished homepage result, merged in. Never raises; returns the input on any failure."
+  @spec secondary(map(), String.t(), String.t()) :: map()
+  def secondary(result, domain, ip), do: enhance_with_secondary_pages(result, domain, ip)
 
   defp enhance_with_secondary_pages(%{http_status: 200} = result, domain, ip) do
     case secondary_plan(result[:http_tech], result[:http_pages]) do

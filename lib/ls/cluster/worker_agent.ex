@@ -527,7 +527,18 @@ defmodule LS.Cluster.WorkerAgent do
   # pricing page. The previous figure of 1.5 assumed robots.txt was free;
   # with it the deadline cut 100 to 235 of every 290 to 622 candidates and
   # those became hollow rows.
-  @slots_per_candidate 2.2
+  # 2026-10-27, first two hours with the address page in the plan: a
+  # candidate cost robots.txt, the homepage and one or two secondary pages
+  # in sequence, the stage assumed 2.2 slots, and the deadline cut 124 of
+  # 143 candidates per batch after their requests were already spent. The
+  # fleet fell to 9 rows a minute per node at a full budget (12.7 requests
+  # per row). Now the stage runs in two phases (see enrich_http/3): the
+  # homepage first at @home_slots per candidate, then the secondary pages
+  # for whatever finished until the stage deadline, dropped if not. The
+  # cap counts both.
+  @home_slots 2.2
+  @secondary_slots 1.2
+  @slots_per_candidate @home_slots + @secondary_slots
   # The share of the master's 10-minute in-flight timeout a batch may spend
   # fetching: DNS takes up to 30 s, merge and ML up to 60 s, 90 s margin.
   @http_window_ms 420_000
@@ -682,8 +693,14 @@ defmodule LS.Cluster.WorkerAgent do
   defp enrich_http([], _, _), do: %{}
 
   defp enrich_http(cands, conc, prev_simhash) do
-    bound = http_stage_timeout(length(cands))
-    deadline = System.monotonic_time(:millisecond) + bound
+    n = length(cands)
+    per_min = div(LS.HTTP.NodeBudget.lane_limit(:discovery), parallel_batches())
+    bound = http_stage_timeout(n)
+    start = System.monotonic_time(:millisecond)
+    deadline = start + bound
+    # Phase 1 gets the homepage share of the bound plus the slack; phase 2
+    # whatever is left until the stage deadline.
+    home_deadline = start + max(120_000, round(n * @home_slots * 60_000 / max(per_min, 1)) + 60_000)
 
     stream =
       Task.async_stream(
@@ -691,16 +708,48 @@ defmodule LS.Cluster.WorkerAgent do
         fn {d, ip} ->
           r = do_http(d, ip, Map.get(prev_simhash, d))
           Cache.http_insert(d)
-          {d, r}
+          {d, {r, ip}}
         end,
         # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),
         # so the per-task bound is the stage bound, not the homepage budget.
         max_concurrency: conc, timeout: bound, on_timeout: :kill_task, ordered: false
       )
 
-    {res, cut} = collect_until(stream, deadline, length(cands))
-    if cut > 0, do: Logger.warning("http stage deadline: #{cut} of #{length(cands)} candidates not fetched, #{map_size(res)} kept")
-    res
+    {res, cut} = collect_until(stream, min(home_deadline, deadline), n)
+    if cut > 0, do: Logger.warning("http stage deadline: #{cut} of #{n} candidates not fetched, #{map_size(res)} kept")
+
+    homes = Map.new(res, fn {d, {r, _ip}} -> {d, r} end)
+    secondary_pages(homes, res, conc, deadline)
+  end
+
+  # Phase 2: the secondary pages (LS.Pipeline.secondary_plan/2) for the
+  # homepages that finished, as many as the stage deadline allows. A page
+  # that does not make it is dropped: the homepage row is already in hand
+  # and is never lost to a slow contact page. Fault-isolated per domain.
+  defp secondary_pages(homes, res, conc, deadline) do
+    due =
+      for {d, {r, ip}} <- res,
+          is_map(r),
+          r[:http_status] == 200,
+          r[:_secondary_due] != false,
+          LS.Pipeline.secondary_plan(r[:http_tech], r[:http_pages]) != [],
+          do: {d, r, ip}
+
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    if due == [] or remaining < 15_000 do
+      homes
+    else
+      stream =
+        Task.async_stream(due, fn {d, r, ip} -> {d, LS.Pipeline.secondary(r, d, ip)} end,
+          max_concurrency: conc, timeout: remaining, on_timeout: :kill_task, ordered: false)
+
+      {enhanced, dropped} = collect_until(stream, deadline, length(due))
+      if dropped > 0, do: Logger.info("secondary pages: #{dropped} of #{length(due)} not read by the deadline")
+      Map.merge(homes, enhanced)
+    end
+  rescue
+    _ -> homes
   end
 
   @doc false
@@ -725,7 +774,7 @@ defmodule LS.Cluster.WorkerAgent do
     {res, max(total - n, 0)}
   end
 
-  defp do_http(domain, ip, prev_simhash), do: LS.Pipeline.http(domain, ip, prev_simhash: prev_simhash)
+  defp do_http(domain, ip, prev_simhash), do: LS.Pipeline.http(domain, ip, prev_simhash: prev_simhash, secondary: false)
 
   # ==========================================================================
   # RDAP

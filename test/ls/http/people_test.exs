@@ -47,6 +47,10 @@ defmodule LS.HTTP.PeopleTest do
   end
 
   test "the name rule refuses labels, numbers, single words and long strings" do
+    # mailto anchor texts seen live on 2026-10-27
+    refute People.name?("Email Support")
+    refute People.name?("General Contact")
+    refute People.name?("Customer Service Team")
     assert People.name?("Erin Cortazar")
     assert People.name?("Jean-Pierre de la Fontaine")
     refute People.name?("Contact Us")

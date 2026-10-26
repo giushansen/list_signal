@@ -61,6 +61,31 @@ migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
 
 ---
 
+## 2026-10-27: the address page cost the fleet three quarters of its throughput for two hours
+
+Two hours after the secondary-page change landed, each node did about 9
+rows a minute at a full budget (was 37): 143 candidates per batch, 124
+cut at the stage deadline, 18 kept, 12.7 requests per row. The homepage
+fetch and the one or two secondary pages ran in sequence inside one task,
+each paced by the node budget and spaced by the per-IP limiter, the stage
+still assumed 2.2 slots per candidate, and a candidate cut in flight had
+already spent its requests and went back to the queue to spend them
+again. The address page is linked on most sites, where login and pricing
+were on one in ten, so the cost that was marginal became the rule.
+
+Now the HTTP stage runs in two phases (`WorkerAgent.enrich_http/3`): the
+homepages first with their own deadline at 2.2 slots each, then the
+secondary pages for the homepages that finished, as many as the stage
+deadline allows, dropped if not (`LS.Pipeline.secondary/3`). A homepage
+row is never lost to a slow contact page and nothing spent is thrown
+away. The cap counts both phases (3.4 slots): 123 candidates at 60 slots
+a minute. Two pinned stage-bound assertions updated under the owner's
+unlock. Also from the first two hours: "Email Support" and "General
+Contact" came out of mailto anchors as people; label words now disqualify
+a name.
+
+---
+
 ## 2026-10-26: one bounded query over the whole table, and the search default is the target ranking
 
 The reviewer could filter with AND and page a hundred at a time through

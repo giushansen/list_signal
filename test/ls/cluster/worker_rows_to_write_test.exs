@@ -44,10 +44,11 @@ defmodule LS.Cluster.WorkerHttpStageTimeoutTest do
 
   test "the await grows with the candidate count at the budgeted rate, never below two minutes" do
     # 2026-10-24: 2.2 slots per candidate (robots.txt + homepage + a share
-    # of a secondary page), was 1.5. See LS.Cluster.BatchFitTest.
-    assert LS.Cluster.WorkerAgent.http_stage_timeout(50, 140) == 120_000
-    assert LS.Cluster.WorkerAgent.http_stage_timeout(350, 140) == 390_000
-    assert LS.Cluster.WorkerAgent.http_stage_timeout(700, 140) == 720_000
+    # of a secondary page), was 1.5. 2026-10-27: 3.4, the address page is in
+    # the plan for most sites now. See LS.Cluster.BatchFitTest.
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(50, 140) == 132_857
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(350, 140) == 570_000
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(700, 140) == 1_080_000
   end
 end
 
@@ -77,7 +78,7 @@ defmodule LS.Cluster.WorkerCollectUntilTest do
     assert map_size(res) == 3 and cut == 0
   end
 
-  test "the stage bound counts 2.2 slots per candidate (2026-10-24, was 1.5: robots.txt is never cached at first contact)" do
-    assert LS.Cluster.WorkerAgent.http_stage_timeout(350, 140) == 390_000
+  test "the stage bound counts 3.4 slots per candidate (2026-10-27; 2.2 on 10-24, 1.5 before: robots.txt is never cached at first contact, and the address page is read)" do
+    assert LS.Cluster.WorkerAgent.http_stage_timeout(350, 140) == 570_000
   end
 end

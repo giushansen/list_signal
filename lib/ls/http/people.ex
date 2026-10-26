@@ -50,6 +50,15 @@ defmodule LS.HTTP.People do
     "book now", "buy now", "subscribe now", "sign up", "our products", "latest news", "coming soon"
   ])
 
+  # A word that makes a two-word string a label, not a person: "Email
+  # Support" and "General Contact" came out of mailto anchors on
+  # winabuilder.com in the first two hours (2026-10-27).
+  @label_words ~w(the and for with your our free new shop sale us email mail support contact contacts
+                  general sales team info enquiries enquiry inquiries office customer service services
+                  press media careers jobs hello help billing admin orders order booking bookings
+                  reservations marketing partnerships legal privacy accounts department desk line
+                  manager management center centre dept hotline helpdesk address phone here click)
+
   # A heading that reads as a label rather than a person: starts with a
   # determiner or a verb a page uses on itself.
   @label_starts ~w(our the your my this these all new free best top latest more read learn get
@@ -88,7 +97,7 @@ defmodule LS.HTTP.People do
       Regex.match?(~r/^[\p{Lu}]/u, s) and
       not MapSet.member?(@stop_names, String.downcase(s)) and
       String.downcase(hd(words)) not in @label_starts and
-      not Enum.any?(words, &(String.downcase(&1) in ~w(the and for with your our free new shop sale us)))
+      not Enum.any?(words, &(String.downcase(&1) in @label_words))
   end
 
   def name?(_), do: false
