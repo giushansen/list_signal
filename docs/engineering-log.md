@@ -61,6 +61,29 @@ migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
 
 ---
 
+## 2026-10-26: one bounded query over the whole table, and the search default is the target ranking
+
+The reviewer could filter with AND and page a hundred at a time through
+the connector, and could not sort, count, group, choose fields, pass
+several countries, or filter on a first-seen date or a named email, so
+any measurement was one `get_company` call per row. `listsignal_query`
+(API: `LS.ApiData.query/1`) takes the search filters (lists allowed for
+country, model, revenue, employees; `has_named_email`, `has_email`,
+`first_seen_after`, `last_checked_after`), a `sort` from a fixed list, a
+`fields` list drawn from the search columns, an optional `group_by` from
+a fixed list with the top 50 counts, and returns the total (no FINAL,
+about 0.03% duplicates, said in the response). Row cap 500, two threads,
+ten seconds of execution. Every value is parsed, matched against a list
+or escaped; nothing from the caller reaches the SQL as written. The
+search default order moved from Tranco to the explorer's target ranking:
+by traffic the top of `business_model=Agency` was adtech platforms and
+SaaS, two real agencies in twenty-five. `sort=tranco` keeps the old
+order. Key hygiene was already in place (per-key rate limit, revocation,
+audit rows for every tool call, read-only surface); what the owner has to
+do is revoke the key that appeared in a screenshot and create a new one.
+
+---
+
 ## 2026-10-26: the address pages first, every email classified, people and provenance
 
 An outside review of live rows through the connector: on twelve ICP

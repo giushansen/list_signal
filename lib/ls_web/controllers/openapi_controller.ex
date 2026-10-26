@@ -59,7 +59,7 @@ defmodule LSWeb.OpenapiController do
             operationId: "searchCompanies",
             summary: "Search companies by technology, vendor, country, model, industry, revenue, employees, hiring",
             description:
-              "Filtered slice of the dataset, ranked by traffic. All filters combine with AND; `tech` matches one exact catalog name in http_tech (platforms, vendors, WordPress plugins and Shopify apps alike). Response echoes the accepted filters so a mistyped one is visible immediately.",
+              "Filtered slice of the dataset, in the product's target ranking by default (sort=tranco for traffic order). All filters combine with AND; country, business_model, revenue and employees accept comma-separated lists; `tech` matches one exact catalog name in http_tech (platforms, vendors, WordPress plugins and Shopify apps alike). Response echoes the accepted filters so a mistyped one is visible immediately.",
             parameters: [
               qp("tech", "One http_tech name, e.g. Shopify, Klaviyo, HubSpot, Yoast SEO, Judge.me"),
               qp("app", "Same as tech (kept for older clients)"),
@@ -73,6 +73,10 @@ defmodule LSWeb.OpenapiController do
               qp("hiring", "true to keep only companies with open jobs"),
               qp("min_realness", "Minimum estimated_realness, 0 to 1. 0.5 keeps businesses with mail, a contact and 90 days of certificates; 0.7 adds traffic, a catalogue or jobs, a registry match or a company number."),
               qp("shopify", "true to keep only Shopify stores"),
+              qp("has_named_email", "true to keep only companies with a person's address on their own domain (not info@, hello@)"),
+              qp("first_seen_after", "ISO date: first seen in certificate logs on or after it"),
+              qp("last_checked_after", "ISO date: checked on or after it"),
+              qp("sort", "relevance (default: the product's target ranking, small real businesses with contact details first), tranco, first_seen, last_checked, products, jobs"),
               %{name: "limit", in: "query", schema: %{type: "integer", maximum: 100, default: 25}},
               %{name: "offset", in: "query", schema: %{type: "integer", maximum: 10_000, default: 0}}
             ],

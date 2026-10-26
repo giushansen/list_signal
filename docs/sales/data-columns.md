@@ -61,6 +61,9 @@ Families: **fact** is copied from one public source (prefix names the source). *
 | `http_script_domains` | fact |  | C |  | Third-party hosts the homepage loads scripts from. |
 | `http_emails` | fact | 🔔 item added | C | yes | Email addresses published on the site. Paid plans only in the API. |
 | `http_emails_evidence` | fact |  | C |  | Which pages the addresses came from. |
+| `email_details` (API and MCP get_company) | Each published address with its kind (`named`, `role`, `free_mail`, `sister`) and the page it was found on (`homepage`, `contact`, `legal`, `about`, `career`, `policy`). Since 2026-10-26. |
+| `email_pattern` (API and MCP get_company) | The naming shape the named addresses imply (`{first}`, `{first}.{last}`, `{first}{last}`...) with how many addresses support it; null when there is no named address. |
+| `people` (API and MCP get_company) | Named people found on the site: name, title, email when published, source page, last seen. From JSON-LD Person, mailto links, imprint lines and team pages. |
 | `http_phone` | fact |  | C | yes | Phone number from the footer or JSON-LD. |
 | `http_address` | fact |  | C | yes | Postal address from the footer or JSON-LD. |
 | `http_social_links` | fact | 🔔 item added | C | yes | Social profile URLs linked from the site. |

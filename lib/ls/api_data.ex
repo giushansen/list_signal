@@ -96,34 +96,17 @@ defmodule LS.ApiData do
   can echo what was honoured (agents self-correct off it).
   """
   def search(filters) when is_map(filters) do
-    conds =
-      [
-        has("http_tech", filters["tech"]),
-        has("http_tech", filters["app"]),
-        has("dns_tech", filters["dns_tech"]),
-        eq("dns_email_provider", filters["email_provider"]),
-        eq("estimated_country", upcase(filters["country"])),
-        eq("estimated_business_model", filters["business_model"]),
-        eq("estimated_industry", filters["industry"]),
-        eq("estimated_revenue", filters["revenue"]),
-        eq("estimated_employees", filters["employees"]),
-        if(truthy?(filters["hiring"]), do: "hr_job_count > 0"),
-        gte("estimated_realness", filters["min_realness"]),
-        if(truthy?(filters["shopify"]), do: "is_shopify = 1"),
-        "http_title != ''",
-        "estimated_junk = ''"
-      ]
-      |> Enum.reject(&is_nil/1)
-
+    conds = conditions(filters)
     limit = filters |> int("limit", 25) |> min(@max_page) |> max(1)
     offset = filters |> int("offset", 0) |> max(0) |> min(10_000)
+    sort = sort_key(filters["sort"])
     cols = Columns.api_columns(:search)
 
     sql = """
     SELECT #{Enum.map_join(cols, ", ", &select_expr/1)}, notEmpty(http_emails) AS has_contact
     FROM #{Tables.businesses()} FINAL
     WHERE #{Enum.join(conds, " AND ")}
-    ORDER BY tranco_rank ASC NULLS LAST
+    ORDER BY #{order_sql(sort)}
     LIMIT #{limit} OFFSET #{offset}
     """
 
@@ -131,7 +114,7 @@ defmodule LS.ApiData do
       {:ok, rows} ->
         keys = Enum.map(cols ++ ["has_contact"], &String.to_atom/1)
         rows = Enum.map(rows, fn r -> keys |> Enum.zip(r) |> Map.new() |> Map.update!(:has_contact, &(&1 in [1, "1", true])) end)
-        {:ok, rows, %{limit: limit, offset: offset}}
+        {:ok, rows, %{limit: limit, offset: offset, sort: sort}}
 
       {:error, e} ->
         {:error, e}
@@ -139,7 +122,161 @@ defmodule LS.ApiData do
   end
 
   @doc "The filter names `search/1` honours, in the order the docs list them."
-  def search_filters, do: ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify limit offset)
+  def search_filters, do: ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify has_named_email first_seen_after last_checked_after sort limit offset)
+
+  @doc """
+  The WHERE clauses `search/1` and `query/1` share. Every value is either
+  parsed to a number or date, matched against a fixed list, or escaped;
+  nothing from the caller reaches the SQL as written.
+  """
+  @spec conditions(map()) :: [String.t()]
+  def conditions(filters) when is_map(filters) do
+    [
+      has("http_tech", filters["tech"]),
+      has("http_tech", filters["app"]),
+      has("dns_tech", filters["dns_tech"]),
+      eq("dns_email_provider", filters["email_provider"]),
+      in_list("estimated_country", filters["country"] |> upcase() |> csv()),
+      in_list("estimated_business_model", csv(filters["business_model"])),
+      eq("estimated_industry", filters["industry"]),
+      in_list("estimated_revenue", csv(filters["revenue"])),
+      in_list("estimated_employees", csv(filters["employees"])),
+      if(truthy?(filters["hiring"]), do: "hr_job_count > 0"),
+      gte("estimated_realness", filters["min_realness"]),
+      if(truthy?(filters["shopify"]), do: "is_shopify = 1"),
+      # A named address: one on the domain whose local part is not a role
+      # mailbox (2026-10-26, LS.HTTP.EmailClass). Approximate in SQL: the
+      # role list, no sister or free-mail reasoning.
+      if(truthy?(filters["has_named_email"]), do: "arrayExists(e -> NOT match(e, #{LS.HTTP.EmailClass.role_regex_sql()}) AND endsWith(splitByChar('@', e)[2], domain), http_emails)"),
+      if(truthy?(filters["has_email"]), do: "notEmpty(http_emails)"),
+      date_gte("ctl_first_seen_at", filters["first_seen_after"]),
+      date_gte("http_last_checked_at", filters["last_checked_after"]),
+      "http_title != ''",
+      "estimated_junk = ''"
+    ]
+    |> Enum.reject(&is_nil/1)
+  end
+
+  @sorts %{
+    "relevance" => "#{LS.Explorer.target_score_sql()} DESC, http_last_checked_at DESC, domain ASC",
+    "tranco" => "tranco_rank ASC NULLS LAST, domain ASC",
+    "first_seen" => "ctl_first_seen_at DESC, domain ASC",
+    "last_checked" => "http_last_checked_at DESC, domain ASC",
+    "products" => "shop_product_count DESC NULLS LAST, domain ASC",
+    "jobs" => "hr_job_count DESC NULLS LAST, domain ASC"
+  }
+
+  @doc "The sort keys `search/1` and `query/1` accept."
+  def sort_keys, do: Map.keys(@sorts) |> Enum.sort()
+
+  # The default is the explorer's target ranking (2026-10-23), not traffic:
+  # sorted by Tranco the top of any model is adtech platforms and SaaS, and
+  # the small businesses the product is for come last (2026-10-26 review:
+  # 2 real agencies in the top 25 for business_model=Agency).
+  defp sort_key(v) when is_binary(v), do: if(Map.has_key?(@sorts, v), do: v, else: "relevance")
+  defp sort_key(_), do: "relevance"
+  defp order_sql(key), do: Map.fetch!(@sorts, key)
+
+  @group_by ~w(estimated_business_model estimated_country estimated_revenue estimated_employees estimated_industry dns_email_provider ctl_tld)
+  @query_max 500
+
+  @doc "The fields `group_by` accepts."
+  def group_by_fields, do: @group_by
+
+  @doc """
+  One bounded read over the product table for analysis (2026-10-26): the
+  same filters as `search/1`, a `sort`, a `fields` list drawn from the
+  search columns, `group_by` with counts, and a total count. Row cap
+  #{@query_max}, ten seconds of execution, two threads. Counts skip FINAL
+  (duplicates run about 0.03%) and say so.
+
+  Returns `{:ok, %{rows, total, groups, applied}}`.
+  """
+  @spec query(map()) :: {:ok, map()} | {:error, term()}
+  def query(filters) when is_map(filters) do
+    conds = conditions(filters)
+    where = Enum.join(conds, " AND ")
+    limit = filters |> int("limit", 100) |> min(@query_max) |> max(0)
+    offset = filters |> int("offset", 0) |> max(0) |> min(50_000)
+    sort = sort_key(filters["sort"])
+    settings = "SETTINGS max_threads = 2, max_execution_time = 10"
+    allowed = Columns.api_columns(:search)
+
+    cols =
+      case filters["fields"] do
+        list when is_list(list) -> list |> Enum.map(&to_string/1) |> Enum.filter(&(&1 in allowed)) |> Enum.uniq()
+        s when is_binary(s) -> s |> csv() |> Enum.filter(&(&1 in allowed)) |> Enum.uniq()
+        _ -> ~w(domain estimated_business_model estimated_country estimated_revenue estimated_employees http_tech)
+      end
+
+    cols = if cols == [], do: ["domain"], else: Enum.uniq(["domain" | cols])
+
+    group_by =
+      case filters["group_by"] do
+        g when is_binary(g) and g != "" -> if(g in @group_by, do: g, else: :invalid)
+        _ -> nil
+      end
+
+    with {:ok, total} <- count(where, settings),
+         {:ok, groups} <- groups(group_by, where, settings),
+         {:ok, rows} <- rows(cols, where, sort, limit, offset, settings) do
+      {:ok,
+       %{
+         rows: rows,
+         total: total,
+         total_note: "approximate: duplicates from unmerged parts run about 0.03%",
+         groups: groups,
+         applied: %{limit: limit, offset: offset, sort: sort, fields: cols, group_by: if(group_by == :invalid, do: nil, else: group_by),
+                    group_by_accepted: @group_by, filters_accepted: search_filters(), sort_accepted: sort_keys()}
+       }}
+    end
+  end
+
+  defp count(where, settings) do
+    case Clickhouse.query_raw("SELECT count() FROM #{Tables.businesses()} WHERE #{where} #{settings}", 15_000) do
+      {:ok, [[n]]} -> {:ok, to_int(n)}
+      {:error, e} -> {:error, e}
+      _ -> {:ok, 0}
+    end
+  end
+
+  defp groups(nil, _where, _settings), do: {:ok, nil}
+  defp groups(:invalid, _where, _settings), do: {:ok, nil}
+
+  defp groups(col, where, settings) do
+    sql = "SELECT #{col}, count() AS n FROM #{Tables.businesses()} WHERE #{where} GROUP BY #{col} ORDER BY n DESC LIMIT 50 #{settings}"
+
+    case Clickhouse.query_raw(sql, 15_000) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [v, n] -> %{value: v, count: to_int(n)} end)}
+      {:error, e} -> {:error, e}
+    end
+  end
+
+  defp rows(_cols, _where, _sort, 0, _offset, _settings), do: {:ok, []}
+
+  defp rows(cols, where, sort, limit, offset, settings) do
+    sql = """
+    SELECT #{Enum.map_join(cols, ", ", &select_expr/1)}
+    FROM #{Tables.businesses()} FINAL
+    WHERE #{where}
+    ORDER BY #{order_sql(sort)}
+    LIMIT #{limit} OFFSET #{offset}
+    #{settings}
+    """
+
+    case Clickhouse.query_raw(sql, 15_000) do
+      {:ok, rows} ->
+        keys = Enum.map(cols, &String.to_atom/1)
+        {:ok, Enum.map(rows, fn r -> keys |> Enum.zip(r) |> Map.new() end)}
+
+      {:error, e} ->
+        {:error, e}
+    end
+  end
+
+  defp to_int(n) when is_integer(n), do: n
+  defp to_int(n) when is_binary(n), do: (case Integer.parse(n) do {i, _} -> i; _ -> 0 end)
+  defp to_int(_), do: 0
 
   @doc """
   Recorded changes, newest first. `filters`: field, change, value, domain,
@@ -248,6 +385,32 @@ defmodule LS.ApiData do
 
   defp upcase(nil), do: nil
   defp upcase(v) when is_binary(v), do: String.upcase(v)
+  defp upcase(v), do: v
+
+  # "US,FR" or ["US", "FR"] -> ["US", "FR"]; nil or "" -> nil.
+  defp csv(nil), do: nil
+  defp csv(""), do: nil
+  defp csv(list) when is_list(list), do: list |> Enum.map(&to_string/1) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+  defp csv(s) when is_binary(s), do: s |> String.split(",") |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+  defp csv(_), do: nil
+
+  defp in_list(_col, nil), do: nil
+  defp in_list(_col, []), do: nil
+  defp in_list(col, [v]), do: eq(col, v)
+  defp in_list(col, vals), do: "#{col} IN (#{Enum.map_join(vals, ", ", &"'#{Clickhouse.escape_public(&1)}'")})"
+
+  # An ISO date or datetime, parsed; anything else is ignored.
+  defp date_gte(_col, nil), do: nil
+  defp date_gte(_col, ""), do: nil
+
+  defp date_gte(col, v) when is_binary(v) do
+    case Date.from_iso8601(String.slice(v, 0, 10)) do
+      {:ok, d} -> "#{col} >= toDateTime('#{Date.to_iso8601(d)} 00:00:00')"
+      _ -> nil
+    end
+  end
+
+  defp date_gte(_, _), do: nil
 
   defp truthy?(v), do: v in ["true", "1", true]
 

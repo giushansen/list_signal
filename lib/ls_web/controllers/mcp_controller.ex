@@ -37,7 +37,7 @@ defmodule LSWeb.McpController do
     %{
       name: "listsignal_search_companies",
       description:
-        "Find companies by technology or app (one http_tech name), DNS vendor, mailbox provider, country, business model, industry, revenue or employee band, hiring status, or Shopify. Filters combine with AND. Returns up to 100 ranked companies per call (use offset to page). Use for questions like 'find SaaS companies in France using HubSpot that are hiring' or 'Shopify stores on Google Workspace with more than 500 products'.",
+        "Find companies by technology or app (one http_tech name), DNS vendor, mailbox provider, country, business model, industry, revenue or employee band, hiring status, Shopify, a named email, or first-seen date. Filters combine with AND. Returns up to 100 companies per call, by default in the product's target ranking (small real businesses with contact details first; sort=tranco for traffic order); use offset to page. Use for questions like 'find SaaS companies in France using HubSpot that are hiring' or 'Shopify stores on Google Workspace with more than 500 products'.",
       inputSchema: %{
         type: "object",
         properties: %{
@@ -56,6 +56,10 @@ defmodule LSWeb.McpController do
           employees: %{type: "string", description: "Employee band: 1-10, 11-50, 51-500, 501-5000, 5001+"},
           hiring: %{type: "string", description: "'true' to keep only companies with open jobs"},
           shopify: %{type: "string", description: "'true' to keep only Shopify stores"},
+          has_named_email: %{type: "string", description: "'true' to keep only companies with a person's address on their domain"},
+          first_seen_after: %{type: "string", description: "ISO date; first seen in certificate logs on or after it"},
+          last_checked_after: %{type: "string", description: "ISO date; checked on or after it"},
+          sort: %{type: "string", description: "relevance (default: the target ranking, small real businesses first), tranco, first_seen, last_checked, products, jobs"},
           limit: %{type: "integer", description: "1-100, default 25"},
           offset: %{type: "integer", description: "For paging, default 0"}
         }
@@ -76,6 +80,36 @@ defmodule LSWeb.McpController do
           business_model: %{type: "string", description: "Ecommerce, SaaS, Agency, Marketplace, Tool, Media, Consulting, LocalBusiness"},
           period: %{type: "string", description: "7d (default), 30d or 90d"},
           limit: %{type: "integer", description: "1-100, default 50"},
+          offset: %{type: "integer", description: "For paging, default 0"}
+        }
+      }
+    },
+    %{
+      name: "listsignal_query",
+      description:
+        "One bounded read over the whole dataset for analysis: the same filters as search (several countries, models or bands as comma-separated lists; has_named_email, has_email, first_seen_after, last_checked_after), a sort (relevance, tranco, first_seen, last_checked, products, jobs), a fields list, an optional group_by with counts (estimated_business_model, estimated_country, estimated_revenue, estimated_employees, estimated_industry, dns_email_provider, ctl_tld), and the total count of matching companies. Up to 500 rows per call, ten seconds of execution. Use for 'how many US Shopify stores have a named email, by revenue band' or 'the 300 newest French SaaS companies with their technologies'.",
+      inputSchema: %{
+        type: "object",
+        properties: %{
+          tech: %{type: "string", description: "One technology, plugin or app name as it appears in http_tech"},
+          dns_tech: %{type: "string", description: "A vendor visible in DNS"},
+          email_provider: %{type: "string", description: "Mailbox provider: Google Workspace, Microsoft 365, Zoho Mail, Proton Mail"},
+          country: %{type: "string", description: "ISO-2 codes, comma-separated, e.g. US,CA"},
+          business_model: %{type: "string", description: "Comma-separated: Ecommerce, SaaS, Agency, Marketplace, Tool, Media, Consulting, LocalBusiness"},
+          industry: %{type: "string", description: "Industry label"},
+          revenue: %{type: "string", description: "Comma-separated bands: <$1M, $1M-$10M, $10M-$100M, $100M-$1B, $1B+"},
+          employees: %{type: "string", description: "Comma-separated bands: 1-10, 11-50, 51-500, 501-5000, 5001+"},
+          hiring: %{type: "string", description: "'true' to keep only companies with open jobs"},
+          shopify: %{type: "string", description: "'true' to keep only Shopify stores"},
+          has_email: %{type: "string", description: "'true' to keep only companies with a published address"},
+          has_named_email: %{type: "string", description: "'true' to keep only companies with a person's address on their domain (not info@, hello@...)"},
+          min_realness: %{type: "string", description: "Minimum estimated_realness, 0 to 1"},
+          first_seen_after: %{type: "string", description: "ISO date; companies first seen in certificate logs on or after it"},
+          last_checked_after: %{type: "string", description: "ISO date; companies checked on or after it"},
+          sort: %{type: "string", description: "relevance (default), tranco, first_seen, last_checked, products, jobs"},
+          fields: %{type: "string", description: "Comma-separated columns to return, from the search columns; domain is always included"},
+          group_by: %{type: "string", description: "One of estimated_business_model, estimated_country, estimated_revenue, estimated_employees, estimated_industry, dns_email_provider, ctl_tld; returns the top 50 values with counts"},
+          limit: %{type: "integer", description: "0-500, default 100; 0 returns only the total and groups"},
           offset: %{type: "integer", description: "For paging, default 0"}
         }
       }
@@ -199,8 +233,18 @@ defmodule LSWeb.McpController do
 
   defp call_tool("listsignal_dataset_stats", _args, _plan), do: {:ok, ApiData.stats()}
 
+  # Analysis over the whole table (2026-10-26): totals, group counts, sort
+  # and chosen fields, bounded in rows, threads and seconds. Emails are not
+  # among the search columns, so the plan gate has nothing to hide here.
+  defp call_tool("listsignal_query", args, _plan) do
+    case ApiData.query(args) do
+      {:ok, result} -> {:ok, result}
+      {:error, _} -> {:tool_error, "Query failed or exceeded its ten-second budget; narrow the filters or drop group_by."}
+    end
+  end
+
   defp call_tool(name, _args, _plan),
-    do: {:tool_error, "Unknown tool '#{name}'. Available: listsignal_get_company, listsignal_search_companies, listsignal_changes, listsignal_dataset_stats."}
+    do: {:tool_error, "Unknown tool '#{name}'. Available: listsignal_get_company, listsignal_search_companies, listsignal_changes, listsignal_query, listsignal_dataset_stats."}
 
   @doc false
   def tools, do: @tools

@@ -97,6 +97,13 @@ defmodule LS.HTTP.EmailClass do
       "splitByChar('.', splitByChar('@', email)[2])[1] = splitByChar('.', domain)[1])"
   end
 
+  @doc "A ClickHouse regex literal matching a role mailbox's local part, for SQL filters."
+  @spec role_regex_sql() :: String.t()
+  def role_regex_sql do
+    parts = @role_parts |> Enum.map(&Regex.escape/1) |> Enum.join("|")
+    "'^(#{parts})[-_.+]?[a-z0-9]*@'"
+  end
+
   @doc "Classify one address for the business at `domain`."
   @spec classify(String.t(), String.t()) :: kind()
   def classify(email, domain) when is_binary(email) and is_binary(domain) do

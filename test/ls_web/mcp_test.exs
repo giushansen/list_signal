@@ -28,16 +28,20 @@ defmodule LSWeb.McpTest do
     assert body["result"]["instructions"] =~ "listsignal_search_companies"
   end
 
-  test "tools/list exposes exactly the four namespaced tools with schemas", %{conn: conn, token: token} do
+  test "tools/list exposes exactly the five namespaced tools with schemas", %{conn: conn, token: token} do
     body = rpc(conn, token, "tools/list") |> json_response(200)
     tools = body["result"]["tools"]
 
     # listsignal_changes joined 2026-10-17: the change feed had been in the
-    # API since v1 and on the dashboard, and absent here.
+    # API since v1 and on the dashboard, and absent here. listsignal_query
+    # joined 2026-10-26: totals, group counts, sort and field choice over
+    # the whole table, bounded, so an analysis is one call, not one
+    # get_company per row.
     assert Enum.map(tools, & &1["name"]) |> Enum.sort() == [
              "listsignal_changes",
              "listsignal_dataset_stats",
              "listsignal_get_company",
+             "listsignal_query",
              "listsignal_search_companies"
            ]
 

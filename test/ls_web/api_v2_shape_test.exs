@@ -68,7 +68,10 @@ defmodule LSWeb.ApiV2ShapeTest do
   end
 
   test "search filters accepted are the documented ones" do
-    assert LS.ApiData.search_filters() == ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify limit offset)
+    # 2026-10-26: has_named_email, first_seen_after, last_checked_after and
+    # sort joined (the reviewer's gaps: no sort, no date, no named-email
+    # filter), documented in OpenAPI and the MCP schema alike.
+    assert LS.ApiData.search_filters() == ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify has_named_email first_seen_after last_checked_after sort limit offset)
     assert LS.ApiData.changes_filters() == ~w(field change value domain country business_model period limit offset)
   end
 end
