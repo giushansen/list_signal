@@ -71,6 +71,33 @@ written 2,500 rows an hour).
 
 ---
 
+## 2026-10-26, later: known businesses never go through the first-contact gate again
+
+The per-outcome lane log (f280000) answered the rest of the morning's
+question in one tick: of the 4,500 oldest due tier A, 2,034 admitted, 24
+dead, 2,442 refused by a ring; of 4,634 due B and C, 498 admitted and
+4,135 refused. Not dead, not queued, parked. The path: a certificate
+renewal re-sights a known business; the sighting enters the queue as an
+ordinary first contact; the worker's name gate (`DomainFilter.verdict/5`,
+listed TLDs, MX plus SPF or a known provider) says `{:skip, :no_mail}` or
+`{:skip, :tld}`; `WorkQueue.remember_skipped/1` marks the stable or
+dormant ring; the scheduler's forced refresh respects those rings. Every
+renewal (60 to 90 days) repeated it, so a business on .shop or with a
+custom mail host was never refreshed again, the oldest since June. The
+2026-10-03 fix bypassed the gate for scheduler items only.
+
+Now `LS.Cluster.CrawlDedup` keeps a `known` ring (every compiled non-junk
+business, 2 windows of 200 days, marked by the compactor each pass and
+backfilled once by `backfill_known/0`), `WorkQueue.enqueue/2` tags a
+certificate item for a known business `known: true`
+(`WorkQueue.tag_known/2`), and the worker's `refresh_set/1` treats it as a
+refresh: the gate is skipped and a name that no longer resolves is
+recorded (`unresolved_refresh/3`). A verified business is never gated
+like a stranger again; the only rings that still apply to it are the
+change-aware ones (unchanged 28-35 days, twice unchanged 60-90).
+
+---
+
 ## 2026-10-24: half the rows were duplicate fetches, a third were hollow; batches now fit the budget and heartbeat
 
 Found while checking why the scheduler had paused for 12 hours. Over the

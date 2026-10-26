@@ -318,7 +318,9 @@ business into two more rings in `LS.Cluster.CrawlDedup` (10 windows of 10
 and 20 days since 2026-10-24, so 90-100 and 180-200 days; a one-off
 `CrawlDedup.backfill_tiers/0` places every existing B and C business by its
 last check), so a certificate re-sighting of a known business waits its
-cadence. The sighting is still logged, and a sighting that names a host the
+cadence. A sighting of any compiled business carries `known: true` (the
+`known` ring, 400 days) and the worker treats it as a refresh: no
+first-contact name gate, since 2026-10-26. The sighting is still logged, and a sighting that names a host the
 business does not have yet recompiles it in the next compaction pass
 (`Compact.sightings_with_new_hosts_sql/2`), so hostnames keep flowing for a
 business the rings keep from being fetched; `LS.Recrawl.Scheduler` enqueues what is due every six hours, most

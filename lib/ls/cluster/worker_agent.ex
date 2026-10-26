@@ -317,7 +317,7 @@ defmodule LS.Cluster.WorkerAgent do
 
     # 2. Classify
     issuers = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d[:ctl_issuer] || ""} end)
-    refresh = for d <- domains, d[:source] == :recrawl, into: MapSet.new(), do: d[:ctl_domain] || d[:domain]
+    refresh = refresh_set(domains)
     # The homepage simhash from the last check, for refresh items only, so
     # the HTTP stage can skip the secondary pages of an unchanged site.
     prev_simhash = for d <- domains, d[:source] == :recrawl, is_integer(d[:prev_simhash]), d[:prev_simhash] > 0, into: %{}, do: {d[:ctl_domain] || d[:domain], d[:prev_simhash]}
@@ -571,7 +571,19 @@ defmodule LS.Cluster.WorkerAgent do
     do: (cands / domains) |> max(0.1) |> min(1.0)
 
   @doc """
-  Pure: the refresh items (`source: :recrawl`) of a batch whose name did
+  Pure: the domains of a batch that are refreshes of known businesses, by
+  the scheduler (`source: :recrawl`) or by a certificate re-sighting the
+  master tagged `known: true` (2026-10-26). These bypass the first-contact
+  name gate: their membership was decided by an observed page, and gating
+  them again parked thousands in the stable and dormant rings.
+  """
+  @spec refresh_set([map()]) :: MapSet.t()
+  def refresh_set(domains) do
+    for d <- domains, d[:source] == :recrawl or d[:known] == true, dom = d[:ctl_domain] || d[:domain], is_binary(dom), into: MapSet.new(), do: dom
+  end
+
+  @doc """
+  Pure: the refresh items (`source: :recrawl`, or `known: true`) of a batch whose name did
   not resolve to an address on this worker and that are not HTTP
   candidates. Found 2026-10-26: the master's liveness check lets a SERVFAIL
   or a timeout through ("let a worker try"), the worker then dropped the
@@ -587,7 +599,7 @@ defmodule LS.Cluster.WorkerAgent do
     cands = MapSet.new(http_cands, fn {d, _ip} -> d end)
 
     for d <- domains,
-        d[:source] == :recrawl,
+        d[:source] == :recrawl or d[:known] == true,
         dom = d[:ctl_domain] || d[:domain],
         is_binary(dom) and dom != "",
         not MapSet.member?(cands, dom),

@@ -200,6 +200,9 @@ defmodule LS.Cluster.Compactor do
     case Clickhouse.compiled_tiers(since, until) do
       {:ok, rows} ->
         by = Enum.group_by(rows, &elem(&1, 1), &elem(&1, 0))
+        # Every compiled business is known (2026-10-26): a re-sighting is a
+        # refresh, never a first contact.
+        LS.Cluster.CrawlDedup.mark_known(Enum.map(rows, &elem(&1, 0)))
         b = LS.Cluster.CrawlDedup.mark_tier_b(Map.get(by, "b", []))
         c = LS.Cluster.CrawlDedup.mark_tier_c(Map.get(by, "c", []))
         a = length(Map.get(by, "a", []))

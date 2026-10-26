@@ -200,11 +200,25 @@ defmodule LS.Cluster.WorkQueue do
 
       true ->
         now = System.system_time(:millisecond)
+        domain_data = tag_known(domain_data, domain)
         :ets.insert(@queue_table, {tail_key(domain_data), domain_data, now})
         :counters.add(counter_ref(), @idx_enqueued, 1)
         :ok
     end
   end
+
+  @doc """
+  Pure given the ring: a certificate item for a compiled business carries
+  `known: true`, so the worker treats it as a refresh and never runs it
+  through the first-contact name gate (2026-10-26). Refresh items are
+  known by construction and are left as they are.
+  """
+  @spec tag_known(map(), term()) :: map()
+  def tag_known(%{source: :recrawl} = data, _domain), do: data
+  def tag_known(%{} = data, domain) when is_binary(domain) and domain != "" do
+    if LS.Cluster.CrawlDedup.known?(domain), do: Map.put(data, :known, true), else: data
+  end
+  def tag_known(data, _), do: data
 
   @doc "Pure-ish: is this domain queued or in flight right now?"
   @spec queued?(term()) :: boolean()

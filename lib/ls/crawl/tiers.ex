@@ -108,6 +108,16 @@ defmodule LS.Crawl.Tiers do
     """
   end
 
+  @doc "Every non-junk business, one hash shard of `total`; feeds the known ring backfill."
+  @spec known_sql(non_neg_integer(), pos_integer()) :: String.t()
+  def known_sql(shard, total) when is_integer(shard) and is_integer(total) and shard >= 0 and shard < total do
+    """
+    SELECT domain FROM #{Tables.businesses()}
+    WHERE estimated_junk = '' AND cityHash64(domain) % #{total} = #{shard}
+    SETTINGS max_threads = 2, max_execution_time = 170
+    """
+  end
+
   @doc "Domain and tier of every non-junk business compiled in the window."
   @spec compiled_tiers_sql(integer(), integer()) :: String.t()
   def compiled_tiers_sql(since_unix, until_unix) do

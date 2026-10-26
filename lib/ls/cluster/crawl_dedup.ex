@@ -124,6 +124,17 @@ defmodule LS.Cluster.CrawlDedup do
     # it compiles; `backfill_tiers/0` marks everything else once, placed by
     # its last check so each releases on its own cadence (2026-10-24: the
     # tier C ring held 2.8M of 10.3M and 56K re-sightings a day got through).
+    # Known businesses (2026-10-26): every compiled non-junk business, any
+    # tier. A certificate re-sighting of a known business must not go
+    # through the first-contact name gate: that gate parked 2,442 of the
+    # 4,500 oldest due tier A and 4,135 of 4,634 due B/C in the stable or
+    # dormant ring (no mail setup, unlisted TLD), and the forced refresh
+    # respects those rings, so the businesses were never refreshed again.
+    # WorkQueue.enqueue/2 tags an item `known: true` when in here and the
+    # worker treats it like a refresh. Two windows of 200 days: a business
+    # not compiled for 400 days has left the product anyway. 30M at 1% is
+    # ~36 MB per window.
+    known: %{key: {__MODULE__, :known}, windows: 2, period_s: 200 * 86_400, capacity: 30_000_000, fp: 0.01, file: "known_blooms.bin", counter: {__MODULE__, :known_marked}},
     tier_b: %{key: {__MODULE__, :tier_b}, windows: 10, period_s: 10 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_b_blooms.bin", counter: {__MODULE__, :tier_b_marked}},
     tier_c: %{key: {__MODULE__, :tier_c}, windows: 10, period_s: 20 * 86_400, capacity: 8_000_000, fp: 0.01, file: "tier_c_blooms.bin", counter: {__MODULE__, :tier_c_marked}}
   }
@@ -202,6 +213,37 @@ defmodule LS.Cluster.CrawlDedup do
   @spec tiered?(term()) :: boolean()
   def tiered?(domain),
     do: Application.get_env(:ls, :tier_rings, true) and (in_ring?(:tier_b, domain) or in_ring?(:tier_c, domain))
+
+  @doc "True if the domain is a compiled business (any tier), so a re-sighting is a refresh, not a first contact."
+  @spec known?(term()) :: boolean()
+  def known?(domain), do: in_ring?(:known, domain)
+
+  @doc "Mark compiled businesses as known (400 days). Returns how many were written."
+  @spec mark_known([String.t()]) :: non_neg_integer()
+  def mark_known(domains), do: mark(:known, domains)
+
+  @doc """
+  Mark every non-junk business as known, once, in hash shards (2026-10-26).
+  Returns how many were written. Idempotent.
+  """
+  @spec backfill_known() :: non_neg_integer()
+  def backfill_known do
+    shards = 32
+
+    for shard <- 0..(shards - 1), reduce: 0 do
+      acc ->
+        case LS.Clickhouse.query_raw(LS.Crawl.Tiers.known_sql(shard, shards), 180_000) do
+          {:ok, rows} ->
+            n = mark(:known, Enum.map(rows, &hd/1))
+            if rem(shard, 8) == 7, do: Logger.info("🔁 CrawlDedup backfill known shard #{shard}: #{acc + n} marked so far")
+            acc + n
+
+          {:error, reason} ->
+            Logger.warning("🔁 CrawlDedup backfill known shard #{shard} failed: #{inspect(reason) |> String.slice(0, 200)}")
+            acc
+        end
+    end
+  end
 
   @doc "Mark tier B businesses (90-100 days). Returns how many were written."
   @spec mark_tier_b([String.t()]) :: non_neg_integer()
