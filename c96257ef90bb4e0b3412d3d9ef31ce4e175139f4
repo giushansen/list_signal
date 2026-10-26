@@ -1,0 +1,1 @@
+2026-10-26 11:20 UTC, 5.5h after c96257e: 8,120 unresolved refresh names recorded from worker batches (7,341 in the first 3h, 779 in the last 2h as the zombie head drained), 98.6% of recorded checks moved the compiled stamp within the next pass; tier A refresh rows per hour 2,492 -> 4,835 (was 1,700-3,100); rows per domain 1.000-1.010 across the deploy windows; hollow 0.
