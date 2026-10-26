@@ -1170,6 +1170,20 @@ SETTINGS index_granularity = 8192
 ;
 
 -- ═══ http_contacts ═══
+CREATE TABLE ls.http_people
+(
+    `domain` String,
+    `name` String,
+    `title` String DEFAULT '',
+    `email` String DEFAULT '',
+    `source_page` LowCardinality(String),
+    `seen_at` DateTime
+)
+ENGINE = ReplacingMergeTree(seen_at)
+ORDER BY (domain, name)
+SETTINGS index_granularity = 8192
+;
+
 CREATE TABLE ls.http_contacts
 (
     `domain` String,

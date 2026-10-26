@@ -143,6 +143,13 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    - **Address rule** (`LS.HTTP.SafeAddress`, 2026-10-26) — only a public
      address is ever connected to; the client connects to the validated
      address, not the name, and re-checks every redirect hop.
+   - **Secondary pages** (`LS.Pipeline.secondary_plan/2`, 2026-10-26) — up
+     to two more fetches: the page with the business's own address first
+     (imprint, contact, about; `/pages/contact` on a store), then pricing or
+     login for tech. Emails are classified (`LS.HTTP.EmailClass`), people
+     extracted (`LS.HTTP.People`), and per-address provenance written to
+     `http_contacts` and `http_people` through the master's child-table
+     writer.
    - **HTTP** (`LS.HTTP.Client` + detectors) — only for domains passing
      `LS.HTTP.DomainFilter` (Tranco-ranked, or high-value TLD + MX + SPF +
      not-junk). Fetches the homepage (and select secondary pages), extracts

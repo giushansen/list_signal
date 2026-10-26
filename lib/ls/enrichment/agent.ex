@@ -443,7 +443,11 @@ defmodule LS.Enrichment.Agent do
         html ->
           case PageExtractor.extract_all(html, domain) do
             {_pages, emails} when is_binary(emails) and emails != "" ->
-              emails |> String.split("|", trim: true) |> Enum.map(&{&1, kind})
+              # Placeholders never become contact rows (2026-10-26).
+              emails
+              |> String.split("|", trim: true)
+              |> Enum.reject(&(LS.HTTP.EmailClass.classify(&1, domain) == :placeholder))
+              |> Enum.map(&{&1, kind})
 
             _ ->
               []

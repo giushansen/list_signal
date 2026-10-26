@@ -61,6 +61,58 @@ migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
 
 ---
 
+## 2026-10-26: the address pages first, every email classified, people and provenance
+
+An outside review of live rows through the connector: on twelve ICP
+businesses (US agencies, small Shopify stores) zero named addresses; the
+two secondary fetches per homepage went to login and pricing for tech, so
+a store spent them on /products and /checkout and nobody read
+/pages/contact; form placeholders (`name@company.com`) scraped as
+mailboxes and fired the "email found" event; third-party addresses
+(`press@gymshark.com` on an unrelated store) sold unlabeled; two staff
+pages visited and nothing kept because there was no Person entity; one
+aggregated evidence string for the whole list.
+
+What changed, same fetch budget (up to two secondary pages):
+
+- `LS.Pipeline.secondary_plan/2`: the first slot is the page most likely to
+  carry the business's own address (imprint, contact, about, career; on a
+  Shopify store `/pages/contact` or `/pages/about-us`, newly recognised by
+  `LS.HTTP.PageExtractor`), read for emails, people, phone and tech; the
+  second is pricing or login for tech, or a `/policies/` page on a store.
+  Shopify's default robots.txt disallows `/policies/` (checked on
+  allbirds.com; gymshark.com allows `/pages/`), and the fetcher honours
+  that, so the policy page is read only where the store allows it. The
+  reviewer's suggestion to read the policy templates on every store is not
+  compatible with the /bot promise.
+- `LS.HTTP.EmailClass`: every address is classified at write time (named,
+  role, free_mail, sister, third_party, placeholder); only the first four
+  reach `http_emails`, in discovery and in the depth lane. Placeholder and
+  value attributes are blanked before any email pattern runs. The fold
+  publishes depth-lane contact rows only under the same rule
+  (`sellable_sql/0` in the `http_contacts` join), which is where the
+  third-party addresses were coming from. `email_pattern/1` reads the
+  shape of the named addresses.
+- `LS.HTTP.People`: JSON-LD Person nodes, mailto anchors with a name,
+  imprint lines (Geschäftsführer, Directeur de la publication...) and
+  team cards (name heading plus a title line). Precision first; at most
+  ten per page.
+- Provenance: discovery now writes one `http_contacts` row per address
+  with the page it came from (the depth lane's table, same writer), and
+  one `http_people` row per person (new child table, migration 028, no
+  change to `enrich_log` or `businesses`). The worker sends them beside
+  the batch (`WorkQueue` `:child_rows`), so the Inserter is untouched.
+- The API and MCP `get_company` carry `email_details` (kind and source
+  page per address), `email_pattern` and `people`, all derived at read
+  time.
+
+Not done, on purpose: pattern-based email guessing (no names to guess
+for until `http_people` fills), SMTP verification (never from the crawler
+fleet), alias-domain merging into one organisation (needs a canonical
+organisation model; a later change).
+
+---
+
 ## 2026-10-26: the crawler could be pointed at our own internal hosts
 
 Found in the data by a reviewer, not by us: `becauseweponder.us` resolved

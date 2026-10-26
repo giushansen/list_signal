@@ -271,7 +271,10 @@ defmodule LS.HTTP.TechDetector do
     |> add(m?(s, "api.mapbox.com") || m?(s, "cdn.mapbox.com"), "Mapbox")
     |> add(m?(s, "api.here.com") || m?(s, "js.api.here.com"), "HERE Maps")
     # --- Ecommerce ---
-    |> add(m?(s, "cdn.shopify.com") || m?(s, "sdks.shopifycdn.com"), "Shopify")
+    # A script URL on Shopify's CDN, not the string in prose or a code
+    # sample: browserstack.com documented Shopify and was listed as a store
+    # (2026-10-26).
+    |> add(m?(s, "cdn.shopify.com/s/") || m?(s, "cdn.shopify.com/shopifycloud/") || m?(s, "sdks.shopifycdn.com"), "Shopify")
     |> add(m?(s, "cdn.bigcommerce.com"), "BigCommerce")
     |> add(m?(s, "app.ecwid.com"), "Ecwid")
     |> add(m?(s, "cdn.lightspeedcommerce.com"), "Lightspeed")
@@ -441,7 +444,7 @@ defmodule LS.HTTP.TechDetector do
   defp from_inline(a, js) do
     l = String.downcase(js)
     a
-    |> add(c?(l, "shopify.theme") || c?(l, "shopifyanalytics"), "Shopify")
+    |> add(c?(l, "shopify.theme =") || c?(l, "shopify.theme={") || c?(l, "window.shopifyanalytics") || c?(l, "shopify.shop ="), "Shopify")
     |> add(c?(l, "__next_data__"), "Next.js")
     |> add(c?(l, "__nuxt__") || c?(l, "$nuxt"), "Nuxt.js")
     |> add(c?(l, "__remix"), "Remix")
@@ -481,7 +484,7 @@ defmodule LS.HTTP.TechDetector do
     |> add(c?(h, "data-squarespace"), "Squarespace")
     |> add(c?(h, "static.wixstatic.com") || c?(h, "parastorage.com"), "Wix")
     |> add(c?(h, "/wp-content/") || c?(h, "/wp-includes/"), "WordPress")
-    |> add(c?(h, "cdn.shopify.com") || c?(h, "shopify-section"), "Shopify")
+    |> add(c?(h, "cdn.shopify.com/s/files/") || c?(h, "id=\"shopify-section") || c?(h, "class=\"shopify-section"), "Shopify")
     |> add(c?(h, "/sites/default/files/"), "Drupal")
     |> add(c?(h, "data-mage-init") || c?(h, "x-magento-init"), "Magento")
     |> add(c?(h, "woocommerce-page") || c?(h, "wc-block"), "WooCommerce")

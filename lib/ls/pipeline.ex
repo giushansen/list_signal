@@ -143,7 +143,12 @@ defmodule LS.Pipeline do
           body = resp.body || ""
           tech_result = TechDetector.detect(resp)
           app_result = AppDetector.detect(body, tech_result.tech)
-          {pages, emails} = PageExtractor.extract_all(body, domain)
+          {pages, raw_emails} = PageExtractor.extract_all(body, domain)
+          # Only sellable kinds are published (2026-10-26, LS.HTTP.EmailClass):
+          # a person's or a role mailbox on the domain, a free-mail owner, a
+          # sister domain. Placeholders and third parties never reach the row.
+          home_emails = LS.HTTP.EmailClass.sellable_emails(String.split(raw_emails || "", "|", trim: true), domain)
+          emails = Enum.join(home_emails, "|")
           title = extract_title(body)
           meta_desc = extract_meta_desc(body)
           schema_type = SchemaExtractor.extract_schema_type(body)
@@ -190,7 +195,11 @@ defmodule LS.Pipeline do
             _country_evidence: CountryEvidence.detect(body),
             _body_text: body_text,
             _nav_links: nav_links,
-            _is_js_site: tech_result.is_js_site
+            _is_js_site: tech_result.is_js_site,
+            # Per-address provenance and the people on the page, written to
+            # the child tables by the master (2026-10-26).
+            _contacts: contact_rows(home_emails, domain, "homepage"),
+            _people: LS.HTTP.People.extract(body, "homepage")
           }
           # Best-effort, fully fault-isolated secondary-page enrichment. MUST be the
           # last thing that can touch the homepage result; on any failure it returns
@@ -230,47 +239,99 @@ defmodule LS.Pipeline do
   def refetch_secondary?(_, _), do: true
 
   # ===========================================================================
-  # PRIVATE — secondary-page enrichment (login + pricing)
+  # PRIVATE — secondary pages: the page with the address first, then tech
   # ===========================================================================
-  # Best-effort union of login/pricing-page tech into the homepage `http_tech`.
-  # Gated on http_status == 200 AND a matching discovered path. Fault-isolated:
-  # any failure returns the untouched homepage result. Never overwrites homepage
-  # fields, never changes http_status — only ADDS to http_tech (uniq union).
-  defp enhance_with_secondary_pages(%{http_status: 200, http_pages: pages} = result, domain, ip)
-       when is_binary(pages) and pages != "" do
-    paths = String.split(pages, "|")
-    login_path   = Enum.find(paths, &(&1 in ~w(/login /sign-in /signin /log-in /auth /account /dashboard /portal)))
-    pricing_path = Enum.find(paths, &String.starts_with?(&1, "/pricing"))
+  # Up to two more fetches per homepage, the same budget as before
+  # (2026-10-26). Until now both went to the login and pricing pages for
+  # tech detection, so a Shopify store spent them on /products and
+  # /checkout and nobody read /pages/contact. Now the first slot is the
+  # page most likely to carry the business's own address (imprint, contact,
+  # about, career; on a store, /pages/contact or /pages/about), read for
+  # emails, people and tech; the second is pricing or login for tech, or a
+  # policy page on a store whose robots.txt allows it. Every fetch still
+  # goes through LS.HTTP.Client, so robots.txt and the per-IP limiter apply.
+  # Fault-isolated: any failure returns the homepage result untouched;
+  # never changes http_status.
+  @address_kinds [:legal, :contact, :about, :career]
 
-    extra_tech =
-      [login_path, pricing_path]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.take(2)
-      |> Enum.flat_map(fn path -> tech_from_secondary_page(domain, ip, path) end)
+  @doc """
+  Pure: which pages to fetch after the homepage, at most two, as
+  `[{kind, path}]`. `tech` is the homepage's detected list, `pages` the
+  recorded `http_pages` string.
+  """
+  @spec secondary_plan([String.t()] | String.t() | nil, String.t() | nil) :: [{atom(), String.t()}]
+  def secondary_plan(tech, pages) do
+    tech = if is_binary(tech), do: String.split(tech, "|", trim: true), else: List.wrap(tech)
+    paths = if is_binary(pages), do: String.split(pages, "|", trim: true), else: []
+    by_kind = Enum.group_by(paths, &PageExtractor.page_kind/1)
+    first = fn kinds -> Enum.find_value(kinds, fn k -> case by_kind[k] do [p | _] -> {k, p}; _ -> nil end end) end
 
-    case extra_tech do
-      [] -> result
-      more ->
-        merged = (String.split(result.http_tech || "", "|", trim: true) ++ more) |> Enum.uniq() |> Enum.sort()
-        %{result | http_tech: Enum.join(merged, "|")}
+    address = first.(@address_kinds)
+
+    second =
+      if "Shopify" in tech,
+        do: first.([:policy]),
+        else: first.([:pricing, :login])
+
+    [address, second] |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&elem(&1, 1)) |> Enum.take(2)
+  rescue
+    _ -> []
+  end
+
+  defp enhance_with_secondary_pages(%{http_status: 200} = result, domain, ip) do
+    case secondary_plan(result[:http_tech], result[:http_pages]) do
+      [] ->
+        result
+
+      plan ->
+        Enum.reduce(plan, result, fn {kind, path}, acc -> merge_secondary(acc, domain, ip, kind, path) end)
     end
   rescue
     _ -> result
   end
+
   defp enhance_with_secondary_pages(result, _domain, _ip), do: result
 
-  # Best-effort fetch of one secondary page. Returns [] on ANY problem.
-  # Reuses LS.HTTP.Client (and therefore the per-IP rate limiter) with a tight timeout.
-  defp tech_from_secondary_page(domain, ip, path) do
-    url_path = String.trim_leading(path, "/")
-    case Client.fetch(domain, ip, path: "/" <> url_path, timeout: 10_000) do
-      {:ok, %{body: body, headers: headers}} ->
-        TechDetector.detect(%{body: body, headers: headers}).tech
-      _ -> []
+  # One secondary page folded into the homepage result: tech is unioned,
+  # emails are classified and unioned, people and per-address rows appended.
+  defp merge_secondary(result, domain, ip, kind, path) do
+    url_path = "/" <> String.trim_leading(path, "/")
+
+    case Client.fetch(domain, ip, path: url_path, timeout: 10_000) do
+      {:ok, %{status: status, body: body, headers: headers}} when status in 200..299 and is_binary(body) ->
+        tech = TechDetector.detect(%{body: body, headers: headers}).tech
+        source = Atom.to_string(kind)
+        emails = LS.HTTP.EmailClass.sellable_emails(String.split(PageExtractor.extract_emails(body) || "", "|", trim: true), domain)
+        people = if kind in @address_kinds, do: LS.HTTP.People.extract(body, source), else: []
+        phone = if result[:http_phone] in [nil, ""] and kind in @address_kinds, do: LS.HTTP.PageBlocks.extract(body).phone, else: result[:http_phone]
+
+        merged_tech = (String.split(result[:http_tech] || "", "|", trim: true) ++ tech) |> Enum.uniq() |> Enum.sort()
+        merged_emails = (String.split(result[:http_emails] || "", "|", trim: true) ++ emails) |> Enum.uniq() |> Enum.take(20)
+
+        result
+        |> Map.put(:http_tech, Enum.join(merged_tech, "|"))
+        |> Map.put(:http_emails, Enum.join(merged_emails, "|"))
+        |> Map.put(:http_phone, phone || "")
+        |> Map.update(:_contacts, [], &(&1 ++ contact_rows(emails, domain, source)))
+        |> Map.update(:_people, [], &((&1 ++ people) |> Enum.uniq_by(fn p -> p.name end) |> Enum.take(10)))
+
+      _ ->
+        result
     end
   rescue
-    _ -> []
+    _ -> result
   end
+
+  @doc false
+  # Pure: the http_contacts rows for the addresses found on one page.
+  def contact_rows(emails, domain, source) when is_list(emails) do
+    for e <- emails, is_binary(e) and e != "" do
+      kind = LS.HTTP.EmailClass.classify(e, domain)
+      %{email: e, source_page: source, on_domain: if(kind in [:named, :role], do: 1, else: 0), kind: Atom.to_string(kind)}
+    end
+  end
+
+  def contact_rows(_, _, _), do: []
 
   def bgp(ip) when is_binary(ip) do
     case GenServer.call(BGPResolver, {:lookup, ip}, 30_000) do

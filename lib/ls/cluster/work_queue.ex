@@ -507,6 +507,16 @@ defmodule LS.Cluster.WorkQueue do
     {:noreply, state}
   end
 
+  # Per-address provenance and people from a discovery batch (2026-10-26):
+  # written to the child tables off the queue process.
+  def handle_cast({:child_rows, %{} = rows}, state) do
+    if (rows[:contacts] || []) != [] or (rows[:people] || []) != [] do
+      Task.start(fn -> LS.Cluster.EnrichmentWriter.write_discovery(rows) end)
+    end
+
+    {:noreply, state}
+  end
+
   # A running batch resets its in-flight clock. Unknown ids (already
   # completed, or requeued before the worker's first beat) are ignored.
   def handle_cast({:heartbeat, batch_id}, state) do

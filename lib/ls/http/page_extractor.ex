@@ -85,6 +85,11 @@ defmodule LS.HTTP.PageExtractor do
   # HTML cleaning regexes (merged from HTMLCleaner)
   @style_regex ~r/<style\b[^>]*>.*?<\/style>/is
   @comment_regex ~r/<!--.*?-->/s
+  # Form hints are not addresses (2026-10-26): `placeholder="name@company.com"`
+  # and `value="john@mydomain.com"` were scraped as real mailboxes and fired
+  # the "email found" event. The attribute values are blanked before any
+  # email pattern runs; `mailto:` and `data-email` live in other attributes.
+  @form_hint_regex ~r/\s(?:placeholder|value)\s*=\s*(?:"[^"]*"|'[^']*')/i
 
   # Email extraction patterns
   @mailto_regex ~r/mailto:([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/i
@@ -185,6 +190,17 @@ defmodule LS.HTTP.PageExtractor do
   ]
 
   # Contact patterns
+  # Shopify stores keep their pages under /pages/ (2026-10-26): the store's
+  # contact and about pages were never recognised, so the fetch budget went
+  # to /products and /checkout and the merchant's address stayed unread.
+  @shopify_contact_patterns ["/pages/contact", "/pages/contact-us", "/pages/contacts", "/pages/kontakt", "/pages/contacto", "/pages/contactez-nous"]
+  @shopify_about_patterns ["/pages/about", "/pages/about-us", "/pages/our-story", "/pages/story", "/pages/who-we-are", "/pages/ueber-uns", "/pages/a-propos"]
+  # Shopify's generated policy pages carry the store's registered contact
+  # address and legal name. Recorded as their own kind: most stores' default
+  # robots.txt disallows /policies/, and the fetcher honours that; a store
+  # that allows it gets the page.
+  @policy_patterns ["/policies/contact-information", "/policies/privacy-policy", "/policies/refund-policy", "/policies/terms-of-service", "/policies/shipping-policy", "/policies/legal-notice"]
+
   @contact_patterns_en [
     "/contact", "/contact-us", "/get-in-touch", "/reach-us",
     "/support", "/help", "/feedback", "/inquiry", "/sales", "/demo"
@@ -304,14 +320,16 @@ defmodule LS.HTTP.PageExtractor do
   @all_contact_patterns (
     @contact_patterns_en ++ @contact_patterns_fr ++ @contact_patterns_es ++
     @contact_patterns_zh ++ @contact_patterns_de ++ @contact_patterns_pt ++
-    @contact_patterns_ja ++ @contact_patterns_it ++ @contact_patterns_nl
+    @contact_patterns_ja ++ @contact_patterns_it ++ @contact_patterns_nl ++
+    @shopify_contact_patterns
   )
+  @all_about_patterns @about_patterns ++ @shopify_about_patterns
 
   # Build ALL page patterns ONCE
   @all_page_patterns (
     @all_pricing_patterns ++ @all_contact_patterns ++
     @signup_patterns_en ++ @docs_patterns_en ++ @login_patterns_en ++
-    @career_patterns ++ @legal_patterns ++ @about_patterns
+    @career_patterns ++ @legal_patterns ++ @all_about_patterns ++ @policy_patterns
   )
 
   # Build MapSets ONCE using pre-combined lists
@@ -323,7 +341,8 @@ defmodule LS.HTTP.PageExtractor do
   @docs_set MapSet.new(@docs_patterns_en)
   @career_set MapSet.new(@career_patterns)
   @legal_set MapSet.new(@legal_patterns)
-  @about_set MapSet.new(@about_patterns)
+  @about_set MapSet.new(@all_about_patterns)
+  @policy_set MapSet.new(@policy_patterns)
 
   @doc """
   Classify a path recorded in `http_pages` into the kind of page it is.
@@ -338,7 +357,7 @@ defmodule LS.HTTP.PageExtractor do
       nil
   """
   @spec page_kind(String.t()) ::
-          :contact | :legal | :about | :pricing | :career | :login | :signup | :docs | nil
+          :contact | :legal | :about | :policy | :pricing | :career | :login | :signup | :docs | nil
   def page_kind(path) when is_binary(path) do
     p = String.downcase(path)
 
@@ -347,6 +366,7 @@ defmodule LS.HTTP.PageExtractor do
       MapSet.member?(@legal_set, p) -> :legal
       legal_stem?(p) -> :legal
       MapSet.member?(@about_set, p) -> :about
+      MapSet.member?(@policy_set, p) -> :policy
       MapSet.member?(@pricing_set, p) -> :pricing
       MapSet.member?(@career_set, p) -> :career
       MapSet.member?(@login_set, p) -> :login
@@ -507,6 +527,7 @@ defmodule LS.HTTP.PageExtractor do
     html
     |> String.replace(@style_regex, " ")
     |> String.replace(@comment_regex, " ")
+    |> String.replace(@form_hint_regex, " ")
   end
 
   defp clean_html(_), do: ""
@@ -738,6 +759,7 @@ defmodule LS.HTTP.PageExtractor do
       MapSet.member?(@legal_set, path) -> 0
       MapSet.member?(@contact_set, path) -> 1
       MapSet.member?(@about_set, path) -> 2
+      MapSet.member?(@policy_set, path) -> 3
       MapSet.member?(@pricing_set, path) -> 3
       MapSet.member?(@career_set, path) -> 4
       MapSet.member?(@signup_set, path) -> 5

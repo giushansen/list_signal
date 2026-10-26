@@ -73,6 +73,21 @@ defmodule LS.Cluster.EnrichmentWriter do
     :ok
   end
 
+  @doc """
+  Persist what a discovery batch found beside its rows (2026-10-26): one
+  `http_contacts` row per address with the page it came from, and one
+  `http_people` row per named person. Same tables, same writer, so the
+  depth lane and discovery never disagree about provenance.
+  """
+  @spec write_discovery(%{optional(:contacts) => [map()], optional(:people) => [map()]}) :: :ok
+  def write_discovery(%{} = rows) do
+    insert(LS.Schema.Tables.http_contacts(), ~w(domain email source_page on_domain seen_at), List.wrap(rows[:contacts]))
+    insert(LS.Schema.Tables.http_people(), ~w(domain name title email source_page seen_at), List.wrap(rows[:people]))
+    :ok
+  end
+
+  def write_discovery(_), do: :ok
+
   @doc "Columns of `biz_enrichment` — the 1:1 signals the compactor merges into `businesses`."
   def summary_columns do
     ~w(domain enriched_at render_engine

@@ -38,9 +38,53 @@ defmodule LS.ApiData do
         |> Enum.zip(row)
         |> Map.new(fn {k, v} -> {String.to_atom(k), v} end)
         |> Map.put(:changes, LS.Explorer.recent_changes(domain, 20))
+        |> with_contacts(d)
 
       _ ->
         nil
+    end
+  end
+
+  # Who is behind the address (2026-10-26): each published email with its
+  # kind and the page it was found on, the naming pattern the named ones
+  # imply, and the people found on the site. All derived at read time from
+  # the row and two keyed child reads; nothing new is stored on the row.
+  defp with_contacts(record, d) do
+    emails = List.wrap(record[:http_emails])
+    sources = contact_sources(d)
+
+    classified =
+      Enum.map(emails, fn e ->
+        %{email: e, kind: LS.HTTP.EmailClass.classify(e, d) |> Atom.to_string(), source_page: Map.get(sources, e, "homepage")}
+      end)
+
+    pattern =
+      case LS.HTTP.EmailClass.email_pattern(emails) do
+        {shape, n} -> %{pattern: shape, support: n}
+        nil -> nil
+      end
+
+    record
+    |> Map.put(:email_details, classified)
+    |> Map.put(:email_pattern, pattern)
+    |> Map.put(:people, people(d))
+  end
+
+  defp contact_sources(d) do
+    sql = "SELECT email, argMax(source_page, seen_at) FROM #{Tables.http_contacts()} WHERE domain = '#{d}' GROUP BY email LIMIT 40"
+
+    case Clickhouse.query_raw(sql, 5_000) do
+      {:ok, rows} -> Map.new(rows, fn [e, p] -> {e, p} end)
+      _ -> %{}
+    end
+  end
+
+  defp people(d) do
+    sql = "SELECT name, argMax(title, seen_at), argMax(email, seen_at), argMax(source_page, seen_at), toString(max(seen_at)) FROM #{Tables.http_people()} WHERE domain = '#{d}' GROUP BY name ORDER BY max(seen_at) DESC LIMIT 20"
+
+    case Clickhouse.query_raw(sql, 5_000) do
+      {:ok, rows} -> Enum.map(rows, fn [n, t, e, s, at] -> %{name: n, title: t, email: e, source_page: s, seen_at: at} end)
+      _ -> []
     end
   end
 

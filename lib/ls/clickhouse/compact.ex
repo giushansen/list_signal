@@ -578,7 +578,8 @@ defmodule LS.Clickhouse.Compact do
     LEFT JOIN (
       /* Addresses the deep pass found on the contact, legal, about and
          pricing pages, with the page each came from. */
-      SELECT domain, groupUniqArray(20)(email) AS emails, groupUniqArray(source_page) AS pages
+      SELECT domain, groupUniqArrayIf(20)(email, #{LS.HTTP.EmailClass.sellable_sql()}) AS emails,
+             groupUniqArrayIf(source_page, #{LS.HTTP.EmailClass.sellable_sql()}) AS pages
       FROM #{Tables.http_contacts()}#{join_scope} GROUP BY domain
     ) ct ON h.domain = ct.domain
     SETTINGS max_bytes_before_external_group_by = #{spill}, max_bytes_ratio_before_external_group_by = #{spill_ratio},

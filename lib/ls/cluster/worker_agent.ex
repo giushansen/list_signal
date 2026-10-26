@@ -187,6 +187,9 @@ defmodule LS.Cluster.WorkerAgent do
     # The verdicts travel with the rows so the gate can remember them
     # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
     GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved, :unresolved_refresh])})
+    # Per-address provenance and people (2026-10-26) go to the child tables
+    # on the master, separate from the row so the Inserter is untouched.
+    GenServer.cast(queue, {:child_rows, Map.get(skipped, :child_rows, %{})})
     # What this batch could not fetch goes back: untouched surplus to the
     # front, deadline-cut candidates to the tail (2026-10-24).
     LS.Cluster.WorkQueue.requeue(queue, Map.get(skipped, :returned_front, []), :front)
@@ -384,6 +387,7 @@ defmodule LS.Cluster.WorkerAgent do
       skipped
       |> Map.put(:returned_front, for({d, _ip} <- surplus, item = by_domain[d], do: item))
       |> Map.put(:returned_tail, for({d, _ip} <- cut, item = by_domain[d], do: item))
+      |> Map.put(:child_rows, child_rows(http_res))
 
     # 4. Merge (reputation + classification + scoring happen here)
     {merge_us, merged} =
@@ -573,6 +577,29 @@ defmodule LS.Cluster.WorkerAgent do
   def candidate_ratio(_cands, 0), do: 0.4
   def candidate_ratio(cands, domains) when is_integer(cands) and is_integer(domains),
     do: (cands / domains) |> max(0.1) |> min(1.0)
+
+  @doc """
+  Pure: the http_contacts and http_people rows a batch's HTTP results carry
+  (2026-10-26), stamped with the domain and the crawl time.
+  """
+  @spec child_rows(map()) :: %{contacts: [map()], people: [map()]}
+  def child_rows(http_res) when is_map(http_res) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
+
+    contacts =
+      for {domain, r} <- http_res, is_map(r), c <- List.wrap(r[:_contacts]), is_map(c) do
+        %{domain: domain, email: c.email, source_page: c.source_page, on_domain: c.on_domain, seen_at: now}
+      end
+
+    people =
+      for {domain, r} <- http_res, is_map(r), p <- List.wrap(r[:_people]), is_map(p) do
+        %{domain: domain, name: p.name, title: p.title || "", email: p.email || "", source_page: p.source || "homepage", seen_at: now}
+      end
+
+    %{contacts: contacts, people: people}
+  end
+
+  def child_rows(_), do: %{contacts: [], people: []}
 
   @doc """
   Pure: the domains of a batch that are refreshes of known businesses, by
