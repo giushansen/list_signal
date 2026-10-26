@@ -56,8 +56,8 @@ defmodule LS.Recrawl.Liveness do
   `{:error, :resolver_suspect}` when an anchor name fails: trust nothing
   from this run.
   """
-  @spec partition([due()], (String.t() -> term())) :: {:ok, [due()], [due()]} | {:error, :resolver_suspect}
-  def partition(domains, resolve \\ &resolve/1) do
+  @spec partition([due()], (String.t() -> term()), pos_integer()) :: {:ok, [due()], [due()]} | {:error, :resolver_suspect}
+  def partition(domains, resolve \\ &resolve/1, lookup_timeout_ms \\ @lookup_timeout_ms) do
     if Enum.all?(@anchors, &alive?(resolve.(&1))) do
       {live, dead} =
         domains
@@ -65,13 +65,17 @@ defmodule LS.Recrawl.Liveness do
         # (tier, and since 2026-10-23 the stored simhash) rides along untouched.
         # Matching `{d, _}` here crash-looped the scheduler every five minutes
         # for two hours when the third element arrived (2026-10-23 evening).
-        |> Task.async_stream(fn item -> {item, dead?(resolve.(elem(item, 0)))} end,
-          max_concurrency: @concurrency, timeout: @lookup_timeout_ms, on_timeout: :kill_task, ordered: false)
+        |> Task.async_stream(fn item -> dead?(resolve.(elem(item, 0))) end,
+          max_concurrency: @concurrency, timeout: lookup_timeout_ms, on_timeout: :kill_task, ordered: true)
+        |> Enum.zip(domains)
         |> Enum.reduce({[], []}, fn
-          {:ok, {item, true}}, {l, d} -> {l, [item | d]}
-          {:ok, {item, false}}, {l, d} -> {[item | l], d}
-          # A lookup that outran its task: not evidence of death, let a worker try.
-          {:exit, _}, acc -> acc
+          {{:ok, true}, item}, {l, d} -> {l, [item | d]}
+          {{:ok, false}, item}, {l, d} -> {[item | l], d}
+          # A lookup that outran its task: not evidence of death, let a
+          # worker try. Until 2026-10-26 the killed task carried no item and
+          # the name silently left the tick; the worker now records what it
+          # cannot resolve (WorkQueue.record_unresolved_refresh/1).
+          {{:exit, _}, item}, {l, d} -> {[item | l], d}
         end)
 
       {:ok, Enum.reverse(live), Enum.reverse(dead)}

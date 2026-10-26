@@ -194,10 +194,11 @@ defmodule LS.Recrawl.Scheduler do
         # nothing the queue already holds (WorkQueue.queued?/1): a tier B
         # item waits hours behind discovery and its compiled row still says
         # due at the next tick.
-        domains = Enum.reject(domains, fn {d, _tier, _simhash} -> LS.Cluster.WorkQueue.queued?(d) end)
+        {queued, domains} = Enum.split_with(domains, fn {d, _tier, _simhash} -> LS.Cluster.WorkQueue.queued?(d) end)
+        taken = Enum.take(domains, target - enqueued)
 
         {domains, dead_recorded} =
-          case LS.Recrawl.Liveness.partition(Enum.take(domains, target - enqueued)) do
+          case LS.Recrawl.Liveness.partition(taken) do
             {:ok, live, dead_list} ->
               case LS.Recrawl.Liveness.record_dead(dead_list) do
                 {:ok, n} -> {live, n}
@@ -208,11 +209,11 @@ defmodule LS.Recrawl.Scheduler do
 
             {:error, :resolver_suspect} ->
               Logger.error("[RECRAWL] master resolver failed an anchor name; sending all #{count} to workers")
-              {Enum.take(domains, target - enqueued), 0}
+              {taken, 0}
           end
 
-        added =
-          Enum.reduce(domains, 0, fn {domain, tier, simhash}, acc ->
+        {added, refused} =
+          Enum.reduce(domains, {0, %{}}, fn {domain, tier, simhash}, {acc, ref} ->
             # Use the same :ctl_domain key CTL items carry so the worker pipeline
             # (enrich_dns/merge_results) can read it uniformly regardless of source.
             # The stored homepage simhash lets the worker skip the secondary
@@ -222,15 +223,21 @@ defmodule LS.Recrawl.Scheduler do
             # This IS the schedule: stale_domains already selected only domains
             # past their cadence, so the daily and tier rings have nothing to add.
             case LS.Cluster.WorkQueue.enqueue(data, force: true) do
-              :ok -> acc + 1
+              :ok -> {acc + 1, ref}
               :queue_full ->
                 Logger.warning("[RECRAWL] WorkQueue full, stopping enqueue at #{enqueued + acc}")
                 throw({:queue_full, enqueued + acc, dead + dead_recorded})
-              _ -> acc
+              other -> {acc, Map.update(ref, other, 1, &(&1 + 1))}
             end
           end)
 
-        Logger.info("[RECRAWL] Enqueued #{added}/#{count} stale #{Enum.join(tiers, "/")} domains (#{dead_recorded} dead recorded on the master)")
+        # Every name read is accounted for (2026-10-26): still queued or in
+        # flight, taken this pass, dead, admitted, or refused by a ring.
+        Logger.info(
+          "[RECRAWL] Enqueued #{added}/#{count} stale #{Enum.join(tiers, "/")} domains " <>
+            "(#{dead_recorded} dead recorded on the master; #{length(queued)} already queued or in flight, " <>
+            "#{length(taken)} taken, refused #{inspect(refused)})"
+        )
 
         if count < block,
           do: {enqueued + added, dead + dead_recorded, false},
