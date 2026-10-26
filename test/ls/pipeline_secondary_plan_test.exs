@@ -11,26 +11,29 @@ defmodule LS.PipelineSecondaryPlanTest do
   alias LS.Pipeline
   alias LS.HTTP.PageExtractor
 
-  test "a Shopify store reads its contact page first, then a policy page if one is linked" do
+  test "a Shopify store reads its contact page; a policy page only when no contact or about page is linked" do
     pages = "/products/mug|/collections/all|/pages/contact|/pages/about-us|/policies/privacy-policy|/account/login|/checkout"
-    assert Pipeline.secondary_plan(["Shopify", "Klaviyo"], pages) == [contact: "/pages/contact", policy: "/policies/privacy-policy"]
+    assert Pipeline.secondary_plan(["Shopify", "Klaviyo"], pages) == [contact: "/pages/contact"]
+    assert Pipeline.secondary_plan(["Shopify"], "/policies/privacy-policy|/products/x") == [policy: "/policies/privacy-policy"]
   end
 
   test "a store with no contact page falls back to about; login and checkout are never chosen for it" do
     assert Pipeline.secondary_plan("Shopify|Judge.me", "/pages/about-us|/account/login|/products/x") == [about: "/pages/about-us"]
   end
 
-  test "an agency or SaaS site reads imprint or contact first and pricing or login second" do
-    assert Pipeline.secondary_plan(["WordPress"], "/pricing|/contact|/login|/blog") == [contact: "/contact", pricing: "/pricing"]
-    assert Pipeline.secondary_plan(["Next.js"], "/impressum|/kontakt|/login") == [legal: "/impressum", login: "/login"]
-    assert Pipeline.secondary_plan([], "/team|/pricing") == [about: "/team", pricing: "/pricing"]
+  test "an agency or SaaS site reads imprint or contact; pricing or login only when no address page is linked" do
+    assert Pipeline.secondary_plan(["WordPress"], "/pricing|/contact|/login|/blog") == [contact: "/contact"]
+    assert Pipeline.secondary_plan(["Next.js"], "/impressum|/kontakt|/login") == [legal: "/impressum"]
+    assert Pipeline.secondary_plan([], "/team|/pricing") == [about: "/team"]
+    assert Pipeline.secondary_plan(["Next.js"], "/pricing|/login|/blog") == [pricing: "/pricing"]
+    assert Pipeline.secondary_plan([], "/login|/docs") == [login: "/login"]
   end
 
-  test "never more than two, never the same path twice, and nothing when nothing is linked" do
+  test "never more than one (2026-10-27: two left half the secondary requests spent and lost at the deadline), nothing when nothing is linked" do
     assert Pipeline.secondary_plan([], "") == []
     assert Pipeline.secondary_plan(nil, nil) == []
     assert Pipeline.secondary_plan(["Shopify"], "/products/a|/products/b") == []
-    assert length(Pipeline.secondary_plan([], "/contact|/about|/pricing|/login|/careers")) == 2
+    assert length(Pipeline.secondary_plan([], "/contact|/about|/pricing|/login|/careers")) == 1
   end
 
   test "the Shopify paths are recognised as contact, about and policy kinds" do

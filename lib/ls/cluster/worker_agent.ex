@@ -537,7 +537,8 @@ defmodule LS.Cluster.WorkerAgent do
   # for whatever finished until the stage deadline, dropped if not. The
   # cap counts both.
   @home_slots 2.2
-  @secondary_slots 1.2
+  # One secondary page per homepage since 2026-10-27 (Pipeline.secondary_plan/2).
+  @secondary_slots 1.1
   @slots_per_candidate @home_slots + @secondary_slots
   # The share of the master's 10-minute in-flight timeout a batch may spend
   # fetching: DNS takes up to 30 s, merge and ML up to 60 s, 90 s margin.

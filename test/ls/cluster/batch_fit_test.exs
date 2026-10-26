@@ -15,19 +15,19 @@ defmodule LS.Cluster.BatchFitTest do
 
   alias LS.Cluster.WorkerAgent
 
-  test "the stage bound counts 3.4 slots per candidate (homepage 2.2 plus secondary pages 1.2), never below two minutes" do
+  test "the stage bound counts 3.3 slots per candidate (homepage 2.2 plus one secondary page 1.1), never below two minutes" do
     # 2026-10-27: the address page joined the plan and the old 2.2 cut 124
-    # of 143 candidates per batch. 350 candidates at 140/min: 350 * 3.4 *
-    # 60000 / 140 = 510 s, plus a minute of slack.
-    assert WorkerAgent.http_stage_timeout(350, 140) == 570_000
-    assert WorkerAgent.http_stage_timeout(50, 140) == 132_857
-    assert WorkerAgent.http_stage_timeout(123, 60) == 478_200
+    # of 143 candidates per batch. 350 candidates at 140/min: 350 * 3.3 *
+    # 60000 / 140 = 495 s, plus a minute of slack.
+    assert WorkerAgent.http_stage_timeout(350, 140) == 555_000
+    assert WorkerAgent.http_stage_timeout(50, 140) == 130_714
+    assert WorkerAgent.http_stage_timeout(127, 60) == 479_100
   end
 
   test "the candidate cap is what the batch's budget share finishes inside the window" do
-    # 60 slots/min for 7 minutes is 420 slots; at 3.4 each that is 123 candidates.
-    assert WorkerAgent.http_candidate_cap(60, 420_000) == 123
-    assert WorkerAgent.http_candidate_cap(140, 420_000) == 288
+    # 60 slots/min for 7 minutes is 420 slots; at 3.3 each that is 127 candidates.
+    assert WorkerAgent.http_candidate_cap(60, 420_000) == 127
+    assert WorkerAgent.http_candidate_cap(140, 420_000) == 296
     # A tiny share still fetches something rather than stalling.
     assert WorkerAgent.http_candidate_cap(1, 420_000) == 20
     assert WorkerAgent.http_candidate_cap(0, 420_000) == 20
@@ -75,7 +75,7 @@ defmodule LS.Cluster.BatchFitTest do
   test "the dequeue asks for enough names to reach the cap at the learned pass rate, within bounds" do
     assert WorkerAgent.dequeue_size(190, 0.4, 1000) == 475
     assert WorkerAgent.dequeue_size(190, 0.95, 1000) == 200
-    assert WorkerAgent.dequeue_size(123, 0.4, 1000) == 308
+    assert WorkerAgent.dequeue_size(127, 0.4, 1000) == 318
     # A pass rate that would ask for the whole queue is bounded by the configured batch size.
     assert WorkerAgent.dequeue_size(190, 0.05, 1000) == 1000
     # A pass rate above 1 is nonsense: clamp, and never ask for fewer than 100.

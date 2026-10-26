@@ -260,9 +260,14 @@ defmodule LS.Pipeline do
   @address_kinds [:legal, :contact, :about, :career]
 
   @doc """
-  Pure: which pages to fetch after the homepage, at most two, as
+  Pure: which page to fetch after the homepage, at most one, as
   `[{kind, path}]`. `tech` is the homepage's detected list, `pages` the
-  recorded `http_pages` string.
+  recorded `http_pages` string. The address page when the site links one;
+  otherwise pricing or login for tech (a policy page on a store). One, not
+  two (2026-10-27): with two, 48 of 84 secondary pages per batch were
+  still in flight at the deadline and their requests were lost; one page
+  fits the 1.1-slot share the cap reserves, and the address page is the
+  one that pays.
   """
   @spec secondary_plan([String.t()] | String.t() | nil, String.t() | nil) :: [{atom(), String.t()}]
   def secondary_plan(tech, pages) do
@@ -273,12 +278,12 @@ defmodule LS.Pipeline do
 
     address = first.(@address_kinds)
 
-    second =
+    fallback =
       if "Shopify" in tech,
         do: first.([:policy]),
         else: first.([:pricing, :login])
 
-    [address, second] |> Enum.reject(&is_nil/1) |> Enum.uniq_by(&elem(&1, 1)) |> Enum.take(2)
+    [address || fallback] |> Enum.reject(&is_nil/1)
   rescue
     _ -> []
   end
