@@ -140,6 +140,9 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 4. **Enrichment** — per batch, on the worker:
    - **DNS** (`LS.DNS.Resolver`) — A/AAAA/MX/TXT/CNAME via *pinned* local
      Unbound. Runs for every domain.
+   - **Address rule** (`LS.HTTP.SafeAddress`, 2026-10-26) — only a public
+     address is ever connected to; the client connects to the validated
+     address, not the name, and re-checks every redirect hop.
    - **HTTP** (`LS.HTTP.Client` + detectors) — only for domains passing
      `LS.HTTP.DomainFilter` (Tranco-ranked, or high-value TLD + MX + SPF +
      not-junk). Fetches the homepage (and select secondary pages), extracts

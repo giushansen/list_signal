@@ -61,6 +61,40 @@ migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
 
 ---
 
+## 2026-10-26: the crawler could be pointed at our own internal hosts
+
+Found in the data by a reviewer, not by us: `becauseweponder.us` resolved
+to `10.0.0.156`, a worker connected to it over the WireGuard mesh, and the
+master's homepage (title, h1, `will@listsignal.com`) was written into that
+business's row. 282 businesses carried our homepage title, 5,048 had a
+private or loopback address on record, 4,562 of those with a 2xx. Two
+causes. `LS.HTTP.Client` validated the address for the rate limiter and
+then connected Mint by hostname, so the socket went wherever a second
+resolution said, and a redirect to another host connected by name with no
+check and no limiter at all. And the origin served the site under any Host
+header, so `ctf-nm.org`, proxied through Cloudflare at our address, was
+recorded as a business whose page was ours.
+
+Now: `LS.HTTP.SafeAddress.public?/1` refuses RFC 1918, loopback,
+link-local, CGNAT, documentation, multicast and reserved ranges, and IPv4
+carried inside IPv6; the worker picks only a public address from DNS
+(`first_public/1`), the client refuses a non-public address before any
+request and connects to the validated address with `hostname:` for SNI and
+Host, a cross-host redirect is resolved, checked and paced on the per-IP
+limiter (`hop_address/4`), the enrichment agent re-checks the stored
+address, and the browser lane resolves the name in Elixir before the
+sidecar sees it. `LSWeb.Plugs.HostGuard` answers 421 for any Host that is
+not the configured site, its `www.` form, a loopback or mesh probe, or
+`LS_ALLOWED_HOSTS`. The 282 and 361 leaked rows were deleted from
+`businesses` and `domains` by title; the private-address rows keep their
+old data and record `private_address` on their next check. A refresh of a
+known business that now resolves only to a private address is recorded as
+unresolved. Residual risk: the sidecar re-resolves the name for the render
+itself, so a rebinding between the two lookups is possible; its request
+gate blocks private literals and non-standard ports.
+
+---
+
 ## 2026-10-26: the due list had a head of zombies; failed DNS on a refresh now records the check
 
 Day-and-a-half check after the 10-24 fixes: rows per distinct domain

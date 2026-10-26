@@ -55,8 +55,11 @@ defmodule LS.HTTP.Client do
     uri = URI.parse(url)
     path = [uri.path || "/", if(uri.query, do: "?" <> uri.query, else: "")] |> Enum.join()
 
-    case uri.host && LS.DNS.Resolver.lookup(uri.host) do
-      {:ok, %{a: [ip | _]}} -> fetch(uri.host, ip, Keyword.put(opts, :path, path))
+    with host when is_binary(host) <- uri.host,
+         {:ok, %{a: ips}} <- LS.DNS.Resolver.lookup(host),
+         ip when is_binary(ip) <- LS.HTTP.SafeAddress.first_public(ips) do
+      fetch(host, ip, Keyword.put(opts, :path, path))
+    else
       _ -> {:error, :no_ip}
     end
   rescue
@@ -105,6 +108,15 @@ defmodule LS.HTTP.Client do
       # the check would recurse.
       not LS.HTTP.Robots.exempt?(path) and LS.HTTP.Robots.check(domain, ip, path) == :disallow ->
         {:error, "robots_disallow", :robots_disallow}
+
+      # A private, loopback, link-local or otherwise non-public address is
+      # never connected to (2026-10-26): a name pointed at 10.0.0.x read the
+      # master's own homepage into a business row over the mesh. Checked
+      # after the two opt-out gates so their verdicts keep precedence, and
+      # before any socket: the connection below goes to this validated
+      # address, never to the name.
+      not LS.HTTP.SafeAddress.public?(ip) ->
+        {:error, "private_address", :private_address}
 
       true ->
         do_fetch(domain, ip, opts)
@@ -177,11 +189,13 @@ defmodule LS.HTTP.Client do
     {:error, "too_many_redirects", :too_many_redirects}
   end
 
-  defp fetch_with_redirects(domain, _ip, redirect_count, path, recv_timeout, max_bytes) do
+  defp fetch_with_redirects(domain, ip, redirect_count, path, recv_timeout, max_bytes) do
     start_time = System.monotonic_time(:millisecond)
 
-    # Mint connection options
+    # Mint connection options. The socket goes to the validated address;
+    # `hostname` keeps the Host header and TLS SNI on the name (2026-10-26).
     opts = [
+      hostname: domain,
       timeout: @connect_timeout,
       protocols: [:http1],
       transport_opts: [
@@ -195,9 +209,9 @@ defmodule LS.HTTP.Client do
       ]
     ]
 
-    case Mint.HTTP.connect(:https, domain, 443, opts) do
+    case Mint.HTTP.connect(:https, ip, 443, opts) do
       {:ok, conn} ->
-        perform_request(conn, domain, start_time, redirect_count, path, recv_timeout, max_bytes)
+        perform_request(conn, domain, ip, start_time, redirect_count, path, recv_timeout, max_bytes)
 
       {:error, error} ->
         reason = format_error(error)
@@ -211,12 +225,12 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp perform_request(conn, domain, start_time, redirect_count, path, recv_timeout, max_bytes) do
+  defp perform_request(conn, domain, ip, start_time, redirect_count, path, recv_timeout, max_bytes) do
     headers = build_headers(domain)
 
     case Mint.HTTP.request(conn, "GET", path, headers, nil) do
       {:ok, conn, request_ref} ->
-        receive_response(conn, domain, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes)
+        receive_response(conn, domain, ip, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes)
 
       {:error, _conn, error} ->
         reason = format_error(error)
@@ -231,7 +245,7 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp receive_response(conn, domain, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes) do
+  defp receive_response(conn, domain, ip, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes) do
     # Start receive timeout
     receive_deadline = System.monotonic_time(:millisecond) + recv_timeout
 
@@ -267,12 +281,11 @@ defmodule LS.HTTP.Client do
         if response.status in [301, 302, 303, 307, 308] do
           case get_redirect_location(response.headers) do
             {:ok, location} when is_binary(location) ->
-              case resolve_redirect(domain, path, location) do
-                {:ok, new_host, new_path} ->
-                  fetch_with_redirects(new_host, "0.0.0.0", redirect_count + 1, new_path, recv_timeout, max_bytes)
-
-                :stop ->
-                  {:ok, %{response | elapsed_ms: elapsed_ms}}
+              with {:ok, new_host, new_path} <- resolve_redirect(domain, path, location),
+                   {:ok, new_ip} <- hop_address(domain, ip, new_host) do
+                fetch_with_redirects(new_host, new_ip, redirect_count + 1, new_path, recv_timeout, max_bytes)
+              else
+                :stop -> {:ok, %{response | elapsed_ms: elapsed_ms}}
               end
 
             _ ->
@@ -442,6 +455,42 @@ defmodule LS.HTTP.Client do
   end
 
   defp ip_literal?(host), do: match?({:ok, _}, :inet.parse_address(String.to_charlist(String.trim(host, "[]"))))
+
+  @doc false
+  # The address a redirect hop connects to (2026-10-26). Same host: the
+  # address already validated. Another host: resolve it, keep only a public
+  # address, and pace it on the per-IP limiter like any first contact (a
+  # cross-host hop used to connect by name with no check and no limiter;
+  # the per-IP spacing is what keeps our source addresses off blocklists).
+  # No public address, or a limiter that is still busy after one wait: the
+  # 3xx is returned as the response, nothing is followed.
+  def hop_address(host, ip, host, _resolve), do: {:ok, ip}
+
+  def hop_address(_host, _ip, new_host, resolve) do
+    with {:ok, %{a: ips}} <- resolve.(new_host),
+         new_ip when is_binary(new_ip) <- LS.HTTP.SafeAddress.first_public(ips),
+         :ok <- pace(new_ip) do
+      {:ok, new_ip}
+    else
+      _ -> :stop
+    end
+  end
+
+  defp hop_address(host, ip, new_host), do: hop_address(host, ip, new_host, &LS.DNS.Resolver.lookup/1)
+
+  defp pace(ip) do
+    case IPRateLimiter.check_and_update(ip, 1000) do
+      :ok ->
+        :ok
+
+      {:wait, ms} when ms <= 5_000 ->
+        Process.sleep(ms)
+        if IPRateLimiter.check_and_update(ip, 1000) == :ok, do: :ok, else: :stop
+
+      _ ->
+        :stop
+    end
+  end
 
   defp path_with_query(nil, q), do: path_with_query("/", q)
   defp path_with_query("", q), do: path_with_query("/", q)

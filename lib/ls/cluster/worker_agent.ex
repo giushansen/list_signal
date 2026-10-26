@@ -401,6 +401,7 @@ defmodule LS.Cluster.WorkerAgent do
       merge: %{input: length(domains), output: length(merged), ms: div(merge_us, 1000)},
       skipped: %{dormant: length(skipped.dormant), soft: length(skipped.soft), recent: length(skipped.recent), unresolved: length(unresolved),
                  no_ip: Enum.count(dns_results, fn {_d, r} -> List.wrap(get_in(r, [:dns, :a])) == [] end),
+                 private_ip: Enum.count(dns_results, fn {_d, r} -> a = List.wrap(get_in(r, [:dns, :a])); a != [] and is_nil(LS.HTTP.SafeAddress.first_public(a)) end),
                  unresolved_refresh: length(skipped.unresolved_refresh)},
       total: length(merged)
     }
@@ -431,7 +432,7 @@ defmodule LS.Cluster.WorkerAgent do
             # DMARC / BIMI / DKIM ride along with the DNS stage, and only for
             # domains that have mail at all (2026-09-06, LS.DNS.EmailAuth).
             mx = List.wrap(dns[:mx])
-            first_ip = dns[:a] |> List.wrap() |> List.first()
+            first_ip = LS.HTTP.SafeAddress.first_public(dns[:a])
 
             dns =
               dns
@@ -469,7 +470,10 @@ defmodule LS.Cluster.WorkerAgent do
   # verdict the name settles, 28-35 days for a missing mail setup).
   defp classify(dns_results, issuers, refresh) do
     Enum.reduce(dns_results, {[], [], %{dormant: [], soft: [], recent: []}}, fn {domain, data}, {ha, ba, sk} ->
-      ip = data.dns[:a] |> List.wrap() |> List.first()
+      # Only a public address is a candidate (2026-10-26, LS.HTTP.SafeAddress):
+      # a name that resolves to 10.0.0.x or 127.0.0.1 alone gets no fetch and
+      # no row, like a name that does not resolve.
+      ip = LS.HTTP.SafeAddress.first_public(data.dns[:a])
       ba = if ip && ip != "", do: [{domain, ip} | ba], else: ba
       mx = data.dns[:mx] |> List.wrap() |> Enum.join("|")
       txt = data.dns[:txt] |> List.wrap() |> Enum.join(" ")
@@ -603,7 +607,7 @@ defmodule LS.Cluster.WorkerAgent do
         dom = d[:ctl_domain] || d[:domain],
         is_binary(dom) and dom != "",
         not MapSet.member?(cands, dom),
-        List.wrap(get_in(dns_results, [dom, :dns, :a])) == [],
+        is_nil(LS.HTTP.SafeAddress.first_public(get_in(dns_results, [dom, :dns, :a]))),
         do: dom
   end
 
@@ -632,7 +636,7 @@ defmodule LS.Cluster.WorkerAgent do
     # spend registry budget — RDAP wall time tracks the HTTP stage it runs in
     # parallel with, instead of dominating it.
     Enum.reduce(dns_results, [], fn {domain, data}, acc ->
-      ip = data.dns[:a] |> List.wrap() |> List.first()
+      ip = LS.HTTP.SafeAddress.first_public(data.dns[:a])
       mx = data.dns[:mx] |> List.wrap() |> Enum.join("|")
       txt = data.dns[:txt] |> List.wrap() |> Enum.join(" ")
       if ip && ip != "" && Cache.rdap_lookup(domain) == :miss && !Blocklist.blocked?(domain) &&

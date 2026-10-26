@@ -84,7 +84,9 @@ defmodule LS.Enrichment.Agent do
     # budget (LS.HTTP.NodeBudget, 2026-10-03). The tag lives in this
     # process, and the visit list runs in it: no sub-task loses it.
     Process.put(:ls_fetch_lane, :enrichment)
-    ip = item[:ip] || resolve(domain)
+    # A stored address is re-checked (2026-10-26): the refill query carries
+    # dns_a[1], and 5,048 businesses had a private or loopback one on record.
+    ip = LS.HTTP.SafeAddress.first_public([item[:ip]]) || resolve(domain)
 
     # LIGHT tier (unranked, no emails, weak classification — computed by the
     # refill query from columns discovery already filled): homepage + contact
@@ -564,7 +566,7 @@ defmodule LS.Enrichment.Agent do
 
   defp resolve(domain) do
     case LS.DNS.Resolver.lookup(domain) do
-      {:ok, %{a: [ip | _]}} -> ip
+      {:ok, %{a: ips}} -> LS.HTTP.SafeAddress.first_public(ips)
       _ -> nil
     end
   end

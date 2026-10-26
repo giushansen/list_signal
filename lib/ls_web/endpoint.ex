@@ -33,6 +33,9 @@ defmodule LSWeb.Endpoint do
   # After Plug.Static (assets are cheap and must not be shed), before routing
   # and body parsing — a shed request should cost as little as possible.
   plug LSWeb.Plugs.OverloadGuard
+  # Only our own names are served (2026-10-26, see the module). Before the
+  # parsers and the router so a misdirected request costs nothing.
+  plug LSWeb.Plugs.HostGuard
 
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 

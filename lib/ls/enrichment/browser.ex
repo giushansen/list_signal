@@ -50,9 +50,29 @@ defmodule LS.Enrichment.Browser do
       LS.HTTP.Robots.check(domain, nil, path) == :disallow ->
         {:error, :robots_disallow}
 
+      # The sidecar resolves the name itself, so the gate it applies to
+      # IP-literal hosts does not cover a name that points at 10.0.0.x. The
+      # name is resolved here first and must have a public address
+      # (2026-10-26, LS.HTTP.SafeAddress). A later re-resolution inside the
+      # browser could still differ; the sidecar's own request gate is the
+      # second line for that.
+      not public_host?(domain) ->
+        {:error, :private_address}
+
       true ->
         render_via_sidecar(domain, path)
     end
+  end
+
+  @doc "True when the name resolves to at least one public address. `resolve` is injectable for tests."
+  @spec public_host?(String.t(), (String.t() -> term())) :: boolean()
+  def public_host?(domain, resolve \\ &LS.DNS.Resolver.lookup/1) do
+    case resolve.(domain) do
+      {:ok, %{a: ips}} -> LS.HTTP.SafeAddress.first_public(ips) != nil
+      _ -> false
+    end
+  rescue
+    _ -> false
   end
 
   @doc false
