@@ -1,0 +1,1 @@
+2026-10-27, 1h after deploy: 21-24 fetches/min/node (was 9 with 7bc88c6, 37 before it), 0 cuts, 0 hollow, rows == domains; email yield 56.3% of 2xx rows; but 48 of 84 secondary pages per batch still dropped at the deadline with their requests spent -> next commit limits the plan to one page.
