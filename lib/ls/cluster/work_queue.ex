@@ -576,6 +576,7 @@ defmodule LS.Cluster.WorkQueue do
     soft = List.wrap(skipped[:soft])
     LS.Cluster.CrawlDedup.mark_dormant(dormant)
     LS.Cluster.CrawlDedup.mark_stable(soft)
+    record_unresolved_refresh(List.wrap(skipped[:unresolved_refresh]))
 
     (dormant ++ soft ++ List.wrap(skipped[:recent]) ++ List.wrap(skipped[:unresolved]))
     |> Enum.map(&%{domain: &1})
@@ -583,6 +584,31 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   def remember_skipped(_), do: :ok
+
+  @doc false
+  # Known businesses a worker could not resolve (2026-10-26): record the
+  # check so they leave the head of the due list, the way the master's own
+  # liveness check records a dead name. Off the queue process: the insert
+  # talks to ClickHouse and must never block dequeues.
+  def record_unresolved_refresh([]), do: :ok
+
+  def record_unresolved_refresh(domains) when is_list(domains) do
+    doms = Enum.filter(domains, &(is_binary(&1) and &1 != ""))
+
+    if doms != [] do
+      Task.start(fn ->
+        case LS.Recrawl.Liveness.record_dead(Enum.map(doms, &{&1, "worker"})) do
+          {:ok, n} -> Logger.info("[RECRAWL] #{n} unresolved refresh names recorded from a worker batch")
+          {:error, reason} -> Logger.warning("[RECRAWL] could not record #{length(doms)} unresolved refresh names: #{inspect(reason) |> String.slice(0, 200)}")
+        end
+      end)
+    end
+
+    :ok
+  end
+
+  def record_unresolved_refresh(_), do: :ok
+
 
   @doc false
   # A fetched page that is parked or a placeholder is not a business, and a

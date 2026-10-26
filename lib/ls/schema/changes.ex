@@ -114,6 +114,12 @@ defmodule LS.Schema.Changes do
   # When a change happened: the observation that produced the column.
   defp at(field) do
     cond do
+      # A hostname arrives from a certificate sighting, with or without a
+      # fetch (2026-10-24: a business the rings keep from being fetched is
+      # recompiled when its sightings name a new host). Dating the event by
+      # the last fetch put a host seen today months into the past, where the
+      # change feed never shows it. The pass that folds it is the observation.
+      String.starts_with?(field, "ctl_") -> "now()"
       String.starts_with?(field, ["shop_", "hr_", "http_deep_"]) -> "ifNull(n.http_deep_last_seen_at, n.http_last_checked_at)"
       String.starts_with?(field, "verified_") -> "ifNull(n.verified_at, n.http_last_checked_at)"
       String.starts_with?(field, "news_") -> "ifNull(n.news_last_seen_at, n.http_last_checked_at)"

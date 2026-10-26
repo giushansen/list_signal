@@ -967,6 +967,13 @@ defmodule LS.Alerts do
     remember_keys(raised)
     fresh = Enum.reject(alerts, &cooling_down?/1)
 
+    # The email is the only record of what fired and why; two "Worker down:
+    # lsny1" emails on 2026-10-25 could not be explained afterwards because
+    # the node had written 2,500 rows an hour. One line per run with the
+    # evidence, so the journal can answer next time.
+    if raised != [],
+      do: Logger.info("[ALERTS] raised #{Enum.map_join(raised, " | ", &"#{&1.key}: #{&1.line}")}")
+
     if fresh != [] do
       subject = digest_subject(fresh)
       # The data-health section rides at the bottom of EVERY alert email, so

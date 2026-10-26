@@ -186,7 +186,7 @@ defmodule LS.Cluster.WorkerAgent do
     Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms | cands #{stages.http.input} cap #{stages.http[:cap]} surplus #{stages.http[:surplus]} cut #{stages.http[:cut]})")
     # The verdicts travel with the rows so the gate can remember them
     # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
-    GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved])})
+    GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved, :unresolved_refresh])})
     # What this batch could not fetch goes back: untouched surplus to the
     # front, deadline-cut candidates to the tail (2026-10-24).
     LS.Cluster.WorkQueue.requeue(queue, Map.get(skipped, :returned_front, []), :front)
@@ -331,7 +331,12 @@ defmodule LS.Cluster.WorkerAgent do
     # RDAP is politeness-limited to 2/s: only for domains that get a row.
     rdap_cands = classify_rdap(dns_results) |> Enum.filter(&MapSet.member?(cand_set, &1))
     unresolved = for d <- domains, dom = d[:ctl_domain] || d[:domain], not Map.has_key?(dns_results, dom), do: dom
-    skipped = Map.put(skipped, :unresolved, unresolved)
+    # A refresh item whose name no longer resolves on this worker gets its
+    # check recorded on the master (2026-10-26), see unresolved_refresh/3.
+    skipped =
+      skipped
+      |> Map.put(:unresolved, unresolved)
+      |> Map.put(:unresolved_refresh, unresolved_refresh(domains, dns_results, http_cands))
 
     # 3. Parallel: HTTP + BGP + RDAP
     http_task = Task.async(fn -> enrich_http(http_cands, http_c, prev_simhash) end)
@@ -394,7 +399,9 @@ defmodule LS.Cluster.WorkerAgent do
       rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
               rate_limited: length(rdap_cands) - map_size(rdap_res)},
       merge: %{input: length(domains), output: length(merged), ms: div(merge_us, 1000)},
-      skipped: %{dormant: length(skipped.dormant), soft: length(skipped.soft), recent: length(skipped.recent), unresolved: length(unresolved)},
+      skipped: %{dormant: length(skipped.dormant), soft: length(skipped.soft), recent: length(skipped.recent), unresolved: length(unresolved),
+                 no_ip: Enum.count(dns_results, fn {_d, r} -> List.wrap(get_in(r, [:dns, :a])) == [] end),
+                 unresolved_refresh: length(skipped.unresolved_refresh)},
       total: length(merged)
     }
 
@@ -562,6 +569,31 @@ defmodule LS.Cluster.WorkerAgent do
   def candidate_ratio(_cands, 0), do: 0.4
   def candidate_ratio(cands, domains) when is_integer(cands) and is_integer(domains),
     do: (cands / domains) |> max(0.1) |> min(1.0)
+
+  @doc """
+  Pure: the refresh items (`source: :recrawl`) of a batch whose name did
+  not resolve to an address on this worker and that are not HTTP
+  candidates. Found 2026-10-26: the master's liveness check lets a SERVFAIL
+  or a timeout through ("let a worker try"), the worker then dropped the
+  name with no row and no count, its http_last_checked_at never moved, and
+  the oldest-first due query returned it again 30 minutes later. About
+  2,000 such names, last fetched in June, took 45% of every tier A tick
+  for weeks. The master records a dns_unresolved check for these
+  (LS.Recrawl.Liveness.record_dead/1, a full copy of the row, never a
+  hollow one), so they wait their cadence like any checked business.
+  """
+  @spec unresolved_refresh([map()], map(), [{String.t(), term()}]) :: [String.t()]
+  def unresolved_refresh(domains, dns_results, http_cands) do
+    cands = MapSet.new(http_cands, fn {d, _ip} -> d end)
+
+    for d <- domains,
+        d[:source] == :recrawl,
+        dom = d[:ctl_domain] || d[:domain],
+        is_binary(dom) and dom != "",
+        not MapSet.member?(cands, dom),
+        List.wrap(get_in(dns_results, [dom, :dns, :a])) == [],
+        do: dom
+  end
 
   @doc false
   # Pure: the domains that get a row. Fetched ones (HTTP has something to

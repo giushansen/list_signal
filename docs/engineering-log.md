@@ -25,6 +25,35 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-26: the due list had a head of zombies; failed DNS on a refresh now records the check
+
+Day-and-a-half check after the 10-24 fixes: rows per distinct domain
+1.000, hollow 0.0%, no same-node repeat, quality flat, product signals up
+50 to 100% a day. But tier A refresh rows were 60K a day against 148K
+admitted by the scheduler, and B and C 49K against 186K. The oldest due
+tier A businesses were last fetched in June; the master resolver answers
+SERVFAIL for them, which `LS.Recrawl.Liveness` passes on ("let a worker
+try", the right call for a flaky minute), the worker's resolver times out,
+and `classify/3` dropped a name with no address silently: no row, no
+count. Their `http_last_checked_at` never moved, the oldest-first query
+returned them next tick, and about 2,000 names took 45% of every tier A
+tick for weeks (hand-probed 12: all SERVFAIL on the master, all timeouts on
+the worker, none held by any ring). Now `WorkerAgent.unresolved_refresh/3`
+lists the refresh items that resolved to nothing, the batch carries them to
+the master, and `WorkQueue.record_unresolved_refresh/1` writes the same
+dns_unresolved check the liveness pass writes for a dead name (a full copy
+of the row, never a hollow one), off the queue process. They wait their
+cadence like any checked business. Expected: tier A refresh at the planned
+216K a day, taking fetch share from new names. Two smaller things in the
+same change: certificate hostname events are dated by the pass that folded
+them (`Changes.at/1`, `now()` for `ctl_*`), because a host sighted today on
+an unfetched business was being dated by its last fetch and never showed in
+the feed; and `Alerts.run/0` logs what it raised, because two "Worker down:
+lsny1" emails on 10-25 could not be explained after the fact (the node had
+written 2,500 rows an hour).
+
+---
+
 ## 2026-10-24: half the rows were duplicate fetches, a third were hollow; batches now fit the budget and heartbeat
 
 Found while checking why the scheduler had paused for 12 hours. Over the

@@ -47,6 +47,33 @@ defmodule LS.DataContractCrawlHygieneTest do
     end)
   end
 
+  test "the head of the due list churns: the oldest due tier A businesses were checked recently" do
+    # 2026-10-26: the oldest 5,625 due tier A were last fetched in June, had
+    # no row in 3 days, and were re-admitted every tick because the worker
+    # dropped their failed DNS without a row. A check (fetch or
+    # dns_unresolved) must move them off the head within a few ticks.
+    if clickhouse_up?() do
+      sql = """
+      SELECT count(), countIf(domain IN (SELECT domain FROM enrich_log WHERE enriched_at >= now() - INTERVAL 3 DAY)) FROM (
+        SELECT domain FROM (
+          SELECT domain, #{LS.Crawl.Tiers.tier_sql()} AS tier, http_last_checked_at FROM businesses
+          WHERE estimated_junk = '' AND http_error != 'robots_disallow' AND http_blocked = ''
+            AND (http_status IS NULL OR http_status NOT IN (403, 503)) AND http_last_checked_at < now() - INTERVAL 14 DAY)
+        WHERE tier = 'a' ORDER BY http_last_checked_at ASC, domain LIMIT 1000)
+      SETTINGS max_threads = 2, max_memory_usage = 2000000000
+      """
+
+      case Clickhouse.query_raw(sql, 60_000) do
+        {:ok, [[total, recent]]} when is_integer(total) and total >= 500 ->
+          assert recent * 100 >= total * 70,
+                 "#{total - recent} of the #{total} oldest due tier A businesses have no check in 3 days: the due list head is stuck, see LS.Cluster.WorkerAgent.unresolved_refresh/3"
+
+        other ->
+          IO.puts("\n[data contract] due-list head check skipped: #{inspect(other) |> String.slice(0, 120)}")
+      end
+    end
+  end
+
   test "tier A businesses touched in a day were actually fetched, not just stamped" do
     if clickhouse_up?() do
       sql = """
