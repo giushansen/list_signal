@@ -189,14 +189,23 @@ defmodule LSWeb.StripeWebhookController do
     end
   end
 
+  # Every price we sell, by plan (LS.Plans). The legacy Starter prices
+  # ($39 and $348, archived 2026-10-27) stay mapped so a subscription that
+  # started on them keeps its plan through renewals.
   defp price_id_to_plan(price_id) do
     plan_map = %{
       Application.get_env(:ls, :stripe_pro_monthly_price_id) => "pro",
       Application.get_env(:ls, :stripe_pro_yearly_price_id) => "pro",
       Application.get_env(:ls, :stripe_starter_monthly_price_id) => "starter",
-      Application.get_env(:ls, :stripe_starter_yearly_price_id) => "starter"
+      Application.get_env(:ls, :stripe_starter_yearly_price_id) => "starter",
+      Application.get_env(:ls, :stripe_starter_legacy_monthly_price_id) => "starter",
+      Application.get_env(:ls, :stripe_starter_legacy_yearly_price_id) => "starter",
+      Application.get_env(:ls, :stripe_pro_legacy_yearly_price_id) => "pro",
+      Application.get_env(:ls, :stripe_scale_monthly_price_id) => "scale",
+      Application.get_env(:ls, :stripe_scale_yearly_price_id) => "scale",
+      Application.get_env(:ls, :stripe_dfy_monthly_price_id) => "dfy"
     }
 
-    Map.get(plan_map, price_id, "free")
+    plan_map |> Map.delete(nil) |> Map.get(price_id, "free")
   end
 end

@@ -50,7 +50,9 @@ defmodule LSWeb.ApiV1Test do
       # Simulate a month of use in one write; the check reads the same row.
       for _ <- 1..ApiKeys.monthly_quota("free"), do: ApiKeys.record_usage(key.id)
 
-      conn = conn |> authed(token) |> get(~p"/api/v1/stats")
+      # A metered call is refused; stats, counts and the directory stay free (2026-10-27).
+      assert (conn |> authed(token) |> get(~p"/api/v1/stats")).status == 200
+      conn = conn |> authed(token) |> get(~p"/api/v1/search?country=US&limit=1")
       assert conn.status == 403
       assert Jason.decode!(conn.resp_body)["detail"] =~ "resets on the 1st"
     end
@@ -126,6 +128,8 @@ defmodule LSWeb.ApiV1Test do
       assert Map.keys(spec["paths"]) |> Enum.sort() == [
                "/api/v1/changes",
                "/api/v1/company/{domain}",
+               "/api/v1/count",
+               "/api/v1/query",
                "/api/v1/search",
                "/api/v1/stats",
                "/api/v1/technologies"

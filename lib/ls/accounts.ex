@@ -354,41 +354,58 @@ defmodule LS.Accounts do
     end
   end
 
-  # Monthly export quota. Raised 2026-08-01: 5,000/month is under two weeks of
-  # a single outreach sequence (a rep works 300-500 contacts/day), so Pro users
-  # hit the wall mid-campaign and had nowhere to go but a competitor. The cost
-  # to us is a ClickHouse scan, not per-row licensing, so the old numbers were
-  # protecting nothing.
-  def export_limit(%User{} = user) do
-    case User.effective_plan(user) do
-      "pro" -> 50_000
-      "starter" -> 5_000
-      _ -> 0
-    end
+  # Rows a month, any surface (2026-10-27, LS.Plans). One pool: the CSV
+  # export counter on the user row plus the API and MCP rows on the user's
+  # keys. Before this the CSV sold 50,000 rows on Pro while the API allowed
+  # 25,000 calls of 100 rows, and the two never saw each other.
+  @doc "Rows a month the user's plan includes, across CSV, API and MCP."
+  def export_limit(%User{} = user), do: LS.Plans.rows(User.effective_plan(user))
+
+  @doc """
+  Rows the user has taken this month on every surface. The CSV counter
+  belongs to the month in `exports_reset_at` (a counter from an earlier
+  month reads as zero; `increment_exports/2` restarts it), the API side
+  is the sum over the user's keys.
+  """
+  def rows_used_this_month(%User{id: nil} = user), do: csv_rows_this_month(user)
+
+  def rows_used_this_month(%User{} = user) do
+    csv_rows_this_month(user) + LS.ApiKeys.user_usage_this_month(user.id)
   end
 
-  def can_export?(%User{} = user) do
-    plan = User.effective_plan(user)
-    plan in ["starter", "pro"] and exports_remaining(user) > 0
+  @doc "Rows left this month across every surface."
+  def rows_remaining(%User{} = user), do: max(export_limit(user) - rows_used_this_month(user), 0)
+
+  @doc "Whether a CSV export may start: rows left this month. Free has 1,000 rows too, with the contact columns blanked."
+  def can_export?(%User{} = user), do: rows_remaining(user) > 0
+
+  @doc "Kept for callers that spoke of exports: the same number as `rows_remaining/1`."
+  def exports_remaining(%User{} = user), do: rows_remaining(user)
+
+  # The counter on the row is current when it was stamped this calendar
+  # month; a nil stamp is treated as current (test fixtures and rows older
+  # than the migration that backfills it), never as a free reset.
+  defp csv_rows_this_month(%User{exports_reset_at: nil} = user), do: user.exports_used_this_month
+
+  defp csv_rows_this_month(%User{exports_reset_at: at} = user) do
+    if same_month?(at, DateTime.utc_now()), do: user.exports_used_this_month, else: 0
   end
 
-  def exports_remaining(%User{} = user) do
-    max(export_limit(user) - user.exports_used_this_month, 0)
-  end
+  defp same_month?(%DateTime{year: y, month: m}, %DateTime{year: y, month: m}), do: true
+  defp same_month?(_, _), do: false
 
+  @doc "Add exported rows to the month's counter, starting a new month when the stamp is old."
   def increment_exports(%User{} = user, count) do
+    now = DateTime.utc_now(:second)
+    used = csv_rows_this_month(user) + count
+
     user
-    |> Ecto.Changeset.change(exports_used_this_month: user.exports_used_this_month + count)
+    |> Ecto.Changeset.change(exports_used_this_month: used, exports_reset_at: now)
     |> Repo.update()
   end
 
-  def results_per_page(%User{} = user) do
-    case User.effective_plan(user) do
-      "pro" -> 100
-      "starter" -> 50
-      _ -> 15
-    end
-  end
+  @doc "Rows a page on the dashboard, and the per-call cap on the API."
+  def results_per_page(%User{} = user), do: LS.Plans.per_page(User.effective_plan(user))
 
   ## Token helper
 

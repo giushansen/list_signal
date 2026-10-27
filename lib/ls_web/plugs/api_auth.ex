@@ -9,7 +9,12 @@ defmodule LSWeb.Plugs.ApiAuth do
   adopting an API and abandoning it.
 
   Order matters: rate limit before quota, so a hammering client burns its
-  per-minute budget, not its monthly one.
+  per-minute budget, not its monthly one. The quota is the plan's rows a
+  month across every surface (`LS.Accounts.rows_remaining/1`, 2026-10-27):
+  a call is allowed while rows remain and charged for what it returns, so
+  the last page of a month may finish past the line and the next call is
+  refused. Counts and stats are never charged, so an agent can always
+  size a segment.
   """
 
   import Plug.Conn
@@ -24,7 +29,7 @@ defmodule LSWeb.Plugs.ApiAuth do
          {:ok, key, user} <- ApiKeys.authenticate(token),
          plan = LS.Accounts.User.effective_plan(user),
          :ok <- check_rate(key.id, plan),
-         :ok <- check_quota(key, plan) do
+         :ok <- check_quota(conn, user, plan) do
       conn
       |> assign(:api_key, key)
       |> assign(:api_plan, plan)
@@ -32,7 +37,7 @@ defmodule LSWeb.Plugs.ApiAuth do
     else
       {:error, :missing_key} ->
         problem(conn, 401, "Missing API key",
-          "Send your key as 'Authorization: Bearer ls_...' or 'X-API-Key: ls_...'. Get a free key (1,000 lookups/month) at https://listsignal.com/signup, then create it in Settings.")
+          "Send your key as 'Authorization: Bearer ls_...' or 'X-API-Key: ls_...'. Get a free key (1,000 rows a month) at https://listsignal.com/signup, then create it in Settings.")
 
       {:error, :invalid_key} ->
         problem(conn, 401, "Invalid API key",
@@ -49,8 +54,8 @@ defmodule LSWeb.Plugs.ApiAuth do
           "This key allows #{limit} requests per minute. Wait for the window to reset, or upgrade at https://listsignal.com/pricing.")
 
       {:error, :quota_exceeded, quota} ->
-        problem(conn, 403, "Monthly quota exhausted",
-          "This key's plan includes #{quota} calls per month; the counter resets on the 1st. Upgrade at https://listsignal.com/pricing for a larger quota.")
+        problem(conn, 403, "Monthly rows exhausted",
+          "Your plan includes #{LS.Plans.fmt(quota)} rows a month across CSV, API and MCP, and they are spent; the counter resets on the 1st. Counts (/api/v1/count, the listsignal_count tool) stay free. Upgrade at https://listsignal.com/pricing for more rows.")
     end
   end
 
@@ -74,11 +79,30 @@ defmodule LSWeb.Plugs.ApiAuth do
     end
   end
 
-  defp check_quota(key, plan) do
-    if ApiKeys.within_quota?(key, plan),
+  # A call that returns no rows is never refused for lack of rows: counts,
+  # stats and the technology directory, the MCP handshake, and the two
+  # free tools. An agent whose month is spent can still size next month's
+  # list; a buyer can still see how big a segment is before upgrading.
+  defp check_quota(conn, user, plan) do
+    if free_call?(conn) or LS.Accounts.rows_remaining(user) > 0,
       do: :ok,
       else: {:error, :quota_exceeded, ApiKeys.monthly_quota(plan)}
   end
+
+  @free_paths ~w(count stats technologies)
+  @free_tools ~w(listsignal_count listsignal_dataset_stats)
+
+  @doc "Whether the request can never cost rows, so the monthly pool does not gate it."
+  def free_call?(%Plug.Conn{path_info: path, body_params: body}) do
+    case List.last(path) do
+      last when last in @free_paths -> true
+      _ -> mcp_free?(body)
+    end
+  end
+
+  defp mcp_free?(%{"method" => "tools/call", "params" => %{"name" => tool}}), do: tool in @free_tools
+  defp mcp_free?(%{"method" => method}) when is_binary(method), do: method != "tools/call"
+  defp mcp_free?(_), do: false
 
   @doc "RFC 9457 problem+json response. Public: the controllers reuse it."
   def problem(conn, status, title, detail) do

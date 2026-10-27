@@ -31,7 +31,8 @@ defmodule LS.Accounts.User do
     timestamps(type: :utc_datetime)
   end
 
-  @valid_plans ["free", "starter", "pro"]
+  # The names LS.Plans knows; the webhook writes one of them from a price id.
+  @valid_plans LS.Plans.names()
 
   def plan_changeset(user, attrs) do
     user

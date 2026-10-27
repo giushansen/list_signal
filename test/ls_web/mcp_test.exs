@@ -28,7 +28,7 @@ defmodule LSWeb.McpTest do
     assert body["result"]["instructions"] =~ "listsignal_search_companies"
   end
 
-  test "tools/list exposes exactly the five namespaced tools with schemas", %{conn: conn, token: token} do
+  test "tools/list exposes exactly the six namespaced tools with schemas", %{conn: conn, token: token} do
     body = rpc(conn, token, "tools/list") |> json_response(200)
     tools = body["result"]["tools"]
 
@@ -36,9 +36,12 @@ defmodule LSWeb.McpTest do
     # API since v1 and on the dashboard, and absent here. listsignal_query
     # joined 2026-10-26: totals, group counts, sort and field choice over
     # the whole table, bounded, so an analysis is one call, not one
-    # get_company per row.
+    # get_company per row. listsignal_count joined 2026-10-27: the free
+    # tool an agent calls before spending rows, with the dashboard's
+    # filters, so "sense the data first" has a name in the tool list.
     assert Enum.map(tools, & &1["name"]) |> Enum.sort() == [
              "listsignal_changes",
+             "listsignal_count",
              "listsignal_dataset_stats",
              "listsignal_get_company",
              "listsignal_query",

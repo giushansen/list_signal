@@ -25,6 +25,56 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-27: one filter grammar, rows as the unit, free counts, and /data
+
+Three grammars had grown: `LS.Explorer` (atom keys, the dashboard),
+`LS.ApiData.conditions/1` (string keys, the API and the MCP) and the
+export controller's own allow-list. `tech` meant hasAll on one and has()
+on the other, the dashboard had no `has_named_email`, the API had no
+`tech_not`, and the API excluded junk and title-less rows while the
+dashboard did not, so one filter set counted differently on two
+surfaces. `LS.Query` is now the vocabulary and the parser (41 names,
+aliases kept, typed values, unknown names reported); the SQL lives once
+in `LS.Explorer.clauses/1` and the API delegates to it except for the
+few clauses whose exact text it had promised. The OpenAPI parameters,
+the MCP input schemas, the /developers table and /data are generated
+from the grammar. Every list, count and export runs in the base scope
+`http_title != '' AND estimated_junk = ''` (3.66M and 373K of 26.9M rows
+when it shipped); `include_junk=true` lifts the junk part. A dashboard
+URL that names filters opens as that search, and the CSV link carries
+the grammar's names, so the dashboard, the file, the API and the MCP
+are one query string.
+
+Plans: `LS.Plans` is the one table (Free 1,000 rows, Starter $49 2,500,
+Pro $149 15,000, Scale $399 75,000, Done for you $999 = Scale plus a
+person). The unit is rows a month on any surface: `api_usage.rows`
+(migration 20261027100000) next to `calls`, a call charged for the rows
+it returns, counts and stats free and never refused
+(`ApiAuth.free_call?/1`), the CSV counter and the API counter summed in
+`Accounts.rows_remaining/1`. Found on the way: `users.exports_reset_at`
+had existed since the first migration and nothing read it, so the CSV
+counter never reset; it now belongs to its month. Also found: a plan
+without addresses could read them through "email added" change rows on
+`/changes`, the Signals CSV and the MCP tool; `gate_changes/2` blanks
+them. Free exports CSV now (addresses blanked), which is what a free API
+key already got.
+
+Stripe (live, 2026-10-27): Starter $49/$490, Pro $149 (kept)/$1,490,
+Scale $399/$3,990, Done for you $999/mo, promotion code FOUNDING25 (25%
+off for 3 months, quoted after a sample, never in the cold email). The
+$39/$348 Starter, the $1,428 Pro yearly and the $499 one-off list are
+archived, its payment link deactivated. Ids in `devops/listsignal/stripe.md`
+and `.env.master`. There are no test-mode keys in the account, so there is
+no test catalog to clean.
+
+/data: every customer-facing column with a value on two fictional
+businesses (`LS.Schema.Examples`, held to the dictionary by
+`test/ls/schema_examples_test.exs`), the grammar, the signals, and three
+questions in English with their dashboard, REST and MCP forms. The home
+page shows the first question as a Claude conversation; the features
+page shows both records. The MCP server gained `listsignal_count` (six
+tools) and the REST API `/count` and `/query`.
+
 ## 2026-10-26: API keys can be shown again; the hash still does the authenticating
 
 Keys were hash-only, the GitHub model, and the owner could not read his

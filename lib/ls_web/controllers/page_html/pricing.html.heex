@@ -1,7 +1,8 @@
+<% plans = LS.Plans %>
 <main class="pt-[140px] pb-20"><div class="mx-auto max-w-[1200px] px-6">
-  <div class="text-center max-w-[600px] mx-auto mb-8">
+  <div class="text-center max-w-[640px] mx-auto mb-8">
     <h1 class="font-display text-[clamp(32px,4vw,48px)] font-bold tracking-tight leading-[1.1] mb-4">Find businesses your<br/>competitors can't see.</h1>
-    <p class="text-lg text-white/60">Live discovery, revenue estimates, hiring signals, and contact data. Simple flat plans: no credits, no expiring tokens, no per-lookup fees.</p>
+    <p class="text-lg text-white/60">Live discovery, revenue estimates, hiring signals, and contact data. One allowance of rows a month, spent as CSV, API or MCP. No credits, no expiring tokens, no per-lookup fees.</p>
   </div>
 
   <%!-- Monthly / Annual toggle --%>
@@ -13,85 +14,107 @@
     </button>
     <span id="label-annual" class="text-sm font-medium text-white/40">
       Annual
-      <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-accent/15 text-accent">Save 20%+</span>
+      <span class="ml-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-accent/15 text-accent">2 months free</span>
     </span>
   </div>
 
-  <div class="grid md:grid-cols-3 gap-6 max-w-[1000px] mx-auto mb-10">
+  <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-5 max-w-[1200px] mx-auto mb-10">
     <%!-- Free column --%>
-    <div class="rounded-[20px] border border-white/[0.07] bg-white/[0.03] p-9">
+    <div class="rounded-[20px] border border-white/[0.07] bg-white/[0.03] p-7">
       <div class="font-display text-[15px] font-semibold text-white/60 mb-1.5">Free</div>
-      <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1">$0</div>
-      <div class="text-[13px] text-white/35 mb-6">Free forever</div>
+      <div class="font-display text-[44px] font-extrabold tracking-[-2px] leading-none mb-1">$0</div>
+      <div class="text-[13px] text-white/35 mb-6">Free forever, no card</div>
       <ul class="space-y-2.5 mb-8">
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Browse all domain data</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 15 results per page</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 10 searches per minute</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Tech + country filters</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> API + MCP, 1,000 calls/mo</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/40"><span class="text-white/20 font-bold mt-px">&#10005;</span> No CSV export</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/40"><span class="text-white/20 font-bold mt-px">&#10005;</span> No contact emails</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> <%= plans.fmt(plans.rows("free")) %> rows a month</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> <%= plans.per_page("free") %> rows a page</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> <%= plans.per_min("free") %> searches a minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Every filter, every field</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> CSV, API and MCP</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Counts free, always</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/40"><span class="text-white/20 font-bold mt-px">&#10005;</span> No contact emails or phones</li>
       </ul>
-      <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="pricing_page" class="block w-full text-center rounded-xl border border-white/[0.07] py-3.5 font-display text-sm font-semibold text-white hover:border-white/20 transition">Get Started Free</a>
+      <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="pricing_page" class="block w-full text-center rounded-xl border border-white/[0.07] py-3.5 font-display text-sm font-semibold text-white hover:border-white/20 transition">Start free</a>
     </div>
 
     <%!-- Starter column --%>
-    <div class="rounded-[20px] border border-blue-500/40 bg-white/[0.03] p-9 relative shadow-[0_0_50px_rgba(59,130,246,0.1)]">
-      <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-display">Best Value</div>
+    <div class="rounded-[20px] border border-blue-500/40 bg-white/[0.03] p-7 relative">
       <div class="font-display text-[15px] font-semibold text-blue-400 mb-1.5">Starter</div>
-      <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly="$39" data-annual="$29">$39</div>
-      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual="per month &middot; billed annually ($348/yr)">per month &middot; cancel anytime</div>
-      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $120/yr</div>
+      <div class="font-display text-[44px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly={"$#{plans.monthly("starter")}"} data-annual={"$#{plans.yearly_per_month("starter")}"}>$<%= plans.monthly("starter") %></div>
+      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual={"per month &middot; billed annually ($#{plans.fmt(plans.yearly("starter"))}/yr)"}>per month &middot; cancel anytime</div>
+      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $<%= plans.monthly("starter") * 12 - plans.yearly("starter") %>/yr</div>
       <div class="mb-6"></div>
       <ul class="space-y-2.5 mb-8">
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> All filters unlocked</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> 5,000 rows / month</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> 50 results per page</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> 30 searches per minute</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> Contact email access</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> API + MCP, 5,000 calls/mo</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> <%= plans.fmt(plans.rows("starter")) %> rows a month</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> <%= plans.per_page("starter") %> rows a page</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> <%= plans.per_min("starter") %> searches a minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> Contact emails and phones</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> Email verdicts and people</li>
         <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-blue-400 font-bold mt-px">&#10003;</span> Email support</li>
       </ul>
       <a data-href-monthly="/signup?plan=starter&billing=monthly" data-href-annual="/signup?plan=starter&billing=annual" href="/signup?plan=starter&billing=monthly" class="block w-full text-center rounded-xl bg-blue-500 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_28px_rgba(59,130,246,0.25)] hover:bg-blue-400 transition">Start with Starter</a>
     </div>
 
     <%!-- Pro column --%>
-    <div class="rounded-[20px] border border-accent bg-white/[0.03] p-9 relative shadow-[0_0_50px_rgba(16,185,129,0.15)]">
+    <div class="rounded-[20px] border border-accent bg-white/[0.03] p-7 relative shadow-[0_0_50px_rgba(16,185,129,0.15)]">
       <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white px-4 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider font-display">Most Popular</div>
       <div class="font-display text-[15px] font-semibold text-emerald-400 mb-1.5">Pro</div>
-      <div class="font-display text-[48px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly="$149" data-annual="$119">$149</div>
-      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual="per month &middot; billed annually ($1,428/yr)">per month &middot; cancel anytime</div>
-      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $360/yr</div>
+      <div class="font-display text-[44px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly={"$#{plans.monthly("pro")}"} data-annual={"$#{plans.yearly_per_month("pro")}"}>$<%= plans.monthly("pro") %></div>
+      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual={"per month &middot; billed annually ($#{plans.fmt(plans.yearly("pro"))}/yr)"}>per month &middot; cancel anytime</div>
+      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $<%= plans.monthly("pro") * 12 - plans.yearly("pro") %>/yr</div>
       <div class="mb-6"></div>
       <ul class="space-y-2.5 mb-8">
         <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Everything in Starter, plus:</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 50,000 rows / month</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 100 results per page</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> 120 searches per minute</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> API + MCP, 25,000 calls/mo</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> <%= plans.fmt(plans.rows("pro")) %> rows a month</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> <%= plans.per_page("pro") %> rows a page, 500 on query</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> <%= plans.per_min("pro") %> searches a minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Signal feed with alerts</li>
         <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Priority email support</li>
-        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-accent font-bold mt-px">&#10003;</span> Saved searches + alerts <span class="ml-1.5 inline-flex px-1.5 py-0.5 rounded text-[9px] uppercase tracking-wider bg-white/[0.06] text-white/30 font-medium">Soon</span></li>
       </ul>
       <a data-href-monthly="/signup?plan=pro&billing=monthly" data-href-annual="/signup?plan=pro&billing=annual" href="/signup?plan=pro&billing=monthly" class="block w-full text-center rounded-xl bg-accent py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover transition">Upgrade to Pro</a>
     </div>
+
+    <%!-- Scale column --%>
+    <div class="rounded-[20px] border border-violet-500/40 bg-white/[0.03] p-7 relative">
+      <div class="font-display text-[15px] font-semibold text-violet-400 mb-1.5">Scale</div>
+      <div class="font-display text-[44px] font-extrabold tracking-[-2px] leading-none mb-1" data-monthly={"$#{plans.monthly("scale")}"} data-annual={"$#{plans.yearly_per_month("scale")}"}>$<%= plans.monthly("scale") %></div>
+      <div class="text-[13px] text-white/35 mb-1" data-period-monthly="per month &middot; cancel anytime" data-period-annual={"per month &middot; billed annually ($#{plans.fmt(plans.yearly("scale"))}/yr)"}>per month &middot; cancel anytime</div>
+      <div data-savings class="hidden text-[12px] text-accent font-semibold mb-4">Save $<%= plans.monthly("scale") * 12 - plans.yearly("scale") %>/yr</div>
+      <div class="mb-6"></div>
+      <ul class="space-y-2.5 mb-8">
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-violet-400 font-bold mt-px">&#10003;</span> Everything in Pro, plus:</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-violet-400 font-bold mt-px">&#10003;</span> <%= plans.fmt(plans.rows("scale")) %> rows a month</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-violet-400 font-bold mt-px">&#10003;</span> <%= plans.per_min("scale") %> searches a minute</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-violet-400 font-bold mt-px">&#10003;</span> Daily signal file</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-violet-400 font-bold mt-px">&#10003;</span> <%= plans.seats("scale") %> seats</li>
+        <li class="flex items-start gap-2.5 text-[13.5px] text-white/60"><span class="text-violet-400 font-bold mt-px">&#10003;</span> Same-day support</li>
+      </ul>
+      <a data-href-monthly="/signup?plan=scale&billing=monthly" data-href-annual="/signup?plan=scale&billing=annual" href="/signup?plan=scale&billing=monthly" class="block w-full text-center rounded-xl bg-violet-500 py-3.5 font-display text-sm font-semibold text-white shadow-[0_8px_28px_rgba(139,92,246,0.25)] hover:bg-violet-400 transition">Go to Scale</a>
+    </div>
   </div>
 
-  <%!-- Proof strip: real numbers, stated verifiably. Social proof without
-       invention, the dataset itself is the credential, plus who it is for
-       and risk reversal. --%>
+  <%!-- What a row is --%>
   <div class="max-w-[1000px] mx-auto mb-10">
+    <div class="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 grid md:grid-cols-3 gap-6 text-[13.5px] text-white/55 leading-relaxed">
+      <div><div class="font-semibold text-white mb-1">A row is a company record</div>A CSV line, a search result, a company lookup: one row each, on any surface. The <a href="/data" class="text-accent hover:underline"><%= length(LS.Schema.Columns.doc_rows()) %> fields</a> come with it.</div>
+      <div><div class="font-semibold text-white mb-1">Counting is free</div>Size a segment in the dashboard, on <code class="text-white/70">/api/v1/count</code> or with the <code class="text-white/70">listsignal_count</code> tool before spending a row. Group-bys and dataset stats too.</div>
+      <div><div class="font-semibold text-white mb-1">Browsing is free</div>Pages on screen are never metered, only throttled per minute. The counter resets on the 1st; unused rows do not roll over.</div>
+    </div>
+  </div>
+
+  <%!-- Proof strip --%>
+  <div class="max-w-[1000px] mx-auto mb-12">
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-center mb-6">
       <div class="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05]">
         <div class="font-display text-[26px] font-extrabold tracking-tight">14M+</div>
         <div class="text-[11px] uppercase tracking-wider text-white/35 font-medium">Businesses tracked</div>
       </div>
       <div class="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05]">
-        <div class="font-display text-[26px] font-extrabold tracking-tight">2M+</div>
-        <div class="text-[11px] uppercase tracking-wider text-white/35 font-medium">Products &amp; price points</div>
+        <div class="font-display text-[26px] font-extrabold tracking-tight"><%= length(LS.Schema.Columns.doc_rows()) %></div>
+        <div class="text-[11px] uppercase tracking-wider text-white/35 font-medium">Fields per record</div>
       </div>
       <div class="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05]">
-        <div class="font-display text-[26px] font-extrabold tracking-tight">5M+</div>
-        <div class="text-[11px] uppercase tracking-wider text-white/35 font-medium">Contact addresses</div>
+        <div class="font-display text-[26px] font-extrabold tracking-tight"><%= length(LS.Schema.Columns.tracked()) %></div>
+        <div class="text-[11px] uppercase tracking-wider text-white/35 font-medium">Fields watched for change</div>
       </div>
       <div class="p-4 rounded-xl bg-white/[0.02] border border-white/[0.05]">
         <div class="font-display text-[26px] font-extrabold tracking-tight text-accent">Live</div>
@@ -108,43 +131,47 @@
     </p>
   </div>
 
-  <%!-- One-off CSV --%>
-  <div class="mt-10 p-7 rounded-2xl border border-white/[0.07] bg-white/[0.02] max-w-[1000px] mx-auto">
-    <div class="flex flex-col md:flex-row md:items-center justify-between gap-5">
-      <div class="max-w-[560px]">
-        <div class="font-display text-[15px] font-semibold text-white/80 mb-1.5">Custom prospect list, built for you</div>
-        <p class="text-[13.5px] text-white/55 leading-relaxed">
-          Tell us your ideal customer: market, country, size, tech stack, hiring, and we deliver
-          250 qualified companies within 48 hours. Filtered, scored, deduplicated, with contact
-          addresses where published. Not raw rows: a list you can start selling to the same day.
-          One payment, no account needed.
+  <%!-- Done for you --%>
+  <div class="mt-10 rounded-[20px] border border-amber-500/30 bg-amber-500/[0.03] max-w-[1000px] mx-auto overflow-hidden" id="done-for-you">
+    <div class="grid md:grid-cols-[1fr_300px]">
+      <div class="p-8">
+        <div class="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-[11px] font-semibold text-amber-300 uppercase tracking-wider mb-4">Done for you</div>
+        <h2 class="font-display text-[24px] font-bold tracking-tight mb-3">Your lists, built by hand. As many as you need.</h2>
+        <p class="text-[14px] text-white/60 leading-relaxed mb-5">
+          Tell us what a good customer looks like, in any words: a market, a country, a tech stack, a signal, a size, a shape of catalog, a hiring pattern. We build the list from the full dataset, read every row, and send it with the evidence. Request as many lists as you like, one at a time, usually back within 24 hours.
         </p>
-        <p class="text-[12.5px] text-white/35 mt-2">
-          Licensed for use inside your own organisation. Not for resale or redistribution.
-        </p>
+        <ul class="grid sm:grid-cols-2 gap-x-6 gap-y-2 text-[13.5px] text-white/65 mb-6">
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">&#10003;</span> Unlimited requests, one active at a time</li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">&#10003;</span> Usually delivered within 24 hours</li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">&#10003;</span> Any criteria, any size that truly matches</li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">&#10003;</span> Scale included: <%= plans.fmt(plans.rows("scale")) %> self-serve rows a month</li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">&#10003;</span> Every row with the signal, its date and the evidence</li>
+          <li class="flex items-start gap-2"><span class="text-amber-400 font-bold">&#10003;</span> Pause or cancel any month</li>
+        </ul>
+        <p class="text-[12.5px] text-white/35">Licensed for use inside your own organisation. Not for resale or redistribution. Ten seats at this price; the next ten are $1,499.</p>
       </div>
-      <div class="text-center md:text-right shrink-0">
-        <div class="font-display text-[40px] font-extrabold tracking-[-1.5px] leading-none">$499</div>
-        <div class="text-[12.5px] text-white/40 mt-1 mb-3">250 qualified companies, one-time</div>
-        <a href="https://buy.stripe.com/aFa14n2Jm4kO5ue4Ce9oc00" data-umami-event="custom_list_checkout" class="inline-block rounded-xl bg-white/10 border border-white/15 px-6 py-3 font-display text-sm font-semibold text-white hover:bg-white/[0.15] transition">Buy your list &#8594;</a>
-        <div class="text-[11.5px] text-white/35 mt-2">or <a href="mailto:will@listsignal.com?subject=Custom%20prospect%20list" class="underline hover:text-white/60">email your ICP first</a></div>
+      <div class="p-8 bg-white/[0.02] border-t md:border-t-0 md:border-l border-white/[0.06] flex flex-col justify-center text-center">
+        <div class="font-display text-[44px] font-extrabold tracking-[-1.5px] leading-none">$<%= plans.fmt(plans.monthly("dfy")) %></div>
+        <div class="text-[12.5px] text-white/40 mt-1 mb-5">per month &middot; cancel anytime</div>
+        <a href="/signup?plan=dfy&billing=monthly" data-umami-event="dfy_checkout" class="inline-block rounded-xl bg-amber-500 px-6 py-3.5 font-display text-sm font-semibold text-[#1a1200] hover:bg-amber-400 transition">Start done for you &#8594;</a>
+        <div class="text-[11.5px] text-white/35 mt-3">or <a href="mailto:will@listsignal.com?subject=Done%20for%20you" class="underline hover:text-white/60">email your ICP first</a> and get 25 rows free</div>
       </div>
     </div>
   </div>
 
-  <%!-- Enterprise anchor --%>
+  <%!-- Developer anchor --%>
   <div class="text-center mt-10 p-6 rounded-2xl border border-white/[0.05] bg-white/[0.02] max-w-[1000px] mx-auto mb-10">
     <p class="text-sm text-white/50">
       <span class="font-semibold text-white">Building with the data?</span>
-      Every plan includes the <a href="/developers" class="text-accent hover:underline">REST API and MCP server</a> for AI agents.
-      Need bigger volumes, webhooks, or team seats?
+      Every plan includes the <a href="/developers" class="text-accent hover:underline">REST API and MCP server</a>, with the same filters as the dashboard.
+      Need more rows, webhooks, or more seats?
       <a href="mailto:will@listsignal.com" class="text-accent hover:underline ml-1">Contact us &#8594;</a>
     </p>
   </div>
 
   <%!-- Competitive comparison strip --%>
   <div class="text-center mb-20">
-    <p class="text-sm text-white/40">BuiltWith starts at $295/mo. Wappalyzer and Store Leads at $250/mo. ListSignal exports from $39, with signals none of them have.</p>
+    <p class="text-sm text-white/40">BuiltWith starts at $295/mo for 2,000 rows on two technologies. Wappalyzer and Store Leads at $250/mo. ListSignal starts at $<%= plans.monthly("starter") %>, with signals none of them have.</p>
   </div>
 </div>
 
@@ -194,6 +221,7 @@ document.getElementById('billing-toggle').addEventListener('click', toggleBillin
   <div class="mx-auto max-w-[1200px] px-6">
     <div class="mb-3">
       <a href="/features" class="text-white/50 hover:text-white transition-colors mx-3">Features</a>
+      <a href="/data" class="text-white/50 hover:text-white transition-colors mx-3">The data</a>
       <a href="/pricing" class="text-white/50 hover:text-white transition-colors mx-3">Pricing</a>
       <a href="/new-stores" class="text-white/50 hover:text-white transition-colors mx-3">New Stores</a>
       <a href="/privacy" class="text-white/50 hover:text-white transition-colors mx-3">Privacy</a>

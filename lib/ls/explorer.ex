@@ -128,7 +128,7 @@ defmodule LS.Explorer do
     per_page = Keyword.get(opts, :per_page, 25)
     page = Keyword.get(opts, :page, 1)
     offset = (page - 1) * per_page
-    where = build_where(filters)
+    where = scoped_where(filters)
     order = order_clause(Keyword.get(opts, :sort), Keyword.get(opts, :dir))
 
     """
@@ -203,7 +203,7 @@ defmodule LS.Explorer do
   end
 
   @doc "SQL for the total-row count. Public so performance tests measure the real query."
-  def count_sql(filters), do: "SELECT count() FROM businesses #{build_where(filters)}"
+  def count_sql(filters), do: "SELECT count() FROM businesses #{scoped_where(filters)}"
 
   def count(filters) do
     case Clickhouse.query_raw(count_sql(filters), @query_timeout, max_execution_time: div(@query_timeout, 1000)) do
@@ -235,7 +235,9 @@ defmodule LS.Explorer do
         end
       end)
 
-    case Clickhouse.query_raw("SELECT #{selects} FROM businesses", @query_timeout,
+    # The base scope once, on the scan, so every segment count agrees with
+    # the count the same filters give on the page and on the API.
+    case Clickhouse.query_raw("SELECT #{selects} FROM businesses #{scoped_where([])}", @query_timeout,
            max_execution_time: div(@query_timeout, 1000)) do
       {:ok, [row]} ->
         labelled_filters
@@ -387,7 +389,7 @@ defmodule LS.Explorer do
   defp qualified_order_by, do: default_order("d.")
 
   def export_rows(filters, limit) do
-    where = build_where(filters)
+    where = scoped_where(filters)
 
     # `businesses` holds every pipeline's columns including the contact
     # addresses (data model v2: http_emails is the union of homepage and
@@ -536,13 +538,39 @@ defmodule LS.Explorer do
   """
   def where_sql(filters), do: build_where(filters)
 
-  defp build_where(filters) do
-    clauses =
-      filters
-      |> Enum.flat_map(&filter_clause/1)
-      |> Enum.reject(&is_nil/1)
+  @doc """
+  The predicate strings a filter set compiles to, without the WHERE and
+  without the base scope. `LS.ApiData.conditions/1` builds on these so
+  the API and the dashboard produce one meaning per `LS.Query` name.
+  """
+  @spec clauses(map() | keyword()) :: [String.t()]
+  def clauses(filters) do
+    filters
+    |> Enum.flat_map(&filter_clause/1)
+    |> Kernel.++(changed_clause(filters))
+    |> Enum.reject(&is_nil/1)
+  end
 
-    case clauses do
+  @doc """
+  The scope every list, count and export runs in (2026-10-27): a fetched
+  homepage and no junk verdict. Measured the day it shipped on 26.9M rows:
+  3.66M had no title (a domain and nothing else, never a prospect) and
+  373K were parked or placeholder. The API had always applied both; the
+  dashboard applied neither, so the same filter counted differently on the
+  two surfaces. `include_junk=true` lifts the junk part only.
+  """
+  @spec base_clauses(map() | keyword()) :: [String.t()]
+  def base_clauses(filters) do
+    include_junk = Enum.any?(filters, fn {k, v} -> k == :include_junk and v == "true" end)
+    ["http_title != ''"] ++ if(include_junk, do: [], else: ["estimated_junk = ''"])
+  end
+
+  @doc "The WHERE clause with the base scope applied, what every query actually runs."
+  @spec scoped_where(map() | keyword()) :: String.t()
+  def scoped_where(filters), do: "WHERE " <> Enum.join(clauses(filters) ++ base_clauses(filters), " AND ")
+
+  defp build_where(filters) do
+    case clauses(filters) do
       [] -> ""
       parts -> "WHERE " <> Enum.join(parts, " AND ")
     end
@@ -550,17 +578,62 @@ defmodule LS.Explorer do
 
   # Multi-value filter support: "US,GB,FR" → IN ('US','GB','FR')
   defp filter_clause({:tech, v}) when is_binary(v) and v != "" do
-    values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
     # Exact names: the array holds canonical catalog names (2026-10-01), so a
     # substring match would only add false positives ("Shopify" inside
     # "Shopify Product Reviews"). `hasAll` is one pass over the array.
-    ["hasAll(http_tech, [#{Enum.map_join(values, ", ", &"'#{esc(&1)}'")}])"]
+    ["hasAll(http_tech, [#{tech_list(v)}])"]
   end
 
   defp filter_clause({:shopify_app, v}) when is_binary(v) and v != "" do
-    values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
-    ["hasAll(http_tech, [#{Enum.map_join(values, ", ", &"'#{esc(&1)}'")}])"]
+    ["hasAll(http_tech, [#{tech_list(v)}])"]
   end
+
+  # The grammar's three stack filters (2026-10-27): all of, any of, none of.
+  defp filter_clause({:tech_any, v}) when is_binary(v) and v != "", do: ["hasAny(http_tech, [#{tech_list(v)}])"]
+  defp filter_clause({:tech_not, v}) when is_binary(v) and v != "", do: ["NOT hasAny(http_tech, [#{tech_list(v)}])"]
+  defp filter_clause({:dns_tech, v}) when is_binary(v) and v != "", do: ["hasAll(dns_tech, [#{tech_list(v)}])"]
+
+  # Any of the words in the title, the description or the H1: how an agency
+  # says what it sells ("shopify", "ecommerce"), case-insensitive.
+  defp filter_clause({:keyword, v}) when is_binary(v) and v != "" do
+    words = v |> String.split(",", trim: true) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+
+    case words do
+      [] ->
+        []
+
+      _ ->
+        ors =
+          Enum.map_join(words, " OR ", fn w ->
+            e = esc(w)
+            "positionCaseInsensitiveUTF8(http_title, '#{e}') > 0 OR positionCaseInsensitiveUTF8(http_meta_description, '#{e}') > 0 OR positionCaseInsensitiveUTF8(http_h1, '#{e}') > 0"
+          end)
+
+        ["(#{ors})"]
+    end
+  end
+
+  defp filter_clause({:has_named_email, "true"}), do: [LS.HTTP.EmailClass.named_email_sql()]
+  defp filter_clause({:has_phone, "true"}), do: ["http_phone != ''"]
+  defp filter_clause({:shopify, "true"}), do: ["is_shopify = 1"]
+
+  defp filter_clause({:min_confidence, v}) when is_binary(v) and v != "" do
+    case Float.parse(v) do
+      {f, _} when f >= 0 and f <= 1 -> ["estimated_business_model_confidence >= #{f}"]
+      _ -> []
+    end
+  end
+
+  defp filter_clause({:first_seen_after, v}), do: date_gte("ctl_first_seen_at", v)
+  defp filter_clause({:last_checked_after, v}), do: date_gte("http_last_checked_at", v)
+
+  # The four changed_* keys compile together in changed_clause/1.
+  defp filter_clause({:changed_field, _}), do: []
+  defp filter_clause({:changed_kind, _}), do: []
+  defp filter_clause({:changed_value, _}), do: []
+  defp filter_clause({:changed_within, _}), do: []
+  # Handled by base_clauses/1.
+  defp filter_clause({:include_junk, _}), do: []
 
   defp filter_clause({:dns_email_provider, v}) when is_binary(v) and v != "" do
     values = String.split(v, ",", trim: true) |> Enum.map(&String.trim/1)
@@ -703,12 +776,66 @@ defmodule LS.Explorer do
   defp filter_clause({:discovered, "24h"}), do: ["ctl_first_seen_at >= now() - INTERVAL 1 DAY"]
   defp filter_clause({:discovered, "7d"}), do: ["ctl_first_seen_at >= now() - INTERVAL 7 DAY"]
   defp filter_clause({:discovered, "30d"}), do: ["ctl_first_seen_at >= now() - INTERVAL 30 DAY"]
+  defp filter_clause({:discovered, "90d"}), do: ["ctl_first_seen_at >= now() - INTERVAL 90 DAY"]
 
   defp filter_clause({:freshness, "24h"}), do: ["http_last_checked_at >= now() - INTERVAL 1 DAY"]
   defp filter_clause({:freshness, "7d"}), do: ["http_last_checked_at >= now() - INTERVAL 7 DAY"]
   defp filter_clause({:freshness, "30d"}), do: ["http_last_checked_at >= now() - INTERVAL 30 DAY"]
+  defp filter_clause({:freshness, "90d"}), do: ["http_last_checked_at >= now() - INTERVAL 90 DAY"]
 
   defp filter_clause(_), do: []
+
+  # "Companies on which <field> <kind> [to <value>] in the last <window>":
+  # one membership test against changes_log, the table behind the Signals
+  # tab and /api/v1/changes. The field must be a tracked column and the
+  # kind one of the seven change words, so nothing free-form reaches the
+  # subquery. A kind or value without a field is ignored: there is nothing
+  # to look at.
+  @change_kinds ~w(added removed changed started stopped down back)
+  @windows %{"24h" => 1, "7d" => 7, "30d" => 30, "90d" => 90}
+
+  defp changed_clause(filters) do
+    get = fn key -> Enum.find_value(filters, "", fn {k, v} -> if k == key, do: to_string(v || "") end) end
+    field = get.(:changed_field)
+
+    if field in LS.Signals.fields() do
+      kind = get.(:changed_kind)
+      value = get.(:changed_value)
+      days = Map.get(@windows, get.(:changed_within), 30)
+
+      conds =
+        ["field = '#{esc(field)}'", "changed_at >= now() - INTERVAL #{days} DAY"] ++
+          if(kind in @change_kinds, do: ["change = '#{kind}'"], else: []) ++
+          if(value != "", do: ["value = '#{esc(value)}'"], else: [])
+
+      ["domain IN (SELECT domain FROM changes_log WHERE #{Enum.join(conds, " AND ")})"]
+    else
+      []
+    end
+  end
+
+  # Catalog names only: the dashboard offers them from a dropdown, the API
+  # takes them as typed, so an alias ("GA4") becomes its canonical name
+  # before it meets the array.
+  defp tech_list(v) do
+    v
+    |> String.split(",", trim: true)
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.map(&LS.Tech.Catalog.canonical/1)
+    |> Enum.map_join(", ", &"'#{esc(&1)}'")
+  end
+
+  # An ISO date, parsed; anything else drops the clause. Same text as the
+  # API has always produced for first_seen_after.
+  defp date_gte(col, v) when is_binary(v) and v != "" do
+    case Date.from_iso8601(String.slice(v, 0, 10)) do
+      {:ok, d} -> ["#{col} >= toDateTime('#{Date.to_iso8601(d)} 00:00:00')"]
+      _ -> []
+    end
+  end
+
+  defp date_gte(_col, _), do: []
 
   defp numeric_gte(col, v), do: numeric(col, ">=", v)
   defp numeric_lte(col, v), do: numeric(col, "<=", v)

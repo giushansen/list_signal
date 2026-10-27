@@ -63,11 +63,10 @@ defmodule LSWeb.ExplorerLive.Format do
     end)
   end
 
-  # Mirrors LSWeb.ExportController.export_cap/1 — the UI must promise exactly
-  # what the controller will deliver, or the file silently disappoints.
-  def export_cap_for("pro"), do: 25_000
-  def export_cap_for("starter"), do: 2_500
-  def export_cap_for(_), do: 0
+  # The same number the export controller enforces (LS.Plans.file_cap/1):
+  # the UI must promise exactly what the file will hold, or it silently
+  # disappoints.
+  def export_cap_for(plan), do: LS.Plans.file_cap(plan)
 
   # Depth cells: an un-enriched business shows an em dash, never a zero.
   # "0 products" reads as "sells nothing"; "-" reads as "not looked at yet",
@@ -202,9 +201,9 @@ defmodule LSWeb.ExplorerLive.Format do
   def format_pct(v) when is_integer(v), do: "#{v}%"
   def format_pct(_), do: nil
 
-  def filter_params(filters) do
-    filters |> Enum.reject(fn {_k, v} -> v == "" or is_nil(v) end) |> Map.new(fn {k, v} -> {to_string(k), v} end)
-  end
+  # The export link carries the grammar's public names (LS.Query), so the
+  # URL under the CSV button is the same query string the API takes.
+  def filter_params(filters), do: Map.new(LS.Query.to_params(filters))
 
   # Badge system: :gold, :silver, :bronze
   def badge_class(:gold), do: "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-amber-400/15 text-amber-400 ring-1 ring-amber-400/30"

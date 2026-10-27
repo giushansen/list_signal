@@ -102,72 +102,145 @@ defmodule LS.ApiData do
   end
 
   @doc """
-  Filtered company search. `filters` accepts string keys straight from
-  params: tech, app, dns_tech, email_provider, country (ISO-2),
-  business_model, industry, revenue, employees, hiring ("true"), shopify
-  ("true"), limit, offset. Returns `{:ok, rows, applied}` so the response
-  can echo what was honoured (agents self-correct off it).
+  Filtered company search. `filters` accepts every `LS.Query` name as a
+  string key straight from params (REST) or from a tool's arguments
+  (MCP), plus `sort`, `limit`, `offset` and `total` ("true" adds the
+  count of everything that matches, the same number the dashboard shows).
+  `opts[:max_page]` is the plan's rows-a-page cap. Returns
+  `{:ok, rows, applied}`: `applied` echoes the filters honoured, the
+  names ignored and the paging, so an agent self-corrects off it.
   """
-  def search(filters) when is_map(filters) do
+  def search(filters, opts \\ []) when is_map(filters) do
+    max_page = Keyword.get(opts, :max_page, @max_page)
     conds = conditions(filters)
-    limit = filters |> int("limit", 25) |> min(@max_page) |> max(1)
+    limit = filters |> int("limit", min(25, max_page)) |> min(max_page) |> max(1)
     offset = filters |> int("offset", 0) |> max(0) |> min(10_000)
     sort = sort_key(filters["sort"])
     cols = Columns.api_columns(:search)
+    where = Enum.join(conds, " AND ")
 
     sql = """
     SELECT #{Enum.map_join(cols, ", ", &select_expr/1)}, notEmpty(http_emails) AS has_contact
     FROM #{Tables.businesses()} FINAL
-    WHERE #{Enum.join(conds, " AND ")}
+    WHERE #{where}
     ORDER BY #{order_sql(sort)}
     LIMIT #{limit} OFFSET #{offset}
     """
 
-    case Clickhouse.query_raw(sql, 30_000) do
-      {:ok, rows} ->
-        keys = Enum.map(cols ++ ["has_contact"], &String.to_atom/1)
-        rows = Enum.map(rows, fn r -> keys |> Enum.zip(r) |> Map.new() |> Map.update!(:has_contact, &(&1 in [1, "1", true])) end)
-        {:ok, rows, %{limit: limit, offset: offset, sort: sort}}
-
-      {:error, e} ->
-        {:error, e}
+    with {:ok, rows} <- Clickhouse.query_raw(sql, 30_000),
+         {:ok, total} <- maybe_total(filters, where) do
+      keys = Enum.map(cols ++ ["has_contact"], &String.to_atom/1)
+      rows = Enum.map(rows, fn r -> keys |> Enum.zip(r) |> Map.new() |> Map.update!(:has_contact, &(&1 in [1, "1", true])) end)
+      {:ok, rows, Map.merge(echo(filters), %{limit: limit, offset: offset, sort: sort, total: total})}
     end
   end
 
-  @doc "The filter names `search/1` honours, in the order the docs list them."
-  def search_filters, do: ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify has_named_email first_seen_after last_checked_after sort limit offset)
+  defp maybe_total(filters, where) do
+    if truthy?(filters["total"]), do: count_where(where, "SETTINGS max_threads = 2, max_execution_time = 10"), else: {:ok, nil}
+  end
+
+  # What was honoured and what was not, by its public name.
+  defp echo(filters) do
+    {parsed, ignored} = LS.Query.parse(filters)
+    %{filters: Map.new(LS.Query.to_params(parsed)), ignored: ignored}
+  end
 
   @doc """
-  The WHERE clauses `search/1` and `query/1` share. Every value is either
-  parsed to a number or date, matched against a fixed list, or escaped;
-  nothing from the caller reaches the SQL as written.
+  How many companies match, and nothing else (2026-10-27). Free on every
+  plan: an agent sizes a segment before it pulls it, which is what keeps
+  it inside its rows. Same filters, same base scope, same number as the
+  dashboard's result count. Counts skip FINAL (duplicates from unmerged
+  parts run about 0.03%) and say so.
+  """
+  @spec count(map()) :: {:ok, map()} | {:error, term()}
+  def count(filters) when is_map(filters) do
+    where = filters |> conditions() |> Enum.join(" AND ")
+
+    with {:ok, total} <- count_where(where, "SETTINGS max_threads = 2, max_execution_time = 10") do
+      {:ok, Map.merge(echo(filters), %{total: total, total_note: "approximate: duplicates from unmerged parts run about 0.03%"})}
+    end
+  end
+
+  @doc "The names `search/1`, `count/1` and `query/1` honour: the grammar, then paging."
+  def search_filters, do: LS.Query.names() ++ ~w(total sort limit offset)
+
+  # The keys the API renders itself, in the exact text it has promised
+  # since v2 (pinned by test/ls/api_data_query_test.exs): the single-name
+  # `has()` for a technology, the band equalities on the estimated columns,
+  # the IN lists with a space after the comma. Everything else is built by
+  # LS.Explorer so a name means one thing on every surface.
+  @own_keys ~w(tech dns_tech dns_email_provider country business_model industry revenue employees realness)a
+
+  @doc """
+  The WHERE clauses `search/1`, `count/1` and `query/1` share. Every value
+  is parsed by `LS.Query` (number, date, fixed list) or escaped; nothing
+  from the caller reaches the SQL as written. The base scope (a fetched
+  homepage, no junk verdict) closes the list.
   """
   @spec conditions(map()) :: [String.t()]
   def conditions(filters) when is_map(filters) do
-    [
-      has("http_tech", filters["tech"]),
-      has("http_tech", filters["app"]),
-      has("dns_tech", filters["dns_tech"]),
-      eq("dns_email_provider", filters["email_provider"]),
+    filters = Map.new(filters, fn {k, v} -> {to_string(k), v} end)
+    {parsed, _ignored} = LS.Query.parse(filters)
+
+    own = [
+      tech_clause("http_tech", filters["tech"]),
+      tech_clause("http_tech", filters["app"]),
+      tech_clause("http_tech", filters["shopify_app"]),
+      tech_clause("dns_tech", filters["dns_tech"]),
+      list_or_eq("dns_email_provider", filters["email_provider"] || filters["dns_email_provider"]),
       in_list("estimated_country", filters["country"] |> upcase() |> csv()),
-      in_list("estimated_business_model", csv(filters["business_model"])),
-      eq("estimated_industry", filters["industry"]),
+      model_clause(filters["business_model"]),
+      list_or_eq("estimated_industry", filters["industry"]),
       in_list("estimated_revenue", csv(filters["revenue"])),
       in_list("estimated_employees", csv(filters["employees"])),
-      if(truthy?(filters["hiring"]), do: "hr_job_count > 0"),
-      gte("estimated_realness", filters["min_realness"]),
-      if(truthy?(filters["shopify"]), do: "is_shopify = 1"),
-      # A named address: one on the domain whose local part is not a role
-      # mailbox (2026-10-26, LS.HTTP.EmailClass). Approximate in SQL: the
-      # role list, no sister or free-mail reasoning.
-      if(truthy?(filters["has_named_email"]), do: "arrayExists(e -> NOT match(e, #{LS.HTTP.EmailClass.role_regex_sql()}) AND endsWith(splitByChar('@', e)[2], domain), http_emails)"),
-      if(truthy?(filters["has_email"]), do: "notEmpty(http_emails)"),
-      date_gte("ctl_first_seen_at", filters["first_seen_after"]),
-      date_gte("http_last_checked_at", filters["last_checked_after"]),
-      "http_title != ''",
-      "estimated_junk = ''"
+      gte("estimated_realness", filters["min_realness"] || filters["realness"])
     ]
+
+    shared = parsed |> Map.drop(@own_keys) |> LS.Explorer.clauses()
+
+    (own ++ shared ++ LS.Explorer.base_clauses(parsed))
     |> Enum.reject(&is_nil/1)
+  end
+
+  # One name keeps the promised `has(col, 'Name')`; a list is the
+  # explorer's hasAll, the same meaning as the dashboard's tech filter.
+  defp tech_clause(col, v) do
+    case csv(v) do
+      nil -> nil
+      [] -> nil
+      [one] -> has(col, one)
+      many -> hd(LS.Explorer.clauses([{if(col == "dns_tech", do: :dns_tech, else: :tech), Enum.join(many, ",")}]))
+    end
+  end
+
+  defp list_or_eq(col, v) do
+    case csv(v) do
+      nil -> nil
+      [one] -> eq(col, one)
+      many -> in_list(col, many)
+    end
+  end
+
+  # "Shopify" is a platform, not a classifier label: it reads the stored
+  # flag, as the dashboard does, and ORs with the real models.
+  defp model_clause(v) do
+    case csv(v) do
+      nil ->
+        nil
+
+      vals ->
+        {shopify, models} = Enum.split_with(vals, &(&1 == "Shopify"))
+
+        parts =
+          [in_list("estimated_business_model", if(models == [], do: nil, else: models)), if(shopify != [], do: "is_shopify = 1")]
+          |> Enum.reject(&is_nil/1)
+
+        case parts do
+          [] -> nil
+          [one] -> one
+          many -> "(" <> Enum.join(many, " OR ") <> ")"
+        end
+    end
   end
 
   @sorts %{
@@ -200,16 +273,19 @@ defmodule LS.ApiData do
   One bounded read over the product table for analysis (2026-10-26): the
   same filters as `search/1`, a `sort`, a `fields` list drawn from the
   search columns, `group_by` with counts, and a total count. Row cap
-  #{@query_max}, ten seconds of execution, two threads. Counts skip FINAL
-  (duplicates run about 0.03%) and say so.
+  `opts[:max_rows]` (#{@query_max} by default, the plan's rows a page on
+  Free and Starter), ten seconds of execution, two threads. `limit=0`
+  returns the total and the groups only, and costs no rows. Counts skip
+  FINAL (duplicates run about 0.03%) and say so.
 
   Returns `{:ok, %{rows, total, groups, applied}}`.
   """
-  @spec query(map()) :: {:ok, map()} | {:error, term()}
-  def query(filters) when is_map(filters) do
+  @spec query(map(), keyword()) :: {:ok, map()} | {:error, term()}
+  def query(filters, opts \\ []) when is_map(filters) do
+    max_rows = Keyword.get(opts, :max_rows, @query_max)
     conds = conditions(filters)
     where = Enum.join(conds, " AND ")
-    limit = filters |> int("limit", 100) |> min(@query_max) |> max(0)
+    limit = filters |> int("limit", min(100, max_rows)) |> min(max_rows) |> max(0)
     offset = filters |> int("offset", 0) |> max(0) |> min(50_000)
     sort = sort_key(filters["sort"])
     settings = "SETTINGS max_threads = 2, max_execution_time = 10"
@@ -230,7 +306,7 @@ defmodule LS.ApiData do
         _ -> nil
       end
 
-    with {:ok, total} <- count(where, settings),
+    with {:ok, total} <- count_where(where, settings),
          {:ok, groups} <- groups(group_by, where, settings),
          {:ok, rows} <- rows(cols, where, sort, limit, offset, settings) do
       {:ok,
@@ -239,13 +315,22 @@ defmodule LS.ApiData do
          total: total,
          total_note: "approximate: duplicates from unmerged parts run about 0.03%",
          groups: groups,
-         applied: %{limit: limit, offset: offset, sort: sort, fields: cols, group_by: if(group_by == :invalid, do: nil, else: group_by),
-                    group_by_accepted: @group_by, filters_accepted: search_filters(), sort_accepted: sort_keys()}
+         applied:
+           Map.merge(echo(filters), %{
+             limit: limit,
+             offset: offset,
+             sort: sort,
+             fields: cols,
+             group_by: if(group_by == :invalid, do: nil, else: group_by),
+             group_by_accepted: @group_by,
+             filters_accepted: search_filters(),
+             sort_accepted: sort_keys()
+           })
        }}
     end
   end
 
-  defp count(where, settings) do
+  defp count_where(where, settings) do
     case Clickhouse.query_raw("SELECT count() FROM #{Tables.businesses()} WHERE #{where} #{settings}", 15_000) do
       {:ok, [[n]]} -> {:ok, to_int(n)}
       {:error, e} -> {:error, e}
@@ -382,9 +467,10 @@ defmodule LS.ApiData do
   # A numeric floor, parsed so nothing but a number reaches the SQL.
   defp gte(_col, nil), do: nil
   defp gte(_col, ""), do: nil
+  defp gte(col, v) when is_number(v) and v >= 0 and v <= 1, do: "#{col} >= #{v}"
 
   defp gte(col, v) when is_binary(v) do
-    case Float.parse(v) do
+    case Float.parse(String.trim_trailing(v, "+")) do
       {f, _} when f >= 0 and f <= 1 -> "#{col} >= #{f}"
       _ -> nil
     end
@@ -398,6 +484,7 @@ defmodule LS.ApiData do
 
   defp upcase(nil), do: nil
   defp upcase(v) when is_binary(v), do: String.upcase(v)
+  defp upcase(v) when is_list(v), do: Enum.map(v, &upcase(to_string(&1)))
   defp upcase(v), do: v
 
   # "US,FR" or ["US", "FR"] -> ["US", "FR"]; nil or "" -> nil.
@@ -411,19 +498,6 @@ defmodule LS.ApiData do
   defp in_list(_col, []), do: nil
   defp in_list(col, [v]), do: eq(col, v)
   defp in_list(col, vals), do: "#{col} IN (#{Enum.map_join(vals, ", ", &"'#{Clickhouse.escape_public(&1)}'")})"
-
-  # An ISO date or datetime, parsed; anything else is ignored.
-  defp date_gte(_col, nil), do: nil
-  defp date_gte(_col, ""), do: nil
-
-  defp date_gte(col, v) when is_binary(v) do
-    case Date.from_iso8601(String.slice(v, 0, 10)) do
-      {:ok, d} -> "#{col} >= toDateTime('#{Date.to_iso8601(d)} 00:00:00')"
-      _ -> nil
-    end
-  end
-
-  defp date_gte(_, _), do: nil
 
   defp truthy?(v), do: v in ["true", "1", true]
 

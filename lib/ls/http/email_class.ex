@@ -108,6 +108,18 @@ defmodule LS.HTTP.EmailClass do
     "'^(#{parts})[-_.+]?[a-z0-9]*@'"
   end
 
+  @doc """
+  The predicate behind `has_named_email` on every surface (2026-10-27):
+  at least one address on the company's own domain whose local part is
+  not a role mailbox. Approximate in SQL, the role list without the
+  sister-domain or free-mail reasoning of `classify/2`, and the same
+  text in the dashboard, the CSV, the API and the MCP so the four agree.
+  """
+  @spec named_email_sql() :: String.t()
+  def named_email_sql do
+    "arrayExists(e -> NOT match(e, #{role_regex_sql()}) AND endsWith(splitByChar('@', e)[2], domain), http_emails)"
+  end
+
   @doc "Classify one address for the business at `domain`."
   @spec classify(String.t(), String.t()) :: kind()
   def classify(email, domain) when is_binary(email) and is_binary(domain) do

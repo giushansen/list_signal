@@ -12,7 +12,7 @@
   <section class="mb-12" id="quickstart">
     <h2 class="font-display text-2xl font-bold mb-4">Quickstart</h2>
     <ol class="space-y-2 text-white/70 text-[15px] mb-6 list-decimal list-inside">
-      <li><a href="/signup" data-umami-event="signup_cta" data-umami-event-source="developers_page" class="text-accent hover:underline">Create a free account</a> and generate an API key in Settings. 1,000 lookups/month included.</li>
+      <li><a href="/signup" data-umami-event="signup_cta" data-umami-event-source="developers_page" class="text-accent hover:underline">Create a free account</a> and generate an API key in Settings. 1,000 rows a month included; counts are free.</li>
       <li>Call the API with your key:</li>
     </ol>
     <div class="grid md:grid-cols-2 gap-4">
@@ -51,9 +51,15 @@
 }</code></pre>
       </div>
     </div>
-    <pre class="mt-4 rounded-xl bg-[#0C1429] border border-white/[0.07] p-5 text-[13px] text-emerald-200/90 overflow-x-auto"><code>curl "https://listsignal.com/api/v1/search?tech=Shopify&country=FR&hiring=true&limit=25" \
+    <pre class="mt-4 rounded-xl bg-[#0C1429] border border-white/[0.07] p-5 text-[13px] text-emerald-200/90 overflow-x-auto"><code># How many match? Free, so ask first.
+curl "https://listsignal.com/api/v1/count?tech=Shopify,Klaviyo&tech_not=Gorgias&country=AU&min_products=300&has_email=true" \
   -H "Authorization: Bearer ls_YOUR_KEY"
 
+# Then the rows, in the target ranking, one page at a time.
+curl "https://listsignal.com/api/v1/search?tech=Shopify,Klaviyo&tech_not=Gorgias&country=AU&min_products=300&has_email=true&limit=25" \
+  -H "Authorization: Bearer ls_YOUR_KEY"
+
+# What moved this week.
 curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=Klaviyo&period=7d" \
   -H "Authorization: Bearer ls_YOUR_KEY"</code></pre>
   </section>
@@ -68,7 +74,15 @@ curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=K
       </div>
       <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
         <code class="text-accent text-sm font-semibold">GET /api/v1/search</code>
-        <p class="text-sm text-white/60 mt-1.5">Filter companies by <code class="text-white/80">tech</code> (one name: a platform, a vendor, a WordPress plugin or a Shopify app), <code class="text-white/80">dns_tech</code>, <code class="text-white/80">email_provider</code>, <code class="text-white/80">country</code>, <code class="text-white/80">business_model</code>, <code class="text-white/80">industry</code>, <code class="text-white/80">revenue</code>, <code class="text-white/80">employees</code>, <code class="text-white/80">hiring</code>, <code class="text-white/80">shopify</code>. Ranked by traffic, up to 100 per page.</p>
+        <p class="text-sm text-white/60 mt-1.5">One page of companies with the <a href="#filters" class="text-accent hover:underline">shared filters</a>: what they run (<code class="text-white/80">tech</code> all of, <code class="text-white/80">tech_any</code>, <code class="text-white/80">tech_not</code>, <code class="text-white/80">email_provider</code>), who they are (<code class="text-white/80">country</code>, <code class="text-white/80">business_model</code>, <code class="text-white/80">revenue</code>, <code class="text-white/80">keyword</code>), stores, hiring, reachability (<code class="text-white/80">has_named_email</code>, <code class="text-white/80">has_phone</code>), when, and what changed. Ranked by the target ranking, <code class="text-white/80">sort=tranco</code> for traffic order, <code class="text-white/80">total=true</code> for the count. Each row returned costs one row.</p>
+      </div>
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <code class="text-accent text-sm font-semibold">GET /api/v1/count</code>
+        <p class="text-sm text-white/60 mt-1.5">How many companies match the same filters. Free, never metered, the same number as the dashboard's result count. Size a segment, tighten it, then pull.</p>
+      </div>
+      <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
+        <code class="text-accent text-sm font-semibold">GET /api/v1/query</code>
+        <p class="text-sm text-white/60 mt-1.5">The analysis read: the same filters, a <code class="text-white/80">fields</code> list, a <code class="text-white/80">group_by</code> with counts (business model, country, revenue, employees, industry, mail provider, TLD) and the total. Up to 500 rows a call on Pro and Scale; <code class="text-white/80">limit=0</code> returns the total and the groups only, free.</p>
       </div>
       <div class="rounded-xl border border-white/[0.07] bg-white/[0.02] p-5">
         <code class="text-accent text-sm font-semibold">GET /api/v1/changes</code>
@@ -84,6 +98,35 @@ curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=K
       </div>
     </div>
     <p class="text-sm text-white/50 mt-4">Full machine-readable contract: <a href="/openapi.json" class="text-accent hover:underline">/openapi.json</a> (OpenAPI 3.1). Errors are RFC 9457 <code class="text-white/70">application/problem+json</code> with actionable detail, so agents self-correct in one retry.</p>
+  </section>
+
+  <%!-- The shared filter grammar --%>
+  <section class="mb-12" id="filters">
+    <h2 class="font-display text-2xl font-bold mb-2">The filters, one grammar</h2>
+    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">Every name below is accepted by <code class="text-white/80">/search</code>, <code class="text-white/80">/count</code> and <code class="text-white/80">/query</code>, by the MCP tools as arguments, and by the dashboard as a URL (<code class="text-white/80">/dashboard?country=AU&amp;tech=Shopify,Klaviyo</code>) and its CSV link. Filters combine with AND; lists are comma-separated. Parked and placeholder sites are excluded unless <code class="text-white/80">include_junk=true</code>. Worked examples with the dashboard, REST and MCP forms side by side are on <a href="/data#ask" class="text-accent hover:underline">/data</a>.</p>
+    <div class="overflow-x-auto rounded-xl border border-white/[0.07]">
+      <table class="w-full text-[13px]">
+        <thead><tr class="bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-white/35">
+          <th class="px-4 py-3 font-semibold">Filter</th>
+          <th class="px-4 py-3 font-semibold">Type</th>
+          <th class="px-4 py-3 font-semibold">Means</th>
+          <th class="px-4 py-3 font-semibold">Example</th>
+        </tr></thead>
+        <tbody class="text-white/70">
+          <%= for {group, filters} <- LS.Query.groups() do %>
+            <tr class="border-t border-white/[0.05] bg-white/[0.015]"><td colspan="4" class="px-4 py-2 text-[11px] uppercase tracking-wider text-white/40 font-semibold"><%= group %></td></tr>
+            <%= for f <- filters do %>
+              <tr class="border-t border-white/[0.05]">
+                <td class="px-4 py-2 font-mono text-[12px] text-white/85 whitespace-nowrap"><%= f.name %><%= if f.aliases != [] do %><div class="text-[10px] text-white/30 font-sans">also <%= Enum.join(f.aliases, ", ") %></div><% end %></td>
+                <td class="px-4 py-2 text-white/40 whitespace-nowrap"><%= f.type %></td>
+                <td class="px-4 py-2"><%= f.doc %></td>
+                <td class="px-4 py-2 font-mono text-[12px] text-white/50 whitespace-nowrap"><%= f.name %>=<%= f.example %></td>
+              </tr>
+            <% end %>
+          <% end %>
+        </tbody>
+      </table>
+    </div>
   </section>
 
   <%!-- Signals --%>
@@ -136,7 +179,7 @@ curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=K
   <%!-- MCP --%>
   <section class="mb-12" id="mcp">
     <h2 class="font-display text-2xl font-bold mb-4">MCP server, for AI agents</h2>
-    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">ListSignal speaks the Model Context Protocol natively. Point Claude, Cursor, or any MCP client at the endpoint and it gets four tools: <code class="text-white/80">listsignal_get_company</code> (the full record with its recent changes), <code class="text-white/80">listsignal_search_companies</code>, <code class="text-white/80">listsignal_changes</code> (the signal feed: what moved, where, when), and <code class="text-white/80">listsignal_dataset_stats</code>.</p>
+    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">ListSignal speaks the Model Context Protocol natively. Point Claude, Cursor, or any MCP client at the endpoint and it gets six tools: <code class="text-white/80">listsignal_count</code> (how many match, free), <code class="text-white/80">listsignal_search_companies</code> (one page, the shared filters), <code class="text-white/80">listsignal_query</code> (totals, group-bys, chosen fields, up to 500 rows), <code class="text-white/80">listsignal_get_company</code> (the full record with its changes, email verdicts and people), <code class="text-white/80">listsignal_changes</code> (the signal feed: what moved, where, when), and <code class="text-white/80">listsignal_dataset_stats</code>. The server's instructions tell the model to count first and pull second.</p>
     <pre phx-no-curly-interpolation class="rounded-xl bg-[#0C1429] border border-white/[0.07] p-5 text-[13px] text-emerald-200/90 overflow-x-auto"><code>{
   "mcpServers": {
     "listsignal": {
@@ -146,29 +189,43 @@ curl "https://listsignal.com/api/v1/changes?field=http_tech&change=added&value=K
     }
   }
 }</code></pre>
-    <p class="text-sm text-white/50 mt-3">Streamable HTTP transport, stateless, JSON-RPC 2.0. The same key and quota as the REST API.</p>
+    <p class="text-sm text-white/50 mt-3">Streamable HTTP transport, stateless, JSON-RPC 2.0. The same key, the same filters and the same rows as the REST API.</p>
     <p class="text-sm text-white/50 mt-3">Using claude.ai? Its custom connectors cannot send a header. Add the server with the key in the URL instead: <code class="text-white/80">https://listsignal.com/mcp/k/ls_YOUR_KEY</code>. Create a key just for that connector in Settings, so you can revoke it on its own.</p>
   </section>
 
   <%!-- Limits & errors --%>
   <section class="mb-12" id="errors">
     <h2 class="font-display text-2xl font-bold mb-4">Plans and limits</h2>
+    <p class="text-[15px] text-white/60 mb-4 leading-relaxed">One allowance of rows a month per plan, spent on any surface: a CSV line, a search result, a company record, a change row. Counts, group-bys, the technology directory and the dataset stats are never charged. The rate limit is per key, the rows are per account, so a second key is a second connector, not a second quota.</p>
     <div class="overflow-x-auto rounded-xl border border-white/[0.07]">
       <table class="w-full text-sm">
         <thead><tr class="bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-white/35">
           <th class="px-5 py-3 font-semibold">Plan</th>
-          <th class="px-5 py-3 font-semibold">Calls / month</th>
+          <th class="px-5 py-3 font-semibold">Rows / month</th>
+          <th class="px-5 py-3 font-semibold">Rows / page</th>
+          <th class="px-5 py-3 font-semibold">Query rows</th>
           <th class="px-5 py-3 font-semibold">Rate</th>
           <th class="px-5 py-3 font-semibold">Contact emails and phone</th>
         </tr></thead>
         <tbody class="text-white/70">
-          <tr class="border-t border-white/[0.05]"><td class="px-5 py-3">Free</td><td class="px-5 py-3">1,000</td><td class="px-5 py-3">30 / min</td><td class="px-5 py-3 text-white/40">Contactability only</td></tr>
-          <tr class="border-t border-white/[0.05]"><td class="px-5 py-3">Starter</td><td class="px-5 py-3">5,000</td><td class="px-5 py-3">60 / min</td><td class="px-5 py-3 text-emerald-400">Included</td></tr>
-          <tr class="border-t border-white/[0.05]"><td class="px-5 py-3">Pro</td><td class="px-5 py-3">25,000</td><td class="px-5 py-3">120 / min</td><td class="px-5 py-3 text-emerald-400">Included</td></tr>
+          <%= for plan <- LS.Plans.self_serve() do %>
+            <tr class="border-t border-white/[0.05]">
+              <td class="px-5 py-3"><%= LS.Plans.label(plan) %> <span class="text-white/35">$<%= LS.Plans.monthly(plan) %>/mo</span></td>
+              <td class="px-5 py-3"><%= LS.Plans.fmt(LS.Plans.rows(plan)) %></td>
+              <td class="px-5 py-3"><%= LS.Plans.per_page(plan) %></td>
+              <td class="px-5 py-3"><%= LS.Plans.query_max(plan) %></td>
+              <td class="px-5 py-3"><%= LS.Plans.per_min(plan) %> / min</td>
+              <%= if LS.Plans.emails?(plan) do %>
+                <td class="px-5 py-3 text-emerald-400">Included</td>
+              <% else %>
+                <td class="px-5 py-3 text-white/40">Contactability only</td>
+              <% end %>
+            </tr>
+          <% end %>
         </tbody>
       </table>
     </div>
-    <p class="text-sm text-white/50 mt-4">Only successful calls count against the quota. You never pay for a miss. Need more volume, webhooks, or bulk delivery? <a href="mailto:will@listsignal.com" class="text-accent hover:underline">Email us</a>.</p>
+    <p class="text-sm text-white/50 mt-4">Only successful calls count, and only for the rows they return. A quota that runs out answers 403 with the reset date; counts keep working. Need more rows, webhooks, or bulk delivery? <a href="/pricing" class="text-accent hover:underline">Pricing</a> or <a href="mailto:will@listsignal.com" class="text-accent hover:underline">email us</a>.</p>
   </section>
 
   <div class="text-center">

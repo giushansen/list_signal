@@ -5,7 +5,7 @@ defmodule LSWeb.RedirectController do
   def signup(conn, params) do
     query_params =
       []
-      |> then(fn q -> if params["plan"] in ["starter", "pro"], do: [{"plan", params["plan"]} | q], else: q end)
+      |> then(fn q -> if params["plan"] in LS.Plans.paid_plans(), do: [{"plan", params["plan"]} | q], else: q end)
       |> then(fn q -> if params["billing"] in ["monthly", "annual"], do: [{"billing", params["billing"]} | q], else: q end)
 
     target = case query_params do

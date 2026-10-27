@@ -140,6 +140,7 @@ defmodule LSWeb.SitemapController do
       entry(base, "/", "1.0", "daily"),
       entry(base, "/pricing", "0.8", "weekly"),
       entry(base, "/features", "0.8", "weekly"),
+      entry(base, "/data", "0.9", "weekly"),
       entry(base, "/apps", "0.7", "weekly"),
       entry(base, "/countries", "0.7", "weekly"),
       entry(base, "/alternatives/builtwith", "0.8", "weekly"),

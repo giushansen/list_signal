@@ -1,17 +1,23 @@
 # ListSignal
 
-> Live business intelligence for 14M+ online businesses: tech stacks, Shopify apps, revenue and employee estimates, hiring signals with posting dates, SEO scores, and contact data for Shopify stores, SaaS products, agencies, and every digital business. New domains are discovered within hours of getting a TLS certificate. Data is queryable by REST API and by MCP.
+> Live business intelligence for 14M+ online businesses: tech stacks, Shopify apps, revenue and employee estimates, hiring signals with posting dates, SEO scores, and contact data for Shopify stores, SaaS products, agencies, and every digital business. New domains are discovered within hours of getting a TLS certificate. One record per business with 121 fields, 26 of them watched for change. Queryable in the dashboard, as CSV, by REST API and by MCP with one filter grammar.
+
+## The data
+- [Every field, with a fictional Shopify store and a fictional SaaS as examples](/data): the dictionary, the filter grammar, the signals, and three questions asked in English with their dashboard, REST and MCP forms.
 
 ## Developer API
-The fastest way for an agent to use ListSignal. Free tier: 1,000 lookups/month, no card.
-- [Developer docs](/developers): quickstart, endpoints, plans, error format
+The fastest way for an agent to use ListSignal. Free: 1,000 rows a month, counts free, no card.
+- [Developer docs](/developers): quickstart, endpoints, the filter grammar, plans, error format
 - [OpenAPI 3.1 spec](/openapi.json): the machine-readable contract
-- MCP server: POST https://listsignal.com/mcp (Streamable HTTP, JSON-RPC 2.0, API-key auth). Tools: listsignal_get_company, listsignal_search_companies, listsignal_dataset_stats.
+- MCP server: POST https://listsignal.com/mcp (Streamable HTTP, JSON-RPC 2.0, API-key auth). Tools: listsignal_count (free), listsignal_search_companies, listsignal_query, listsignal_get_company, listsignal_changes, listsignal_dataset_stats. Count first, pull second.
 - Errors are RFC 9457 application/problem+json with actionable detail.
 
 ## Key Endpoints
-- GET /api/v1/company/{domain}: one company's full record
-- GET /api/v1/search?tech=&country=&business_model=&hiring=: filtered company search
+- GET /api/v1/company/{domain}: one company's full record with its changes, email verdicts and people
+- GET /api/v1/count?country=&tech=&has_named_email=: how many match, free
+- GET /api/v1/search?tech=&tech_not=&country=&business_model=&revenue=&hiring=&has_named_email=&changed_field=: one page of companies, the same filters as the dashboard
+- GET /api/v1/query: totals, group_by with counts, chosen fields, up to 500 rows
+- GET /api/v1/changes: the change feed, newest first
 - GET /api/v1/technologies: tracked technologies with live counts
 - GET /api/v1/stats: live dataset statistics, refreshed every 60 seconds
 
@@ -44,8 +50,10 @@ Every published score, documented.
 - [Hiring trends](/hiring)
 
 ## Pricing
-- Free: browse + API key with 1,000 calls/month, contactability without addresses
-- Starter ($39/month): all filters, CSV export, contact emails, 5,000 API calls/month
-- Pro ($149/month): 50,000 rows/month, saved searches, alerts, 25,000 API calls/month
-- Custom list ($499 one-time): 250 qualified companies matching your ICP, delivered in 48h
+One allowance of rows a month per plan, spent as CSV, API or MCP. Browsing, counts, group-bys and dataset stats are free on every plan.
+- Free: 1,000 rows/month, 15 rows a page, 10 searches a minute, no contact emails
+- Starter ($49/month, $490/year): 2,500 rows/month, 50 a page, 30 a minute, contact emails and phones
+- Pro ($149/month, $1,490/year): 15,000 rows/month, 100 a page (500 on query), 120 a minute, signal feed with alerts
+- Scale ($399/month, $3,990/year): 75,000 rows/month, 300 a minute, daily signal file, 3 seats
+- Done for you ($999/month): unlimited list requests, one at a time, usually within 24 hours, any criteria, Scale included
 - [Pricing](/pricing)

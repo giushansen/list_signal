@@ -1,15 +1,24 @@
 defmodule LSWeb.ExportController do
-  @moduledoc "CSV export of explorer result sets (plan-gated row limits)."
+  @moduledoc """
+  CSV export of explorer result sets. The filters are `LS.Query`, the same
+  names as the dashboard URL, the API and the MCP, so the export link is
+  the search. Rows are metered against the plan's monthly pool
+  (`LS.Accounts.rows_remaining/1`), the same pool the API spends. Free
+  exports too, with the contact columns blanked: 1,000 rows a month of
+  the dataset without addresses is exactly what a free API key gets, and
+  a file is how a buyer shows the data to a colleague.
+  """
   use LSWeb, :controller
 
-  alias LS.{Accounts, Explorer, Signals}
+  alias LS.{Accounts, Explorer, Plans, Signals}
   alias LS.Accounts.User
 
-  @explorer_filter_keys ~w(tech shopify_app country business_model industry revenue employees language domain_search freshness discovered dns_email_provider has_email hiring has_pricing has_catalog min_products max_products min_price_avg max_price_avg min_seo_score max_seo_score min_new_products_30d ats_platform)
+  # The columns a plan without emails does not get in the file.
+  @contact_columns ~w(http_emails http_emails_evidence http_phone)
 
   def csv(conn, params) do
-    filters = Enum.map(@explorer_filter_keys, fn key -> {String.to_atom(key), params[key] || ""} end)
-    export(conn, "csv_export", "listsignal_export.csv", ~p"/dashboard", filters, &Explorer.export_rows/2)
+    {filters, _ignored} = LS.Query.parse(params)
+    export(conn, "csv_export", "listsignal_export.csv", ~p"/dashboard", Enum.to_list(filters), &Explorer.export_rows/2)
   end
 
   @doc "The Signals tab's CSV: one change per row, same quota and cap as the company export."
@@ -21,14 +30,15 @@ defmodule LSWeb.ExportController do
 
   defp export(conn, event, filename, back, filters, rows_fun) do
     user = conn.assigns.current_scope.user
+    plan = User.effective_plan(user)
 
     if Accounts.can_export?(user) do
-      plan = User.effective_plan(user)
-      limit = Accounts.exports_remaining(user)
+      limit = Accounts.rows_remaining(user)
 
-      case rows_fun.(filters, min(limit, export_cap(plan))) do
+      case rows_fun.(filters, min(limit, Plans.file_cap(plan))) do
         {:ok, {columns, rows}} ->
           Accounts.increment_exports(user, length(rows))
+          rows = gate_contacts(columns, rows, plan)
 
           # Evidence, not telemetry: a dispute is decided on whether we can
           # show the customer received the data they paid for.
@@ -50,19 +60,38 @@ defmodule LSWeb.ExportController do
       end
     else
       conn
-      |> put_flash(:error, "CSV export is not available on your plan or you've reached your monthly limit.")
+      |> put_flash(:error, "You have used this month's #{Plans.fmt(Plans.rows(plan))} rows. The counter resets on the 1st; upgrade for more.")
       |> redirect(to: back)
     end
   end
 
-  # Rows in ONE file, distinct from the monthly quota in Accounts.export_limit/1.
-  # A single CSV past ~25k rows stops being a working list and starts being a
-  # database dump: slow to open, impossible to review, and far easier to
-  # resell. Users who need more take several files, which is also what makes
-  # the monthly quota meaningful.
-  defp export_cap("pro"), do: 25_000
-  defp export_cap("starter"), do: 2_500
-  defp export_cap(_), do: 0
+  # The addresses are what the paid plans sell. A free file keeps the
+  # columns (same header on every plan, so a CRM import works) and blanks
+  # the cells.
+  # The Signals file is a list of changes, and an "email added" change
+  # carries the address in its value column: blanked too.
+  @doc false
+  def gate_contacts(columns, rows, plan) do
+    if Plans.emails?(plan) do
+      rows
+    else
+      index = columns |> Enum.with_index() |> Map.new()
+      hidden = @contact_columns |> Enum.map(&index[&1]) |> Enum.reject(&is_nil/1)
+      {field_i, value_i, prev_i, summary_i} = {index["field"], index["value"], index["prev_value"], index["summary"]}
+
+      Enum.map(rows, fn row ->
+        row = Enum.reduce(hidden, row, fn i, r -> List.replace_at(r, i, "") end)
+
+        if field_i && value_i && Enum.at(row, field_i) == "http_emails" do
+          [value_i, prev_i, summary_i]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.reduce(row, fn i, r -> List.replace_at(r, i, "") end)
+        else
+          row
+        end
+      end)
+    end
+  end
 
   defp build_csv(columns, rows) do
     header = Enum.join(columns, ",")

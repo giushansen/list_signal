@@ -35,7 +35,7 @@ defmodule LSWeb.UserLive.Settings do
           <p class="text-sm text-white/50 mb-4">
             For the <a href="/developers" class="text-emerald-400 hover:underline">REST API and MCP server</a>.
             Make one key per connector (Claude Code, claude.ai, your CRM) so each can be revoked on its own.
-            All your keys share one quota: used <span class="text-white font-medium"><%= @api_usage %></span> of <span class="text-white font-medium"><%= @api_quota %></span> calls this month.
+            All your keys share the plan's rows with the CSV export: <span class="text-white font-medium"><%= LS.Plans.fmt(@api_usage) %></span> rows taken by API and MCP this month, of <span class="text-white font-medium"><%= LS.Plans.fmt(@api_quota) %></span> on every surface. Counts and stats are free.
           </p>
 
           <%= if @new_api_key do %>
@@ -53,7 +53,8 @@ defmodule LSWeb.UserLive.Settings do
                     <div>
                       <span class="text-white font-medium"><%= key.name %></span>
                       <code class="text-white/60 ml-2"><%= key.prefix %>...</code>
-                      <span class="text-white/35 ml-2">created <%= Calendar.strftime(key.inserted_at, "%b %d, %Y") %> &middot; <%= Map.get(@api_key_usage, key.id, 0) %> calls this month</span>
+                      <% {calls, rows} = Map.get(@api_key_usage, key.id, {0, 0}) %>
+                      <span class="text-white/35 ml-2">created <%= Calendar.strftime(key.inserted_at, "%b %d, %Y") %> &middot; <%= calls %> calls, <%= LS.Plans.fmt(rows) %> rows this month</span>
                     </div>
                     <div class="flex items-center gap-4">
                       <%= if Map.has_key?(@revealed, key.id) do %>
@@ -78,87 +79,66 @@ defmodule LSWeb.UserLive.Settings do
           </form>
         </div>
 
-        <%!-- Plan & Billing, comparison table --%>
+        <%!-- Plan & Billing: every number from LS.Plans, never typed here --%>
         <div class="bg-[#0F1628] border border-white/[0.06] rounded-xl p-6">
           <h2 class="text-lg font-semibold text-white mb-2">Plan & Billing</h2>
           <% plan_color = case @plan do
+            "scale" -> "text-violet-400"
+            "dfy" -> "text-violet-400"
             "pro" -> "text-emerald-400"
             "starter" -> "text-blue-400"
             _ -> "text-amber-400"
           end %>
-          <p class="text-sm text-gray-500 mb-6">You are currently on the <span class={"font-semibold #{plan_color}"}><%= String.capitalize(@plan) %></span> plan.</p>
+          <p class="text-sm text-gray-500 mb-2">You are on the <span class={"font-semibold #{plan_color}"}><%= LS.Plans.label(@plan) %></span> plan.</p>
+          <p class="text-xs text-gray-600 mb-6">One monthly allowance of rows, spent as CSV, API or MCP. Browsing, counts and dataset stats are free on every plan.</p>
 
-          <div class="grid grid-cols-3 gap-4 mb-6">
-            <%!-- Free column --%>
-            <div class={"rounded-xl border p-5 #{if @plan == "free", do: "border-amber-500/30 bg-amber-500/[0.03] ring-1 ring-amber-500/20", else: "border-white/[0.06] bg-[#0B1020]"}"}>
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-bold text-white">Free</h3>
-                <%= if @plan == "free" do %>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-amber-500/15 text-amber-400">Current</span>
-                <% end %>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+            <%= for {plan, c} <- plan_cards() do %>
+              <% current = @plan == plan or (@plan == "dfy" and plan == "scale") %>
+              <div class={"rounded-xl border p-4 " <> if(current, do: c.current, else: "border-white/[0.06] bg-[#0B1020]")}>
+                <div class="flex items-center justify-between mb-2">
+                  <h3 class={"text-sm font-bold #{c.title}"}><%= LS.Plans.label(plan) %></h3>
+                  <%= if current do %>
+                    <span class={"px-2 py-0.5 rounded-full text-[10px] font-bold uppercase #{c.badge}"}>Current</span>
+                  <% end %>
+                </div>
+                <p class="text-2xl font-bold text-white mb-3">$<%= LS.Plans.monthly(plan) %><span class="text-sm text-gray-500 font-normal">/mo</span></p>
+                <ul class="text-[13px] text-gray-400 space-y-2">
+                  <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <strong class="text-gray-200"><%= LS.Plans.fmt(LS.Plans.rows(plan)) %></strong> rows a month</li>
+                  <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= LS.Plans.per_page(plan) %> rows a page</li>
+                  <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= LS.Plans.per_min(plan) %> searches a minute</li>
+                  <%= if LS.Plans.emails?(plan) do %>
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> Contact emails and phones</li>
+                  <% else %>
+                    <li class="flex items-center gap-2"><span class="text-gray-600">&#10005;</span> No contact emails</li>
+                  <% end %>
+                  <%= if LS.Plans.feed?(plan) do %>
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> Signal feed and alerts</li>
+                  <% end %>
+                  <%= if LS.Plans.seats(plan) > 1 do %>
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= LS.Plans.seats(plan) %> seats, daily file</li>
+                  <% end %>
+                </ul>
               </div>
-              <p class="text-2xl font-bold text-white mb-4">$0<span class="text-sm text-gray-500 font-normal">/mo</span></p>
-              <ul class="text-sm text-gray-400 space-y-2.5">
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 15 results per page</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> 10 searches/min</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10003;</span> Tech + country filters</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10005;</span> No CSV export</li>
-                <li class="flex items-center gap-2"><span class="text-gray-600">&#10005;</span> No contact emails</li>
-              </ul>
-            </div>
-
-            <%!-- Starter column --%>
-            <div class={"rounded-xl border p-5 #{if @plan == "starter", do: "border-blue-500/30 bg-blue-500/[0.03] ring-1 ring-blue-500/20", else: "border-white/[0.06] bg-[#0B1020]"}"}>
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-bold text-blue-400">Starter</h3>
-                <%= if @plan == "starter" do %>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-blue-500/15 text-blue-400">Current</span>
-                <% end %>
-              </div>
-              <p class="text-2xl font-bold text-white mb-4">$39<span class="text-sm text-gray-500 font-normal">/mo</span></p>
-              <ul class="text-sm text-gray-300 space-y-2.5">
-                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 50 results per page</li>
-                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 30 searches/min</li>
-                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> All filters</li>
-                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 5,000 rows/mo</li>
-                <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Contact email access</li>
-              </ul>
-            </div>
-
-            <%!-- Pro column --%>
-            <div class={"rounded-xl border p-5 #{if @plan == "pro", do: "border-emerald-500/30 bg-emerald-500/[0.03] ring-1 ring-emerald-500/20", else: "border-white/[0.06] bg-[#0B1020]"}"}>
-              <div class="flex items-center justify-between mb-3">
-                <h3 class="text-sm font-bold text-emerald-400">Pro</h3>
-                <%= if @plan == "pro" do %>
-                  <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-emerald-500/15 text-emerald-400">Current</span>
-                <% end %>
-              </div>
-              <p class="text-2xl font-bold text-white mb-4">$149<span class="text-sm text-gray-500 font-normal">/mo</span></p>
-              <ul class="text-sm text-gray-300 space-y-2.5">
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>100</strong> results per page</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>120</strong> searches/min</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> All filters</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> <strong>50,000</strong> rows/mo</li>
-                <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Priority support</li>
-              </ul>
-            </div>
+            <% end %>
           </div>
 
           <%!-- Usage stats --%>
           <div class="bg-[#0B1020] rounded-lg p-4 mb-5">
             <h4 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Your Usage This Month</h4>
-            <div class="grid grid-cols-2 gap-4 text-sm">
+            <div class="grid grid-cols-3 gap-4 text-sm">
               <div>
                 <span class="text-gray-500">Rows remaining</span>
-                <p class="text-white font-semibold"><%= @exports_remaining %> <span class="text-gray-600 font-normal">/ <%= @export_limit %></span></p>
+                <p class="text-white font-semibold"><%= LS.Plans.fmt(@rows_remaining) %> <span class="text-gray-600 font-normal">/ <%= LS.Plans.fmt(@export_limit) %></span></p>
+                <p class="text-[11px] text-gray-600"><%= LS.Plans.fmt(@rows_used) %> taken as CSV, API and MCP</p>
               </div>
               <div>
-                <span class="text-gray-500">Results per page</span>
+                <span class="text-gray-500">Rows per page</span>
                 <p class="text-white font-semibold"><%= @per_page %></p>
               </div>
               <div>
-                <span class="text-gray-500">Rate limit</span>
-                <p class="text-white font-semibold"><%= @rate_limit %> <span class="text-gray-600 font-normal">req/min</span></p>
+                <span class="text-gray-500">Searches a minute</span>
+                <p class="text-white font-semibold"><%= @rate_limit %></p>
               </div>
             </div>
           </div>
@@ -171,20 +151,23 @@ defmodule LSWeb.UserLive.Settings do
               </button>
             </form>
           <% else %>
-            <div class="flex gap-3">
-              <form action={~p"/subscription/checkout/starter/monthly"} method="post" class="flex-1">
-                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-blue-500/20 transition">
-                  Start with Starter, $39/mo
-                </button>
-              </form>
-              <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="flex-1">
-                <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-                <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/20 transition">
-                  Upgrade to Pro, $149/mo
-                </button>
-              </form>
+            <div class="flex gap-3 flex-wrap">
+              <%= for {plan, %{button: classes}} <- plan_cards(), plan != "free" do %>
+                <form action={~p"/subscription/checkout/#{plan}/monthly"} method="post" class="flex-1 min-w-[160px]">
+                  <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+                  <button type="submit" class={"w-full text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg transition #{classes}"}>
+                    <%= LS.Plans.label(plan) %>, $<%= LS.Plans.monthly(plan) %>/mo
+                  </button>
+                </form>
+              <% end %>
             </div>
+            <form action={~p"/subscription/checkout/dfy/monthly"} method="post" class="mt-3">
+              <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+              <button type="submit" class="w-full bg-amber-500 hover:bg-amber-400 text-[#1a1200] rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-amber-500/20 transition">
+                Done for you, $<%= LS.Plans.monthly("dfy") %>/mo: your lists built by hand, Scale included
+              </button>
+            </form>
+            <p class="mt-3 text-xs text-gray-500">Yearly billing is two months free, on the <a href="/pricing" class="text-emerald-400 hover:underline">pricing page</a>. <a href="/pricing#done-for-you" class="text-emerald-400 hover:underline">What done for you includes</a>.</p>
           <% end %>
         </div>
 
@@ -274,6 +257,18 @@ defmodule LSWeb.UserLive.Settings do
     """
   end
 
+
+  # Literal class strings per plan: Tailwind only emits classes it can read
+  # in the source, so a colour built by interpolation would render unstyled.
+  defp plan_cards do
+    [
+      {"free", %{current: "border-amber-500/30 bg-amber-500/[0.03] ring-1 ring-amber-500/20", title: "text-amber-400", badge: "bg-amber-500/15 text-amber-400", tick: "text-amber-500", button: ""}},
+      {"starter", %{current: "border-blue-500/30 bg-blue-500/[0.03] ring-1 ring-blue-500/20", title: "text-blue-400", badge: "bg-blue-500/15 text-blue-400", tick: "text-blue-500", button: "bg-blue-600 hover:bg-blue-500 shadow-blue-500/20"}},
+      {"pro", %{current: "border-emerald-500/30 bg-emerald-500/[0.03] ring-1 ring-emerald-500/20", title: "text-emerald-400", badge: "bg-emerald-500/15 text-emerald-400", tick: "text-emerald-500", button: "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/20"}},
+      {"scale", %{current: "border-violet-500/30 bg-violet-500/[0.03] ring-1 ring-violet-500/20", title: "text-violet-400", badge: "bg-violet-500/15 text-violet-400", tick: "text-violet-500", button: "bg-violet-600 hover:bg-violet-500 shadow-violet-500/20"}}
+    ]
+  end
+
   @impl true
   def mount(%{"token" => token}, _session, socket) do
     socket =
@@ -294,20 +289,15 @@ defmodule LSWeb.UserLive.Settings do
     email_changeset = Accounts.change_user_email(user, %{}, validate_unique: false)
     password_changeset = Accounts.change_user_password(user, %{}, hash_password: false)
 
-    rate_limit = case plan do
-      "pro" -> 120
-      "starter" -> 30
-      _ -> 10
-    end
-
     socket =
       socket
       |> assign(:current_email, user.email)
       |> assign(:plan, plan)
-      |> assign(:exports_remaining, Accounts.exports_remaining(user))
+      |> assign(:rows_remaining, Accounts.rows_remaining(user))
+      |> assign(:rows_used, Accounts.rows_used_this_month(user))
       |> assign(:export_limit, Accounts.export_limit(user))
       |> assign(:per_page, Accounts.results_per_page(user))
-      |> assign(:rate_limit, rate_limit)
+      |> assign(:rate_limit, LS.Plans.per_min(plan))
       |> assign(:email_form, to_form(email_changeset))
       |> assign(:password_form, to_form(password_changeset))
       |> assign(:trigger_submit, false)
@@ -321,7 +311,7 @@ defmodule LSWeb.UserLive.Settings do
 
     socket
     |> assign(:api_keys, keys)
-    |> assign(:api_key_usage, Map.new(keys, &{&1.id, LS.ApiKeys.usage_this_month(&1.id)}))
+    |> assign(:api_key_usage, Map.new(keys, &{&1.id, {LS.ApiKeys.usage_this_month(&1.id), LS.ApiKeys.rows_this_month(&1.id)}}))
     |> assign(:api_usage, LS.ApiKeys.user_usage_this_month(user.id))
     |> assign(:api_quota, LS.ApiKeys.monthly_quota(User.effective_plan(user)))
     |> assign(:new_api_key, nil)

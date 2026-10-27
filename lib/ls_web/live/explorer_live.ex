@@ -13,12 +13,18 @@ defmodule LSWeb.ExplorerLive do
   alias LS.Accounts.User
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(params, _session, socket) do
     user = socket.assigns.current_scope.user
     per_page = Accounts.results_per_page(user)
     plan = User.effective_plan(user)
 
-    filters = default_filters()
+    # A URL that names filters opens as that search (the /data examples,
+    # the docs and the plan's segments link here); otherwise the default view.
+    filters =
+      case filters_from_params(params) do
+        f when map_size(f) == 0 -> default_filters()
+        f -> prune_hidden_depth(f)
+      end
 
     socket =
       socket
@@ -376,9 +382,17 @@ defmodule LSWeb.ExplorerLive do
   # in the dropdowns matching zero rows while the data held "$10M-$100M"/"51-500".
   defp fetch_dropdown_options("revenue", _q), do: LS.Revenue.Estimator.revenue_labels()
   defp fetch_dropdown_options("employees", _q), do: LS.Revenue.Estimator.employee_labels()
-  defp fetch_dropdown_options("freshness", _q), do: ["24h", "7d", "30d"]
+  defp fetch_dropdown_options("freshness", _q), do: LS.Query.periods()
   defp fetch_dropdown_options("realness", _q), do: ["0.7+", "0.5+", "0.3+"]
-  defp fetch_dropdown_options("discovered", _q), do: ["24h", "7d", "30d"]
+  defp fetch_dropdown_options("discovered", _q), do: LS.Query.periods()
+  # The grammar's other stack filters (2026-10-27): the same catalog as "Tech".
+  defp fetch_dropdown_options("tech_any", _q), do: fetch_techs()
+  defp fetch_dropdown_options("tech_not", _q), do: fetch_techs()
+  defp fetch_dropdown_options("min_confidence", _q), do: ["0.9+", "0.7+", "0.5+"]
+  # "What changed": the tracked columns, the seven change words, the window.
+  defp fetch_dropdown_options("changed_field", _q), do: LS.Signals.fields()
+  defp fetch_dropdown_options("changed_kind", _q), do: LS.Signals.changes()
+  defp fetch_dropdown_options("changed_within", _q), do: LS.Query.periods()
   defp fetch_dropdown_options(_, _), do: []
 
   # Cached fleet-wide: these DISTINCTs scan millions of rows and their answer
@@ -561,6 +575,36 @@ defmodule LSWeb.ExplorerLive do
       label: "Weak SEO",
       hint: "Scored under 50 with a reachable address, an SEO agency's pitch list",
       filters: %{max_seo_score: "49", has_email: "true"}
+    },
+    # The four lists of the outbound plan (2026-10-27), as presets so a
+    # sample is a click and an export, not a research task. The same
+    # filters run unchanged on /api/v1/count and the MCP tools.
+    %{
+      id: "new_stores_west",
+      label: "New stores, West",
+      # No has_catalog here: the catalog pass trails discovery, so of the
+      # 9,774 reachable new stores in the West on 2026-10-27 only 316 had
+      # a catalog read yet. The address is the qualifier, the count is real.
+      hint: "Shopify stores first seen in the last 30 days in the US, UK, Canada and Australia, with an address on the site",
+      filters: %{business_model: "Shopify", discovered: "30d", country: "US,GB,CA,AU", has_email: "true"}
+    },
+    %{
+      id: "started_hiring",
+      label: "Started hiring",
+      hint: "Went from zero to open roles in the last 30 days, West, with an address on the site",
+      filters: %{changed_field: "hr_job_count", changed_kind: "started", changed_within: "30d", country: "US,GB,CA,AU", has_email: "true"}
+    },
+    %{
+      id: "replatform_us",
+      label: "Replatform leads",
+      hint: "US businesses on Wix or Squarespace that we put above $1M, with contact details on the site",
+      filters: %{tech_any: "Wix,Squarespace", country: "US", revenue: "$1M-$10M,$10M-$100M", has_email: "true"}
+    },
+    %{
+      id: "shopify_agencies",
+      label: "Shopify agencies",
+      hint: "Agencies that say Shopify or ecommerce on their homepage, West, with a person's address",
+      filters: %{business_model: "Agency", min_confidence: "0.7", keyword: "shopify,ecommerce", country: "US,GB,DE,FR,NL,CA,AU", has_named_email: "true"}
     }
   ]
 
@@ -615,20 +659,55 @@ defmodule LSWeb.ExplorerLive do
     end)
   end
 
+  # Every key of the shared grammar (LS.Query), by its Explorer name, plus
+  # shopify_app, a dashboard-only alias of tech kept for the Shopify
+  # dropdown. A key missing here is a filter the toolbar cannot show and
+  # the URL cannot set.
   defp default_filters do
     %{
-      tech: "", shopify_app: "", country: "", business_model: "", industry: "", dns_email_provider: "",
-      revenue: "", employees: "", language: "", domain_search: "", freshness: "", discovered: "", realness: "",
+      tech: "", tech_any: "", tech_not: "", shopify_app: "", dns_tech: "", country: "", business_model: "", industry: "", dns_email_provider: "",
+      revenue: "", employees: "", language: "", domain_search: "", keyword: "", freshness: "", discovered: "", realness: "",
+      min_confidence: "", include_junk: "", shopify: "",
       # Depth filters — the ones our buyers actually qualify on. The backend
       # has supported these for a while; they were simply never exposed.
-      has_email: "", has_pricing: "", hiring: "", has_catalog: "",
+      has_email: "", has_named_email: "", has_phone: "", has_pricing: "", hiring: "", has_catalog: "",
       min_products: "", max_products: "", min_price_avg: "", max_price_avg: "",
-      min_seo_score: "", max_seo_score: "", min_new_products_30d: "", ats_platform: ""
+      min_seo_score: "", max_seo_score: "", min_new_products_30d: "", min_job_count: "", ats_platform: "",
+      first_seen_after: "", last_checked_after: "",
+      changed_field: "", changed_kind: "", changed_value: "", changed_within: ""
     }
+  end
+
+  @doc """
+  The filters a dashboard URL carries (2026-10-27): `/dashboard?country=AU&tech=Shopify,Klaviyo&has_named_email=true`
+  is the same query string the CSV link, `/api/v1/search` and the MCP
+  tools take, so a segment on /data, in the docs or in an email opens as
+  the search it describes. Empty when the URL names no filter.
+  """
+  @spec filters_from_params(map()) :: map()
+  def filters_from_params(params) do
+    {parsed, _ignored} = LS.Query.parse(params)
+    if map_size(parsed) == 0, do: %{}, else: Map.merge(default_filters(), parsed)
   end
 
   defp total_pages(total, per_page) when is_integer(total) and per_page > 0, do: div(total + per_page - 1, per_page)
   defp total_pages(_, _), do: 1
+
+  # Literal class strings: Tailwind emits only the classes it reads in the
+  # source, so a colour built by interpolation renders unstyled.
+  defp upgrade_cards do
+    [
+      {"starter", nil, %{card: "border-blue-500/20 bg-blue-500/[0.03]", title: "text-blue-400", tick: "text-blue-400", button: "bg-blue-600 hover:bg-blue-500 shadow-blue-500/25"}},
+      {"pro", "Recommended", %{card: "border-emerald-500/20 bg-emerald-500/[0.03]", title: "text-emerald-400", tick: "text-emerald-500", button: "bg-emerald-600 hover:bg-emerald-500 shadow-emerald-500/25"}},
+      {"scale", nil, %{card: "border-violet-500/20 bg-violet-500/[0.03]", title: "text-violet-400", tick: "text-violet-400", button: "bg-violet-600 hover:bg-violet-500 shadow-violet-500/25"}}
+    ]
+  end
+
+  # The plan the rate-limit tooltip points at, or nil at the top.
+  defp next_plan("free"), do: "starter"
+  defp next_plan("starter"), do: "pro"
+  defp next_plan("pro"), do: "scale"
+  defp next_plan(_), do: nil
 
   defp selected_values(filters, key) do
     val = Map.get(filters, key, "")
@@ -641,15 +720,18 @@ defmodule LSWeb.ExplorerLive do
 
   defp active_filter_tags(filters) do
     label_map = %{
-      tech: "Tech", shopify_app: "Shopify Apps", country: "Country",
+      tech: "Tech", tech_any: "Any of", tech_not: "Not using", shopify_app: "Shopify Apps", dns_tech: "DNS vendor", country: "Country",
       business_model: "Business", industry: "Industry", revenue: "Revenue",
-      employees: "Employees", language: "Language", freshness: "Freshness",
+      employees: "Employees", language: "Language", keyword: "Keyword", freshness: "Freshness",
       discovered: "Discovered", dns_email_provider: "Mail provider", realness: "Realness",
-      has_email: "Email", hiring: "Hiring", has_pricing: "Pricing", has_catalog: "Catalogue",
+      min_confidence: "Confidence", include_junk: "Junk included", shopify: "Shopify",
+      has_email: "Email", has_named_email: "Named email", has_phone: "Phone", hiring: "Hiring", has_pricing: "Pricing", has_catalog: "Catalogue",
       min_products: "Min products", max_products: "Max products",
       min_price_avg: "Min avg $", max_price_avg: "Max avg $",
       min_seo_score: "Min SEO", max_seo_score: "Max SEO",
-      min_new_products_30d: "New products 30d", ats_platform: "ATS"
+      min_new_products_30d: "New products 30d", min_job_count: "Min roles", ats_platform: "ATS",
+      first_seen_after: "First seen after", last_checked_after: "Checked after",
+      changed_field: "Changed", changed_kind: "Change", changed_value: "Changed to", changed_within: "Changed within"
     }
 
     filters
@@ -719,12 +801,10 @@ defmodule LSWeb.ExplorerLive do
                 <div class="font-semibold text-white mb-1">Rate Limit</div>
                 <div><%= rs.used %> used / <%= rs.limit %> per minute</div>
                 <div class="text-gray-500 mt-1">Resets in <%= rs.reset_in %>s</div>
-                <%= cond do %>
-                  <% @plan == "free" -> %>
-                    <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to Starter for 30 req/min &#8594;</div>
-                  <% @plan == "starter" -> %>
-                    <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to Pro for 120 req/min &#8594;</div>
-                  <% true -> %>
+                <%= case next_plan(@plan) do %>
+                  <% nil -> %>
+                  <% next -> %>
+                    <div class="mt-2 pt-2 border-t border-white/[0.06] text-amber-400">Upgrade to <%= LS.Plans.label(next) %> for <%= LS.Plans.per_min(next) %> req/min &#8594;</div>
                 <% end %>
               </div>
             </div>
@@ -738,9 +818,9 @@ defmodule LSWeb.ExplorerLive do
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-blue-500/15 text-blue-400 ring-1 ring-blue-500/20">
                   Starter
                 </span>
-              <% _ -> %>
+              <% paid -> %>
                 <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold tracking-wide uppercase bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/20">
-                  Pro
+                  <%= LS.Plans.label(paid) %>
                 </span>
             <% end %>
             <.link navigate={~p"/users/settings"} class="text-gray-500 hover:text-white transition inline-flex items-center gap-1.5 text-sm" title="Settings">
@@ -759,19 +839,9 @@ defmodule LSWeb.ExplorerLive do
         <LSWeb.DashboardTabs.tabs active={:businesses} />
         <%!-- Hidden filter form for domain search --%>
         <form id="filter_form" phx-change="filter" class="hidden">
-          <input type="hidden" name="tech" value={@filters.tech} />
-          <input type="hidden" name="shopify_app" value={@filters.shopify_app} />
-          <input type="hidden" name="country" value={@filters.country} />
-          <input type="hidden" name="business_model" value={@filters.business_model} />
-          <input type="hidden" name="industry" value={@filters.industry} />
-          <input type="hidden" name="dns_email_provider" value={@filters.dns_email_provider} />
-          <input type="hidden" name="revenue" value={@filters.revenue} />
-          <input type="hidden" name="employees" value={@filters.employees} />
-          <input type="hidden" name="language" value={@filters.language} />
-          <input type="hidden" name="domain_search" value={@filters.domain_search} />
-          <input type="hidden" name="freshness" value={@filters.freshness} />
-          <input type="hidden" name="discovered" value={@filters.discovered} />
-          <input type="hidden" name="realness" value={@filters.realness} />
+          <%= for key <- ~w(tech tech_any tech_not shopify_app dns_tech country business_model industry dns_email_provider revenue employees language domain_search freshness discovered realness min_confidence changed_field changed_kind changed_within)a do %>
+            <input type="hidden" name={key} value={Map.get(@filters, key, "")} />
+          <% end %>
         </form>
 
         <%!-- Click-outside backdrop when a dropdown is open (pointer-events only, no layout impact) --%>
@@ -807,6 +877,7 @@ defmodule LSWeb.ExplorerLive do
             <% shopify_selected = MapSet.member?(selected_values(@filters, :business_model), "Shopify") %>
             <%= for {field, label, icon, searchable} <- [
               {"tech", "Tech", "🔧", true},
+              {"tech_not", "Not using", "🚫", true},
               {"country", "Country", "🌍", true},
               {"business_model", "Business", "🏢", true},
               {"industry", "Industry", "🏭", true},
@@ -815,8 +886,10 @@ defmodule LSWeb.ExplorerLive do
               {"language", "Language", "🗣️", true},
               {"dns_email_provider", "Mail provider", "📬", true},
               {"realness", "Realness", "✅", false},
+              {"min_confidence", "Confidence", "🎯", false},
               {"discovered", "Discovered", "✨", true},
-              {"freshness", "Freshness", "🕐", true}
+              {"freshness", "Freshness", "🕐", true},
+              {"changed_field", "Changed", "🔔", true}
             ] ++ (if shopify_selected, do: [{"shopify_app", "Shopify Apps", "🛍️", true}], else: []) do %>
               <.filter_dropdown
                 field={field} label={label} icon={icon} searchable={searchable}
@@ -829,11 +902,13 @@ defmodule LSWeb.ExplorerLive do
 
             <div class="ml-auto flex-shrink-0">
               <%= cond do %>
-                <% @plan not in ["starter", "pro"] -> %>
+                <% LS.Accounts.rows_remaining(@current_scope.user) == 0 -> %>
                   <%!-- Their number, not our copy: "unlock these 1,847" converts
-                       where a grey "upgrade required" just reads as a wall. --%>
+                       where a grey "upgrade required" just reads as a wall.
+                       Every plan exports, Free included, so this is the
+                       "rows spent" state, not a paywall. --%>
                   <button phx-click="show_upgrade"
-                    title={if is_integer(@total) and @total > 0, do: "Unlock these #{format_number(@total)} businesses as CSV, Starter is $29/mo, cancel anytime. Or reply to your welcome email and I'll send 25 rows free.", else: "CSV export is available on Starter and Pro"}
+                    title={if is_integer(@total) and @total > 0, do: "Unlock these #{format_number(@total)} businesses as CSV: this month's #{format_number(LS.Plans.rows(@plan))} rows are spent. Starter is $#{LS.Plans.monthly("starter")}/mo for #{format_number(LS.Plans.rows("starter"))} rows with emails, cancel anytime.", else: "This month's rows are spent; the counter resets on the 1st"}
                     data-umami-event="export_upgrade_prompt"
                     class="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 hover:text-white hover:bg-emerald-600/40 transition text-[12px] font-semibold"
                     aria-label="Export CSV, upgrade required">
@@ -891,10 +966,33 @@ defmodule LSWeb.ExplorerLive do
             <span class="text-[10px] uppercase tracking-wider text-gray-600 font-semibold">Depth</span>
 
             <.toggle_filter label="Has email" field="has_email" filters={@filters} />
+            <.toggle_filter label="Named email" field="has_named_email" filters={@filters} />
+            <.toggle_filter label="Phone" field="has_phone" filters={@filters} />
             <.toggle_filter label="Hiring" field="hiring" filters={@filters} />
 
             <%= if shape == :saas do %>
               <.toggle_filter label="Has pricing" field="has_pricing" filters={@filters} />
+            <% end %>
+
+            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+              <span class="text-gray-500">Says</span>
+              <input type="text" name="keyword" value={@filters.keyword} form="filter_form" phx-debounce="500" placeholder="shopify, ecommerce" class="w-32 bg-transparent text-white text-[12px] focus:outline-none placeholder-gray-600" title="Any of these words in the title, tagline or H1" />
+            </div>
+
+            <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+              <span class="text-gray-500">First seen after</span>
+              <input type="date" name="first_seen_after" value={@filters.first_seen_after} form="filter_form" phx-debounce="500" class="bg-transparent text-white text-[12px] focus:outline-none" />
+            </div>
+
+            <%!-- The three companions of the Changed dropdown above, shown
+                 once a field is chosen: which way, to what, how far back. --%>
+            <%= if @filters.changed_field != "" do %>
+              <.filter_dropdown field="changed_kind" label="Which way" icon="↕" searchable={false} filters={@filters} open_dropdown={@open_dropdown} dropdown_query={@dropdown_query} dropdown_options={@dropdown_options} />
+              <.filter_dropdown field="changed_within" label="Within" icon="📅" searchable={false} filters={@filters} open_dropdown={@open_dropdown} dropdown_query={@dropdown_query} dropdown_options={@dropdown_options} />
+              <div class="flex items-center gap-1 h-7 px-2 rounded-lg bg-[#141C30] border border-white/[0.08]">
+                <span class="text-gray-500">Value</span>
+                <input type="text" name="changed_value" value={@filters.changed_value} form="filter_form" phx-debounce="500" placeholder="Klaviyo" class="w-24 bg-transparent text-white text-[12px] focus:outline-none placeholder-gray-600" />
+              </div>
             <% end %>
 
             <%= if shape == :commerce do %>
@@ -1543,46 +1641,39 @@ defmodule LSWeb.ExplorerLive do
       <%= if @show_upgrade do %>
         <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" phx-click="close_upgrade">
           <div class="bg-[#0F1628] border border-white/[0.08] rounded-2xl p-7 max-w-2xl w-full mx-4 shadow-2xl" phx-click-away="close_upgrade">
-            <h3 class="text-lg font-bold text-white mb-2">Unlock more with ListSignal</h3>
-            <p class="text-gray-400 text-sm mb-6">Choose the plan that fits your needs.</p>
-            <div class="grid grid-cols-2 gap-4">
-              <%!-- Starter card --%>
-              <div class="border border-blue-500/20 rounded-xl p-5 bg-blue-500/[0.03]">
-                <h4 class="font-semibold text-blue-400 text-sm">Starter</h4>
-                <p class="text-3xl font-bold text-white mt-1">$39<span class="text-sm text-gray-500 font-normal">/mo</span></p>
-                <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
-                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Export up to 500 rows/mo</li>
-                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> All filters unlocked</li>
-                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> Contact emails visible</li>
-                  <li class="flex items-center gap-2"><span class="text-blue-400">&#10003;</span> 30 searches/min</li>
-                </ul>
-                <form action={~p"/subscription/checkout/starter/monthly"} method="post" class="mt-5">
-                  <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-                  <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-blue-500/25 transition">
-                    Subscribe to Starter &#8594;
-                  </button>
-                </form>
-              </div>
-              <%!-- Pro card --%>
-              <div class="border border-emerald-500/20 rounded-xl p-5 bg-emerald-500/[0.03] relative">
-                <span class="absolute -top-2.5 right-4 bg-accent text-white px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider">Recommended</span>
-                <h4 class="font-semibold text-emerald-400 text-sm">Pro</h4>
-                <p class="text-3xl font-bold text-white mt-1">$149<span class="text-sm text-gray-500 font-normal">/mo</span></p>
-                <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
-                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Export up to 50,000 rows/mo</li>
-                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> 120 searches/min</li>
-                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> Priority support</li>
-                  <li class="flex items-center gap-2"><span class="text-emerald-500">&#10003;</span> API + MCP, 25,000 calls/mo</li>
-                </ul>
-                <form action={~p"/subscription/checkout/pro/monthly"} method="post" class="mt-5">
-                  <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
-                  <button type="submit" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg shadow-emerald-500/25 transition">
-                    Subscribe to Pro &#8594;
-                  </button>
-                </form>
-              </div>
+            <h3 class="text-lg font-bold text-white mb-2">More rows, every surface</h3>
+            <p class="text-gray-400 text-sm mb-6">One monthly allowance of rows, spent as CSV, API or MCP. Counts and browsing stay free on every plan.</p>
+            <div class="grid grid-cols-3 gap-4">
+              <%= for {plan, badge, c} <- upgrade_cards() do %>
+                <div class={"border rounded-xl p-5 relative #{c.card}"}>
+                  <%= if badge do %>
+                    <span class="absolute -top-2.5 right-4 bg-accent text-white px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider"><%= badge %></span>
+                  <% end %>
+                  <h4 class={"font-semibold text-sm #{c.title}"}><%= LS.Plans.label(plan) %></h4>
+                  <p class="text-3xl font-bold text-white mt-1">$<%= LS.Plans.monthly(plan) %><span class="text-sm text-gray-500 font-normal">/mo</span></p>
+                  <ul class="text-sm text-gray-400 mt-3 space-y-1.5">
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= format_number(LS.Plans.rows(plan)) %> rows a month</li>
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= LS.Plans.per_page(plan) %> rows a page</li>
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= LS.Plans.per_min(plan) %> searches a minute</li>
+                    <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> Contact emails and phones</li>
+                    <%= if LS.Plans.feed?(plan) do %>
+                      <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> Signal feed and alerts</li>
+                    <% end %>
+                    <%= if LS.Plans.seats(plan) > 1 do %>
+                      <li class="flex items-center gap-2"><span class={c.tick}>&#10003;</span> <%= LS.Plans.seats(plan) %> seats</li>
+                    <% end %>
+                  </ul>
+                  <form action={~p"/subscription/checkout/#{plan}/monthly"} method="post" class="mt-5">
+                    <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+                    <button type="submit" class={"w-full text-white rounded-lg px-4 py-2.5 text-sm font-semibold shadow-lg transition #{c.button}"}>
+                      Subscribe to <%= LS.Plans.label(plan) %> &#8594;
+                    </button>
+                  </form>
+                </div>
+              <% end %>
             </div>
-            <button phx-click="close_upgrade" class="mt-4 text-sm text-gray-600 hover:text-gray-400 w-full text-center transition">Maybe later</button>
+            <p class="mt-4 text-xs text-gray-500 text-center">Want the list built for you? <a href="/pricing#done-for-you" class="text-emerald-400 hover:underline">Done for you, $<%= LS.Plans.monthly("dfy") %> a month</a>, Scale included.</p>
+            <button phx-click="close_upgrade" class="mt-2 text-sm text-gray-600 hover:text-gray-400 w-full text-center transition">Maybe later</button>
           </div>
         </div>
       <% end %>

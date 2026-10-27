@@ -5,10 +5,15 @@ defmodule LSWeb.SubscriptionController do
 
   alias LS.Accounts
 
+  @paid LS.Plans.paid_plans()
+
   def create_checkout_session(conn, %{"plan" => plan, "period" => period})
-      when plan in ["starter", "pro"] and period in ["monthly", "yearly"] do
+      when plan in @paid and period in ["monthly", "yearly"] do
     user = conn.assigns.current_scope.user
 
+    # Promotion codes are entered at checkout (a founding-customer rate
+    # quoted after a sample, never in the cold email), so Checkout shows
+    # the field.
     with {:ok, user} <- ensure_stripe_customer(user),
          price_id when not is_nil(price_id) <- get_price_id(plan, period),
          {:ok, session} <- stripe_client().create_checkout_session(%{
@@ -16,6 +21,7 @@ defmodule LSWeb.SubscriptionController do
            payment_method_types: ["card"],
            line_items: [%{price: price_id, quantity: 1}],
            mode: "subscription",
+           allow_promotion_codes: true,
            success_url: url(~p"/dashboard") <> "?checkout=success",
            cancel_url: url(~p"/dashboard") <> "?checkout=cancelled",
            client_reference_id: user.id
@@ -85,7 +91,11 @@ defmodule LSWeb.SubscriptionController do
     {"pro", "monthly"} => :stripe_pro_monthly_price_id,
     {"pro", "yearly"} => :stripe_pro_yearly_price_id,
     {"starter", "monthly"} => :stripe_starter_monthly_price_id,
-    {"starter", "yearly"} => :stripe_starter_yearly_price_id
+    {"starter", "yearly"} => :stripe_starter_yearly_price_id,
+    {"scale", "monthly"} => :stripe_scale_monthly_price_id,
+    {"scale", "yearly"} => :stripe_scale_yearly_price_id,
+    # Done for you is monthly only: pause or cancel any month, no annual.
+    {"dfy", "monthly"} => :stripe_dfy_monthly_price_id
   }
 
   defp get_price_id(plan, period) do

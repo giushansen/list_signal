@@ -78,20 +78,20 @@ defmodule LS.AccountsPlanTest do
   end
 
   describe "export_limit/1" do
-    test "returns 0 for free users", %{user: user} do
-      assert Accounts.export_limit(user) == 0
+    # 2026-10-27 (LS.Plans): rows a month on any surface, CSV included, and
+    # the free plan has rows too (addresses blanked in its files).
+    test "returns 1,000 rows for free users", %{user: user} do
+      assert Accounts.export_limit(user) == 1_000
     end
 
-    test "returns 5,000/month for starter users", %{user: user} do
+    test "returns 2,500 rows a month for starter users", %{user: user} do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "starter", stripe_subscription_id: "sub_456"})
-      assert Accounts.export_limit(user) == 5_000
+      assert Accounts.export_limit(user) == 2_500
     end
 
-    # Raised from 5,000 on 2026-08-01: a rep works 300-500 contacts a day, so
-    # the old quota ran out mid-campaign and sent Pro users to a competitor.
-    test "returns 50,000/month for pro users", %{user: user} do
+    test "returns 15,000 rows a month for pro users", %{user: user} do
       {:ok, user} = Accounts.update_user_plan(user, %{plan: "pro", stripe_subscription_id: "sub_123"})
-      assert Accounts.export_limit(user) == 50_000
+      assert Accounts.export_limit(user) == 15_000
     end
   end
 
@@ -112,8 +112,10 @@ defmodule LS.AccountsPlanTest do
   end
 
   describe "can_export?/1" do
-    test "returns false for free users", %{user: user} do
-      refute Accounts.can_export?(user)
+    test "returns true for free users while rows remain (2026-10-27: the free file has the addresses blanked)", %{user: user} do
+      assert Accounts.can_export?(user)
+      {:ok, spent} = Accounts.increment_exports(user, 1_000)
+      refute Accounts.can_export?(spent)
     end
 
     test "returns true for starter users", %{user: user} do

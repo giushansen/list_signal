@@ -1,0 +1,243 @@
+<% groups = LSWeb.PageHTML.data_groups() %>
+<% store = LS.Schema.Examples.store() %>
+<% saas = LS.Schema.Examples.saas() %>
+<% field_count = length(LS.Schema.Columns.doc_rows()) %>
+<% tracked_count = length(LS.Schema.Columns.tracked()) %>
+<main class="pt-[140px] pb-20"><div class="mx-auto max-w-[1100px] px-6">
+
+  <%!-- Hero --%>
+  <div class="text-center max-w-[760px] mx-auto mb-14">
+    <div class="inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/10 px-4 py-1.5 text-[13px] font-medium text-accent mb-6 uppercase tracking-wider">
+      <span class="h-2 w-2 rounded-full bg-accent animate-pulse"></span>
+      One record, every surface
+    </div>
+    <h1 class="font-display text-[clamp(32px,4.4vw,52px)] font-bold tracking-tight leading-[1.08] mb-5"><%= field_count %> fields on every business.<br/><%= tracked_count %> of them watched for change.</h1>
+    <p class="text-lg text-white/60 leading-relaxed">What a business is, what it runs, what it sells, what it earns, who to write to, and what moved last week. The same field names and the same filters in the <a href="/dashboard" class="text-accent hover:underline">dashboard</a>, the CSV, the <a href="/developers" class="text-accent hover:underline">REST API</a> and the <a href="/developers#mcp" class="text-accent hover:underline">MCP server</a>. Two fictional businesses below show what a row holds.</p>
+    <p class="text-[12.5px] text-white/35 mt-4">Ridgeline Camp Co and Fieldplan do not exist. The shapes, labels and magnitudes are copied from real rows read on 27 October 2026, so every value looks the way the live value looks.</p>
+  </div>
+
+  <%!-- Two example cards --%>
+  <section class="grid md:grid-cols-2 gap-5 mb-16" id="examples">
+    <%= for {which, label, record, accent} <- [{"store", "A Shopify store", store, "emerald"}, {"saas", "A SaaS", saas, "blue"}] do %>
+      <div class="rounded-[20px] border border-white/[0.07] bg-[#111B33] overflow-hidden">
+        <div class={"flex items-center justify-between px-5 py-3 border-b border-white/[0.06] " <> if(accent == "emerald", do: "bg-emerald-500/[0.04]", else: "bg-blue-500/[0.04]")}>
+          <span class={"text-[11px] uppercase tracking-wider font-semibold " <> if(accent == "emerald", do: "text-emerald-400", else: "text-blue-400")}><%= label %></span>
+          <span class="text-[11px] text-white/30">fictional, real shape</span>
+        </div>
+        <dl class="grid grid-cols-[150px_1fr] gap-x-4 gap-y-2 px-5 py-4 text-[13px]">
+          <%= for name <- ~w(domain http_title estimated_business_model estimated_industry estimated_country estimated_revenue estimated_employees http_tech dns_email_provider) ++ (if which == "store", do: ~w(shop_product_count shop_price_avg shop_new_products_30d), else: ~w(hr_job_count hr_departments http_deep_pricing_points)) ++ ~w(http_emails http_phone http_deep_seo_score ctl_first_seen_at) do %>
+            <dt class="font-mono text-[12px] text-white/40 truncate"><%= name %></dt>
+            <dd class="text-white/85 break-words"><%= LS.Schema.Examples.show(record, name) %></dd>
+          <% end %>
+          <dt class="font-mono text-[12px] text-white/40">last change</dt>
+          <dd class="text-white/85"><% c = hd(LS.Schema.Examples.change_rows(which)) %><span class="text-emerald-300"><%= c.summary %></span> <span class="text-white/35">on <%= String.slice(c.changed_at, 0, 10) %></span></dd>
+        </dl>
+        <div class="px-5 pb-4 text-[12px] text-white/35">plus <%= field_count - 17 %> more fields, every one listed below</div>
+      </div>
+    <% end %>
+  </section>
+
+  <%!-- Ask in English --%>
+  <section class="mb-16" id="ask">
+    <div class="text-center max-w-[700px] mx-auto mb-8">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3">Ask it in English</div>
+      <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight leading-[1.15] mb-3">A question becomes one filter set.<br/>The filter set runs anywhere.</h2>
+      <p class="text-base text-white/60">Claude, Cursor or any MCP client turns the question into these filters, counts first (free), then pulls the rows. The dashboard link opens the same search; the curl runs it on the API.</p>
+    </div>
+    <div class="space-y-6">
+      <%= for q <- LS.Schema.Examples.queries() do %>
+        <div class="rounded-[20px] border border-white/[0.07] bg-[#0C1429] overflow-hidden">
+          <div class="px-6 py-5 border-b border-white/[0.06]">
+            <div class="flex items-start gap-3">
+              <div class="shrink-0 h-8 w-8 rounded-full bg-white/[0.06] flex items-center justify-center text-[12px] font-semibold text-white/60">you</div>
+              <p class="text-[15px] text-white leading-relaxed pt-1"><%= q.question %></p>
+            </div>
+            <div class="flex items-start gap-3 mt-4">
+              <div class="shrink-0 h-8 w-8 rounded-full bg-accent/15 flex items-center justify-center text-[12px] font-semibold text-accent">AI</div>
+              <div class="pt-1 min-w-0">
+                <p class="text-[14px] text-white/80 leading-relaxed"><%= q.answer %></p>
+                <% record = if q.example == "store", do: store, else: saas %>
+                <div class="mt-3 rounded-xl border border-white/[0.06] bg-[#111B33] px-4 py-3 text-[13px] grid sm:grid-cols-2 gap-x-6 gap-y-1">
+                  <%= for name <- (if q.example == "store", do: ~w(domain estimated_revenue shop_product_count http_tech http_emails ctl_first_seen_at), else: ~w(domain estimated_revenue hr_job_count hr_departments http_emails hr_ats)) do %>
+                    <div class="flex gap-2 min-w-0"><span class="font-mono text-[11.5px] text-white/35 shrink-0"><%= name %></span><span class="text-white/85 truncate"><%= LS.Schema.Examples.show(record, name) %></span></div>
+                  <% end %>
+                </div>
+                <p class="text-[11.5px] text-white/30 mt-2">Count read on production, 27 October 2026. The row is the fictional example.</p>
+              </div>
+            </div>
+          </div>
+          <div class="grid lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x divide-white/[0.06]">
+            <div class="p-5">
+              <div class="text-[11px] uppercase tracking-wider text-white/35 font-semibold mb-2">The filters</div>
+              <div class="flex flex-wrap gap-1.5">
+                <%= for {k, v} <- q.filters do %>
+                  <span class="inline-flex items-center rounded-md bg-white/[0.05] border border-white/[0.08] px-2 py-1 text-[12px]"><span class="font-mono text-white/45"><%= k %></span><span class="text-white/30 mx-1">=</span><span class="text-white/90"><%= v %></span></span>
+                <% end %>
+              </div>
+              <a href={LS.Schema.Examples.dashboard_url(q)} class="inline-flex items-center gap-1.5 mt-4 text-[13px] font-semibold text-accent hover:underline">Open this search in the dashboard &#8594;</a>
+            </div>
+            <div class="p-5 min-w-0">
+              <div class="text-[11px] uppercase tracking-wider text-white/35 font-semibold mb-2">REST</div>
+              <pre class="text-[12px] leading-relaxed text-emerald-200/90 overflow-x-auto"><code><%= LS.Schema.Examples.curl(q, "count") %></code></pre>
+              <p class="text-[11.5px] text-white/35 mt-2">Swap <code class="text-white/60">count</code> for <code class="text-white/60">search</code> to get the rows.</p>
+            </div>
+            <div class="p-5 min-w-0">
+              <div class="text-[11px] uppercase tracking-wider text-white/35 font-semibold mb-2">MCP tool call</div>
+              <pre phx-no-curly-interpolation class="text-[12px] leading-relaxed text-sky-200/90 overflow-x-auto"><code><%= LS.Schema.Examples.mcp(q) %></code></pre>
+            </div>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </section>
+
+  <%!-- The filter grammar --%>
+  <section class="mb-16" id="filters">
+    <div class="max-w-[760px] mb-6">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3">The filters</div>
+      <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight leading-[1.15] mb-3"><%= length(LS.Query.names()) %> filters, one grammar</h2>
+      <p class="text-base text-white/60">Every name below works as a dashboard control, a query-string parameter on the CSV link and the API, and an argument on the MCP tools. Filters combine with AND; lists are comma-separated. Parked and placeholder sites are excluded everywhere unless you ask for them.</p>
+    </div>
+    <div class="space-y-6">
+      <%= for {group, filters} <- LS.Query.groups() do %>
+        <div>
+          <h3 class="font-display text-[15px] font-semibold text-white/80 mb-2"><%= group %></h3>
+          <div class="overflow-x-auto rounded-xl border border-white/[0.07]">
+            <table class="w-full text-[13px]">
+              <thead><tr class="bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-white/35">
+                <th class="px-4 py-2.5 font-semibold">Filter</th>
+                <th class="px-4 py-2.5 font-semibold">Means</th>
+                <th class="px-4 py-2.5 font-semibold">Example</th>
+              </tr></thead>
+              <tbody class="text-white/70">
+                <%= for f <- filters do %>
+                  <tr class="border-t border-white/[0.05]">
+                    <td class="px-4 py-2 font-mono text-[12px] text-white/85 whitespace-nowrap"><%= f.name %></td>
+                    <td class="px-4 py-2"><%= f.doc %></td>
+                    <td class="px-4 py-2 font-mono text-[12px] text-white/50 whitespace-nowrap"><%= f.name %>=<%= f.example %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </section>
+
+  <%!-- Every field --%>
+  <section class="mb-16" id="fields">
+    <div class="max-w-[760px] mb-6">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3">Every field</div>
+      <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight leading-[1.15] mb-3">The record, by where each value comes from</h2>
+      <p class="text-base text-white/60">The prefix says the source. A <span class="text-emerald-400">signal</span> mark means a change on that field is recorded in the change feed. Both example columns are the fictional businesses above; <code class="text-white/70">null</code> means not measured, <code class="text-white/70">""</code> means measured and empty.</p>
+    </div>
+    <div class="space-y-8">
+      <%= for {title, intro, rows} <- groups do %>
+        <div>
+          <h3 class="font-display text-[17px] font-semibold text-white mb-1"><%= title %> <span class="text-white/30 text-[13px] font-normal ml-1"><%= length(rows) %></span></h3>
+          <%= if intro != "" do %><p class="text-[13.5px] text-white/50 mb-3"><%= intro %></p><% end %>
+          <div class="overflow-x-auto rounded-xl border border-white/[0.07]">
+            <table class="w-full text-[13px]">
+              <thead><tr class="bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-white/35">
+                <th class="px-4 py-2.5 font-semibold">Field</th>
+                <th class="px-4 py-2.5 font-semibold">Meaning</th>
+                <th class="px-4 py-2.5 font-semibold">Store</th>
+                <th class="px-4 py-2.5 font-semibold">SaaS</th>
+                <th class="px-4 py-2.5 font-semibold">Signal</th>
+              </tr></thead>
+              <tbody class="text-white/70 align-top">
+                <%= for {name, type, _family, signal, doc} <- rows do %>
+                  <tr class="border-t border-white/[0.05]">
+                    <td class="px-4 py-2 font-mono text-[12px] text-white/85 whitespace-nowrap"><%= name %><div class="text-[10px] text-white/30 font-sans"><%= LSWeb.PageHTML.friendly_type(type) %></div></td>
+                    <td class="px-4 py-2 min-w-[220px]"><%= doc %></td>
+                    <td class="px-4 py-2 text-white/85 max-w-[260px] break-words"><%= LS.Schema.Examples.show(store, name) %></td>
+                    <td class="px-4 py-2 text-white/85 max-w-[260px] break-words"><%= LS.Schema.Examples.show(saas, name) %></td>
+                    <td class="px-4 py-2 text-emerald-400 whitespace-nowrap"><%= LSWeb.PageHTML.signal_label(signal) %></td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      <% end %>
+    </div>
+  </section>
+
+  <%!-- Signals --%>
+  <section class="mb-16" id="signals">
+    <div class="max-w-[760px] mb-6">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3">What changed</div>
+      <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight leading-[1.15] mb-3">The <%= tracked_count %> fields that write a change row</h2>
+      <p class="text-base text-white/60">When a tracked field moves between two checks, one change row is recorded and never rewritten: the field, the direction, the value, the previous value and the time. Read them in the Signals tab, as CSV, on <code class="text-white/70">/api/v1/changes</code> or with the <code class="text-white/70">listsignal_changes</code> tool. Filter companies by a change with <code class="text-white/70">changed_field</code>.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5">
+      <div class="rounded-xl border border-white/[0.07] overflow-hidden">
+        <table class="w-full text-[13px]">
+          <thead><tr class="bg-white/[0.02] text-left text-[11px] uppercase tracking-wider text-white/35">
+            <th class="px-4 py-2.5 font-semibold">Field</th>
+            <th class="px-4 py-2.5 font-semibold">Reads as</th>
+            <th class="px-4 py-2.5 font-semibold">Records</th>
+          </tr></thead>
+          <tbody class="text-white/70">
+            <%= for {name, rule, label} <- LSWeb.PageHTML.tracked_rows() do %>
+              <tr class="border-t border-white/[0.05]">
+                <td class="px-4 py-1.5 font-mono text-[12px] text-white/85"><%= name %></td>
+                <td class="px-4 py-1.5"><%= label %></td>
+                <td class="px-4 py-1.5 text-emerald-400"><%= rule %></td>
+              </tr>
+            <% end %>
+          </tbody>
+        </table>
+      </div>
+      <div class="space-y-4">
+        <%= for {which, label} <- [{"store", "Ridgeline Camp Co, last five changes"}, {"saas", "Fieldplan, last five changes"}] do %>
+          <div class="rounded-xl border border-white/[0.07] bg-[#0C1429] p-4">
+            <div class="text-[11px] uppercase tracking-wider text-white/35 font-semibold mb-2"><%= label %></div>
+            <ul class="space-y-1.5 text-[13px]">
+              <%= for c <- LS.Schema.Examples.change_rows(which) do %>
+                <li class="flex items-baseline gap-3"><span class="text-white/35 tabular-nums shrink-0"><%= String.slice(c.changed_at, 0, 10) %></span><span class="font-mono text-[11.5px] text-white/45 shrink-0"><%= c.field %></span><span class="text-emerald-300"><%= c.summary %></span></li>
+              <% end %>
+            </ul>
+          </div>
+        <% end %>
+        <pre phx-no-curly-interpolation class="rounded-xl bg-[#0C1429] border border-white/[0.07] p-4 text-[12px] leading-relaxed text-sky-200/90 overflow-x-auto"><code><%= LSWeb.PageHTML.json(hd(LS.Schema.Examples.change_rows("saas")) |> Map.put(:domain, "fieldplan.co.uk")) %></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <%!-- Who to write to --%>
+  <section class="mb-16" id="contacts">
+    <div class="max-w-[760px] mb-6">
+      <div class="text-xs uppercase tracking-[2px] font-semibold text-accent mb-3">Who to write to</div>
+      <h2 class="font-display text-[clamp(26px,3vw,36px)] font-bold tracking-tight leading-[1.15] mb-3">Each address, with its kind and a verdict</h2>
+      <p class="text-base text-white/60">The company record carries <code class="text-white/70">http_emails</code> and <code class="text-white/70">http_phone</code>. The full record (<code class="text-white/70">/api/v1/company</code>, the <code class="text-white/70">listsignal_get_company</code> tool, the dashboard detail panel) adds <code class="text-white/70">email_details</code>: the kind of each address (named, role, free mail, sister domain), the page it was found on, a deliverability score and a verdict with the evidence; <code class="text-white/70">email_pattern</code>, the naming pattern the named addresses imply; and <code class="text-white/70">people</code>, the named people found on the site with their titles. Addresses and phones are on paid plans; the free plan sees that they exist.</p>
+    </div>
+    <div class="grid md:grid-cols-2 gap-5">
+      <%= for {which, label} <- [{"store", "Ridgeline Camp Co"}, {"saas", "Fieldplan"}] do %>
+        <% c = LS.Schema.Examples.contacts(which) %>
+        <pre phx-no-curly-interpolation class="rounded-xl bg-[#0C1429] border border-white/[0.07] p-4 text-[12px] leading-relaxed text-sky-200/90 overflow-x-auto"><code><span class="text-white/35">// <%= label %></span>
+<%= LSWeb.PageHTML.json(%{email_details: c.email_details, email_pattern: c.email_pattern, people: c.people}) %></code></pre>
+      <% end %>
+    </div>
+  </section>
+
+  <%!-- Get it --%>
+  <section class="rounded-[20px] border border-white/[0.07] bg-white/[0.02] p-8 mb-6" id="get">
+    <h2 class="font-display text-2xl font-bold mb-3">Four ways to the same row</h2>
+    <div class="grid md:grid-cols-4 gap-5 text-[13.5px] text-white/60">
+      <div><div class="font-semibold text-white mb-1">Dashboard</div>Filter, read the count, open a record. Browsing is free on every plan. <a href="/dashboard" class="text-accent hover:underline">Open &#8594;</a></div>
+      <div><div class="font-semibold text-white mb-1">CSV</div>The export link carries the filters you set. One file, one row per company, lists pipe-separated.</div>
+      <div><div class="font-semibold text-white mb-1">REST API</div><code class="text-white/70">/search</code>, <code class="text-white/70">/count</code>, <code class="text-white/70">/query</code>, <code class="text-white/70">/company</code>, <code class="text-white/70">/changes</code>. <a href="/developers" class="text-accent hover:underline">Docs &#8594;</a></div>
+      <div><div class="font-semibold text-white mb-1">MCP</div>Six tools for Claude, Cursor and any MCP client. <a href="/developers#mcp" class="text-accent hover:underline">Connect &#8594;</a></div>
+    </div>
+    <p class="text-[13px] text-white/45 mt-6">Plans meter rows a month across all four, from 1,000 free. Counts, group-bys and dataset statistics are never charged. <a href="/pricing" class="text-accent hover:underline">Pricing &#8594;</a></p>
+  </section>
+
+  <div class="text-center mt-10">
+    <a href="/signup" data-umami-event="signup_cta" data-umami-event-source="data_page" class="inline-flex items-center gap-2 rounded-xl bg-accent px-8 py-4 font-display text-[15px] font-semibold text-white shadow-[0_8px_28px_rgba(16,185,129,0.25)] hover:bg-accent-hover hover:-translate-y-0.5 transition-all">
+      Start free, 1,000 rows a month
+      <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h10M10 5l5 5-5 5"/></svg>
+    </a>
+  </div>
+</div></main>

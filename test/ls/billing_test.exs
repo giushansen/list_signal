@@ -91,11 +91,13 @@ defmodule LS.BillingTest do
       starter = %User{plan: "starter", stripe_subscription_id: "sub_1", exports_used_this_month: 0}
       pro = %User{plan: "pro", stripe_subscription_id: "sub_2", exports_used_this_month: 0}
 
-      assert Accounts.export_limit(free) == 0
-      assert Accounts.export_limit(starter) == 5_000
-      assert Accounts.export_limit(pro) == 50_000
+      # 2026-10-27, LS.Plans: rows a month on any surface. Free exports too
+      # (contact columns blanked), so the gate is rows left, not the plan.
+      assert Accounts.export_limit(free) == 1_000
+      assert Accounts.export_limit(starter) == 2_500
+      assert Accounts.export_limit(pro) == 15_000
 
-      refute Accounts.can_export?(free)
+      assert Accounts.can_export?(free)
       assert Accounts.can_export?(starter)
       assert Accounts.can_export?(pro)
 
@@ -109,12 +111,12 @@ defmodule LS.BillingTest do
       # plan column alone must never grant access.
       lapsed = %User{plan: "pro", stripe_subscription_id: nil, exports_used_this_month: 0}
       assert User.effective_plan(lapsed) == "free"
-      refute Accounts.can_export?(lapsed)
-      assert Accounts.export_limit(lapsed) == 0
+      assert Accounts.export_limit(lapsed) == 1_000
+      assert Accounts.results_per_page(lapsed) == 15
     end
 
     test "a paying user who burned their monthly quota cannot export" do
-      spent = %User{plan: "starter", stripe_subscription_id: "sub_3", exports_used_this_month: 5_000}
+      spent = %User{plan: "starter", stripe_subscription_id: "sub_3", exports_used_this_month: 2_500}
       assert Accounts.exports_remaining(spent) == 0
       refute Accounts.can_export?(spent)
     end

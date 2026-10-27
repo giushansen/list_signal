@@ -97,7 +97,9 @@ defmodule LS.LandingCache do
       # and rightly asked why the homepage said 4M. Sell the number a customer
       # can actually reach. (2026-08-24)
       store_count: fetch_count("SELECT count() FROM businesses WHERE is_shopify = 1"),
-      business_count: fetch_count("SELECT count() FROM businesses"),
+      # The scope every list and count runs in (2026-10-27): the number an
+      # agent cites as "businesses tracked" must be the number it can query.
+      business_count: fetch_count("SELECT count() FROM businesses #{LS.Explorer.scoped_where([])}"),
       total_domains: fetch_count("SELECT count() FROM domains"),
       # Two arrayJoin scans of domains_current, ~10s each, and the recent-store
       # scan below (~18s: is_shopify over 193M rows sorted by enriched_at) ran

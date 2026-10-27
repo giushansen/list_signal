@@ -22,7 +22,7 @@ defmodule LSWeb.ApiV2ShapeTest do
     assert props["http_tech"].type == "array"
     assert props["changes"].type == "array"
     assert Map.has_key?(spec.paths, "/api/v1/changes")
-    assert spec.info.version == "2.0.0"
+    assert spec.info.version == "2.1.0"
   end
 
   test "/openapi.json serves the generated spec without a key", %{conn: conn} do
@@ -71,7 +71,10 @@ defmodule LSWeb.ApiV2ShapeTest do
     # 2026-10-26: has_named_email, first_seen_after, last_checked_after and
     # sort joined (the reviewer's gaps: no sort, no date, no named-email
     # filter), documented in OpenAPI and the MCP schema alike.
-    assert LS.ApiData.search_filters() == ~w(tech app dns_tech email_provider country business_model industry revenue employees hiring shopify has_named_email first_seen_after last_checked_after sort limit offset)
+    # 2026-10-27: the grammar is LS.Query, shared with the dashboard and the
+    # CSV, so the accepted names are the grammar's names plus paging.
+    assert LS.ApiData.search_filters() ==
+             ~w(tech tech_any tech_not dns_tech email_provider country business_model industry revenue employees language domain keyword min_confidence min_realness include_junk shopify has_catalog min_products max_products min_price_avg max_price_avg min_new_products_30d has_pricing hiring min_job_count ats has_email has_named_email has_phone min_seo_score max_seo_score first_seen_after last_checked_after discovered freshness changed_field changed_kind changed_value changed_within total sort limit offset)
     assert LS.ApiData.changes_filters() == ~w(field change value domain country business_model period limit offset)
   end
 end

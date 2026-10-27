@@ -31,7 +31,12 @@ defmodule LS.ApiKeys.ApiKey do
 end
 
 defmodule LS.ApiKeys.ApiUsage do
-  @moduledoc "Monthly call counter per key. Period is \"YYYY-MM\"."
+  @moduledoc """
+  Monthly counter per key. Period is "YYYY-MM". `calls` is how many
+  successful calls, `rows` how many rows they delivered (2026-10-27, the
+  metered unit); `rows` is nil on months written before rows existed, and
+  the quota then reads the call count in its place.
+  """
   use Ecto.Schema
 
   @primary_key {:id, :binary_id, autogenerate: true}
@@ -40,6 +45,7 @@ defmodule LS.ApiKeys.ApiUsage do
     belongs_to :api_key, LS.ApiKeys.ApiKey
     field :period, :string
     field :calls, :integer, default: 0
+    field :rows, :integer
     timestamps(type: :utc_datetime)
   end
 end

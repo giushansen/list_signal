@@ -12,7 +12,7 @@ defmodule LSWeb.AlternativesController do
       name: "BuiltWith",
       tagline: "Same depth. 1/4 the price. Fresher data.",
       price: "$295-$995/mo",
-      ls_price: "Free / $39 / $149",
+      ls_price: "Free / $49 / $149 / $399",
       credits_label: "Monthly credit pools",
       pros: [
         "113,000+ technologies tracked (largest database)",
@@ -29,11 +29,11 @@ defmodule LSWeb.AlternativesController do
       ls_wins: [
         {"⚡", "Real-time detection", "We detect new stores within hours via SSL Certificate Transparency logs. BuiltWith relies on periodic web crawls."},
         {"🔍", "Transparent timestamps", "Every data point shows exactly when it was collected. No guessing if data is fresh."},
-        {"💰", "85% cheaper", "Plans from $39/mo vs BuiltWith's $295 minimum. Same store and tech data."},
+        {"💰", "83% cheaper", "Contact data from $49/mo vs BuiltWith's $295 minimum, and 1,000 rows a month free. Same store and tech data."},
         {"📤", "Clean exports", "CSV exports designed for CRM import. No cleaning needed."},
         {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data that BuiltWith doesn't surface."},
         {"💼", "Hiring signals BuiltWith has never had", "Open roles with posting dates from 14,000+ job boards, folded into every company record. Filter for companies that are actually growing."},
-        {"🤖", "An API an AI agent can use today", "REST + MCP server with a free tier (1,000 calls/month), OpenAPI spec, and no sales call. BuiltWith's Basic tier limits you to 2 technologies."}
+        {"🤖", "An API an AI agent can use today", "REST + MCP server with a free tier (1,000 rows/month, counts free), OpenAPI spec, and no sales call. BuiltWith's Basic tier limits you to 2 technologies."}
       ],
       honest_note: "BuiltWith has 18 years of historical tech data and the broadest signature library in the industry. If you need 'which sites dropped Magento in 2019', BuiltWith is the right tool. If you need fresh, filterable business intelligence with revenue, hiring, and contacts at a price a small team can pay, ListSignal wins."
     },
@@ -41,7 +41,7 @@ defmodule LSWeb.AlternativesController do
       name: "Wappalyzer",
       tagline: "No credits. No expiration. Just data.",
       price: "$250-$850/mo",
-      ls_price: "Free / $39 / $149",
+      ls_price: "Free / $49 / $149 / $399",
       pros: [
         "Browser extension with 2M+ daily users",
         "94% React detection accuracy (best in class)",
@@ -57,7 +57,7 @@ defmodule LSWeb.AlternativesController do
       ls_wins: [
         {"🚫", "No credits, ever", "Wappalyzer's credits expire after 60 days. ListSignal has zero credit system, flat monthly price."},
         {"⚡", "Server-side detection", "We scan from infrastructure level (DNS, HTTP, BGP), not just browser. Catches backend tech Wappalyzer misses."},
-        {"💰", "84% cheaper", "Plans from $39/mo vs Wappalyzer's $250 minimum for useful access."},
+        {"💰", "80% cheaper", "Contact data from $49/mo vs Wappalyzer's $250 minimum for useful access, and 1,000 rows a month free."},
         {"📊", "Shopify specialization", "Deep Shopify data: app detection, theme, plan tier, revenue signals."},
         {"🏗️", "Hosting, email provider, and network data", "Hosting provider, email service, server location, and domain age data, data Wappalyzer doesn't have."},
         {"🕐", "Data freshness timestamps", "Know exactly when each domain was last scanned. Wappalyzer doesn't show this."},
@@ -70,7 +70,7 @@ defmodule LSWeb.AlternativesController do
       credits_label: "None (flat plans)",
       tagline: "Shopify-first intelligence. Fraction of the cost.",
       price: "$75-$950/mo",
-      ls_price: "Free / $39 / $149",
+      ls_price: "Free / $49 / $149 / $399",
       pros: [
         "2.8M Shopify stores with deep ecommerce data",
         "6,502 Shopify apps tracked with install dates",
@@ -86,7 +86,7 @@ defmodule LSWeb.AlternativesController do
       ],
       ls_wins: [
         {"⚡", "Detected within hours, not days", "New stores appear in ListSignal within hours via CT log monitoring. StoreLeads updates weekly."},
-        {"💰", "CSV exports from $39/mo", "StoreLeads charges $250/mo for CSV export. ListSignal includes CSV exports starting at $39/mo."},
+        {"💰", "CSV exports on every plan", "StoreLeads charges $250/mo for CSV export. ListSignal exports 1,000 rows a month free and adds contact data from $49/mo."},
         {"🏗️", "Infrastructure insights competitors don't have", "Hosting provider, email service, server location, and domain age data, data StoreLeads doesn't collect."},
         {"🔬", "Transparent methodology", "We show exactly when and how each data point was collected. Full audit trail."},
         {"🤝", "Startup-level support", "Direct access to founders. Not a ticket queue."},
@@ -98,7 +98,7 @@ defmodule LSWeb.AlternativesController do
       name: "MyIP.ms",
       tagline: "Live business intelligence, not a static IP directory.",
       price: "Free, $29/mo",
-      ls_price: "Free / $39 / $149",
+      ls_price: "Free / $49 / $149 / $399",
       pros: [
         "Large historical IP / hosting database",
         "Free tier for basic lookups",
@@ -124,7 +124,7 @@ defmodule LSWeb.AlternativesController do
       name: "ZoomInfo",
       tagline: "Domain intelligence without the enterprise price tag.",
       price: "$15,000-$60,000/yr",
-      ls_price: "Free / $39 / $149",
+      ls_price: "Free / $49 / $149 / $399",
       pros: [
         "Massive B2B contact database (100M+ profiles)",
         "Intent data and buyer signals",
@@ -139,7 +139,7 @@ defmodule LSWeb.AlternativesController do
         "Lock-in contracts with difficult cancellation"
       ],
       ls_wins: [
-        {"💰", "97% cheaper for tech data", "ZoomInfo's minimum is $15K/yr. ListSignal starts at $39/mo for full tech lookups."},
+        {"💰", "97% cheaper for tech data", "ZoomInfo's minimum is $15K/yr. ListSignal starts free and contact data is $49/mo."},
         {"🎯", "Purpose-built for tech intelligence", "ZoomInfo is a contact database that happens to have tech data. ListSignal is built specifically for technology detection."},
         {"📅", "Month-to-month, cancel anytime", "No annual contracts. No lock-in. No 10-20% surprise renewals."},
         {"⚡", "Real-time detection", "New domains detected within hours via CT logs. ZoomInfo's tech data lags by weeks."},
@@ -152,7 +152,7 @@ defmodule LSWeb.AlternativesController do
       name: "Apollo",
       tagline: "Apollo finds people. ListSignal finds companies Apollo can't see.",
       price: "$49-$149/user/mo + credits",
-      ls_price: "Free / $39 / $149",
+      ls_price: "Free / $49 / $149 / $399",
       credits_label: "Email/mobile credit system",
       pros: [
         "275M+ contact database with emails and direct dials",
@@ -172,7 +172,7 @@ defmodule LSWeb.AlternativesController do
         {"🛍️", "Ecommerce and tech depth Apollo does not attempt", "260+ Shopify apps, product counts, price bands, and 230+ technologies detected from infrastructure, not form fills."},
         {"💼", "Hiring signals with dates", "Open roles from 14,000+ job boards with posting dates, a growth signal Apollo does not sell."},
         {"🧩", "Better together, honestly", "Most teams use both: build the account list in ListSignal (who to target and why now), then work contacts and sequences in Apollo."},
-        {"💰", "Flat pricing, no per-seat math", "$39-149 flat versus per-user pricing that multiplies across a team."},
+        {"💰", "Flat pricing, no per-seat math", "$49 to $399 flat, three seats on Scale, versus per-user pricing that multiplies across a team."},
         {"🤖", "MCP server for AI agents", "Claude, Cursor, and CRM agents can query ListSignal directly with a free API key. No sales motion required."}
       ],
       honest_note: "If your bottleneck is reaching decision-makers at companies you already know, Apollo is the right tool and ListSignal will not replace it. If your bottleneck is knowing WHICH companies to target, especially new, small, or fast-moving ones, that is exactly what ListSignal is built for. They compose: discovery here, outreach there."

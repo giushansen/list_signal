@@ -11,20 +11,27 @@ defmodule LS.ApiKeys do
       slow an API response or drop one.
     * **We never store a key.** Only its SHA-256. The plaintext appears once
       at creation; `prefix` exists so users can tell keys apart.
-    * **Quotas are per user, not per key.** A user may hold several active
-      keys (one per connector: Claude Code, claude.ai, a CRM), each named
-      and revocable alone, but they all draw from one monthly pool sized by
-      the plan. Without that, N free keys would mean N times the free
-      quota. Monthly, calendar-based ("YYYY-MM"), so a reset is just a new
-      period string, no cron.
+    * **Quotas are per user, not per key, and the unit is rows** (2026-10-27,
+      `LS.Plans`). A user may hold several active keys (one per connector:
+      Claude Code, claude.ai, a CRM), each named and revocable alone, but
+      they all draw from one monthly pool of rows sized by the plan, the
+      same pool the CSV export spends. Without that, N free keys would mean
+      N times the free quota. Monthly, calendar-based ("YYYY-MM"), so a
+      reset is just a new period string, no cron.
+    * **A call costs the rows it returns.** A company record is one row, a
+      search page is its rows, a count, a group-by or the dataset stats are
+      free: sensing the data before pulling it is what keeps an agent
+      inside its plan. An empty search costs one row (the floor keeps a
+      probing loop honest; `record_usage/2` defaults to one).
     * **The per-minute rate limit stays per key.** It is an abuse guard on a
       single client's burst, not billing, so one runaway connector cannot
-      lock the user's other keys out.
+      lock the user's other keys out. The number is the plan's searches a
+      minute, the same one the dashboard enforces.
     * **Names are unique among a user's active keys** (partial unique index
       in migration 20261026100000). Revoking frees the name, so rotation is
       revoke + create under the same label.
 
-  The free tier is deliberately real (1,000 lookups/month, no contact
+  The free tier is deliberately real (1,000 rows a month, no contact
   emails): agent directories and the public-apis list only accept products
   a bot can actually try, and a generous free tier is the discovery funnel
   for the paid API.
@@ -34,12 +41,11 @@ defmodule LS.ApiKeys do
   alias LS.Repo
   alias LS.ApiKeys.{ApiKey, ApiUsage, Vault}
 
-  @monthly_quota %{"free" => 1_000, "starter" => 5_000, "pro" => 25_000}
-  # Requests per minute, enforced in-memory per node (abuse guard, not billing).
-  @rate_per_min %{"free" => 30, "starter" => 60, "pro" => 120}
+  @doc "Rows a month the plan includes, across CSV, API and MCP."
+  def monthly_quota(plan), do: LS.Plans.rows(plan)
 
-  def monthly_quota(plan), do: Map.get(@monthly_quota, plan, @monthly_quota["free"])
-  def rate_per_min(plan), do: Map.get(@rate_per_min, plan, @rate_per_min["free"])
+  @doc "Requests a minute per key, enforced in-memory per node (abuse guard, not billing)."
+  def rate_per_min(plan), do: LS.Plans.per_min(plan)
 
   # ── Key lifecycle ─────────────────────────────────────────────────────────
 
@@ -178,6 +184,7 @@ defmodule LS.ApiKeys do
 
   def current_period, do: Calendar.strftime(Date.utc_today(), "%Y-%m")
 
+  @doc "Successful calls this month on one key."
   def usage_this_month(key_id) do
     Repo.one(
       from u in ApiUsage,
@@ -186,10 +193,20 @@ defmodule LS.ApiKeys do
     ) || 0
   end
 
+  @doc "Rows delivered this month by one key (calls stand in for a month written before rows were metered)."
+  def rows_this_month(key_id) do
+    Repo.one(
+      from u in ApiUsage,
+        where: u.api_key_id == ^key_id and u.period == ^current_period(),
+        select: coalesce(u.rows, u.calls)
+    ) || 0
+  end
+
   @doc """
-  Calls this month across ALL of a user's keys, revoked ones included: a
-  key revoked mid-month already spent its calls, and spending must not
-  vanish with the key.
+  Rows this month across ALL of a user's keys, revoked ones included: a
+  key revoked mid-month already spent its rows, and spending must not
+  vanish with the key. A usage row written before rows were metered has
+  `rows` nil and counts its calls instead.
   """
   def user_usage_this_month(user_id) do
     Repo.one(
@@ -197,32 +214,35 @@ defmodule LS.ApiKeys do
         join: k in ApiKey,
         on: k.id == u.api_key_id,
         where: k.user_id == ^user_id and u.period == ^current_period(),
-        select: sum(u.calls)
+        select: sum(coalesce(u.rows, u.calls))
     ) || 0
   end
 
   @doc """
-  true when the plan has monthly calls left. Measured on the OWNER's total,
-  not this key's, so a second key is a second connector, never a second
-  quota.
+  true when the plan has rows left this month. Measured on the OWNER's
+  total, not this key's, so a second key is a second connector, never a
+  second quota. The API and the CSV spend the same pool, so the check is
+  `LS.Accounts.rows_remaining/1` when the user is at hand; this reads the
+  API side alone and is kept for callers that only hold the key.
   """
   def within_quota?(key, plan), do: user_usage_this_month(key.user_id) < monthly_quota(plan)
 
   @doc """
-  Record one successful call, off the request path. A lost increment under
-  crash is acceptable (we lose a fraction of a cent of accounting, the
-  customer loses nothing); a slow write blocking a response is not.
+  Record one successful call and the rows it delivered, off the request
+  path. A lost increment under crash is acceptable (we lose a fraction of
+  a cent of accounting, the customer loses nothing); a slow write blocking
+  a response is not.
   """
-  def record_usage_async(key_id) do
-    Task.Supervisor.start_child(LS.TaskSupervisor, fn -> record_usage(key_id) end)
+  def record_usage_async(key_id, rows \\ 1) do
+    Task.Supervisor.start_child(LS.TaskSupervisor, fn -> record_usage(key_id, rows) end)
   end
 
   @doc false
-  def record_usage(key_id) do
+  def record_usage(key_id, rows \\ 1) when is_integer(rows) and rows >= 0 do
     %ApiUsage{}
-    |> Ecto.Changeset.change(api_key_id: key_id, period: current_period(), calls: 1)
+    |> Ecto.Changeset.change(api_key_id: key_id, period: current_period(), calls: 1, rows: rows)
     |> Repo.insert(
-      on_conflict: [inc: [calls: 1], set: [updated_at: DateTime.utc_now(:second)]],
+      on_conflict: [inc: [calls: 1, rows: rows], set: [updated_at: DateTime.utc_now(:second)]],
       conflict_target: [:api_key_id, :period]
     )
   end

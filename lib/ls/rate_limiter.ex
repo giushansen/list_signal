@@ -15,10 +15,8 @@ defmodule LS.RateLimiter do
   Check if a request is allowed for the given user_id.
   Returns :ok or {:error, :rate_limited}.
 
-  Limits per minute by plan:
-  - free: 10
-  - starter: 30
-  - pro: 120
+  Limits per minute by plan come from `LS.Plans.per_min/1` (free 10,
+  starter 30, pro 120, scale 300), the same numbers the API enforces.
   """
   def check(user_id, plan) do
     limit = limit_for(plan)
@@ -32,9 +30,8 @@ defmodule LS.RateLimiter do
     end
   end
 
-  defp limit_for("pro"), do: 120
-  defp limit_for("starter"), do: 30
-  defp limit_for(_), do: 10
+  # One number per plan for the dashboard and the API (LS.Plans, 2026-10-27).
+  defp limit_for(plan), do: LS.Plans.per_min(plan)
 
   @doc """
   Returns the current usage stats for a user without incrementing the counter.

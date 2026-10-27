@@ -43,6 +43,14 @@ config :ls, :stripe_pro_monthly_price_id, System.get_env("STRIPE_PRO_MONTHLY_PRI
 config :ls, :stripe_pro_yearly_price_id, System.get_env("STRIPE_PRO_YEARLY_PRICE_ID")
 config :ls, :stripe_starter_monthly_price_id, System.get_env("STRIPE_STARTER_MONTHLY_PRICE_ID")
 config :ls, :stripe_starter_yearly_price_id, System.get_env("STRIPE_STARTER_YEARLY_PRICE_ID")
+# The $39/$348 Starter prices, archived 2026-10-27; mapped so an old
+# subscription keeps its plan.
+config :ls, :stripe_starter_legacy_monthly_price_id, System.get_env("STRIPE_STARTER_LEGACY_MONTHLY_PRICE_ID")
+config :ls, :stripe_starter_legacy_yearly_price_id, System.get_env("STRIPE_STARTER_LEGACY_YEARLY_PRICE_ID")
+config :ls, :stripe_pro_legacy_yearly_price_id, System.get_env("STRIPE_PRO_LEGACY_YEARLY_PRICE_ID")
+config :ls, :stripe_scale_monthly_price_id, System.get_env("STRIPE_SCALE_MONTHLY_PRICE_ID")
+config :ls, :stripe_scale_yearly_price_id, System.get_env("STRIPE_SCALE_YEARLY_PRICE_ID")
+config :ls, :stripe_dfy_monthly_price_id, System.get_env("STRIPE_DFY_MONTHLY_PRICE_ID")
 
 # Umami analytics override — the default (public) website_id lives in config.exs;
 # these let ops point at a different site or script host without a rebuild.

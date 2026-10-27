@@ -27,7 +27,10 @@ defmodule LS.EngagementTest do
   # does not make these tests indeterminate.
   defp seed_fresh_business! do
     d = "digest-probe.test"
-    LS.Clickhouse.query_raw("INSERT INTO businesses (domain, ctl_first_seen_at, compiled_at, http_last_checked_at, http_tech) VALUES ('#{d}', now(), now(), now(), ['Shopify'])")
+    # http_title: since 2026-10-27 every list and count runs in the base
+    # scope (a fetched homepage, no junk verdict), the digest included, so
+    # the probe row must look like a fetched business.
+    LS.Clickhouse.query_raw("INSERT INTO businesses (domain, ctl_first_seen_at, compiled_at, http_last_checked_at, http_tech, http_title) VALUES ('#{d}', now(), now(), now(), ['Shopify'], 'Digest Probe')")
     on_exit(fn -> LS.Clickhouse.query_raw("ALTER TABLE businesses DELETE WHERE domain = '#{d}'") end)
     :ok
   end

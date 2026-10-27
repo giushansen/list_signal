@@ -391,6 +391,20 @@ Phoenix (`LSWeb`) on the master serves the public directory
 (`/shopify/:slug`, `/website/:slug`, `/top/*`, `/compare/*`), SEO pages from
 `tech_index`, and the account/billing area backed by SQLite + Stripe.
 
+### One grammar, one scope, one unit (2026-10-27)
+
+The dashboard, its CSV export, `/api/v1/{search,count,query}` and the MCP
+tools share one filter vocabulary, `LS.Query` (names, aliases, typed
+parsing); the SQL for each name lives once in `LS.Explorer.clauses/1`,
+and `LS.ApiData.conditions/1` delegates to it except for the few clauses
+whose text the API had promised. Every list, count and export runs in
+the base scope `http_title != '' AND estimated_junk = ''`. Plan numbers
+live in `LS.Plans`; the metered unit is rows a month on any surface
+(`api_usage.rows` plus the user's CSV counter, summed by
+`LS.Accounts.rows_remaining/1`), counts and stats are free. The buyer
+page `/data` and the developer docs are generated from the same three
+modules. Detail in `docs/api-and-mcp.md`.
+
 ### The tech index (2026-09-09)
 
 Every technology page used to run `http_tech LIKE '%X%'` over `domains_fast`,

@@ -215,8 +215,8 @@ defmodule LSWeb.SignalsLive do
 
           <div class="ml-auto">
             <%= cond do %>
-              <% @plan not in ["starter", "pro"] -> %>
-                <span class="inline-flex items-center h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 text-[12px] font-semibold" title="CSV export needs a paid plan">CSV</span>
+              <% Accounts.rows_remaining(@current_scope.user) == 0 -> %>
+                <span class="inline-flex items-center h-9 px-3 rounded-lg bg-emerald-600/25 text-white/50 text-[12px] font-semibold" title="This month's rows are spent; the counter resets on the 1st">CSV</span>
               <% @total > export_cap_for(@plan) -> %>
                 <span class="inline-flex items-center h-9 px-3 rounded-lg bg-white/[0.04] text-gray-600 text-[12px] font-semibold" title={"#{format_number(@total)} changes match, a CSV caps at #{format_number(export_cap_for(@plan))} rows. Narrow the filter to export."}>CSV</span>
               <% true -> %>

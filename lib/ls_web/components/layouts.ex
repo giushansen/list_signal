@@ -118,6 +118,7 @@ defmodule LSWeb.Layouts do
   @doc "Right-side navbar links, rendered just left of Sign in."
   def right_nav_links do
     [
+      {"/data", "Data"},
       {"/features", "Features"},
       {"/pricing", "Pricing"}
     ]
@@ -146,6 +147,7 @@ defmodule LSWeb.Layouts do
             <ul class="space-y-2.5 text-sm">
               <li><a href="/" class="hover:text-white transition">Home</a></li>
               <li><a href="/features" class="hover:text-white transition">Features</a></li>
+              <li><a href="/data" class="hover:text-white transition">The Data</a></li>
               <li><a href="/pricing" class="hover:text-white transition">Pricing</a></li>
               <li><a href="/search" class="hover:text-white transition">Search Stores</a></li>
               <li><a href="/new-stores" class="hover:text-white transition">New Stores Feed</a></li>
