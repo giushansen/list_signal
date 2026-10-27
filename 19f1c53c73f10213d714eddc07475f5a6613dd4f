@@ -1,0 +1,1 @@
+2026-10-27 06:25 UTC: master on 0.1.0-202610271352, backfill scoring ~1M addresses per few minutes (983K after 4 min), zero errors; chi2/dal2/par2 deployed 13:57-14:14 local, all three pulling batches within a minute of start, master lists 10 workers (9 duals + h1).
