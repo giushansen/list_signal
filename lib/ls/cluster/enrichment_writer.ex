@@ -28,8 +28,10 @@ defmodule LS.Cluster.EnrichmentWriter do
 
 
   def write(results) do
-    insert(LS.Schema.Tables.http_contacts(), ~w(domain email source_page on_domain seen_at),
-      Enum.flat_map(results, & &1[:contacts] || []))
+    contacts = Enum.flat_map(results, &(&1[:contacts] || []))
+    insert(LS.Schema.Tables.http_contacts(), ~w(domain email source_page on_domain seen_at), contacts)
+    # Every address written is scored with its evidence (2026-10-27).
+    LS.Email.Verifier.score_async(contacts)
 
     # One row per attempted page fetch, homepage included (migration 016).
     # Before this the enrichment funnel was unobservable: every failure became
@@ -81,12 +83,18 @@ defmodule LS.Cluster.EnrichmentWriter do
   """
   @spec write_discovery(%{optional(:contacts) => [map()], optional(:people) => [map()]}) :: :ok
   def write_discovery(%{} = rows) do
-    insert(LS.Schema.Tables.http_contacts(), ~w(domain email source_page on_domain seen_at), List.wrap(rows[:contacts]))
+    contacts = List.wrap(rows[:contacts])
+    insert(LS.Schema.Tables.http_contacts(), ~w(domain email source_page on_domain seen_at), contacts)
     insert(LS.Schema.Tables.http_people(), ~w(domain name title email source_page seen_at), List.wrap(rows[:people]))
+    LS.Email.Verifier.score_async(contacts)
     :ok
   end
 
   def write_discovery(_), do: :ok
+
+  @doc false
+  # Shared by the verifier: the same TSV path as every other child table.
+  def insert_rows(table, cols, rows), do: insert(table, cols, rows)
 
   @doc "Columns of `biz_enrichment` — the 1:1 signals the compactor merges into `businesses`."
   def summary_columns do

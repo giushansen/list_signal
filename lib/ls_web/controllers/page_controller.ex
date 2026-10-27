@@ -33,10 +33,11 @@ defmodule LSWeb.PageController do
   # deliberately absent: a residential address is not ours to publish. Keep
   # in step with devops/listsignal/fleet.conf; LSWeb.BotPageTest checks the
   # shape, and the reverse DNS names live in devops/listsignal/rdns.md.
+  # The fleet's public addresses, as fleet.conf lists them (2026-10-27:
+  # the seven nodes destroyed on 10-22 removed, chi2/dal2/par2 added).
   @crawler_ips ~w(
-    139.180.191.194 149.28.180.28 108.61.94.33 207.246.126.235 95.179.216.41
-    64.177.122.55 45.76.25.165 45.77.42.191 45.32.147.41 45.76.59.43
-    45.32.206.187 144.202.62.245 207.148.19.32
+    108.61.94.33 207.246.126.235 95.179.216.41 64.177.122.55 45.77.42.191
+    45.76.59.43 64.177.125.20 104.238.144.112 108.61.123.237
   )
 
   @doc false

@@ -59,6 +59,7 @@ defmodule LS.Schema.Tables do
   def http_pages, do: "http_pages"
   def http_contacts, do: "http_contacts"
   def http_people, do: "http_people"
+  def email_checks, do: "email_checks"
   def http_deep_prices, do: "http_deep_prices"
   def shop_products, do: "shop_products"
   def shop_collections, do: "shop_collections"

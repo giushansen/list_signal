@@ -61,6 +61,36 @@ migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
 
 ---
 
+## 2026-10-27: every published address scored, with the evidence, and no SMTP handshake
+
+Decided with the owner after reading how Hunter verifies: the SMTP
+handshake is defeated by catch-all domains (15 to 20% of B2B, about 8% of
+Google and Microsoft business mail), answers identically on most
+Microsoft 365 tenants, and probing from our addresses, the NUC's
+residential one included, would put them on blocklists. What our own data
+says is scored instead, and every point is a line a customer can read.
+
+`LS.Email.Score` (pure): where the address was published (contact,
+imprint or policy page 20, homepage 15, about or career 12, other 8),
+what it is for the business (a person's or role mailbox on the domain 15,
+a sister domain 10, the owner's free-mail box 8), the domain's mail setup
+(MX 25 and required, known provider 5, SPF 3, DMARC 2), and how recently
+it was seen on the site (20 within 30 days, 15 within 90, 8 within 180, 3
+within a year). Verdicts: strong from 75, good from 55, weak below, and
+undeliverable for no MX or a disposable host; a third party or a
+placeholder is rejected and never stored. `LS.Email.Verifier` scores
+every contact row the depth lane or discovery writes, off the request
+path, into `email_checks` (migration 029), and `backfill/0` runs the same
+rule as SQL over `businesses` in 32 shards, so the 11M addresses already
+in the product were scored by ClickHouse in one pass without crossing
+into the VM. The API and MCP `get_company` carry score, verdict and
+evidence per address. Expected deliverability without a handshake, from
+the published-address measurements: strong 93 to 97%, good 85 to 92%;
+the external verifier is for what is weak, stale or explicitly requested,
+at export time only.
+
+---
+
 ## 2026-10-27: two "Ingestion stalled" emails, both right: strict tier A priority starved discovery
 
 New businesses per hour: 3,017 at 12:00 UTC on 10-26, 1,583 at 14:00, 41

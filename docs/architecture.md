@@ -149,7 +149,9 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
      login for tech. Emails are classified (`LS.HTTP.EmailClass`), people
      extracted (`LS.HTTP.People`), and per-address provenance written to
      `http_contacts` and `http_people` through the master's child-table
-     writer.
+     writer, which also scores every address into `email_checks`
+     (`LS.Email.Score`: published where, what kind, mail setup, how
+     recently seen; no SMTP handshake, 2026-10-27).
    - **HTTP** (`LS.HTTP.Client` + detectors) — only for domains passing
      `LS.HTTP.DomainFilter` (Tranco-ranked, or high-value TLD + MX + SPF +
      not-junk). Fetches the homepage (and select secondary pages), extracts

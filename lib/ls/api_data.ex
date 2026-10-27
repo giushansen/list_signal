@@ -53,9 +53,12 @@ defmodule LS.ApiData do
     emails = List.wrap(record[:http_emails])
     sources = contact_sources(d)
 
+    checks = email_checks(d)
+
     classified =
       Enum.map(emails, fn e ->
-        %{email: e, kind: LS.HTTP.EmailClass.classify(e, d) |> Atom.to_string(), source_page: Map.get(sources, e, "homepage")}
+        base = %{email: e, kind: LS.HTTP.EmailClass.classify(e, d) |> Atom.to_string(), source_page: Map.get(sources, e, "homepage")}
+        Map.merge(base, Map.get(checks, e, %{score: nil, verdict: "unscored", evidence: [], checked_at: nil}))
       end)
 
     pattern =
@@ -68,6 +71,16 @@ defmodule LS.ApiData do
     |> Map.put(:email_details, classified)
     |> Map.put(:email_pattern, pattern)
     |> Map.put(:people, people(d))
+  end
+
+  # Score, verdict and evidence per address (LS.Email.Score, 2026-10-27).
+  defp email_checks(d) do
+    sql = "SELECT email, argMax(score, checked_at), argMax(verdict, checked_at), argMax(evidence, checked_at), toString(max(checked_at)) FROM #{Tables.email_checks()} WHERE domain = '#{d}' GROUP BY email LIMIT 40"
+
+    case Clickhouse.query_raw(sql, 5_000) do
+      {:ok, rows} -> Map.new(rows, fn [e, s, v, ev, at] -> {e, %{score: to_int(s), verdict: v, evidence: ev, checked_at: at}} end)
+      _ -> %{}
+    end
   end
 
   defp contact_sources(d) do

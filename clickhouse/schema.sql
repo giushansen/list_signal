@@ -1184,6 +1184,24 @@ ORDER BY (domain, name)
 SETTINGS index_granularity = 8192
 ;
 
+CREATE TABLE ls.email_checks
+(
+    `domain` String,
+    `email` String,
+    `kind` LowCardinality(String),
+    `score` UInt8,
+    `verdict` LowCardinality(String),
+    `evidence` Array(String),
+    `provider` LowCardinality(String),
+    `source_page` LowCardinality(String),
+    `last_seen` Nullable(DateTime),
+    `checked_at` DateTime
+)
+ENGINE = ReplacingMergeTree(checked_at)
+ORDER BY (domain, email)
+SETTINGS index_granularity = 8192
+;
+
 CREATE TABLE ls.http_contacts
 (
     `domain` String,

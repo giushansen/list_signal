@@ -97,6 +97,10 @@ defmodule LS.HTTP.EmailClass do
       "splitByChar('.', splitByChar('@', email)[2])[1] = splitByChar('.', domain)[1])"
   end
 
+  @doc "The free-mail hosts as a quoted SQL list."
+  @spec free_mail_sql_list() :: String.t()
+  def free_mail_sql_list, do: Enum.map_join(@free_mail, ", ", &"'#{&1}'")
+
   @doc "A ClickHouse regex literal matching a role mailbox's local part, for SQL filters."
   @spec role_regex_sql() :: String.t()
   def role_regex_sql do
