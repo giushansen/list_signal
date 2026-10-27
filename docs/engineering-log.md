@@ -61,6 +61,30 @@ migrated. Pinned in `test/ls/api_keys_multi_test.exs`.
 
 ---
 
+## 2026-10-27: two "Ingestion stalled" emails, both right: strict tier A priority starved discovery
+
+New businesses per hour: 3,017 at 12:00 UTC on 10-26, 1,583 at 14:00, 41
+at 15:00, then zero for nine hours, while refreshes ran at 10,000 rows an
+hour and the queue grew from 0 to 251K. The alerts at 18:02 ("only 12.3K
+crawled in 3h") and 22:47 ("new businesses: 0 rows this hour") described
+exactly that. Cause: the priority lane of 10-24 dequeued every tier A item
+before any discovery item, the lane admits 4,500 every 30 minutes (150 a
+minute), and the address page (10-26) took the fleet from 220 to 157
+fetches a minute. Tier A alone now filled the fleet, and new names waited
+behind it until the 24-hour TTL.
+
+`WorkQueue.take_batch/1` now gives priority 0 at most 65% of a batch
+while priority 1 items are waiting (`@priority_share`); tier A still comes
+first in every batch and takes the whole batch when nothing else waits.
+At 157 a minute that is about 100 a minute for tier A (the 3.13M plan in
+about 22 days instead of 14) and about 55 for new names. The share is
+the dial between the two, and the honest number behind it is the fleet
+size the owner chose. The ingestion alert's absolute floor (150K per 3h)
+dates from the 13-node fleet; the 24-hour baseline guard is what makes it
+fire correctly, and it stays.
+
+---
+
 ## 2026-10-27: the address page cost the fleet three quarters of its throughput for two hours
 
 Two hours after the secondary-page change landed, each node did about 9

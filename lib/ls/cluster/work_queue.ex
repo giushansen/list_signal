@@ -666,22 +666,52 @@ defmodule LS.Cluster.WorkQueue do
     :persistent_term.get(@counter_table)
   end
 
+  # Priority 0 (tier A refreshes) takes at most this share of a batch while
+  # ordinary items are waiting (2026-10-27). With strict priority and a
+  # fleet of 157 fetches a minute, the 150-a-minute tier A plan took every
+  # slot: new businesses fell from 3,000 an hour to 0 at 15:00 UTC on 10-26
+  # and stayed there nine hours while the queue grew to 251K. Now a batch
+  # is at most 65% tier A when discovery has items; tier A gets the whole
+  # batch only when nothing else waits. Tier A is still never behind
+  # discovery, it just no longer starves it.
+  @priority_share 0.65
+
+  @doc "The share of a batch priority 0 may take while priority 1 items wait."
+  def priority_share, do: @priority_share
+
   defp take_batch(count) do
-    take_batch(count, [])
+    quota = max(round(count * @priority_share), 1)
+    first = take_from(:first, quota, [])
+    rest = take_from(:rest, count - length(first), first)
+    # Discovery short: tier A may fill what is left.
+    take_from(:first, count - length(rest), rest) |> Enum.reverse()
   end
 
-  defp take_batch(0, acc), do: Enum.reverse(acc)
-  defp take_batch(remaining, acc) do
-    case :ets.first(@queue_table) do
+  # `:first` takes from the head of the table (priority 0, then 1 when 0 is
+  # empty); `:rest` takes only from priority 1 and up, skipping the whole
+  # priority 0 range. ETS orders integers before atoms, so {0, :infinity}
+  # sorts after every {0, id} and before every {1, id}.
+  defp take_from(_where, remaining, acc) when remaining <= 0, do: acc
+
+  defp take_from(where, remaining, acc) do
+    key =
+      case where do
+        :first -> :ets.first(@queue_table)
+        :rest -> :ets.next(@queue_table, {@prio_refresh_a, :infinity})
+      end
+
+    case key do
       :"$end_of_table" ->
-        Enum.reverse(acc)
+        acc
 
       key ->
         case :ets.take(@queue_table, key) do
-          [item] -> take_batch(remaining - 1, [item | acc])
-          [] -> Enum.reverse(acc)
+          [item] -> take_from(where, remaining - 1, [item | acc])
+          [] -> acc
         end
     end
+  rescue
+    ArgumentError -> acc
   end
 
   defp cleanup_expired(cutoff) do
