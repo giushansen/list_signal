@@ -19,8 +19,10 @@ defmodule LS.Cluster.EnrichmentRefillCadenceTest do
     assert per_interval < @depth / 3, "a refill must not be needed before the next one"
   end
 
-  test "the starved-lane alert still fires inside an hour" do
+  test "the starved-lane alert still fires inside two hours" do
+    # Six refills is pinned by the alert test (LS.AlertsBackupRunAndLaneTest);
+    # at 20 minutes that is two hours, against 30 minutes before.
     streak = File.read!("lib/ls/alerts.ex") |> then(&Regex.run(~r/@lane_starved_streak (\d+)/, &1)) |> List.last() |> String.to_integer()
-    assert streak * LS.Cluster.EnrichmentQueue.refill_interval_ms() <= :timer.hours(1)
+    assert streak * LS.Cluster.EnrichmentQueue.refill_interval_ms() <= :timer.hours(2)
   end
 end

@@ -52,8 +52,9 @@ Changes, each measured on the master:
 - `similar_stores` (the neighbours on every /website page) is cached a day,
   not six hours: a miss is a 3 s full scan and it missed 600 times in 30 h.
 - The depth queue refills every 20 minutes, not 5 (h1 drains 385 items per
-  5 minutes against a depth of 5,000); the starved-lane alert fires after
-  two refills instead of six, so it still fires inside an hour.
+  5 minutes against a depth of 5,000). The starved-lane alert keeps its
+  six-refill streak (pinned by its test), which is now two hours instead of
+  30 minutes; lowering it to two refills is the owner's call.
 - `LS.DataCheck` has two new speed probes: the explorer ranking and the
   landing tech count, so a regression shows on the admin page.
 
