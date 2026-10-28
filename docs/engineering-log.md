@@ -58,9 +58,12 @@ Changes, each measured on the master:
 - `LS.DataCheck` has two new speed probes: the explorer ranking and the
   landing tech count, so a regression shows on the admin page.
 
-Still to do, held for the owner's migration: a one-byte `has_email`
-MATERIALIZED flag on `businesses` (migration 030). The ranking spends 0.9 s
-of its 1.5 s decompressing the 243 MB `http_emails` array for a yes/no.
+The second commit adds a one-byte `has_email` MATERIALIZED flag on
+`businesses` (migration 030, declared in `LS.Schema.Columns`); the ranking
+spent 0.9 s of its 1.5 s decompressing the 243 MB `http_emails` array for
+a yes/no. The migration must be applied on the master before that release
+starts: `SELECT *` never includes MATERIALIZED columns, which is why the
+export wrapper names the flag explicitly.
 
 Also found in the same audit, not changed here: 176K /website requests in
 30 h, average 1.2 s, 2,944 over 8 s, almost all bots; Umami counts 2,700

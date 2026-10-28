@@ -29,7 +29,7 @@ defmodule LS.Explorer do
     """
     (multiIf(#{p}estimated_revenue IN ('$1M-$10M', '$10M-$100M'), 3, #{p}estimated_revenue = '<$1M', 1, #{p}estimated_revenue = '$100M-$1B', 0, #{p}estimated_revenue = '$1B+', -6, 0)
      + if(#{p}estimated_business_model IN (#{models}), 2, if(#{p}estimated_business_model = '', -1, 0))
-     + if(notEmpty(#{p}http_emails), 2, 0) + if(#{p}http_phone != '', 1, 0)
+     + if(#{p}has_email = 1, 2, 0) + if(#{p}http_phone != '', 1, 0)
      + multiIf(#{p}tranco_rank = 0 OR #{p}tranco_rank IS NULL, 0, #{p}tranco_rank <= 1000, -4, #{p}tranco_rank <= 10000, -1, #{p}tranco_rank <= 100000, 0, #{p}tranco_rank <= 1000000, 1, 0)
      + if(#{p}http_last_checked_at >= now() - INTERVAL 30 DAY, 1, 0)
      + if(#{p}estimated_country != '', 1, 0))
@@ -485,7 +485,8 @@ defmodule LS.Explorer do
     )
     SELECT #{cols}
     FROM (
-      SELECT * FROM businesses FINAL
+      -- `*` never includes MATERIALIZED columns; the ranking reads has_email.
+      SELECT *, has_email FROM businesses FINAL
       WHERE domain IN exported
       #{and_where(where)}
     ) AS d
@@ -805,7 +806,7 @@ defmodule LS.Explorer do
     end
   end
   defp filter_clause({:has_pricing, "true"}), do: ["http_deep_pricing_points > 0"]
-  defp filter_clause({:has_email, "true"}), do: ["notEmpty(http_emails)"]
+  defp filter_clause({:has_email, "true"}), do: ["has_email = 1"]
   defp filter_clause({:hiring, "true"}), do: ["hr_job_count > 0"]
 
 

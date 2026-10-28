@@ -26,7 +26,9 @@ defmodule LS.ExplorerV2Test do
   end
 
   test "depth filters use the prefixed columns and arrays test emptiness, not ''" do
-    assert Explorer.where_sql(has_email: "true") =~ "notEmpty(http_emails)"
+    # 2026-10-28: the flag is the table's MATERIALIZED notEmpty(http_emails);
+    # testing it is the same predicate without decompressing the array.
+    assert Explorer.where_sql(has_email: "true") =~ ~r/notEmpty\(http_emails\)|has_email = 1/
     assert Explorer.where_sql(hiring: "true") =~ "hr_job_count > 0"
     assert Explorer.where_sql(has_catalog: "true") =~ "shop_product_count > 0"
     assert Explorer.where_sql(has_pricing: "true") =~ "http_deep_pricing_points > 0"

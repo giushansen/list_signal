@@ -970,6 +970,7 @@ CREATE TABLE ls.businesses
     `news_last_seen_at` Nullable(DateTime),
     `is_shopify` UInt8 MATERIALIZED has(http_tech, 'Shopify'),
     `is_saas` UInt8 MATERIALIZED estimated_business_model = 'SaaS',
+    `has_email` UInt8 MATERIALIZED notEmpty(http_emails),
     `as_of` DateTime ALIAS compiled_at,
     `first_seen` DateTime ALIAS ctl_first_seen_at,
     `last_verified_at` Nullable(DateTime) ALIAS http_last_seen_at,

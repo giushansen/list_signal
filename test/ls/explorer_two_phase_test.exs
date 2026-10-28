@@ -28,6 +28,13 @@ defmodule LS.ExplorerTwoPhaseTest do
     refute sql =~ "SELECT domain FROM (", "the ranking must not run a second time"
   end
 
+  test "the score and the has_email filter read the one-byte flag, not the address array" do
+    # 2026-10-28: notEmpty(http_emails) decompressed 243 MB on every ranking, 0.9 s of 1.5 s.
+    assert Explorer.target_score_sql() =~ "has_email = 1"
+    refute Explorer.target_score_sql() =~ "notEmpty(http_emails)"
+    assert Explorer.where_sql(%{has_email: "true"}) =~ "has_email = 1"
+  end
+
   test "only the unfiltered first page in the default order is the cached default view" do
     assert Explorer.default_view?(%{}, per_page: 25, page: 1)
     assert Explorer.default_view?(%{country: ""}, per_page: 100)

@@ -278,9 +278,14 @@ defmodule LS.Schema.Columns do
     ]
   end
 
+  # `has_email` (2026-10-28): the explorer's target ranking and every
+  # `has_email` filter read `notEmpty(http_emails)`, which decompresses the
+  # 243 MB array column on all 27M rows: 0.9 s of the 1.5 s the first page's
+  # ranking took on the master. The flag is one byte per row.
   @materialized [
     {"is_shopify", "UInt8", "has(http_tech, 'Shopify')"},
-    {"is_saas", "UInt8", "estimated_business_model = 'SaaS'"}
+    {"is_saas", "UInt8", "estimated_business_model = 'SaaS'"},
+    {"has_email", "UInt8", "notEmpty(http_emails)"}
   ]
 
   # Legacy names that are not plain renames of one column, kept as ALIAS
