@@ -1,0 +1,1 @@
+Deployed 2026-10-28 08:33 UTC on the master. Zero 'insert email_checks failed' lines after the restart (8,392 before); within ten minutes 10,180 named and 7,274 free-mail rows landed, the first since the 10-27 release. Targeted re-score of the lost day started 08:34 via rpc, backfill(since: 2026-10-27 06:50).
