@@ -25,6 +25,46 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-28: the dashboard took 11 s; the box was rewriting the product table
+
+The owner's explorer page took over 11 s at 02:26 UTC. The query log put it
+inside the hourly `OPTIMIZE TABLE businesses FINAL` pass (02:25:12 to
+02:28:22): 27 passes a day, 179.9 s each on average, a full rewrite of
+11.7 GB on the 4-core master, while the same explorer query ran in 3.6 s on
+a quiet box. The hour the owner opens the dashboard (00:00 to 03:00 UTC) is
+also the busiest for web requests (17K an hour, almost all bots on
+/website/*), the product backup dumps every table at 00:30 UTC, and the
+depth queue ran two full-table selections (35 s and 20 s) every 5 minutes.
+
+Changes, each measured on the master:
+
+- `LS.Cluster.Optimizer` runs once a day at 11:30 UTC (the daily minimum,
+  about 5K requests an hour). Duplicates grow about 0.07% an hour between
+  passes (0.006% right after one); the explorer dedupes its page and counts
+  are approximate by contract.
+- The explorer page is two round trips: rank on narrow columns, then read
+  the wide row by primary key with FINAL. One statement made ClickHouse
+  evaluate the ranking twice: 3.6 s against 1.5 s plus 0.4 s. The default
+  first page is cached five minutes; every session opens on it.
+- Landing counts and the recent Shopify teaser read `businesses`, not
+  `domains`/`domains_fast`: 9.0 s, 2.4 s and 9.5 s became 1.3 s, 0.9 s and
+  0.66 s, 60 runs a day each.
+- `similar_stores` (the neighbours on every /website page) is cached a day,
+  not six hours: a miss is a 3 s full scan and it missed 600 times in 30 h.
+- The depth queue refills every 20 minutes, not 5 (h1 drains 385 items per
+  5 minutes against a depth of 5,000); the starved-lane alert fires after
+  two refills instead of six, so it still fires inside an hour.
+- `LS.DataCheck` has two new speed probes: the explorer ranking and the
+  landing tech count, so a regression shows on the admin page.
+
+Still to do, held for the owner's migration: a one-byte `has_email`
+MATERIALIZED flag on `businesses` (migration 030). The ranking spends 0.9 s
+of its 1.5 s decompressing the 243 MB `http_emails` array for a yes/no.
+
+Also found in the same audit, not changed here: 176K /website requests in
+30 h, average 1.2 s, 2,944 over 8 s, almost all bots; Umami counts 2,700
+human sessions in 30 days, and search engines sent under 25 of them.
+
 ## 2026-10-27: one filter grammar, rows as the unit, free counts, and /data
 
 Three grammars had grown: `LS.Explorer` (atom keys, the dashboard),

@@ -430,9 +430,27 @@ total always did.
 
 `domains_current` is no longer `OPTIMIZE ... FINAL`ed every hour (566s per
 pass, a 33 GB rewrite): nothing reads it without FINAL that cares, and the
-index build reads FINAL once per six hours. `businesses` keeps its hourly
-optimize (94s), which is what lets the explorer's option lists and the
-landing samples read without FINAL (0.07% duplicate rows between passes).
+index build reads FINAL once per six hours. `businesses` is optimized once
+a day at 11:30 UTC since 2026-10-28 (`LS.Cluster.Optimizer`): the hourly
+pass had grown from 94 s to 180 s, a full rewrite of 11.7 GB on the 4-core
+box, and the owner's dashboard took 11 s inside one of them. Between passes
+the table gains about 0.07% duplicate rows an hour; the explorer dedupes
+its page and counts are approximate by contract. 11:30 UTC is the measured
+minimum of web requests (about 5K an hour against 17K at 02:00 UTC).
+
+The explorer page is two round trips since the same day: `Explorer.rank_sql/2`
+ranks the match set on narrow columns and returns the page's domains;
+`Explorer.rows_sql/3` reads the wide row for those domains by primary key
+with FINAL. As one statement ClickHouse evaluated the ranking twice (once
+to rank, once as the IN set): 3.6 s against 1.5 s plus 0.4 s for the
+default first page. That default page (no filter, default order, page 1)
+is cached for five minutes in `LS.UICache`, since every session opens on
+it. The landing's technology and app counts and the recent Shopify teaser
+read `businesses` (27M rows) instead of `domains` and `domains_fast` (301M
+and 193M rows): 9.0 s, 2.4 s and 9.5 s became 1.3 s, 0.9 s and 0.66 s. The
+depth queue (`LS.Cluster.EnrichmentQueue`) refills every 20 minutes, not
+5: its two lane selections cost 55 s of ClickHouse time per refill and h1
+drains about 385 items per 5 minutes against a depth of 5,000.
 
 ### Reference data lives once, not on every worker
 

@@ -109,11 +109,15 @@ defmodule LS.Clickhouse do
   end
 
   def recent_stores(limit \\ 20) do
+    # From the product table since 2026-10-28: the same teaser over
+    # domains_fast (193M rows sorted by enriched_at) took 9.5 s and ran 60
+    # times a day on the master; over businesses it takes 0.66 s. Same row
+    # shape as before: country, techs joined by '|', and the check time.
     query("""
-    SELECT domain, country, http_title, http_tech, enriched_at
-    FROM domains_fast
+    SELECT domain, estimated_country, http_title, arrayStringConcat(http_tech, '|'), http_last_checked_at
+    FROM businesses
     WHERE is_shopify = 1 AND http_title != '' AND #{not_challenge_sql("http_title")}
-    ORDER BY enriched_at DESC
+    ORDER BY http_last_checked_at DESC
     LIMIT #{limit}
     """)
   end
@@ -309,7 +313,10 @@ defmodule LS.Clickhouse do
   the list instead of its head. Cached 6h per (model, country) — the page is
   CDN-cached and the answer barely moves within a day.
   """
-  @similar_stores_ttl :timer.hours(6)
+  # 24 h since 2026-10-28: a miss is a full scan of businesses (3.0 s on a
+  # quiet box) and the 6 h cache missed 600 times in 30 h; the neighbours of
+  # a store do not change within a day.
+  @similar_stores_ttl :timer.hours(24)
 
   # Same revenue tier as the target — similarity that converts, per the
   # 2026-08-17 report: rank-ordered-globally showed icloud/nih.gov/cisco as

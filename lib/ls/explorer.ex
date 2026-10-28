@@ -192,14 +192,84 @@ defmodule LS.Explorer do
     end
   end
 
+  # Phase one of the page: the ranking on narrow columns, returning only
+  # domains. Public so tests and the data checks measure the real query.
+  @doc "SQL that ranks the match set and returns the page's domains, deduplicated."
+  def rank_sql(filters, opts \\ []) do
+    per_page = Keyword.get(opts, :per_page, 25)
+    page = Keyword.get(opts, :page, 1)
+    offset = (page - 1) * per_page
+    where = scoped_where(filters)
+    order = order_clause(Keyword.get(opts, :sort), Keyword.get(opts, :dir))
+
+    """
+    SELECT domain FROM (
+      SELECT domain
+      FROM businesses
+      #{where}
+      ORDER BY #{order}
+      LIMIT #{offset + per_page + @dedupe_slack}
+    )
+    #{@dedupe}
+    LIMIT #{per_page}
+    OFFSET #{offset}
+    """
+  end
+
+  # Phase two: the wide columns for those domains only, by primary key.
+  # FINAL is cheap here (a handful of granules) and guarantees one row per
+  # domain whatever the merge state.
+  @doc "SQL for the wide columns of the given domains, in the page's order."
+  def rows_sql(domains, filters, opts \\ []) do
+    per_page = Keyword.get(opts, :per_page, 25)
+    where = scoped_where(filters)
+    order = order_clause(Keyword.get(opts, :sort), Keyword.get(opts, :dir))
+    list = Enum.map_join(domains, ", ", &"'#{esc(&1)}'")
+
+    """
+    SELECT #{columns_sql()}
+    FROM businesses FINAL
+    WHERE domain IN (#{list})
+    #{and_where(where)}
+    ORDER BY #{order}
+    LIMIT #{per_page}
+    """
+  end
+
   def list(filters, opts \\ []) do
+    # Two round trips instead of one statement (2026-10-28). As one statement
+    # ClickHouse evaluated the ranking subquery twice, once to rank and once
+    # to build the IN set for the FINAL read: 3.6 s for the default first
+    # page on the master against 1.5 s + 0.4 s split, measured on a quiet
+    # box. The single-statement form stays in list_sql/2 for the budget tests.
+    #
     # Bound server-side too: a user-facing scan that outlives our own timeout is
     # pure waste and, on 2026-08-24, the fuel for a pile-up that took the
     # dashboard down (16 abandoned scans still running at 250s).
-    case Clickhouse.query_raw(list_sql(filters, opts), @query_timeout, max_execution_time: div(@query_timeout, 1000)) do
-      {:ok, rows} -> {:ok, rows_to_maps(rows, column_names())}
-      err -> err
+    if default_view?(filters, opts) do
+      # Every session opens on this exact page; its rows move slower than the
+      # cache, so one visitor in five minutes pays for the ranking.
+      LS.UICache.fetch(:explorer_default_page, Keyword.get(opts, :per_page, 25), fn -> list_uncached(filters, opts) end)
+    else
+      list_uncached(filters, opts)
     end
+  end
+
+  defp list_uncached(filters, opts) do
+    run = fn sql -> Clickhouse.query_raw(sql, @query_timeout, max_execution_time: div(@query_timeout, 1000)) end
+
+    with {:ok, ranked} <- run.(rank_sql(filters, opts)),
+         domains = Enum.map(ranked, &hd/1),
+         {:ok, rows} <- if(domains == [], do: {:ok, []}, else: run.(rows_sql(domains, filters, opts))) do
+      {:ok, rows_to_maps(rows, column_names())}
+    end
+  end
+
+  @doc false
+  # The unfiltered first page in the default order: what every new session loads.
+  def default_view?(filters, opts) do
+    Enum.all?(filters, fn {_k, v} -> v in [nil, ""] end) and Keyword.get(opts, :page, 1) == 1 and
+      Keyword.get(opts, :sort) in [nil, ""]
   end
 
   @doc "SQL for the total-row count. Public so performance tests measure the real query."

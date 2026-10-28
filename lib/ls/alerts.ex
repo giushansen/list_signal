@@ -761,8 +761,9 @@ defmodule LS.Alerts do
   # 2026-09-23: pipeline 2 ran at a third of its rate for two weeks while the
   # row-count alert stayed quiet, because the browser lane kept the count
   # above its floor. The HTTP lane's refill is the direct signal: a bucket
-  # with room that the refill cannot fill, six refills (30 minutes) running.
-  @lane_starved_streak 6
+  # with room that the refill cannot fill, two refills (40 minutes at the
+  # 20-minute cadence of 2026-10-28; it was six at 5 minutes) running.
+  @lane_starved_streak 2
 
   defp enrichment_lane(acc, %{enrichment_queue: %{http_starved_streak: n}})
        when is_integer(n) and n >= @lane_starved_streak,

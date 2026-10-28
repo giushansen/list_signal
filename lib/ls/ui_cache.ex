@@ -60,6 +60,7 @@ defmodule LS.UICache do
     dropdown: {1_800, "filter dropdown option lists"},
     segment_counts: {600, "segment button counts"},
     filter_count: {300, "total for a filter set"},
+    explorer_default_page: {300, "the unfiltered first page of the explorer, per page size"},
     sitemap_techs: {21_600, "techs with enough Shopify stores to earn a URL"},
     # The whole rendered sitemap XML: five CH scans and 29.5s to build under
     # load (2026-08-25) — Googlebot times out around 30s, so an uncached

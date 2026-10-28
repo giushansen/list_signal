@@ -16,6 +16,15 @@ defmodule LS.Cluster.EnrichmentQueue do
   Refill cadence is `@refill_interval_ms`; the queue tops up to
   `@target_depth` and never grows beyond it, so enrichment can never starve
   the box the way an unbounded queue could.
+
+  Every 20 minutes since 2026-10-28, not 5. A refill is two full-table
+  selections (the HTTP lane and the browser lane, see
+  `LS.Clickhouse.businesses_needing_enrichment/2`) that took 35 s and 20 s
+  each on the master, 305 times apiece in 30 h: 55 s of 4-core ClickHouse
+  time every 5 minutes, on the box that serves the dashboard, to top up a
+  queue that h1 drains at about 385 items per 5 minutes against a depth of
+  5,000. Four times fewer scans; the queue still holds more than an hour of
+  work after each refill.
   """
 
   use GenServer
@@ -39,7 +48,7 @@ defmodule LS.Cluster.EnrichmentQueue do
   # over-fed until it clears: idle camoufox is paid-for capacity going to
   # waste, and blocked domains are often the brands worth the most.
   @browser_target_depth 1_500
-  @refill_interval_ms 300_000
+  @refill_interval_ms 1_200_000
   @batch_timeout_ms 900_000
   # A domain whose enrichment crashes or exceeds the agent's 120s task timeout
   # produces NO biz_enrichment row, so the refill query re-selects it forever:
@@ -60,7 +69,10 @@ defmodule LS.Cluster.EnrichmentQueue do
   @spec stats() :: map()
   def stats, do: GenServer.call(__MODULE__, :stats)
 
-  @doc "Force an immediate refill from ClickHouse (normally every 5 min)."
+  @doc "The refill cadence in milliseconds, for tests and the dashboard."
+  def refill_interval_ms, do: @refill_interval_ms
+
+  @doc "Force an immediate refill from ClickHouse (normally every 20 min)."
   def refill_now, do: send(__MODULE__, :refill) && :ok
 
   @impl true

@@ -105,8 +105,12 @@ defmodule LS.LandingCache do
       # scan below (~18s: is_shopify over 193M rows sorted by enriched_at) ran
       # every minute for numbers that move by the day. Every 30 minutes now
       # (2026-09-09, measured on prod as ls_app's slowest routine queries).
-      tech_count: slow(:tech_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_tech))) FROM domains WHERE http_tech != ''") end),
-      app_count: slow(:app_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM domains WHERE http_apps != ''") end),
+      # From the product table, not `domains` (2026-10-28): the same two
+      # numbers cost 9.0 s and 2.4 s over 301M domain rows against 1.3 s and
+      # 0.9 s over 27M businesses, and they ran 61 times a day on the box
+      # that serves the dashboard.
+      tech_count: slow(:tech_count, fn -> fetch_count("SELECT uniq(arrayJoin(http_tech)) FROM businesses WHERE notEmpty(http_tech)") end),
+      app_count: slow(:app_count, fn -> fetch_count("SELECT uniq(arrayJoin(splitByString('|', http_apps))) FROM businesses WHERE http_apps != ''") end),
       scan_rate: insert_last_min,
       ch_insert_rate: insert_last_min,
       ctl_rate_per_sec: fetch_ctl_rate(),
