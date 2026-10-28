@@ -22,7 +22,8 @@ defmodule LSWeb.ExplorerDefaultRankingTest do
   test "the score rewards the ICP classes, contacts, a known country and freshness" do
     score = Explorer.target_score_sql()
     for c <- ~w(SaaS Ecommerce Agency Consulting LocalBusiness Manufacturer), do: assert(score =~ "'#{c}'")
-    assert score =~ "notEmpty(http_emails), 2"
+    # has_email since 1a9885f (2026-10-28): the one-byte flag, not the array.
+    assert score =~ "has_email = 1, 2"
     assert score =~ "http_phone != '', 1"
     assert score =~ "estimated_country != '', 1"
     assert score =~ "INTERVAL 30 DAY, 1"
@@ -30,7 +31,7 @@ defmodule LSWeb.ExplorerDefaultRankingTest do
 
   test "a column prefix qualifies every column the score reads, for the export join" do
     q = Explorer.target_score_sql("d.")
-    assert q =~ "d.estimated_revenue" and q =~ "d.http_emails" and q =~ "d.tranco_rank" and q =~ "d.http_last_checked_at"
+    assert q =~ "d.estimated_revenue" and q =~ "d.has_email" and q =~ "d.tranco_rank" and q =~ "d.http_last_checked_at"
     refute q =~ ~r/(?<![\w.])estimated_revenue/
   end
 

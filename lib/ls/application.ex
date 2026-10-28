@@ -169,6 +169,10 @@ defmodule LS.Application do
       # Rebuilds ls.tech_index every 6h — the public tech/top/compare pages
       # read it instead of scanning domains_current (2026-09-09).
       LS.TechIndex,
+      # Rebuilds ls.similar_pool daily at 11:50 UTC: the company page's
+      # "businesses like this one" block reads it instead of scanning
+      # businesses (2026-10-28).
+      LS.SimilarPool,
       LS.Cluster.Monitor,
       LS.Recrawl.Scheduler,
       # Pipeline 2 (depth): its own queue, plus the compactor that folds

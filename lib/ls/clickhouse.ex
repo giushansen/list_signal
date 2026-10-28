@@ -362,18 +362,25 @@ defmodule LS.Clickhouse do
       end
 
     LS.LandingCache.cached({:similar_stores, business_model, country, tier, bucket}, @similar_stores_ttl, fn ->
-      query("""
-      SELECT domain, http_title, tranco_rank, is_shopify
-      FROM businesses
-      WHERE estimated_business_model = '#{escape(business_model)}'
-        AND estimated_country = '#{escape(country)}'
-        AND estimated_revenue IN (#{tier_sql})
-        AND estimated_business_model_confidence >= 0.5
-        AND estimated_junk = '' AND http_title != ''
-      #{rank_where}
-      #{order}
-      LIMIT #{limit + 4}
-      """)
+      # 2026-10-28: the pool (migration 031, LS.SimilarPool) answers from one
+      # key range in milliseconds. The scan below is the fallback for a box
+      # whose pool is empty or missing: 3 to 15 s, 176 misses in six hours.
+      if LS.SimilarPool.ready?() do
+        query(LS.SimilarPool.read_sql(business_model, country, tier, rank, limit + 4))
+      else
+        query("""
+        SELECT domain, http_title, tranco_rank, is_shopify
+        FROM businesses
+        WHERE estimated_business_model = '#{escape(business_model)}'
+          AND estimated_country = '#{escape(country)}'
+          AND estimated_revenue IN (#{tier_sql})
+          AND estimated_business_model_confidence >= 0.5
+          AND estimated_junk = '' AND http_title != ''
+        #{rank_where}
+        #{order}
+        LIMIT #{limit + 4}
+        """)
+      end
     end)
     |> case do
       {:ok, rows} ->

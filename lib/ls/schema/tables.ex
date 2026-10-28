@@ -60,6 +60,8 @@ defmodule LS.Schema.Tables do
   def http_contacts, do: "http_contacts"
   def http_people, do: "http_people"
   def email_checks, do: "email_checks"
+  # Derived, rebuilt daily by LS.SimilarPool (migration 031, 2026-10-28).
+  def similar_pool, do: "similar_pool"
   def http_deep_prices, do: "http_deep_prices"
   def shop_products, do: "shop_products"
   def shop_collections, do: "shop_collections"

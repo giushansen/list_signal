@@ -1203,6 +1203,26 @@ ORDER BY (domain, email)
 SETTINGS index_granularity = 8192
 ;
 
+-- ═══ similar_pool (migration 031, rebuilt daily by LS.SimilarPool) ═══
+CREATE TABLE ls.similar_pool
+(
+    `business_model` LowCardinality(String),
+    `country` LowCardinality(String),
+    `revenue` LowCardinality(String),
+    `kind` LowCardinality(String),
+    `rank` UInt32,
+    `domain` String,
+    `http_title` String,
+    `tranco_rank` Nullable(Int32),
+    `is_shopify` UInt8,
+    `compiled_at` DateTime,
+    `built_at` DateTime DEFAULT now()
+)
+ENGINE = MergeTree
+ORDER BY (business_model, country, revenue, kind, rank)
+SETTINGS index_granularity = 8192
+;
+
 CREATE TABLE ls.http_contacts
 (
     `domain` String,

@@ -25,6 +25,49 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-28: the "similar businesses" block scanned the product table per page; the offsite copy had no alert
+
+Second pass on the master's ClickHouse time, after the dashboard fix below
+was committed but before it was deployed. The query log from 00:00 to
+06:00 UTC, every statement over 2 s, by total time:
+
+| statement | runs | avg | max | total |
+|---|---|---|---|---|
+| depth queue refill (two full selections per refill) | 122 | 28.6 s | 83.6 s | 3,490 s |
+| hourly `OPTIMIZE businesses FINAL` (fixed below, not yet live) | 5 | 187 s | 219 s | 937 s |
+| `similar_stores` per business model, a cache miss each | 176 | 3.0 to 5.8 s | 15.2 s | 710 s |
+| compactor `changes_log` insert | 58 | 3.8 s | 10.4 s | 222 s |
+| old `recent_stores` over `domains_fast` (fixed below, not yet live) | 11 | 12.3 s | 26.8 s | 135 s |
+| old landing tech count over `domains` (fixed below, not yet live) | 11 | 7.2 s | 8.8 s | 79 s |
+
+The similar block is the one not covered by the earlier commit. Its cache
+key is model x country x revenue tier x rank band, and the visitors are
+crawlers walking /website/* and /shopify/* (1,700 of 2,700 sessions in 30
+days, Umami), each on a different company, so the 24 h cache misses as a
+rule and each miss is a full scan of `businesses`. Migration 031 adds
+`similar_pool`, at most 80 ranked and 40 recent candidates per group
+sorted by the group key; `LS.SimilarPool` rebuilds it daily at 11:50 UTC
+into a shadow table and swaps it in; the page reads one key range (5 ms on
+the harness) and keeps the scan as a fallback while the pool is empty.
+
+Backups, found the same morning: no product tar had reached the offsite
+box between 2026-10-16 and 2026-10-28 (every 6-hourly ship failed on a
+full disk there) and nothing alerted, because the local archive's age
+stayed fresh and the only run verdict read is the weekly ClickHouse
+tier's. `LS.Ops.BackupLog.last_product_offsite_ok_at/1` now reads the
+ship's own success line and `backup_offsite_product` pages when it is
+older than 14 h (two missed ships). The 54 G weekly archive that filled
+the offsite box moved to h1 the same day.
+
+Umami, 90 days, for the SEO question: search and AI referrals are under
+80 sessions in total (Bing 20, Google 16, ChatGPT 10, Yep 15); ChatGPT
+sends people to / and /developers. The pages that hold a visitor are the
+lists: /latest-shopify-stores (23% bounce, 4 min) and
+/latest-saas-businesses (0% bounce, 4 min), against 86 to 91% bounce and
+zero seconds on /website, /shopify, /top, /trends and /tech, which are
+crawler traffic. Sessions fell from 150 to 350 a day to about 25 after the
+10-22 fleet cut: the site's traffic was site owners who saw the bot.
+
 ## 2026-10-28: the dashboard took 11 s; the box was rewriting the product table
 
 The owner's explorer page took over 11 s at 02:26 UTC. The query log put it

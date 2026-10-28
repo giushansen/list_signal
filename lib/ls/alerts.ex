@@ -174,6 +174,7 @@ defmodule LS.Alerts do
     |> queue(m)
     |> reputation(m)
     |> backups(m)
+    |> backup_offsite(m)
     |> backup_last_run(m)
     |> enrichment_lane(m)
     |> enrichment_drops(m)
@@ -736,6 +737,30 @@ defmodule LS.Alerts do
   end
 
   defp backups(acc, _), do: acc
+
+  # 2026-10-28: no product tar had reached the offsite box since 10-16.
+  # Every 6-hourly ship failed on a full disk there, the local archive's
+  # age stayed fresh (the tar is made before the ship), and nothing fired
+  # for twelve days. The ship's own success line in backup.log is the
+  # signal; the key is undated so a stalled offsite keeps paging on the
+  # cooldown until a tar lands. A metrics map without the key (older
+  # release, a worker) stays quiet; a map with nil has a log without a
+  # single successful ship.
+  @product_offsite_age_h 14
+
+  defp backup_offsite(acc, %{backups: %{product_offsite_age_h: age}}) do
+    stale_backup(
+      acc,
+      age,
+      @product_offsite_age_h,
+      :critical,
+      "backup_offsite_product",
+      "Offsite product copy stale",
+      "no product tar has reached the offsite box in that time; the master holds the only copy"
+    )
+  end
+
+  defp backup_offsite(acc, _), do: acc
 
   # 2026-09-23: four failed nights in a row, each one taking the master's
   # disk to 100% for sixteen minutes, and the age check above saw a

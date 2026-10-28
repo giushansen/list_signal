@@ -353,7 +353,11 @@ defmodule LS.Metrics do
           # The last nightly run's own verdict (2026-09-23): an archive's age
           # cannot show four failed nights in a row.
           ch_last_run: backup_log_result(Path.join(Path.dirname(dir), "backup.log")),
-          ch_last_run_at: backup_log_started_at(Path.join(Path.dirname(dir), "backup.log"))
+          ch_last_run_at: backup_log_started_at(Path.join(Path.dirname(dir), "backup.log")),
+          # Hours since a product tar last reached the offsite box, from the
+          # ship's own success line (2026-10-28: twelve days of failed ships
+          # behind a fresh local archive). nil when the log holds none.
+          product_offsite_age_h: log_product_offsite_age_h(Path.join(Path.dirname(dir), "backup.log"))
         }
 
       _ ->
@@ -364,6 +368,16 @@ defmodule LS.Metrics do
   defp log_ok_age_h(path) do
     with {:ok, text} <- File.read(path),
          at when is_binary(at) <- LS.Ops.BackupLog.last_ch_ok_at(text),
+         {:ok, naive} <- NaiveDateTime.from_iso8601(at) do
+      div(NaiveDateTime.diff(NaiveDateTime.utc_now(), naive, :second), 3600)
+    else
+      _ -> nil
+    end
+  end
+
+  defp log_product_offsite_age_h(path) do
+    with {:ok, text} <- File.read(path),
+         at when is_binary(at) <- LS.Ops.BackupLog.last_product_offsite_ok_at(text),
          {:ok, naive} <- NaiveDateTime.from_iso8601(at) do
       div(NaiveDateTime.diff(NaiveDateTime.utc_now(), naive, :second), 3600)
     else

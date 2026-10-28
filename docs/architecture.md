@@ -184,6 +184,7 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
 | ClickHouse `ls.ctl_log` | suppressed certificate sightings (was ctl_sightings) | 90-day TTL |
 | ClickHouse `ls.domains_fast` | view over `domains` exposing the materialized `country`, `is_shopify` | public SEO pages |
 | ClickHouse `ls.tech_index` | one row per (technology, titled domain), `ORDER BY (tech, rank, domain)` | what `/tech`, `/top`, `/compare`, the directory and the sitemap read; SEO only |
+| ClickHouse `ls.similar_pool` | at most 80 ranked and 40 recent candidates per (business model, country, revenue tier), `ORDER BY (model, country, revenue, kind, rank)` | the company page's "businesses like this one" block; rebuilt daily by `LS.SimilarPool` |
 | ClickHouse `ls.daily_*` | SummingMergeTree daily aggregates | kept forever; feed dashboards |
 | ClickHouse `ls.verified_facts` / `verified_log` / `verified_runs` | pipeline 3: facts per (domain, fact, source), the persisted source archive, the run log | |
 | SQLite (`LS.Repo`) | users, plans, Stripe state | the only critical durable state; hourly backups |
@@ -427,6 +428,20 @@ Two meaning changes came with it, on purpose: a technology matches by exact
 token ("React" no longer counts "React Router"), and the directory counts and
 per-tech distributions count titled domains only, as the tech page's own
 total always did.
+
+The company page's "businesses like this one" block reads `ls.similar_pool`
+the same way since 2026-10-28. `LS.Clickhouse.similar_stores/6` used to
+filter `businesses` by model, country and revenue tier, a full scan on
+every cache miss (3 to 15 s), and the misses are the rule: crawlers walk
+a different company page each time, so the 24 h cache keyed on model x
+country x tier x rank band missed 176 times in six hours for 710 s of
+ClickHouse time. The pool keeps at most 80 ranked and 40 recent candidates
+per group, sorted by `(model, country, revenue, kind, rank)`;
+`LS.SimilarPool.read_sql/5` reads one key range and orders by nearest
+rank, better-ranked first, in milliseconds. `LS.SimilarPool` rebuilds it
+daily at 11:50 UTC, right after the optimize, into a shadow table swapped
+in with `EXCHANGE TABLES`. A box whose pool is empty or missing
+(`ready?/0`) keeps the old scan as its fallback.
 
 `domains_current` is no longer `OPTIMIZE ... FINAL`ed every hour (566s per
 pass, a 33 GB rewrite): nothing reads it without FINAL that cares, and the

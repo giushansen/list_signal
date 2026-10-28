@@ -111,4 +111,30 @@ defmodule LS.Ops.BackupLog do
   end
 
   def last_ch_ok_at(_), do: nil
+
+  @doc """
+  Timestamp of the newest product tar that reached the offsite box
+  ("offsite ok: prod_..."), or nil.
+
+  2026-10-28: the product tier had shipped nothing since 2026-10-16. Every
+  6-hourly ship failed on a full offsite disk, the local archive age stayed
+  fresh (the tar is made before the ship), and the only alert was the
+  weekly ClickHouse tier's. Twelve days without an off-box copy of the
+  product tables, found by looking. The ship's own success line is the
+  signal: any tier logs it (the hourly sqlite run re-ships a prod tar the
+  product run left behind), so the newest such line is what counts.
+  """
+  @spec last_product_offsite_ok_at(String.t()) :: String.t() | nil
+  def last_product_offsite_ok_at(text) when is_binary(text) do
+    text
+    |> String.split("\n")
+    |> Enum.filter(&(String.contains?(&1, "offsite ok: prod_") and not String.contains?(&1, "ERROR")))
+    |> List.last()
+    |> case do
+      nil -> nil
+      line -> String.slice(String.trim(line), 0, 19)
+    end
+  end
+
+  def last_product_offsite_ok_at(_), do: nil
 end
