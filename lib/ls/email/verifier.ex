@@ -95,11 +95,11 @@ defmodule LS.Email.Verifier do
   Returns the number of shards that succeeded. Idempotent: the table is a
   ReplacingMergeTree keyed by (domain, email).
   """
-  @spec backfill() :: non_neg_integer()
-  def backfill do
+  @spec backfill(keyword()) :: non_neg_integer()
+  def backfill(opts \\ []) do
     for shard <- 0..(@shards - 1), reduce: 0 do
       acc ->
-        {us, result} = :timer.tc(fn -> Clickhouse.query_raw(LS.Email.Score.backfill_sql(shard, @shards), 660_000, background: true) end)
+        {us, result} = :timer.tc(fn -> Clickhouse.query_raw(LS.Email.Score.backfill_sql(shard, @shards, opts), 660_000, background: true) end)
 
         case result do
           {:ok, _} ->
@@ -150,11 +150,31 @@ defmodule LS.Email.Verifier do
     LS.Cluster.EnrichmentWriter.insert_rows(Tables.email_checks(), @cols, rows)
   end
 
-  # TabSeparated Array(String): ['a','b'] with single quotes and backslashes escaped.
-  defp array_literal(list) when is_list(list) do
-    inner = Enum.map_join(list, ",", fn s -> "'" <> (s |> to_string() |> String.replace("\\", "\\\\") |> String.replace("'", "\\'")) <> "'" end)
-    "[" <> inner <> "]"
+  @doc """
+  The TabSeparated wire form of an Array(String) cell: `['a','b']`, each
+  element with backslash and quote escaped once, tabs and newlines
+  replaced. Tagged `{:raw, _}` so the writer sends it as is: ClickHouse
+  applies the TabSeparated escapes inside the quoted elements, and a
+  second escaping pass (2026-10-27 to 10-28) turned `\\'` into `\\\\'`, which
+  the server read as a backslash, a closing quote and a stray letter.
+  Every evidence list with an apostrophe ("a person's mailbox") failed
+  its whole insert: 8,392 batches, every named and free-mail check of the
+  day. Pinned by LS.Email.VerifierQuoteTest.
+  """
+  @spec array_literal(term()) :: {:raw, String.t()}
+  def array_literal(list) when is_list(list) do
+    inner =
+      Enum.map_join(list, ",", fn s ->
+        "'" <>
+          (s
+           |> to_string()
+           |> String.replace(["\t", "\n", "\r"], " ")
+           |> String.replace("\\", "\\\\")
+           |> String.replace("'", "\\'")) <> "'"
+      end)
+
+    {:raw, "[" <> inner <> "]"}
   end
 
-  defp array_literal(_), do: "[]"
+  def array_literal(_), do: {:raw, "[]"}
 end

@@ -184,10 +184,22 @@ defmodule LS.Email.Score do
   `shard` of `total` by domain hash.
   """
   @spec backfill_sql(non_neg_integer(), pos_integer()) :: String.t()
-  def backfill_sql(shard, total) when is_integer(shard) and is_integer(total) and shard >= 0 and shard < total do
+  def backfill_sql(shard, total, opts \\ [])
+
+  def backfill_sql(shard, total, opts) when is_integer(shard) and is_integer(total) and shard >= 0 and shard < total do
     p = @points
     free = LS.HTTP.EmailClass.free_mail_sql_list()
     role = LS.HTTP.EmailClass.role_regex_sql()
+
+    # `since`: only businesses checked after that time. 2026-10-28: the
+    # writer had dropped every named and free-mail check since the release
+    # of 10-27 (an apostrophe in the evidence broke the array literal), so
+    # the day's sightings were re-scored from here without the full pass.
+    since_sql =
+      case Keyword.get(opts, :since) do
+        %NaiveDateTime{} = t -> " AND b.http_last_checked_at >= '#{t |> NaiveDateTime.to_string() |> String.slice(0, 19)}'"
+        _ -> ""
+      end
 
     """
     INSERT INTO #{LS.Schema.Tables.email_checks()} (domain, email, kind, score, verdict, evidence, provider, source_page, last_seen, checked_at)
@@ -237,7 +249,7 @@ defmodule LS.Email.Score do
             SELECT domain, email, argMax(source_page, seen_at) AS source_page, max(seen_at) AS last_seen
             FROM #{LS.Schema.Tables.http_contacts()} WHERE cityHash64(domain) % #{total} = #{shard} GROUP BY domain, email
           ) AS c ON c.domain = b.domain AND c.email = lower(e)
-          WHERE cityHash64(b.domain) % #{total} = #{shard} AND b.estimated_junk = '' AND notEmpty(b.http_emails)
+          WHERE cityHash64(b.domain) % #{total} = #{shard} AND b.estimated_junk = '' AND notEmpty(b.http_emails)#{since_sql}
         )
         WHERE kind != 'other'
       )

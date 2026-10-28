@@ -170,6 +170,15 @@ defmodule LS.Cluster.EnrichmentWriter do
       true -> "1"
       false -> "0"
       v when is_binary(v) -> escape_tsv(v)
+      # Already in wire form, written as such. An Array(String) cell is
+      # parsed by ClickHouse with the TabSeparated escapes applied INSIDE
+      # the quoted elements, so `\'` must reach the server as one backslash;
+      # escape_tsv doubled it and every evidence list holding an apostrophe
+      # ("a person's mailbox") failed the whole insert: 8,392 lost batches
+      # of email_checks between 2026-10-27 06:50 and 2026-10-28 07:45, every
+      # named and free-mail check of that day. The producer owns the
+      # escaping (LS.Email.Verifier.array_literal/1) and says so with the tag.
+      {:raw, v} when is_binary(v) -> v
       v when is_number(v) -> to_string(clamp_unsigned(col, v))
       v -> to_string(v)
     end
