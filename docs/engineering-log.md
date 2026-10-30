@@ -71,7 +71,11 @@ the SQL twin of the rejecting branches, used by the compaction fold (what
 reaches `http_emails`) and by `Score.backfill_sql/3`, which writes a
 `rejected` or `undeliverable` row with the one reason so it replaces the
 old verdict. Pinned against the harness in
-`test/ls/email/placeholder_rejection_test.exs`. Known gap: the SQL
+`test/ls/email/placeholder_rejection_test.exs`. Re-run on prod the same
+day: 1,848,727 rows now `rejected` (tracking 1.20 M, placeholder 643 K,
+unattended 1.6 K), and a one-off `ALTER UPDATE` stripped them from
+`businesses.http_emails` in 5 minutes (923,590 rows touched; 315 K
+businesses had nothing else and now show no address). Known gap: the SQL
 disposable list is 60 hosts; the crawler's domain blocklist knows 9,963,
 and the live path only sees it when the business's own domain is one.
 
