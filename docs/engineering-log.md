@@ -75,7 +75,14 @@ old verdict. Pinned against the harness in
 day: 1,848,727 rows now `rejected` (tracking 1.20 M, placeholder 643 K,
 unattended 1.6 K), and a one-off `ALTER UPDATE` stripped them from
 `businesses.http_emails` in 5 minutes (923,590 rows touched; 315 K
-businesses had nothing else and now show no address). Known gap: the SQL
+businesses had nothing else and now show no address). A second sweep
+the same afternoon applied the whole publish rule
+(`EmailClass.publishable_sql/2`) to rows compiled before the 10-26 rule,
+which still carried site builders' support addresses (support@webador.com
+on 38,808 businesses, filler@godaddy.com on 26,592) and template hosts
+(contact@mysite.com on 23,345): businesses with an address went from
+10.85 M to 8.97 M, and of the addresses rated strong or good only 41 were
+missing afterwards, 40 of them placeholders with a stale verdict. Known gap: the SQL
 disposable list is 60 hosts; the crawler's domain blocklist knows 9,963,
 and the live path only sees it when the business's own domain is one.
 
