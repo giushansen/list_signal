@@ -82,7 +82,18 @@ which still carried site builders' support addresses (support@webador.com
 on 38,808 businesses, filler@godaddy.com on 26,592) and template hosts
 (contact@mysite.com on 23,345): businesses with an address went from
 10.85 M to 8.97 M, and of the addresses rated strong or good only 41 were
-missing afterwards, 40 of them placeholders with a stale verdict. Known gap: the SQL
+missing afterwards, 40 of them placeholders with a stale verdict.
+
+**What the score cannot do, measured on real sends (same day).** The
+campaign session's 27 hard bounces and 1,753 deliveries scored the same
+(mean 78.8 against 78.5): the score never contacts the mail server, so it
+describes how well an address is published and how well the domain's mail
+is set up, not whether the mailbox exists. `strong` delivered 96.3% over
+462 sends, inside the 93 to 97% the moduledoc claims. The bounces exposed
+two classifier defects, fixed in 1c91820: function words scored as people
+(comercial@ 30 K rows, post@ 23 K, atendimento@ 17 K, ~150 K in all, now
+roles) and role words cut on extraction rated deliverable (nfo@ 3,374,
+contat@, ontact@, ~4.9 K, now rejected as `:artifact`). Known gap: the SQL
 disposable list is 60 hosts; the crawler's domain blocklist knows 9,963,
 and the live path only sees it when the business's own domain is one.
 
