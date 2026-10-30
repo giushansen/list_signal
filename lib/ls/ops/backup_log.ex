@@ -137,4 +137,29 @@ defmodule LS.Ops.BackupLog do
   end
 
   def last_product_offsite_ok_at(_), do: nil
+
+  @doc """
+  Hours since a pull marker was written, or nil when the text is not a
+  timestamp. The two off-box pullers (h1 at 20:30 UTC, the laptop at 07:30
+  local) each write `/home/ls/backups/.pull_ok_<name>` on the master with
+  the UTC time their verified copy finished, and this is how the master,
+  which otherwise cannot see a pull, learns that a leg went quiet
+  (2026-10-30: the owner asked for proof that every leg runs every day;
+  until then only the push to opsbloc was watched).
+
+  The marker holds one ISO 8601 instant, "2026-10-30T01:35:59Z". A marker
+  from the future counts as fresh (clock skew between three machines), never
+  as negative age.
+  """
+  @spec pull_marker_age_h(String.t() | nil, DateTime.t()) :: non_neg_integer() | nil
+  def pull_marker_age_h(text, now \\ DateTime.utc_now())
+
+  def pull_marker_age_h(text, %DateTime{} = now) when is_binary(text) do
+    case DateTime.from_iso8601(String.trim(text)) do
+      {:ok, at, _offset} -> max(div(DateTime.diff(now, at, :second), 3600), 0)
+      _ -> nil
+    end
+  end
+
+  def pull_marker_age_h(_, _), do: nil
 end

@@ -357,11 +357,28 @@ defmodule LS.Metrics do
           # Hours since a product tar last reached the offsite box, from the
           # ship's own success line (2026-10-28: twelve days of failed ships
           # behind a fresh local archive). nil when the log holds none.
-          product_offsite_age_h: log_product_offsite_age_h(Path.join(Path.dirname(dir), "backup.log"))
+          product_offsite_age_h: log_product_offsite_age_h(Path.join(Path.dirname(dir), "backup.log")),
+          # Hours since each off-box puller last confirmed a verified copy
+          # (2026-10-30): h1 and the laptop pull from here, so the master
+          # only knows a pull happened because the puller writes
+          # `.pull_ok_<name>` into this directory when its checksums pass.
+          pull_ages_h: pull_ages(dir, files)
         }
 
       _ ->
         %{dir: nil, sqlite_age_h: nil, product_age_h: nil, ch_age_h: nil}
+    end
+  end
+
+  defp pull_ages(dir, files) do
+    for ".pull_ok_" <> name = f <- files, name != "", into: %{} do
+      age =
+        case File.read(Path.join(dir, f)) do
+          {:ok, text} -> LS.Ops.BackupLog.pull_marker_age_h(text)
+          _ -> nil
+        end
+
+      {name, age}
     end
   end
 

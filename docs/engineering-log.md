@@ -25,6 +25,47 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-10-30: the domains table was 28% old versions; the two backup pulls had no alert
+
+**`domains` collapse.** 301.8 M rows for 218.1 M distinct domains, 58.65 GiB
+in 18 parts, two of them 33.3 G and 19.6 G. The table is a ReplacingMergeTree
+that had not been fully merged since 2026-09-09, so every FINAL read (the
+tech index rebuild every six hours, the store pages) carried 83 M dead
+rows. `OPTIMIZE TABLE domains FINAL` refused to start with 87 G free:
+ClickHouse assigns a merge only when twice the input is free and
+unreserved (117.30 GiB required). Freed without touching product data:
+the second local product tar (22 G, three other machines hold it), the
+journal (3.9 G to 256 M after `--rotate`), `system.query_log` and its two
+siblings (3 G), and the June partition of `enrich_log` (32.2 M rows,
+6.24 G, 120 to 150 days old, the partition the 200-day TTL would have
+dropped in December anyway). 122 G free, merge assigned at 01:38:45 UTC.
+The merge ran 1,551 s (01:38 to 02:04 UTC, load 5 to 7 on 4 cores, under
+65 MiB of merge memory) and left 8 parts, 40.16 GiB, 218,642,859 rows: the
+83.2 M version rows and 18.5 GiB are gone once the old parts age out of
+the 480 s grace. The product tar was rebuilt right after (`backup.sh
+product`), so the local copy that was removed for the merge exists again.
+
+**Backups, proof of the pulls.** All three legs were running on 2026-10-30
+(opsbloc 00:38 UTC tar; h1 pull 20:30 UTC in 70 min; laptop pull 07:30
+local in 65 min, checksums verified), but the master could only see the
+push to opsbloc. Each puller now writes `.pull_ok_<name>` into
+`/home/ls/backups` after its copy verified, `LS.Metrics.backup_status/1`
+reads the markers as ages (`pull_ages_h`), and `LS.Alerts` raises
+`backup_pull_h1` (critical past 36 h) and `backup_pull_laptop` (warning
+past 48 h, a closed laptop catches up at the next wake). Pinned in
+`test/ls/alerts_backup_pull_test.exs`. Local product retention is one tar
+(devops 63d3b30). A restore drill of the laptop's copy into a fresh
+database took 179 s for businesses (27.2 M rows) and under 30 s for the
+seven other tables tried; product queries ran on the result.
+
+**Side finding, not fixed:** `email_checks` rates placeholder addresses
+(`youremail@mail.com`, `esempio2@email.com`, `your@email.com`,
+`<hash>@sentry.<host>`) as `good` or `strong`; a rough filter counted
+about 250 K free-mail rows with placeholder local parts. The scorer needs a
+placeholder list before the campaign exports lean on `strong`.
+
+---
+
 ## 2026-10-28: the "similar businesses" block scanned the product table per page; the offsite copy had no alert
 
 Second pass on the master's ClickHouse time, after the dashboard fix below

@@ -175,6 +175,7 @@ defmodule LS.Alerts do
     |> reputation(m)
     |> backups(m)
     |> backup_offsite(m)
+    |> backup_pulls(m)
     |> backup_last_run(m)
     |> enrichment_lane(m)
     |> enrichment_drops(m)
@@ -761,6 +762,34 @@ defmodule LS.Alerts do
   end
 
   defp backup_offsite(acc, _), do: acc
+
+  # 2026-10-30: the owner wants a copy on h1 and on their own machine every
+  # day, and proof that it happens. Both are pulls, so the master cannot see
+  # them; each puller writes `.pull_ok_<name>` into the backup directory when
+  # its verified copy is complete, and `Metrics.backup_status/1` turns the
+  # markers into ages. h1 pulls nightly on a box that is always on: a day
+  # and a half without a marker is a broken leg. The laptop pulls when it is
+  # open; launchd runs the missed job at the next wake, so two days is a
+  # warning, not a page. A leg that never wrote a marker is reported under
+  # `_missing`, like a tier with no archive. A metrics map without the key
+  # (older release, a worker) stays quiet.
+  @pull_legs [{"h1", 36, :critical}, {"laptop", 48, :warning}]
+
+  defp backup_pulls(acc, %{backups: %{pull_ages_h: ages}}) when is_map(ages) do
+    Enum.reduce(@pull_legs, acc, fn {name, ceiling, severity}, acc ->
+      stale_backup(
+        acc,
+        Map.get(ages, name),
+        ceiling,
+        severity,
+        "backup_pull_#{name}",
+        "#{name} backup pull stale",
+        "#{name} has not confirmed a verified copy of the product tar in that time"
+      )
+    end)
+  end
+
+  defp backup_pulls(acc, _), do: acc
 
   # 2026-09-23: four failed nights in a row, each one taking the master's
   # disk to 100% for sixteen minutes, and the age check above saw a
