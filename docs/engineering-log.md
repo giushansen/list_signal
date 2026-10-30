@@ -58,11 +58,22 @@ past 48 h, a closed laptop catches up at the next wake). Pinned in
 database took 179 s for businesses (27.2 M rows) and under 30 s for the
 seven other tables tried; product queries ran on the result.
 
-**Side finding, not fixed:** `email_checks` rates placeholder addresses
-(`youremail@mail.com`, `esempio2@email.com`, `your@email.com`,
-`<hash>@sentry.<host>`) as `good` or `strong`; a rough filter counted
-about 250 K free-mail rows with placeholder local parts. The scorer needs a
-placeholder list before the campaign exports lean on `strong`.
+**Email scoring, fixed the same day (owner: "I need all those emails under
+our radar").** `email_checks` rated `youremail@mail.com` and
+`esempio2@email.com` as `good`, `your@email.com` as `strong`, 32-character
+Sentry keys on the business's own `sentry.<host>` as a person's mailbox and
+`noreply@` as a role mailbox: about 250 K free-mail rows alone. The SQL
+backfill of 10-27 knew the free-mail list and nothing else, and the live
+path let generic locals through on free hosts. `LS.HTTP.EmailClass` now has
+three more kinds (`:unattended`, `:tracking`, `:disposable`), placeholder
+words in six languages with digit suffixes, and `rejected_reason_sql/2`,
+the SQL twin of the rejecting branches, used by the compaction fold (what
+reaches `http_emails`) and by `Score.backfill_sql/3`, which writes a
+`rejected` or `undeliverable` row with the one reason so it replaces the
+old verdict. Pinned against the harness in
+`test/ls/email/placeholder_rejection_test.exs`. Known gap: the SQL
+disposable list is 60 hosts; the crawler's domain blocklist knows 9,963,
+and the live path only sees it when the business's own domain is one.
 
 ---
 

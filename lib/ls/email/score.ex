@@ -71,7 +71,12 @@ defmodule LS.Email.Score do
       kind in [:placeholder, :third_party] ->
         %{score: 0, verdict: "rejected", evidence: ["#{kind_text(kind, domain)}: not published for this business"]}
 
-      Map.get(f, :disposable, false) ->
+      # 2026-10-30: noreply@ and Sentry keys had been scored as role and
+      # named mailboxes; nobody reads the one and the other is not an address.
+      kind in [:unattended, :tracking] ->
+        %{score: 0, verdict: "rejected", evidence: [kind_text(kind, domain)]}
+
+      kind == :disposable or Map.get(f, :disposable, false) ->
         %{score: 0, verdict: "undeliverable", evidence: ["disposable mail host"]}
 
       not Map.get(f, :mx, false) ->
@@ -147,6 +152,9 @@ defmodule LS.Email.Score do
   defp kind_text(:free_mail, _), do: "the owner's free-mail box"
   defp kind_text(:third_party, _), do: "another organisation's address"
   defp kind_text(:placeholder, _), do: "a form placeholder"
+  defp kind_text(:unattended, _), do: "an unattended mailbox"
+  defp kind_text(:tracking, _), do: "a tracking identifier, not a mailbox"
+  defp kind_text(:disposable, _), do: "disposable mail host"
   defp kind_text(_, _), do: "unclassified"
 
   defp seen(nil, _now), do: {0, "seen date unknown"}
@@ -206,25 +214,30 @@ defmodule LS.Email.Score do
     SELECT domain, email, kind, toUInt8(score), verdict, evidence, provider, source_page, last_seen, now()
     FROM (
       SELECT domain, email, kind, provider, source_page, last_seen, has_mx, disposable,
-             multiIf(disposable, 0, NOT has_mx, least(base, 15), least(base + mail, 100)) AS score,
-             multiIf(disposable OR NOT has_mx, 'undeliverable', score >= #{@strong}, 'strong', score >= #{@good}, 'good', 'weak') AS verdict,
+             multiIf(why != '', 0, disposable, 0, NOT has_mx, least(base, 15), least(base + mail, 100)) AS score,
+             multiIf(why = 'disposable mail host', 'undeliverable', why != '', 'rejected', disposable OR NOT has_mx, 'undeliverable', score >= #{@strong}, 'strong', score >= #{@good}, 'good', 'weak') AS verdict,
              arrayFilter(x -> x != '', [
-               if(disposable, 'disposable mail host', ''),
-               if(NOT has_mx AND NOT disposable, 'no MX record: mail cannot be delivered', ''),
-               multiIf(source_page IN ('contact', 'legal', 'policy'), concat('published on the ', if(source_page = 'legal', 'imprint', source_page), ' page'),
+               /* 2026-10-30: a placeholder, an unattended mailbox, a tracking key
+                  or a disposable host is written as rejected or undeliverable,
+                  with the one reason, so the row replaces the good or strong
+                  verdict the 10-27 backfill gave it. */
+               why,
+               if(why != '', '', if(disposable, 'disposable mail host', '')),
+               if(why = '' AND NOT has_mx AND NOT disposable, 'no MX record: mail cannot be delivered', ''),
+               if(why != '', '', multiIf(source_page IN ('contact', 'legal', 'policy'), concat('published on the ', if(source_page = 'legal', 'imprint', source_page), ' page'),
                        source_page = 'homepage', 'published on the homepage',
                        source_page IN ('about', 'career'), concat('published on the ', source_page, ' page'),
-                       source_page != '', concat('published on the ', source_page, ' page'), 'published on the site'),
-               multiIf(kind = 'named', concat('a person''s mailbox on ', domain), kind = 'role', concat('a role mailbox on ', domain),
-                       kind = 'sister', concat('a sister domain of ', domain), 'the owner''s free-mail box'),
-               multiIf(last_seen IS NULL, 'seen date unknown', age_days <= 90, concat('seen on the site ', toString(age_days), ' days ago'),
+                       source_page != '', concat('published on the ', source_page, ' page'), 'published on the site')),
+               if(why != '', '', multiIf(kind = 'named', concat('a person''s mailbox on ', domain), kind = 'role', concat('a role mailbox on ', domain),
+                       kind = 'sister', concat('a sister domain of ', domain), 'the owner''s free-mail box')),
+               if(why != '', '', multiIf(last_seen IS NULL, 'seen date unknown', age_days <= 90, concat('seen on the site ', toString(age_days), ' days ago'),
                        age_days <= 365, concat('last seen ', toString(age_days), ' days ago'),
-                       concat('last seen ', toString(age_days), ' days ago: re-verify before sending')),
-               if(has_mx, concat('MX present', if(provider NOT IN ('', 'Other'), concat(' (', provider, ')'), '')), ''),
-               if(has_mx AND dmarc, 'DMARC published', '')
+                       concat('last seen ', toString(age_days), ' days ago: re-verify before sending'))),
+               if(why = '' AND has_mx, concat('MX present', if(provider NOT IN ('', 'Other'), concat(' (', provider, ')'), '')), ''),
+               if(why = '' AND has_mx AND dmarc, 'DMARC published', '')
              ]) AS evidence
       FROM (
-        SELECT domain, email, kind, provider, source_page, last_seen, has_mx, dmarc, disposable,
+        SELECT domain, email, kind, provider, source_page, last_seen, has_mx, dmarc, disposable, why,
                dateDiff('day', ifNull(last_seen, toDateTime(0)), now()) AS age_days,
                multiIf(source_page IN ('contact', 'legal', 'policy'), #{p.page_contact}, source_page = 'homepage', #{p.page_home},
                        source_page IN ('about', 'career'), #{p.page_about}, source_page != '', #{p.page_other}, #{p.page_home})
@@ -233,7 +246,12 @@ defmodule LS.Email.Score do
                #{p.mx} + if(provider NOT IN ('', 'Other'), #{p.provider}, 0) + if(dmarc, #{p.dmarc}, 0) AS mail
         FROM (
           SELECT b.domain AS domain, lower(e) AS email,
-                 multiIf(splitByChar('@', lower(e))[2] IN (#{free}), 'free_mail',
+                 #{LS.HTTP.EmailClass.rejected_reason_sql("e", "b.domain")} AS why,
+                 multiIf(why = 'a form placeholder, not a mailbox', 'placeholder',
+                         why = 'an unattended mailbox', 'unattended',
+                         why = 'a tracking identifier, not a mailbox', 'tracking',
+                         why = 'disposable mail host', 'disposable',
+                         splitByChar('@', lower(e))[2] IN (#{free}), 'free_mail',
                          endsWith(splitByChar('@', lower(e))[2], b.domain) OR endsWith(concat('.', splitByChar('@', lower(e))[2]), concat('.', b.domain)),
                            if(match(lower(e), #{role}), 'role', 'named'),
                          splitByChar('.', splitByChar('@', lower(e))[2])[1] = splitByChar('.', b.domain)[1], 'sister', 'other') AS kind,
@@ -251,7 +269,7 @@ defmodule LS.Email.Score do
           ) AS c ON c.domain = b.domain AND c.email = lower(e)
           WHERE cityHash64(b.domain) % #{total} = #{shard} AND b.estimated_junk = '' AND notEmpty(b.http_emails)#{since_sql}
         )
-        WHERE kind != 'other'
+        WHERE kind != 'other' OR why != ''
       )
     )
     SETTINGS max_threads = 2, max_memory_usage = 3000000000, max_execution_time = 600, join_use_nulls = 1

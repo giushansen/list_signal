@@ -20,6 +20,19 @@ defmodule LS.HTTP.EmailClass do
     * `:third_party` someone else's domain: a payment provider, the agency
                     that built the site, a parent company. Not sold.
     * `:placeholder` a form hint, never a mailbox. Dropped.
+    * `:unattended` noreply@, bounce@, notifications@: a mailbox nobody
+                    reads. Dropped (2026-10-30).
+    * `:tracking`   a Sentry or ingest key scraped as an address
+                    (`<32 hex>@sentry.<host>`). Dropped (2026-10-30).
+    * `:disposable` a throwaway mail host. Dropped (2026-10-30).
+
+  2026-10-30: the backfill of 10-27 had scored `youremail@mail.com`,
+  `esempio2@email.com`, `your@email.com` and Sentry keys on the business's
+  own subdomain as `good` or `strong`, about 250 K rows, because the SQL
+  form of this rule knew the free-mail list and nothing else, and the live
+  path let the generic locals through on free hosts. The rejection rules
+  now live here once, in Elixir and in `rejected_reason_sql/1`, so the fold,
+  the backfill and the live scorer agree.
 
   `email_pattern/1` reads the shape of the named addresses: `{first}`,
   `{first}.{last}`, `{f}{last}`, `{first}{last}` or `{first}_{last}`,
@@ -76,7 +89,37 @@ defmodule LS.HTTP.EmailClass do
                           domain.co domain.tld tld.com companyname.com company.co
                           email.address your.domain yourdomain.co yourname.com name.com)
 
-  @type kind :: :named | :role | :free_mail | :sister | :third_party | :placeholder
+  # Placeholder locals in the other languages the crawl meets, bare or with
+  # a digit suffix (esempio2@, test3@). "email", "mail" and "info" are real
+  # role mailboxes on a business's own domain; on a free host they are a
+  # form hint (mail@gmail.com), see `generic_on_free?/1`.
+  @placeholder_prefixes ~w(esempio exemple beispiel ejemplo exemplo voorbeeld example sample
+                           test demo user usuario utente benutzer utilisateur name nome nom
+                           nombre your yours yourname myemail mustermann jdoe tucorreo tuemail
+                           correo votremail votre_email ihremail deine-email deineemail)
+  @placeholder_people ~w(max.mustermann jean.dupont mario.rossi juan.perez john.smith jane.smith
+                         j.doe prenom.nom vorname.nachname nom.prenom first.name last.name)
+  @generic_locals ~w(email e-mail mail info contact test user name admin post)
+
+  # Nobody reads these. A campaign that writes to noreply@ burns a send.
+  @unattended_re ~r/^(no-?reply|noreply|do-?not-?reply|donotreply|mailer-daemon|bounces?|notifications?|alerts?|no_reply|auto-?reply|autoresponder)([-_.+][a-z0-9]*)?$/
+
+  # Throwaway hosts seen on business sites. Short on purpose: a business
+  # publishing a disposable address is rare, and every name here is one a
+  # customer would recognise as such.
+  @disposable ~w(mailinator.com guerrillamail.com guerrillamail.net sharklasers.com 10minutemail.com
+                 10minutemail.net yopmail.com yopmail.fr trashmail.com trashmail.de trash-mail.com
+                 getnada.com nada.email dispostable.com maildrop.cc throwawaymail.com temp-mail.org
+                 tempmail.com tempmail.net tempmailo.com fakeinbox.com mohmal.com emailondeck.com
+                 mintemail.com tempr.email discard.email spamgourmet.com mailnesia.com mailcatch.com
+                 inboxkitten.com burnermail.io 33mail.com tempail.com luxusmail.org crazymailing.com
+                 mailsac.com mailtemp.net moakt.com tmpmail.org tmpmail.net emailfake.com
+                 fakemail.net mytemp.email tempinbox.com jetable.org guerrillamailblock.com
+                 spam4.me mail-temporaire.fr yopmail.net cool.fr.nf jetable.fr.nf nospam.ze.tc
+                 nomail.xl.cx mega.zik.dj speed.1s.fr courriel.fr.nf moncourrier.fr.nf monemail.fr.nf
+                 monmail.fr.nf)
+
+  @type kind :: :named | :role | :free_mail | :sister | :third_party | :placeholder | :unattended | :tracking | :disposable
 
   @doc "The kinds that may be published in `http_emails`."
   def sellable, do: @sellable
@@ -93,9 +136,53 @@ defmodule LS.HTTP.EmailClass do
   def sellable_sql do
     free = Enum.map_join(@free_mail, ", ", &"'#{&1}'")
 
+    # Shape pinned by worker_child_rows_test: starts with "(on_domain = 1 OR".
     "(on_domain = 1 OR splitByChar('@', email)[2] IN (#{free}) OR " <>
-      "splitByChar('.', splitByChar('@', email)[2])[1] = splitByChar('.', domain)[1])"
+      "splitByChar('.', splitByChar('@', email)[2])[1] = splitByChar('.', domain)[1]) " <>
+      "AND #{rejected_reason_sql("email", "domain")} = ''"
   end
+
+  @doc """
+  A ClickHouse expression over an address expression: the reason the
+  address can never be a contact, or '' when it may be one. The SQL twin of
+  the rejecting branches of `classify/2`, so the compaction fold (what
+  reaches `http_emails`), the backfill (`LS.Email.Score.backfill_sql/3`)
+  and the live scorer refuse the same addresses. Reasons, in the order
+  tested: "a form placeholder, not a mailbox", "an unattended mailbox",
+  "a tracking identifier, not a mailbox", "disposable mail host".
+  """
+  @spec rejected_reason_sql(String.t(), String.t() | nil) :: String.t()
+  def rejected_reason_sql(expr, domain_expr \\ nil) do
+    local = "splitByChar('@', lower(#{expr}))[1]"
+    host = "splitByChar('@', lower(#{expr}))[2]"
+    # The business's own domain is never a placeholder host (acme.com is on
+    # the list; jane@acme.com on acme.com is a person), same as classify/2.
+    own = if domain_expr, do: " AND NOT (#{host} = #{domain_expr} OR endsWith(#{host}, concat('.', #{domain_expr})))", else: ""
+    free = free_mail_sql_list()
+    placeholder_hosts = Enum.map_join(@placeholder_domains, ", ", &"'#{&1}'")
+    disposable = Enum.map_join(@disposable, ", ", &"'#{&1}'")
+    generic = Enum.map_join(@generic_locals, ", ", &"'#{&1}'")
+
+    "multiIf(" <>
+      "#{local} IN (#{placeholder_locals_sql_list()}) OR match(#{local}, #{placeholder_local_regex_sql()}) " <>
+      "OR ((#{host} IN (#{placeholder_hosts}) OR startsWith(#{host}, 'example.'))#{own}) " <>
+      "OR (#{host} IN (#{free}) AND #{local} IN (#{generic})), 'a form placeholder, not a mailbox', " <>
+      "match(#{local}, #{unattended_regex_sql()}), 'an unattended mailbox', " <>
+      "match(#{local}, '^[0-9a-f]{20,}$') OR #{host} LIKE '%sentry%' OR #{host} LIKE '%.ingest.%', 'a tracking identifier, not a mailbox', " <>
+      "#{host} IN (#{disposable}), 'disposable mail host', '')"
+  end
+
+  @doc "The placeholder locals as a quoted SQL list."
+  def placeholder_locals_sql_list, do: Enum.map_join(@placeholder_locals ++ @placeholder_people, ", ", &"'#{&1}'")
+
+  @doc "A ClickHouse regex literal for the placeholder local shapes (word plus optional digits, your-email forms, xxx)."
+  def placeholder_local_regex_sql do
+    prefixes = @placeholder_prefixes |> Enum.map(&Regex.escape/1) |> Enum.join("|")
+    "'^((#{prefixes})[0-9]*|(your|my|enter|insert|type)[-_.]?(e-?mail|name|address).*|.*xxx.*)$'"
+  end
+
+  @doc "A ClickHouse regex literal for unattended mailboxes (noreply@, bounce@...)."
+  def unattended_regex_sql, do: "'#{Regex.source(@unattended_re)}'"
 
   @doc "The free-mail hosts as a quoted SQL list."
   @spec free_mail_sql_list() :: String.t()
@@ -132,10 +219,13 @@ defmodule LS.HTTP.EmailClass do
 
         cond do
           placeholder_local?(local) -> :placeholder
+          Regex.match?(@unattended_re, local) -> :unattended
+          tracking?(local, host) -> :tracking
           # The business's own domain is never a placeholder domain, whatever
           # the list says (a test site called acme.com is still its own site).
           registrable(host) == site -> if role?(local), do: :role, else: :named
-          host in @free_mail -> :free_mail
+          host in @disposable -> :disposable
+          host in @free_mail -> if generic_on_free?(local), do: :placeholder, else: :free_mail
           placeholder_domain?(host) -> :placeholder
           sister?(registrable(host), site) -> :sister
           true -> :third_party
@@ -188,8 +278,24 @@ defmodule LS.HTTP.EmailClass do
   # ── private ───────────────────────────────────────────────────────────────
 
   defp placeholder_local?(local) do
-    local in @placeholder_locals or String.contains?(local, "xxx") or
-      Regex.match?(~r/^(your|my|enter|insert|type)[-_.]?(e-?mail|name|address)/, local)
+    local in @placeholder_locals or local in @placeholder_people or String.contains?(local, "xxx") or
+      Regex.match?(~r/^(your|my|enter|insert|type)[-_.]?(e-?mail|name|address)/, local) or
+      Regex.match?(placeholder_prefix_re(), local)
+  end
+
+  defp placeholder_prefix_re do
+    prefixes = @placeholder_prefixes |> Enum.map(&Regex.escape/1) |> Enum.join("|")
+    ~r/^(#{prefixes})[0-9]*$/
+  end
+
+  # mail@gmail.com, info@yahoo.com: a form hint on a free host, never the owner.
+  defp generic_on_free?(local), do: (local |> String.split("+") |> hd()) in @generic_locals
+
+  # A Sentry or ingest key scraped as an address: 32 hex characters at a
+  # sentry.<host> or oNNN.ingest.<host> address, on the business's own
+  # subdomain or anyone else's.
+  defp tracking?(local, host) do
+    Regex.match?(~r/^[0-9a-f]{20,}$/, local) or String.contains?(host, "sentry") or String.contains?(host, ".ingest.")
   end
 
   defp placeholder_domain?(host), do: host in @placeholder_domains or String.starts_with?(host, "example.")
