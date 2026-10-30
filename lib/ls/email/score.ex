@@ -73,7 +73,7 @@ defmodule LS.Email.Score do
 
       # 2026-10-30: noreply@ and Sentry keys had been scored as role and
       # named mailboxes; nobody reads the one and the other is not an address.
-      kind in [:unattended, :tracking] ->
+      kind in [:unattended, :tracking, :artifact] ->
         %{score: 0, verdict: "rejected", evidence: [kind_text(kind, domain)]}
 
       kind == :disposable or Map.get(f, :disposable, false) ->
@@ -155,6 +155,7 @@ defmodule LS.Email.Score do
   defp kind_text(:unattended, _), do: "an unattended mailbox"
   defp kind_text(:tracking, _), do: "a tracking identifier, not a mailbox"
   defp kind_text(:disposable, _), do: "disposable mail host"
+  defp kind_text(:artifact, _), do: "a cut-off address, not a mailbox"
   defp kind_text(_, _), do: "unclassified"
 
   defp seen(nil, _now), do: {0, "seen date unknown"}
@@ -251,6 +252,7 @@ defmodule LS.Email.Score do
                          why = 'an unattended mailbox', 'unattended',
                          why = 'a tracking identifier, not a mailbox', 'tracking',
                          why = 'disposable mail host', 'disposable',
+                         why = 'a cut-off address, not a mailbox', 'artifact',
                          splitByChar('@', lower(e))[2] IN (#{free}), 'free_mail',
                          endsWith(splitByChar('@', lower(e))[2], b.domain) OR endsWith(concat('.', splitByChar('@', lower(e))[2]), concat('.', b.domain)),
                            if(match(lower(e), #{role}), 'role', 'named'),

@@ -25,6 +25,14 @@ defmodule LS.HTTP.EmailClass do
     * `:tracking`   a Sentry or ingest key scraped as an address
                     (`<32 hex>@sentry.<host>`). Dropped (2026-10-30).
     * `:disposable` a throwaway mail host. Dropped (2026-10-30).
+    * `:artifact`   a role word cut on extraction (nfo@, contat@). Dropped
+                    (2026-10-30).
+
+  Function words are role mailboxes, not people: comercial@, post@,
+  atendimento@, reception@, reservas@, admissions@, operations@ were
+  `:named` on about 150 K rows until 2026-10-30, and a campaign that sends
+  only to named addresses mailed them. Branch mailboxes named after a
+  town (beaupreau@) are still `:named`: no list can hold every town.
 
   2026-10-30: the backfill of 10-27 had scored `youremail@mail.com`,
   `esempio2@email.com`, `your@email.com` and Sentry keys on the business's
@@ -55,7 +63,18 @@ defmodule LS.HTTP.EmailClass do
                  export import ventas contacto soporte kontakt vertrieb bestellung buchhaltung
                  contatto vendite assistenza bonjour contato vendas suporte
                  discover success welcome start grow learn explore connect chat talk book buy join
-                 apply hire enquire aloha hola hallo ciao howdy go now yes love care wow)
+                 apply hire enquire aloha hola hallo ciao howdy go now yes love care wow
+                 employment vacancy vacancies personnel operations ops post build hiring recruit
+                 recruiter talent headoffice hq reception frontdesk dispatch logistics warehouse
+                 shipping returns purchasing procurement accountspayable payroll claims quotes
+                 quote estimates estimate bids tenders rentals leasing parts servicedesk helpdesk
+                 repairs maintenance membership members volunteer volunteers donations donate
+                 giving fundraising grants admissions registrar enrollment enrolment appointments
+                 appointment clinic school library reservas reservaciones prenotazioni buchung
+                 buchungen termine commandes commercial comercial direction secretariat secretaria
+                 administracion administration verwaltung empfang sekretariat redaktion redaccion
+                 redazione atendimento recepcion recepcao suport helo canada usa uk france germany
+                 europe australia)
 
   @free_mail ~w(gmail.com googlemail.com yahoo.com yahoo.co.uk yahoo.fr yahoo.de yahoo.es yahoo.it
                 yahoo.ca yahoo.com.au yahoo.com.br ymail.com rocketmail.com hotmail.com hotmail.co.uk
@@ -112,6 +131,16 @@ defmodule LS.HTTP.EmailClass do
                          j.doe prenom.nom vorname.nachname nom.prenom first.name last.name)
   @generic_locals ~w(email e-mail mail info contact test user name admin post)
 
+  # A role word that lost a letter on the way out of the page: the mailto
+  # href or the text node was cut (nfo@ for info@ on 3,374 deliverable
+  # rows, contat@ for contact@). Measured 2026-10-30 against the campaign
+  # session's real sends: they bounce. Words that are real mailboxes in
+  # some language stay out (suport@ is Romanian for support, ales@ is a
+  # given name, helo@ is sometimes chosen on purpose).
+  @artifact_locals ~w(nfo ontact contac contat conact cntact contct upport supprt ello ffice ofice
+                      dmin nquiries nquiry ervice eservations ookings arketing ail ontato ontacto
+                      ontakt)
+
   # Nobody reads these. A campaign that writes to noreply@ burns a send.
   @unattended_re ~r/^(no-?reply|noreply|do-?not-?reply|donotreply|mailer-daemon|bounces?|notifications?|alerts?|no_reply|auto-?reply|autoresponder)([-_.+][a-z0-9]*)?$/
 
@@ -130,7 +159,7 @@ defmodule LS.HTTP.EmailClass do
                  nomail.xl.cx mega.zik.dj speed.1s.fr courriel.fr.nf moncourrier.fr.nf monemail.fr.nf
                  monmail.fr.nf)
 
-  @type kind :: :named | :role | :free_mail | :sister | :third_party | :placeholder | :unattended | :tracking | :disposable
+  @type kind :: :named | :role | :free_mail | :sister | :third_party | :placeholder | :unattended | :tracking | :disposable | :artifact
 
   @doc "The kinds that may be published in `http_emails`."
   def sellable, do: @sellable
@@ -180,6 +209,7 @@ defmodule LS.HTTP.EmailClass do
       "OR (#{host} IN (#{free}) AND #{local} IN (#{generic})), 'a form placeholder, not a mailbox', " <>
       "match(#{local}, #{unattended_regex_sql()}), 'an unattended mailbox', " <>
       "match(#{local}, '^[0-9a-f]{20,}$') OR #{host} LIKE '%sentry%' OR #{host} LIKE '%.ingest.%', 'a tracking identifier, not a mailbox', " <>
+      "splitByChar('+', #{local})[1] IN (#{Enum.map_join(@artifact_locals, ", ", &"'#{&1}'")}), 'a cut-off address, not a mailbox', " <>
       "#{host} IN (#{disposable}), 'disposable mail host', '')"
   end
 
@@ -250,6 +280,7 @@ defmodule LS.HTTP.EmailClass do
           placeholder_local?(local) -> :placeholder
           Regex.match?(@unattended_re, local) -> :unattended
           tracking?(local, host) -> :tracking
+          (local |> String.split("+") |> hd()) in @artifact_locals -> :artifact
           # The business's own domain is never a placeholder domain, whatever
           # the list says (a test site called acme.com is still its own site).
           registrable(host) == site -> if role?(local), do: :role, else: :named
