@@ -87,7 +87,18 @@ defmodule LS.HTTP.EmailClass do
                           example.com example.org example.net example.co.uk e-mail.com
                           emailprovider.com provider.com yourbusiness.com business.com
                           domain.co domain.tld tld.com companyname.com company.co
-                          email.address your.domain yourdomain.co yourname.com name.com)
+                          email.address your.domain yourdomain.co yourname.com name.com
+                          mysite.com doe.com email.de email.fr email.nl email.it email.es
+                          empresa.com empresa.com.br empresa.es mailservice.com ejemplo.com
+                          ejemplo.es esimerkki.fi correo.com beispiel.de beispiel.com beispiel.at
+                          beispiel.ch exemple.com exemple.fr exemple.be exemple.ch esempio.it
+                          esempio.com exemplo.com exemplo.com.br exemplo.pt eksempel.dk eksempel.no
+                          exempel.se voorbeeld.nl voorbeeld.be przyklad.pl ornek.com primjer.hr
+                          domaine.com domaine.fr brand.com info.com 037.pl 062.pl firma.de firma.pl
+                          firma.cz unternehmen.de entreprise.fr entreprise.com azienda.it
+                          bedrijf.nl societe.fr societe.com nom.fr nom.com nombre.com nome.it
+                          mymail.com yourmail.com yourbrand.com yourstore.com yourshop.com
+                          myshop.com mystore.com mybusiness.com myname.com mycompany.com)
 
   # Placeholder locals in the other languages the crawl meets, bare or with
   # a digit suffix (esempio2@, test3@). "email", "mail" and "info" are real
@@ -170,6 +181,24 @@ defmodule LS.HTTP.EmailClass do
       "match(#{local}, #{unattended_regex_sql()}), 'an unattended mailbox', " <>
       "match(#{local}, '^[0-9a-f]{20,}$') OR #{host} LIKE '%sentry%' OR #{host} LIKE '%.ingest.%', 'a tracking identifier, not a mailbox', " <>
       "#{host} IN (#{disposable}), 'disposable mail host', '')"
+  end
+
+  @doc """
+  A ClickHouse boolean over an address expression and the business domain:
+  the address may be published in `http_emails`. It is `classify/2`'s
+  sellable test in SQL: on the business's own domain, or a free-mail owner,
+  or a sister domain, and not rejected for any reason. For a one-off sweep
+  of the product table (2026-10-30: rows compiled before the 10-26 classify
+  rule still carried support@webador.com on 38,808 businesses and
+  contact@mysite.com, the Wix default, on 23,345).
+  """
+  @spec publishable_sql(String.t(), String.t()) :: String.t()
+  def publishable_sql(expr, domain_expr) do
+    host = "splitByChar('@', lower(#{expr}))[2]"
+
+    "(endsWith(#{host}, #{domain_expr}) OR #{host} IN (#{free_mail_sql_list()}) OR " <>
+      "splitByChar('.', #{host})[1] = splitByChar('.', #{domain_expr})[1]) " <>
+      "AND #{rejected_reason_sql(expr, domain_expr)} = ''"
   end
 
   @doc "The placeholder locals as a quoted SQL list."
