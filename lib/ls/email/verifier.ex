@@ -42,52 +42,61 @@ defmodule LS.Email.Verifier do
   @spec score_rows([map()]) :: [map()]
   def score_rows(rows) when is_list(rows) do
     rows = Enum.filter(rows, &(is_map(&1) and is_binary(&1[:domain]) and is_binary(&1[:email])))
-    domains = rows |> Enum.map(& &1.domain) |> Enum.uniq()
-    facts = mail_facts(domains)
-    now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
-
-    checks =
-      for r <- rows, f = Map.get(facts, r.domain, %{}), reduce: [] do
-        acc ->
-          kind = LS.HTTP.EmailClass.classify(r.email, r.domain)
-
-          if kind in LS.HTTP.EmailClass.sellable() do
-            s =
-              LS.Email.Score.score(%{
-                email: r.email,
-                domain: r.domain,
-                kind: kind,
-                source_page: r[:source_page],
-                last_seen: r[:seen_at] || now,
-                mx: Map.get(f, :mx, false),
-                provider: Map.get(f, :provider, ""),
-                spf: Map.get(f, :spf, false),
-                dmarc: Map.get(f, :dmarc, false),
-                disposable: Map.get(f, :disposable, false)
-              })
-
-            [
-              %{
-                domain: r.domain,
-                email: String.downcase(r.email),
-                kind: Atom.to_string(kind),
-                score: s.score,
-                verdict: s.verdict,
-                evidence: s.evidence,
-                provider: Map.get(f, :provider, ""),
-                source_page: r[:source_page] || "homepage",
-                last_seen: r[:seen_at] || now,
-                checked_at: now
-              }
-              | acc
-            ]
-          else
-            acc
-          end
-      end
-
+    checks = checks(rows, rows |> Enum.map(& &1.domain) |> Enum.uniq() |> mail_facts())
     write(checks)
     checks
+  end
+
+  @doc false
+  # Pure: the email_checks rows for a batch's contact rows, given their
+  # domains' mail facts. 2026-10-31: the facts query named a column the
+  # product table does not have (is_disposable_email), every query failed,
+  # the failure read as "no MX", and 202,846 addresses on domains with MX
+  # (151,840 businesses, 52,809 named) were written undeliverable over their
+  # verdicts between 10-27 and 10-31. Facts that could not be read score
+  # nothing: the next sighting or the backfill scores the address.
+  def checks(_rows, :error), do: []
+
+  def checks(rows, {:ok, facts}) do
+    now = NaiveDateTime.utc_now() |> NaiveDateTime.to_string() |> String.slice(0, 19)
+
+    for r <- rows, f = Map.get(facts, r.domain, %{}), reduce: [] do
+      acc ->
+        kind = LS.HTTP.EmailClass.classify(r.email, r.domain)
+
+        if kind in LS.HTTP.EmailClass.sellable() do
+          s =
+            LS.Email.Score.score(%{
+              email: r.email,
+              domain: r.domain,
+              kind: kind,
+              source_page: r[:source_page],
+              last_seen: r[:seen_at] || now,
+              mx: Map.get(f, :mx, false),
+              provider: Map.get(f, :provider, ""),
+              spf: Map.get(f, :spf, false),
+              dmarc: Map.get(f, :dmarc, false)
+            })
+
+          [
+            %{
+              domain: r.domain,
+              email: String.downcase(r.email),
+              kind: Atom.to_string(kind),
+              score: s.score,
+              verdict: s.verdict,
+              evidence: s.evidence,
+              provider: Map.get(f, :provider, ""),
+              source_page: r[:source_page] || "homepage",
+              last_seen: r[:seen_at] || now,
+              checked_at: now
+            }
+            | acc
+          ]
+        else
+          acc
+        end
+    end
   end
 
   @doc """
@@ -116,29 +125,33 @@ defmodule LS.Email.Verifier do
   # ── facts ───────────────────────────────────────────────────────────────
 
   @doc false
-  # MX, provider, DMARC and disposable from the compiled row; SPF from the
-  # newest crawl's TXT records. One keyed query each, for the batch.
-  def mail_facts([]), do: %{}
+  # MX, provider and DMARC from the compiled row; SPF from the newest
+  # crawl's TXT records. One keyed query each, for the batch. A domain with
+  # no compiled row yet has no MX known. A failed product-table query is
+  # :error, never an empty map: an empty map reads as "no MX" for every
+  # address in the batch. Disposable hosts never get here, the classifier
+  # files them as :disposable, which is not sellable.
+  def mail_facts([]), do: {:ok, %{}}
 
   def mail_facts(domains) do
     list = Enum.map_join(domains, ", ", &"'#{Clickhouse.escape_public(&1)}'")
 
-    base =
-      case Clickhouse.query_raw("SELECT domain, notEmpty(dns_mx), dns_email_provider, dns_dmarc != '', is_disposable_email FROM #{Tables.businesses()} WHERE domain IN (#{list})", 10_000) do
-        {:ok, rows} ->
-          Map.new(rows, fn [d, mx, prov, dmarc, disp] -> {d, %{mx: truthy(mx), provider: prov || "", dmarc: truthy(dmarc), disposable: truthy(disp)}} end)
+    case Clickhouse.query_raw("SELECT domain, notEmpty(dns_mx), dns_email_provider, dns_dmarc != '' FROM #{Tables.businesses()} WHERE domain IN (#{list})", 10_000) do
+      {:ok, rows} ->
+        base = Map.new(rows, fn [d, mx, prov, dmarc] -> {d, %{mx: truthy(mx), provider: prov || "", dmarc: truthy(dmarc)}} end)
 
-        _ ->
-          %{}
-      end
+        spf =
+          case Clickhouse.query_raw("SELECT domain, argMax(dns_txt, enriched_at) FROM #{Tables.enrich_log()} WHERE domain IN (#{list}) AND enriched_at >= now() - INTERVAL 400 DAY GROUP BY domain", 15_000) do
+            {:ok, rows} -> Map.new(rows, fn [d, txt] -> {d, String.contains?(to_string(txt || ""), "v=spf1")} end)
+            _ -> %{}
+          end
 
-    spf =
-      case Clickhouse.query_raw("SELECT domain, argMax(dns_txt, enriched_at) FROM #{Tables.enrich_log()} WHERE domain IN (#{list}) AND enriched_at >= now() - INTERVAL 400 DAY GROUP BY domain", 15_000) do
-        {:ok, rows} -> Map.new(rows, fn [d, txt] -> {d, String.contains?(to_string(txt || ""), "v=spf1")} end)
-        _ -> %{}
-      end
+        {:ok, Map.new(domains, fn d -> {d, Map.put(Map.get(base, d, %{}), :spf, Map.get(spf, d, false))} end)}
 
-    Map.new(domains, fn d -> {d, Map.put(Map.get(base, d, %{}), :spf, Map.get(spf, d, false))} end)
+      other ->
+        Logger.warning("[EMAIL] mail facts unreadable, #{length(domains)} domains not scored: #{inspect(other) |> String.slice(0, 300)}")
+        :error
+    end
   end
 
   defp truthy(v), do: v in [1, "1", true]
