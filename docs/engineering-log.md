@@ -25,6 +25,56 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-02: the alert emails were the weekly backup and a cached query; the email scorer had read "no MX" for every address since 10-27
+
+**Alert emails.** 50 alert emails went out from 10-27 to 11-02:
+- 18 were disk alerts;
+- 17 were "Query speed: landing tech count";
+- 6 were backups.
+After the 10-30 cleanup the disk and backup emails all came from the
+Sunday tier, which dumped enrich_log (~50 G) into a local dir and then
+tarred it to h1. On 11-01 the master went from 68% to past 88% (03:38
+"Disk almost full"). The dump now takes two hours, longer than the
+55-minute sweep of stray working dirs at the top of `backup.sh`, so the
+05:00 hourly run deleted the dir mid-stream. tar said "file changed as
+we read it", and "ClickHouse backup failed last night" went out. The
+same happened on 10-28, so the newest weekly archive was the 10-25 one.
+The tier now streams each table from ClickHouse through zstd to h1
+(devops 7726760) and writes nothing on the master. The guards from
+10-04 stay:
+- `.part` upload;
+- `zstd -t` on h1;
+- at least half the previous archive;
+- the old archive is removed only after that.
+h1's free-space floor went from 40 G to 110 G so the weekly archive
+always fits. The tech-count probe timed a query the landing page serves
+from a 30-minute background cache, so no visitor ever waited on it. It
+was dropped (98c0d42).
+
+**Email scorer.** `LS.Email.Verifier.mail_facts/1` selected
+`is_disposable_email`, a column `businesses` does not have. Every facts
+query failed, and the failure became an empty map, which reads as "no
+MX". Every re-sighted address was written `undeliverable` over its
+verdict: 202,846 on domains with MX by 10-31 (151,840 businesses,
+52,809 named), and 720,891 undeliverable in all by 11-02. The fix
+(1fa6d46) reads only real columns, and an unreadable query now writes
+nothing. The rescore then took undeliverable from 720,891 to 207,613,
+strong from 6.48 M to 6.79 M and good from 3.56 M to 3.79 M. The test
+that could have caught it expected the same answer the bug gave.
+
+**Found while measuring, not fixed.**
+- **The crawl queue does not survive a master restart.** The 11-02
+  deploy started it at 60 items against 153.5 K at 01:40. New domains
+  are marked in the 7-to-8-day bloom when they are queued, not when
+  they are crawled, so the dropped ones are not re-queued until that
+  window has passed and a certificate is seen again.
+- **Business types flip.** On re-crawled sites the label matches the
+  previous visit only 59.7% of the time (title 90.5%, emails 74.3%).
+- **`http_body_simhash` cannot detect change.** It matches the previous
+  visit on 2.8% of re-crawls.
+
+---
+
 ## 2026-10-30: the domains table was 28% old versions; the two backup pulls had no alert
 
 **`domains` collapse.** 301.8 M rows for 218.1 M distinct domains, 58.65 GiB
