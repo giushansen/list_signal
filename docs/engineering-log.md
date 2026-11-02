@@ -73,6 +73,40 @@ that could have caught it expected the same answer the bug gave.
 - **`http_body_simhash` cannot detect change.** It matches the previous
   visit on 2.8% of re-crawls.
 
+**Later the same day.**
+- **The weekly archive held.** 01:38:52 to 04:12:23 UTC, 44 G streamed
+  to h1, zstd verified, master disk 69% from start to end, no alert
+  (note on devops 7726760).
+- **The laptop pull never ran awake.** Its single 07:30 slot fired in a
+  two-second background wake of the closed laptop on 11-01 and 11-02,
+  so ssh died and `backup_pull_laptop` fired with no copy since 10-31.
+  It now retries every 30 minutes, starts only in a full wake, holds off
+  idle sleep and resumes partial downloads (devops b668c5e). First run:
+  24.46 G in 61 min, marker 05:22:38Z.
+- **A master restart forgets most of the certificate dedup cache.** The
+  "Ingestion rate: new businesses" email at 03:08 came from the 01:48
+  restart. First fetches fell from 4,413 an hour to 528, then 1,533 and
+  2,181, while total fetches stayed at about 2,800 per 10 minutes.
+  `LS.Cache` keeps up to 5 M certificate domains for 14 days, but
+  `LS.CacheSnapshot` saves at most 1 M of them (`@ctl_max_rows`, a
+  memory bound since 09-06). After four days of uptime the restart
+  dropped about 4 M. Their certificate renewals came back as new and
+  filled the discovery lane: 281 of 300 sampled items had been fetched
+  before (median last fetch 09-06), and 1 was a business. The 10-28
+  restart did the same for 2 hours; the master had been up only 11 hours
+  then. New domains are delayed, not dropped: the queue started to
+  shrink at 05:30 (435 a minute out, 225 in).
+- **Whole country domains are invisible.** `LS.CTL.DomainParser` knows 54
+  two-part suffixes (`signatures/cctlds.txt`, unchanged since 03-19), so
+  `shop.example.com.pl` parses as `com.pl`. Every domain under com.pl,
+  com.vn or com.hk collapses into one name, and businesses holds 0 of
+  each (com.au 493,177, co.jp 96,076, com.sg 16,177). The collapsed
+  names then crossed the certificate-rate rule: `platforms` holds 985
+  public suffixes (com.pl and com.vn since 07-30, org.ph, net.ph, co.it,
+  on.ca, gmina.pl...), so the poller drops their subdomains too. Not
+  fixed yet: it needs the public suffix list in the parser, a purge of
+  `platforms`, and a master restart.
+
 ---
 
 ## 2026-10-30: the domains table was 28% old versions; the two backup pulls had no alert

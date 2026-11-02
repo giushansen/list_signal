@@ -769,10 +769,13 @@ defmodule LS.Alerts do
   # its verified copy is complete, and `Metrics.backup_status/1` turns the
   # markers into ages. h1 pulls nightly on a box that is always on: a day
   # and a half without a marker is a broken leg. The laptop pulls when it is
-  # open; launchd runs the missed job at the next wake, so two days is a
-  # warning, not a page. A leg that never wrote a marker is reported under
-  # `_missing`, like a tier with no archive. A metrics map without the key
-  # (older release, a worker) stays quiet.
+  # open, so two days is a warning, not a page. "launchd runs the missed job
+  # at the next wake" was wrong: on 11-01 and 11-02 the 07:30 job fired in a
+  # two-second background wake of the closed laptop and died, so this fired
+  # with no copy since 10-31. The pull now retries every 30 minutes and starts
+  # only in a full wake (devops laptop/pull_backup.py). A leg that never
+  # wrote a marker is reported under `_missing`, like a tier with no archive.
+  # A metrics map without the key (older release, a worker) stays quiet.
   @pull_legs [{"h1", 36, :critical}, {"laptop", 48, :warning}]
 
   defp backup_pulls(acc, %{backups: %{pull_ages_h: ages}}) when is_map(ages) do
