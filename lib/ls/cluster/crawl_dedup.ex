@@ -140,7 +140,9 @@ defmodule LS.Cluster.CrawlDedup do
   }
   @ring_names Map.keys(@rings)
   @backfill_shards 16
-  @backfill_days 3
+  # 8, the whole window (2026-11-02): with 3, a restart forgot days 4 to 8
+  # and the fleet refetched them; 128 sharded background queries at boot.
+  @backfill_days 8
   @sightings :ctl_sightings_buffer
   @flush_ms 30_000
   @flush_rows 5_000

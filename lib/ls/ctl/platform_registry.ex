@@ -107,6 +107,8 @@ defmodule LS.CTL.PlatformRegistry do
   """
   @spec observe(String.t(), map()) :: :ok
   def observe(domain, stats) when is_binary(domain) do
+    if LS.CTL.PublicSuffix.public_suffix?(domain), do: throw(:public_suffix)
+
     count =
       case :ets.lookup(@pending, domain) do
         [{^domain, seen, _}] -> seen + 1
@@ -118,6 +120,11 @@ defmodule LS.CTL.PlatformRegistry do
     :ok
   rescue
     ArgumentError -> :ok
+  catch
+    # Until 2026-11-02 the domain parser collapsed com.pl, org.ph, co.it
+    # and 982 other public suffixes into themselves; their certificate rate
+    # then read as a platform and everything under them was dropped.
+    :public_suffix -> :ok
   end
 
   @doc "Registry size — how many platforms we know about."
@@ -142,6 +149,8 @@ defmodule LS.CTL.PlatformRegistry do
     Enum.each(static, &:ets.insert(@table, {&1, true}))
 
     loaded = load_known()
+    purged = purge_public_suffixes()
+    if purged > 0, do: Logger.warning("🏗️  PlatformRegistry: #{purged} public suffixes ignored (com.pl, org.ph... are not platforms)")
 
     # Cold start: an empty table means the registry has never persisted (fresh
     # box, or the 2026-07-29 poison-row window where every flush failed). The
@@ -173,6 +182,12 @@ defmodule LS.CTL.PlatformRegistry do
     if written > 0, do: Logger.info("🏗️  PlatformRegistry: persisted #{written} platform(s)")
     Process.send_after(self(), :flush, @flush_interval_ms)
     {:noreply, %{state | flushed: state.flushed + written}}
+  end
+
+  # The table may still carry suffixes learned before 2026-11-02; forget
+  # them at boot so `known?/1` never swallows a whole country again.
+  defp purge_public_suffixes do
+    :ets.foldl(fn {d, _}, n -> if LS.CTL.PublicSuffix.public_suffix?(d), do: (:ets.delete(@table, d); n + 1), else: n end, 0, @table)
   end
 
   # ── persistence ────────────────────────────────────────────────────────────

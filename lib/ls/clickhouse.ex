@@ -639,6 +639,7 @@ defmodule LS.Clickhouse do
       WHERE estimated_junk = '' AND http_error != 'robots_disallow' AND http_blocked = ''
         AND (http_status IS NULL OR http_status NOT IN (403, 503))
         AND http_last_checked_at < now() - INTERVAL #{a} DAY
+        AND #{LS.Crawl.Markets.refresh_language_sql()}
     )
     WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY#{lane}
       AND domain NOT IN (SELECT domain FROM #{LS.Schema.Tables.enrich_log()} WHERE enriched_at >= now() - INTERVAL 1 DAY)
@@ -651,6 +652,11 @@ defmodule LS.Clickhouse do
   @doc """
   Businesses due for a refresh under their tier cadence (LS.Crawl.Tiers: A
   14 days, B 90, C 180), most valuable tier first, oldest first, as
+  `{domain, tier, simhash}`. Only pages last read in English or French
+  (`LS.Crawl.Markets`, 2026-11-02): 22.5% of fetches returned another
+  language and 12.4% no page, and the owner sells neither. A business with
+  no language on file is not refreshed by schedule either; a certificate
+  re-sighting still brings it back through the poller. Returned as
   `{domain, tier, simhash}`. The stored homepage simhash rides along so the
   worker can tell an unchanged page from a changed one without a second
   query (2026-10-23, `LS.Pipeline.refetch_secondary?/2`). Until 2026-10-03 this read the 57 GB `domains` table

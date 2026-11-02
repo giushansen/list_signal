@@ -93,6 +93,15 @@ defmodule LS.Cluster.WorkQueue do
   defp max_queue_size, do: :persistent_term.get({__MODULE__, :max_queue_size}, @max_queue_size)
   @batch_timeout_ms 600_000        # 10 minutes
   @ttl_ms 86_400_000               # 24 hours
+  # The queue is written to disk every 15 minutes and on a graceful stop
+  # (2026-11-02): the deploy of 01:48 that day started it at 60 items
+  # against 153.5K, and the domains dropped were marked in the 7-8 day
+  # bloom at enqueue, so nothing brought them back for a week. In-flight
+  # batches are not saved: the workers finish them and report. Restored
+  # items are re-keyed in their old order, because unique integers restart
+  # with the VM and a new item would otherwise overwrite an old key.
+  @queue_file "work_queue.ets"
+  @queue_save_ms 900_000
   @cleanup_interval_ms 3_600_000   # 1 hour
   @inflight_check_ms 60_000        # 1 minute
 
@@ -280,6 +289,10 @@ defmodule LS.Cluster.WorkQueue do
   @spec heartbeat(GenServer.server(), integer()) :: :ok
   def heartbeat(server \\ __MODULE__, batch_id), do: GenServer.cast(server, {:heartbeat, batch_id})
 
+  # Room to write the queue on the way down (2026-11-02); the default 5 s
+  # is tight for 150K items on a loaded box.
+  def child_spec(opts), do: Map.put(super(opts), :shutdown, 30_000)
+
   @doc "Dequeue a batch of domains. Called by workers."
   def dequeue(count) do
     GenServer.call(__MODULE__, {:dequeue, count}, 10_000)
@@ -315,11 +328,13 @@ defmodule LS.Cluster.WorkQueue do
 
   @impl true
   def init(_opts) do
-    :ets.new(@queue_table, [:ordered_set, :public, :named_table,
-      read_concurrency: true, write_concurrency: true])
+    Process.flag(:trap_exit, true)
+    restored = restore_queue()
     :ets.new(@inflight_table, [:set, :public, :named_table])
     :ets.new(@index_table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
     :ets.new(@recent_table, [:set, :public, :named_table, write_concurrency: true])
+    if restored > 0, do: index_set(:ets.tab2list(@queue_table), :queued)
+    Process.send_after(self(), :save_queue, @queue_save_ms)
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
     ref = :counters.new(7, [:write_concurrency])
@@ -570,6 +585,13 @@ defmodule LS.Cluster.WorkQueue do
     if orphans > 0, do: Logger.warning("🧹 WorkQueue index: #{orphans} rows had no queued or in-flight item")
 
     schedule_cleanup()
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:save_queue, state) do
+    save_queue()
+    Process.send_after(self(), :save_queue, @queue_save_ms)
     {:noreply, state}
   end
 
@@ -848,6 +870,68 @@ defmodule LS.Cluster.WorkQueue do
     expired + trimmed
   rescue
     ArgumentError -> 0
+  end
+
+  @impl true
+  def terminate(_reason, _state) do
+    save_queue()
+    :ok
+  end
+
+  # nil outside a configured state dir (tests, `make dev`), so a test's
+  # graceful stop never seeds the next run from /tmp.
+  @doc false
+  def queue_path, do: if(Application.get_env(:ls, :state_dir), do: Path.join(LS.State.dir(), @queue_file))
+
+  @doc "Write the queued items to `path`. `{:ok, items}` or `{:error, reason}`; never raises."
+  @spec save_queue(Path.t() | nil, atom()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def save_queue(path \\ queue_path(), table \\ @queue_table)
+  def save_queue(nil, _table), do: {:ok, 0}
+
+  def save_queue(path, table) do
+    size = :ets.info(table, :size) || 0
+    tmp = path <> ".tmp"
+
+    with :ok <- :ets.tab2file(table, String.to_charlist(tmp), extended_info: [:object_count]),
+         :ok <- File.rename(tmp, path) do
+      Logger.info("💾 WorkQueue saved: #{size} items")
+      {:ok, size}
+    else
+      {:error, reason} = err ->
+        Logger.warning("💾 WorkQueue not saved: #{inspect(reason)}")
+        File.rm(tmp)
+        err
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Create the queue table, filled from `path` when a saved copy exists, in
+  the saved order under fresh keys. Returns the items restored.
+  """
+  @spec restore_queue(Path.t() | nil, atom()) :: non_neg_integer()
+  def restore_queue(path \\ queue_path(), table \\ @queue_table) do
+    items =
+      case path != nil and File.exists?(path) and :ets.file2tab(String.to_charlist(path)) do
+        {:ok, ^table} ->
+          items = :ets.tab2list(table)
+          :ets.delete(table)
+          items
+
+        false ->
+          []
+
+        other ->
+          Logger.warning("💾 WorkQueue not restored (#{inspect(other)}), starting empty")
+          if :ets.whereis(table) != :undefined, do: :ets.delete(table)
+          []
+      end
+
+    :ets.new(table, [:ordered_set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    Enum.each(items, fn {_key, data, ts} -> :ets.insert(table, {tail_key(data), data, ts}) end)
+    if items != [], do: Logger.info("💾 WorkQueue restored: #{length(items)} items from #{path}")
+    length(items)
   end
 
   defp schedule_cleanup do

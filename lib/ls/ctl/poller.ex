@@ -481,30 +481,44 @@ defmodule LS.CTL.Poller do
     # Step 1: ONE platform check. The registry's ETS holds the static curated
     # list, the seeds, the persisted table and every velocity-learned platform
     # — an O(labels) suffix walk per domain.
-    if PlatformRegistry.known?(domain) do
+    cond do
+      PlatformRegistry.known?(domain) ->
+        %{acc | filtered: acc.filtered + 1}
+
+      # Outside the English and French markets (2026-11-02): parsed and
+      # recorded as a sighting, never queued. 15.7% of fetches went to
+      # these suffixes and the owner does not sell what they return.
+      not LS.Crawl.Markets.crawl_tld?(cert_data.ctl_tld) ->
+        LS.Cluster.CrawlDedup.record_sighting(cert_data)
+        %{acc | filtered: acc.filtered + 1}
+
+      true ->
+        track(cert_data, acc)
+    end
+  end
+
+  # Step 2: track in the smart cache (updates cert_count, subdomain_count)
+  defp track(cert_data, acc) do
+    domain = cert_data.ctl_domain
+    track_result = Cache.ctl_track(domain, cert_data.ctl_subdomain_count)
+
+    if Cache.ctl_is_platform?(domain) do
+      # Feed the registry. It applies its own grace window, so a startup
+      # that briefly spikes subdomains is not promoted permanently.
+      PlatformRegistry.observe(domain, %{
+        reason: "cert_rate",
+        cert_count: Cache.ctl_cert_count(domain),
+        max_subdomain_count: cert_data.ctl_subdomain_count || 0,
+        estimated_hosted_domains: Cache.ctl_cert_count(domain)
+      })
+
       %{acc | filtered: acc.filtered + 1}
     else
-      # Step 2: track in the smart cache (updates cert_count, subdomain_count)
-      track_result = Cache.ctl_track(domain, cert_data.ctl_subdomain_count)
-
-      if Cache.ctl_is_platform?(domain) do
-        # Feed the registry. It applies its own grace window, so a startup
-        # that briefly spikes subdomains is not promoted permanently.
-        PlatformRegistry.observe(domain, %{
-          reason: "cert_rate",
-          cert_count: Cache.ctl_cert_count(domain),
-          max_subdomain_count: cert_data.ctl_subdomain_count || 0,
-          estimated_hosted_domains: Cache.ctl_cert_count(domain)
-        })
-
-        %{acc | filtered: acc.filtered + 1}
-      else
-        if track_result == :new do
-          LS.Cluster.WorkQueue.enqueue(cert_data)
-        end
-
-        %{acc | written: acc.written + 1}
+      if track_result == :new do
+        LS.Cluster.WorkQueue.enqueue(cert_data)
       end
+
+      %{acc | written: acc.written + 1}
     end
   end
 

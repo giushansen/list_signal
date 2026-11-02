@@ -84,12 +84,26 @@ defmodule LS.Cache do
   # are an unbiased sample of ages. 20K keeps the quantile error under ~1%.
   @evict_sample 20_000
   @evict_locks :ls_cache_evict_locks
+  # The CT dedup table is written whole to disk (2026-11-02): LS.CacheSnapshot
+  # keeps a 1M sample of its up to 5M rows, so a master restart after four
+  # days forgot ~4M domains, their renewals came back as new and first
+  # fetches fell from 4,413 to 528 an hour. tab2file streams the table
+  # without copying it into this process; the file is a few hundred MB in
+  # /var/lib/listsignal and rows older than the TTL are dropped on the way
+  # back in. Saved every 30 minutes and on a graceful stop.
+  @ctl_file "ctl_cache.ets"
+  @ctl_save_ms 1_800_000
 
   def start_link(opts \\ []), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
 
+  # Room to write the CT dedup table (up to 5M rows) on the way down; the
+  # unit's stop limit is 90 s (2026-11-02). The default 5 s cut it off.
+  def child_spec(opts), do: Map.put(super(opts), :shutdown, 60_000)
+
   @impl true
   def init(_opts) do
-    :ets.new(@ctl_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    Process.flag(:trap_exit, true)
+    restore_ctl()
     :ets.new(@http_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
     :ets.new(@bgp_cache, [:set, :public, :named_table, read_concurrency: true])
     :ets.new(@rdap_cache, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
@@ -100,6 +114,7 @@ defmodule LS.Cache do
     caps = compute_caps(total_ram_mb())
     :persistent_term.put({__MODULE__, :caps}, caps)
     schedule_cleanup()
+    Process.send_after(self(), :save_ctl, @ctl_save_ms)
 
     Logger.info(
       "✅ Cache: CTL 5M + bounded HTTP #{caps.http} / RDAP #{caps.rdap} / BGP #{caps.bgp} entries " <>
@@ -122,7 +137,85 @@ defmodule LS.Cache do
     {:noreply, state}
   end
 
+  def handle_info(:save_ctl, state) do
+    save_ctl()
+    Process.send_after(self(), :save_ctl, @ctl_save_ms)
+    {:noreply, state}
+  end
+
+  @impl true
+  def terminate(_reason, _state) do
+    save_ctl()
+    :ok
+  end
+
   defp schedule_cleanup, do: Process.send_after(self(), :cleanup_cache, @cleanup_interval)
+
+  # nil outside a configured state dir (tests, `make dev`): a laptop must not
+  # read a stale /tmp table into every run.
+  @doc false
+  def ctl_path, do: if(Application.get_env(:ls, :state_dir), do: Path.join(LS.State.dir(), @ctl_file))
+
+  @doc """
+  Write the CT dedup table to `path` (a worker, whose table is empty, writes
+  nothing). Returns `{:ok, rows}` or `{:error, reason}`; never raises.
+  """
+  @spec save_ctl(Path.t() | nil, atom()) :: {:ok, non_neg_integer()} | {:error, term()}
+  def save_ctl(path \\ ctl_path(), table \\ @ctl_cache)
+  def save_ctl(nil, _table), do: {:ok, 0}
+
+  def save_ctl(path, table) do
+    size = :ets.info(table, :size) || 0
+    tmp = path <> ".tmp"
+    started = System.monotonic_time(:millisecond)
+
+    with true <- size > 0 || {:error, :empty},
+         :ok <- :ets.tab2file(table, String.to_charlist(tmp), extended_info: [:object_count]),
+         :ok <- File.rename(tmp, path) do
+      Logger.info("💾 CTL cache saved: #{size} rows in #{System.monotonic_time(:millisecond) - started} ms")
+      {:ok, size}
+    else
+      {:error, :empty} -> {:ok, 0}
+      {:error, reason} = err ->
+        Logger.warning("💾 CTL cache not saved: #{inspect(reason)}")
+        File.rm(tmp)
+        err
+    end
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Create the CT dedup table, from `path` when a saved copy exists (minus
+  rows past the TTL), empty otherwise. Returns the rows restored.
+  """
+  @spec restore_ctl(Path.t() | nil, atom()) :: non_neg_integer()
+  def restore_ctl(path \\ ctl_path(), table \\ @ctl_cache) do
+    cutoff = System.system_time(:second) - @cache_ttl
+
+    restored =
+      case path != nil and File.exists?(path) and :ets.file2tab(String.to_charlist(path)) do
+        {:ok, ^table} ->
+          expired = :ets.select_delete(table, [{Map.fetch!(@age_specs, @ctl_cache), [{:<, :"$1", cutoff}], [true]}])
+          kept = :ets.info(table, :size)
+          Logger.info("💾 CTL cache restored: #{kept} rows from #{path} (#{expired} expired dropped)")
+          kept
+
+        false ->
+          0
+
+        other ->
+          Logger.warning("💾 CTL cache not restored (#{inspect(other)}), starting empty")
+          if :ets.whereis(table) != :undefined, do: :ets.delete(table)
+          0
+      end
+
+    if :ets.whereis(table) == :undefined do
+      :ets.new(table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+    end
+
+    restored
+  end
 
   defp delete_older_than(table, cutoff) do
     :ets.select_delete(table, [{Map.fetch!(@age_specs, table), [{:<, :"$1", cutoff}], [true]}])

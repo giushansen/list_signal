@@ -25,6 +25,47 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-02, evening: markets gate, public suffixes, and a restart that keeps its memory
+
+Owner's decisions: crawl only what English- or French-speaking customers
+buy, and stop losing state on every deploy. Measured on the 7 days to
+11-02 (2.68 M fetches): 56.4% English pages on market suffixes, 5.8%
+French, 11.5% other languages on .com and friends, 11.1% on country
+suffixes outside the markets, 12.4% no page at all; the other-language
+fetches had produced 36% of all sellable rows (email plus a classified
+model), which the owner does not sell.
+
+- **`LS.Crawl.Markets`.** The poller queues a new domain only on a market
+  suffix (com, net, org, io, co, ai, app, dev, uk, us, ca, au, nz, ie, sg,
+  hk, za, fr, be, ch, lu, eu and a few generic ones); other sightings are
+  recorded, never fetched. The refresh schedule
+  (`stale_domains_sql`) reads only pages last seen in English or French,
+  so a business with no page or another language is not revisited every
+  14 to 180 days. Expected saving: 22.5% of fetches from the language
+  rule plus most of the 12.4% hollow refreshes, about two to three
+  nodes' worth; to be measured over the week. Meaning change: businesses
+  already in the table in other languages age out of refresh.
+- **`LS.CTL.PublicSuffix`.** The parser used 54 hand-kept suffixes, so
+  `shop.example.com.pl` was the name `com.pl`; businesses held 0 domains
+  under com.pl, com.vn or com.hk, and `platforms` had learned 985 public
+  suffixes (purged at boot, refused in `observe/2`, backed up on the
+  master as `/root/platforms_public_suffixes_20261102.tsv`). The ICANN
+  section of publicsuffix.org (6,948 rules) is vendored in punycode.
+- **State across restarts.** `deploy_listsignal.sh` killed the app with
+  `kill -9`, so no shutdown save had ever run: the cache snapshot, the
+  dedup rings (saved every 6 h) and the queue all died with the VM. The
+  deploy now runs the preflight first, then `systemctl stop` with a 90 s
+  limit. `LS.Cache` writes the CT dedup table whole (`ctl_cache.ets`,
+  `tab2file`, every 30 min and on stop; the snapshot kept a 1 M sample of
+  5 M) and `LS.Cluster.WorkQueue` writes its items (`work_queue.ets`,
+  every 15 min and on stop, re-keyed in order on restore). The daily
+  bloom backfill reads 8 days instead of 3.
+
+Not done: worker-side `LS.HTTP.DomainFilter` still lists .de, .jp and
+.com.br (an existing test pins `bakery.de`); it only sees what the master
+queued, so the market gate decides. Non-market domains already queued or
+in flight finish normally.
+
 ## 2026-11-02: the alert emails were the weekly backup and a cached query; the email scorer had read "no MX" for every address since 10-27
 
 **Alert emails.** 50 alert emails went out from 10-27 to 11-02:

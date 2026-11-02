@@ -116,8 +116,13 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    `LogList.diff_current/0` drift alert is the backstop — non-empty means the
    reconcile loop itself is broken). `LS.CTL.Wire` parses BOTH entry types —
    precerts included, which most CAs (LE among them) exclusively log — and
-   every SAN in each certificate, then filters obvious junk and enqueues
-   `%{ctl_domain: d, source: :ctl}` items.
+   every SAN in each certificate, parses each name to its registrable
+   domain with the public suffix list (`LS.CTL.PublicSuffix`, 2026-11-02;
+   before that 54 hand-kept suffixes, so com.pl, com.vn and thousands of
+   others collapsed into themselves), drops hosting platforms and any
+   suffix outside the English and French markets (`LS.Crawl.Markets`,
+   owner's decision 2026-11-02: 22.5% of fetches returned another
+   language), and enqueues `%{ctl_domain: d, source: :ctl}` items.
 2. **Queueing** — `LS.Cluster.WorkQueue` is a bounded in-memory queue
    (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). Tier A
    refreshes are priority 0 and dequeue before everything else; the rest is
@@ -125,7 +130,12 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    is queued or in flight, and `enqueue/2` refuses a second copy whoever
    asks, `force` included (`:already_queued`), so one domain is in one place
    across the fleet. When full, `enqueue/1` returns `:queue_full` and the
-   item is dropped: inflow shedding is deliberate.
+   item is dropped: inflow shedding is deliberate. The queue is written to
+   `/var/lib/listsignal/work_queue.ets` every 15 minutes and on a graceful
+   stop, and read back at boot (2026-11-02: a deploy had dropped 153.5K
+   items). The CT dedup table (`LS.Cache`, up to 5M domains, 14 days) is
+   saved the same way; the deploy script stops the app gracefully since
+   that day (it used `kill -9`, so no shutdown save had ever run).
 3. **Pulling** — each `LS.Cluster.WorkerAgent` asks for as many names as
    reach its HTTP candidate cap at the learned pass rate (about 475 for a
    cap of 190, `dequeue_size/3`), never more than `LS_BATCH_SIZE`. The cap

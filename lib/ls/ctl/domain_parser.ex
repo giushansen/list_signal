@@ -1,69 +1,35 @@
 defmodule LS.CTL.DomainParser do
   @moduledoc """
-  Parses domains and extracts base domain + TLD.
-  Loads ccTLD list from lib/ls/ctl/signatures/cctlds.txt
+  Turns a certificate name into the registrable domain and its public
+  suffix, through `LS.CTL.PublicSuffix`.
+
+  Until 2026-11-02 this held its own list of 54 two-part suffixes, so any
+  other second-level suffix collapsed into itself (`shop.example.com.pl`
+  parsed as `com.pl`); see the public suffix module for what that cost.
   """
 
-  # Load ccTLDs from file at compile time
-  @external_resource "lib/ls/ctl/signatures/cctlds.txt"
-  @cc_tlds "lib/ls/ctl/signatures/cctlds.txt"
-           |> File.read!()
-           |> String.split("\n", trim: true)
-           |> Enum.reject(&String.starts_with?(&1, "#"))
-           |> Enum.map(&String.trim/1)
-           |> Enum.reject(&(&1 == ""))
+  alias LS.CTL.PublicSuffix
 
   @doc """
-  Parse domain into base domain and TLD.
+  Parse a hostname into `{:ok, registrable_domain, public_suffix}`.
 
-  ## Examples
-
-      iex> parse("www.example.com")
+      iex> LS.CTL.DomainParser.parse("www.example.com")
       {:ok, "example.com", "com"}
-
-      iex> parse("api.example.co.uk")
+      iex> LS.CTL.DomainParser.parse("api.example.co.uk")
       {:ok, "example.co.uk", "co.uk"}
-
-      iex> parse("shop.example.com.ua")
-      {:ok, "example.com.ua", "com.ua"}
+      iex> LS.CTL.DomainParser.parse("shop.example.com.pl")
+      {:ok, "example.com.pl", "com.pl"}
+      iex> LS.CTL.DomainParser.parse("com.pl")
+      :error
   """
+  @spec parse(String.t()) :: {:ok, String.t(), String.t()} | :error
   def parse(domain) when is_binary(domain) do
-    domain
-    |> clean_domain()
-    |> extract_base_and_tld()
-  end
-
-  defp clean_domain(domain) do
     domain
     |> String.downcase()
     |> String.replace(~r/^\*\./, "")
     |> String.trim()
+    |> PublicSuffix.registrable()
   end
 
-  defp extract_base_and_tld(domain) do
-    parts = String.split(domain, ".")
-
-    case parts do
-      parts when length(parts) < 2 ->
-        :error
-
-      parts when length(parts) >= 3 ->
-        potential_cctld = Enum.slice(parts, -2..-1) |> Enum.join(".")
-
-        if potential_cctld in @cc_tlds do
-          base = Enum.slice(parts, -3..-1) |> Enum.join(".")
-          {:ok, base, potential_cctld}
-        else
-          base = Enum.slice(parts, -2..-1) |> Enum.join(".")
-          tld = List.last(parts)
-          {:ok, base, tld}
-        end
-
-      [_name, tld] ->
-        {:ok, domain, tld}
-    end
-  end
-
-  @doc "Get list of loaded ccTLDs"
-  def list_cctlds, do: @cc_tlds
+  def parse(_), do: :error
 end
