@@ -71,8 +71,11 @@ defmodule LS.DataCheck do
     {"signal history lookup", "SELECT count() FROM changes_log WHERE domain = 'google.com'", 500, 2_500},
     # 2026-10-28: the owner's dashboard took 11 s inside the hourly OPTIMIZE
     # FINAL pass; the page is this ranking plus a keyed FINAL read (0.4 s).
-    {"explorer first page ranking", LS.Explorer.rank_sql(%{}, per_page: 25, page: 1), 2_000, 6_000},
-    {"landing tech count", "SELECT uniq(arrayJoin(http_tech)) FROM businesses WHERE notEmpty(http_tech)", 2_000, 6_000}
+    {"explorer first page ranking", LS.Explorer.rank_sql(%{}, per_page: 25, page: 1), 2_000, 6_000}
+    # "landing tech count" removed 2026-11-02: no visitor waits for it. The
+    # landing page reads the number from LS.LandingCache, which recomputes it
+    # in the background every 30 minutes (`slow/2`), so its 1.7 to 3.1 s was
+    # never user latency, yet it emailed "Query speed" every 8 h from 10-28.
   ]
 
   # ── snapshot (cached) ──────────────────────────────────────────────────
