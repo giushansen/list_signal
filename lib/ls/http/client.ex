@@ -16,6 +16,17 @@ defmodule LS.HTTP.Client do
   # The longest a fetch task sleeps for a per-target wait or a pause; a
   # longer wait is a refusal the worker requeues (2026-11-03).
   @max_pause_sleep_ms 10_000
+  # How far ahead a fetch may book its place on a target's line and sleep
+  # for it (2026-11-03, owner's call after the ny1 trial). Shopify stores
+  # were 23% of what a node got and a batch starts them together: at the
+  # edge's two seconds a 10 s horizon booked five and refused the rest,
+  # 1,110 refusals in two hours, and the edge's line ran at 7 of its 30 a
+  # minute. Thirty seconds books fifteen per batch start; with three
+  # batches overlapping the line stays near full. The source address
+  # cannot bunch past the edge's own 30 a minute whatever the horizon. The
+  # depth lane keeps 10 s: a domain there visits up to four pages inside
+  # a 120 s task.
+  @book_horizon_ms %{discovery: 30_000, enrichment: 10_000}
 
   # One honest, declared crawler identity — not rotating fake browser strings.
   #
@@ -207,20 +218,26 @@ defmodule LS.HTTP.Client do
   # the pacing. A booking too far out gives the node slot back
   # (`NodeBudget.release/2`) and is a refusal the stage requeues once.
   defp attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra) do
-    case IPRateLimiter.book(ip, 1000) do
+    lane = Process.get(:ls_fetch_lane, :discovery)
+    horizon = Map.get(@book_horizon_ms, lane, @max_pause_sleep_ms)
+
+    case IPRateLimiter.book(ip, 1000, horizon) do
       :ok ->
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
-      {:wait, wait_ms} when retries_left > 0 and wait_ms <= @max_pause_sleep_ms ->
+      {:wait, wait_ms} when retries_left > 0 and wait_ms <= horizon ->
         Process.sleep(wait_ms)
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
       _ ->
-        lane = Process.get(:ls_fetch_lane, :discovery)
         LS.HTTP.NodeBudget.release(LS.HTTP.NodeBudget.lane_limit(lane), lane)
         {:error, "rate_limited", :rate_limited}
     end
   end
+
+  @doc false
+  # Pure: the booking horizon a lane sleeps for.
+  def book_horizon_ms(lane), do: Map.get(@book_horizon_ms, lane, @max_pause_sleep_ms)
 
   defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout, _max_bytes, _extra)
        when redirect_count > @max_redirects do

@@ -76,7 +76,7 @@ defmodule LS.HTTP.IPRateLimiterBookingTest do
   test "the client books the key after the node slot, and gives the slot back on a refusal" do
     src = File.read!("lib/ls/http/client.ex")
     [_, after_budget] = String.split(src, "case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do", parts: 2)
-    assert after_budget =~ "case IPRateLimiter.book(ip, 1000) do"
+    assert after_budget =~ "case IPRateLimiter.book(ip, 1000, horizon) do"
     assert after_budget =~ "LS.HTTP.NodeBudget.release(LS.HTTP.NodeBudget.lane_limit(lane), lane)"
     refute after_budget =~ "IPRateLimiter.check_and_update(ip, 1000) do\n      :ok ->\n        fetch_with_redirects"
   end

@@ -87,7 +87,10 @@ defmodule LS.HTTP.IPRateLimiter do
     end
   end
 
-  # A booking further out than this is refused instead of slept (2026-11-03).
+  # A booking further out than this is refused instead of slept (2026-11-03),
+  # unless the caller passes its own horizon: the discovery lane passes 30 s
+  # (`LS.HTTP.Client`), the depth lane keeps this default because a domain
+  # there visits up to four pages inside a 120 s task.
   @max_book_ms 10_000
 
   @doc """
@@ -106,14 +109,14 @@ defmodule LS.HTTP.IPRateLimiter do
   burned. Same spacing as before: a booked caller never fires closer to
   the previous booking than `delay_ms`.
   """
-  @spec book(String.t(), pos_integer()) :: :ok | {:wait, pos_integer()} | {:refuse, pos_integer()}
-  def book(ip, delay_ms \\ @default_delay_ms) when is_binary(ip) do
+  @spec book(String.t(), pos_integer(), pos_integer()) :: :ok | {:wait, pos_integer()} | {:refuse, pos_integer()}
+  def book(ip, delay_ms \\ @default_delay_ms, horizon_ms \\ @max_book_ms) when is_binary(ip) do
     key = limiter_key(ip)
     delay_ms = max(delay_ms, Map.get(@edge_spacing_ms, key, 0))
     now = System.monotonic_time(:millisecond)
 
     case penalty_wait(key, now) do
-      0 -> book_spacing(key, delay_ms, now)
+      0 -> book_spacing(key, delay_ms, now, horizon_ms)
       wait_ms -> record_wait(wait_ms); {:refuse, wait_ms}
     end
   end
@@ -121,7 +124,7 @@ defmodule LS.HTTP.IPRateLimiter do
   # The key's last booking is moved forward by `delay_ms` atomically, so two
   # concurrent callers get two different times. A line in the past is
   # claimed by one caller at `now`, as `LS.HTTP.NodeBudget.take/2` does.
-  defp book_spacing(key, delay_ms, now) do
+  defp book_spacing(key, delay_ms, now, horizon_ms) do
     claimed =
       :ets.select_replace(@ets_table, [
         {{key, :"$1"}, [{:<, :"$1", now - delay_ms}], [{{{:const, key}, now}}]}
@@ -142,7 +145,7 @@ defmodule LS.HTTP.IPRateLimiter do
           wait_ms <= 0 ->
             :ok
 
-          wait_ms > @max_book_ms ->
+          wait_ms > horizon_ms ->
             :ets.update_counter(@ets_table, key, {2, -delay_ms})
             record_wait(wait_ms)
             {:refuse, wait_ms}

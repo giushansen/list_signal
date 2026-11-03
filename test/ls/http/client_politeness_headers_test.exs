@@ -42,7 +42,7 @@ defmodule LS.HTTP.ClientPolitenessHeadersTest do
     assert src =~ "@max_pause_sleep_ms 10_000"
     [before_budget, _] = String.split(src, "case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do", parts: 2)
     assert before_budget =~ "case IPRateLimiter.penalty_wait(ip) do"
-    assert src =~ "when retries_left > 0 and wait_ms <= @max_pause_sleep_ms"
+    assert src =~ "when retries_left > 0 and wait_ms <= horizon"
   end
 
   test "a 429, a 430 and a 503 pause the key" do
