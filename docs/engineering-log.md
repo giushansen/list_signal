@@ -158,8 +158,29 @@ ny1, each followed by `apply_profile.sh`, then h1; the last node came
 back at 15:43 UTC. Verified by rpc right after: ten nodes connected, the
 nine duals at ceiling 155 with three batches and the 30 s horizon, h1 on
 its home profile at 120, BEAM process RSS 450 MB to 1.15 GB per dual.
-Readings at one hour and six hours after the last node, then ny2 and
-chi2 are removed.
+Readings at one hour and six hours after the last node (git notes on
+8bfd7a7): 429s went from 192-591 rows an hour to 10-22, sg2 from 12.4%
+to 0.19%; fleet 2xx rows 225-232/min against 195-221 before; new sites
+first fetched 4,700-5,600 an hour against 3,400-3,700; RSS 640-921 MB
+per dual on three batches. The queue drained from 32K to 9.8K and sits
+at priority depth 0, so the fleet is input-bound, which supports
+removing ny2 and chi2.
+
+**Found in the readings, not fixed yet:** the recrawl scheduler's tier A
+tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
+batch that starts with more Shopify stores than the 2 s edge line can
+book inside the 30 s horizon (16) refuses the rest. The first refusal
+writes no row and goes back to the tail of priority 0, but it comes
+back inside the same wave, is refused again and is then recorded as
+rate_limited, which shelves the store for its cadence: 350-835 stores
+per wave, about 45% of the tick's Shopify stores, and almost none is
+fetched again (3 of thousands by 21:38). The old code lost 300-540 per
+wave as 429 and rate_limited rows, so the 429s are gone but the shelved
+stores roughly doubled, and between waves the Shopify line sits idle on
+every node. Proposed: run edge-shared targets in a small sub-stream of
+their own per batch (about 4 concurrent) so bookings stay inside the
+horizon and the line is fed for the whole stage, and drip the tier A
+tick over its 30 minutes.
 
 Not changed, by measurement: the DNS pre-filter the owner asked for
 already runs on the worker (`LS.HTTP.DomainFilter.verdict/5`: no fetch
