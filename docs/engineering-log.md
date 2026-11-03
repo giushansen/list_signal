@@ -25,6 +25,26 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-03: a confirmation link that expired before it was read
+
+A signup registered at 06:29 UTC, opened the "Confirm your ListSignal
+account" mail on a phone 22 minutes later, and got "Magic link is invalid
+or it has expired" on an empty login form. The token lifetime was the
+phx.gen.auth default of 15 minutes; the account stayed unconfirmed and the
+person emailed a screenshot asking what was wrong. Nothing was broken in
+the mail or the route: the token row was there, never used, just older
+than the window.
+
+- Magic links now live 24 hours (`LS.Accounts.UserToken`). A link is single
+  use and whoever reads the mailbox can request a fresh one at any time, so
+  the short window protected little and cost real signups.
+- An expired or used link now lands on the login form with the address it
+  was sent to already filled in and a sentence saying to send a fresh one.
+- `test/ls/accounts/magic_link_lifetime_test.exs` pins the 22-minute case,
+  the 11-hour case, the day-plus refusal, single use, and the prefill.
+
+---
+
 ## 2026-11-02, evening: markets gate, public suffixes, and a restart that keeps its memory
 
 Owner's decisions: crawl only what English- or French-speaking customers

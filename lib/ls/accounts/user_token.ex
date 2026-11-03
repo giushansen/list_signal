@@ -7,9 +7,15 @@ defmodule LS.Accounts.UserToken do
   @hash_algorithm :sha256
   @rand_size 32
 
-  # It is very important to keep the magic link token expiry short,
-  # since someone with access to the email may take over the account.
-  @magic_link_validity_in_minutes 15
+  # The generator shipped 15 minutes. On 2026-11-03 a signup opened the
+  # confirmation mail 22 minutes after it was sent, from a phone, and was
+  # told the link had expired; the account stayed unconfirmed and the
+  # person wrote to ask what was wrong. People read signup mail when they
+  # get to it, not within a quarter of an hour. A day is the window the
+  # mail is realistically acted on. The security the short window bought
+  # is small: a link is single use, and whoever reads the mailbox can ask
+  # for a fresh link at any time anyway.
+  @magic_link_validity_in_minutes 60 * 24
   @change_email_validity_in_days 7
   @session_validity_in_days 14
 
@@ -123,6 +129,33 @@ defmodule LS.Accounts.UserToken do
 
       :error ->
         :error
+    end
+  end
+
+  @doc "How long a magic link stays valid, for tests and the login mail."
+  @spec magic_link_validity_in_minutes() :: pos_integer()
+  def magic_link_validity_in_minutes, do: @magic_link_validity_in_minutes
+
+  @doc """
+  The address a magic link was sent to, whatever its age, or nil.
+
+  Used by the confirmation page to prefill the login form after an expired
+  link, so the person only has to press the button for a fresh one. It
+  reveals nothing a holder of the link did not already have: the link came
+  from that mailbox.
+  """
+  @spec magic_link_sent_to(String.t()) :: String.t() | nil
+  def magic_link_sent_to(token) do
+    case Base.url_decode64(token, padding: false) do
+      {:ok, decoded} ->
+        hashed = :crypto.hash(@hash_algorithm, decoded)
+
+        LS.Repo.one(
+          from t in by_token_and_context_query(hashed, "login"), select: t.sent_to
+        )
+
+      :error ->
+        nil
     end
   end
 

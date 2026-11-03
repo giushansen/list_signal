@@ -58,9 +58,17 @@ defmodule LSWeb.UserLive.Confirmation do
       {:ok, assign(socket, user: user, form: form, trigger_submit: false),
        temporary_assigns: [form: nil]}
     else
+      # The login page prefills its email field from this flash, so an
+      # expired link is one tap from a fresh one (2026-11-03: a signup read
+      # the mail 22 minutes after sending, hit the old 15-minute limit, and
+      # landed on an empty form with no hint what to do).
       {:ok,
        socket
-       |> put_flash(:error, "Magic link is invalid or it has expired.")
+       |> put_flash(
+         :error,
+         "Magic link is invalid or it has expired. Send yourself a fresh one below."
+       )
+       |> put_flash(:email, LS.Accounts.UserToken.magic_link_sent_to(token))
        |> push_navigate(to: ~p"/users/log-in")}
     end
   end
