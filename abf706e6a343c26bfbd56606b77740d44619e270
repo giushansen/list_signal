@@ -1,0 +1,1 @@
+ny1, 86 min on this release at ceiling 150: self-refusals 5.7% of rows (was 15% in the first half hour), no 249 s sleeps, 127 requests/min average, 141 in a saturated window. The remaining refusals were Shopify candidates racing for the edge's spacing after taking a node slot; fixed by booking in the next commit.
