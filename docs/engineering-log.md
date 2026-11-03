@@ -131,6 +131,23 @@ The master's queue read 28,681 domains with 249 a minute coming in and
 285 going out: the market gate has the fleet close to input-bound, which
 is the case for removing nodes tomorrow.
 
+**Two hours on the booking release (12:03 to 14:02 UTC, ceiling 155,
+three batches):** ny1 wrote 33.0 rows a minute, the top of the fleet's
+30.0 to 32.6, at 150 requests a minute counted (18,342 in 122 min, 28%
+hops), 0 429s, self-refusals 1.5% (fleet 2.9 to 4.5%), 2xx 78% (fleet
+66.4 to 82.9). The old code in the same window: sg2 12.4% 429 (41.5% of
+its Shopify fetches), par1 4.6%, ny2 2.8%, dal1 2.8%. Memory on three
+batches: BEAM 1.1 GB against 0.5 GB on two, 2.0 GB still available on the
+4 GB node, flat across the two hours. Bookings refused as more than 10 s
+out: 1,110 in two hours (9 a minute, 17 in the first half hour), each
+slot reused at once; the Shopify edge's own line ran at about 7 of its
+30 a minute because a batch starts its Shopify candidates together. The
+10 s cap is pinned by `client_politeness_headers_test`; raising it to
+20 s is the next knob and the owner's call. Verdict: the counted ceiling
+of 155 with three batches gives the same rows as the old code's
+uncounted 157 with none of its 429s. Rollout to master and the other
+eight duals waits on the owner's master deploy.
+
 Not changed, by measurement: the DNS pre-filter the owner asked for
 already runs on the worker (`LS.HTTP.DomainFilter.verdict/5`: no fetch
 without MX plus SPF or a known mail provider, except Tranco-ranked names

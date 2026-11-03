@@ -102,6 +102,12 @@ sent 155 to 157 a minute against a 120 ceiling that counted no hop. A
 counted ceiling of 155 is therefore no more than the fleet's addresses
 have been sending for months, and the setpoint on the trial node.
 
+Two hours at that setpoint with three staggered batches (12:03 to 14:02
+UTC): 150 requests a minute counted, 33.0 rows a minute against 30.0 to
+32.6 on the old code, 0 429s, the BEAM at 1.1 GB on a 4 GB node. That is
+the dual profile to roll out: `LS_FETCH_PER_MIN=155`,
+`LS_WORKER_BATCHES=3`, every request counted.
+
 ---
 
 ## The measured safe operating point (2026-08-25, 24h, ~1.68M fetches)
