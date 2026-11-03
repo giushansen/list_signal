@@ -148,6 +148,19 @@ of 155 with three batches gives the same rows as the old code's
 uncounted 157 with none of its 429s. Rollout to master and the other
 eight duals waits on the owner's master deploy.
 
+**Rollout (owner's go, 14:20 UTC):** the booking horizon went to 30 s
+for discovery (8bfd7a7; the depth lane keeps 10 s, four pages in a 120 s
+task), the dual profile in devops became ceiling 155 with three batches,
+the master was deployed at 14:23 UTC (magic link, market list,
+validators for conditional GET, 0.1.0-202611032216), then the nine duals
+one at a time in the order sg2, ny2, par1, dal1, chi2, par2, dal2, chi1,
+ny1, each followed by `apply_profile.sh`, then h1; the last node came
+back at 15:43 UTC. Verified by rpc right after: ten nodes connected, the
+nine duals at ceiling 155 with three batches and the 30 s horizon, h1 on
+its home profile at 120, BEAM process RSS 450 MB to 1.15 GB per dual.
+Readings at one hour and six hours after the last node, then ny2 and
+chi2 are removed.
+
 Not changed, by measurement: the DNS pre-filter the owner asked for
 already runs on the worker (`LS.HTTP.DomainFilter.verdict/5`: no fetch
 without MX plus SPF or a known mail provider, except Tranco-ranked names
