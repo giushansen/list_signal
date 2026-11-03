@@ -35,6 +35,16 @@ defmodule LS.Cluster.WorkerThrottledAndLanguageTest do
     assert WorkerAgent.throttled_once(cands, http_res, by_domain) == [{"a.test", "1.1.1.1"}]
   end
 
+  test "our own refusal (rate_limited) is requeued once like a 429" do
+    cands = [{"s.test", "23.227.38.1"}, {"t.test", "23.227.38.2"}]
+    http_res = %{"s.test" => %{http_error: "rate_limited"}, "t.test" => %{http_error: "rate_limited"}}
+    by_domain = %{"s.test" => %{ctl_domain: "s.test"}, "t.test" => %{ctl_domain: "t.test", after_429: true}}
+    assert WorkerAgent.throttled_once(cands, http_res, by_domain) == [{"s.test", "23.227.38.1"}]
+    assert WorkerAgent.throttled_result?(%{http_error: "rate_limited"})
+    refute WorkerAgent.throttled_result?(%{http_error: "transport:timeout"})
+    refute WorkerAgent.throttled_result?(nil)
+  end
+
   test "a candidate with no result is not throttled (the deadline cut owns it)" do
     assert WorkerAgent.throttled_once([{"x.test", "1.1.1.1"}], %{}, %{"x.test" => %{}}) == []
   end

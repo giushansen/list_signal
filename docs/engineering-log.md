@@ -93,6 +93,19 @@ Changes (one commit, trial on ny1 first):
 - The trial node runs `LS_FETCH_PER_MIN=140`, all requests counted, under
   the 157 it was really sending.
 
+**30 minutes in (09:43 UTC):** ny1 answered 0 429s against 15.85% on ny2
+(38.5% of ny2's Shopify fetches) and 1.94% on sg2, at the same Shopify
+volume (306 fetches). Redirect hops were 27% of ny1's requests (1,008 of
+3,728). Two faults: a 503 with Retry-After 249 paused a key and the next
+task slept 249 s on it after taking a budget slot; and self-refusals rose
+to 15% because a refused Shopify candidate was still written as a hollow
+row. Fixed in the next commit: a pause is checked before the slot and a
+wait over 10 s is a refusal; a refusal is requeued once like a 429. The
+node's request rate read 109 a minute against 140 because the depth
+lane was active on ny1 at the time (its line booked 2 to 10 s ahead), so
+discovery ran at its 110 share; ceiling raised to 150 for the rest of
+the trial.
+
 Not changed, by measurement: the DNS pre-filter the owner asked for
 already runs on the worker (`LS.HTTP.DomainFilter.verdict/5`: no fetch
 without MX plus SPF or a known mail provider, except Tranco-ranked names

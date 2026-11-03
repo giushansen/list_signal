@@ -378,10 +378,11 @@ defmodule LS.Cluster.WorkerAgent do
     # back to the tail of the queue instead.
     by_domain = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d} end)
     cut = unfetched(http_cands, http_res)
-    # A 429 is "come back later", not a result (2026-11-03): the candidate
-    # goes back to the tail once, with no row, so its check time does not
-    # move and a store that answered "slow down" is not shelved for a
-    # cadence. A second 429 is recorded like any other status.
+    # A 429, or our own refusal to ask (rate_limited: the key was paused
+    # or busy), is "come back later", not a result (2026-11-03): the
+    # candidate goes back to the tail once, with no row, so its check
+    # time does not move and a store that answered "slow down" is not
+    # shelved for a cadence. The second time it is recorded as it came.
     throttled = throttled_once(http_cands -- cut, http_res, by_domain)
     http_res = Map.drop(http_res, Enum.map(throttled, &elem(&1, 0)))
     fetched = (http_cands -- cut) -- throttled
@@ -578,16 +579,23 @@ defmodule LS.Cluster.WorkerAgent do
   def split_candidates(cands, cap) when is_list(cands) and is_integer(cap) and cap > 0, do: Enum.split(cands, cap)
 
   @doc """
-  Pure: the candidates whose fetch came back 429 for the first time. They
-  are requeued to the tail with `after_429: true`; a candidate carrying
-  that flag keeps its 429 as a result.
+  Pure: the candidates whose fetch came back 429, or was refused by our
+  own limiter (`rate_limited`), for the first time. They are requeued to
+  the tail with `after_429: true`; a candidate carrying that flag keeps
+  what it got as its result.
   """
   @spec throttled_once([{String.t(), term()}], map(), map()) :: [{String.t(), term()}]
   def throttled_once(cands, http_res, by_domain) when is_list(cands) and is_map(http_res) and is_map(by_domain) do
     Enum.filter(cands, fn {d, _ip} ->
-      match?(%{http_status: 429}, http_res[d]) and get_in(by_domain, [d, :after_429]) != true
+      throttled_result?(http_res[d]) and get_in(by_domain, [d, :after_429]) != true
     end)
   end
+
+  @doc "Pure: a result that means come back later rather than what the site is."
+  @spec throttled_result?(term()) :: boolean()
+  def throttled_result?(%{http_status: 429}), do: true
+  def throttled_result?(%{http_error: "rate_limited"}), do: true
+  def throttled_result?(_), do: false
 
   @doc "Pure: candidates the stage never returned a result for, success or error."
   @spec unfetched([{String.t(), term()}], map()) :: [{String.t(), term()}]
@@ -732,7 +740,7 @@ defmodule LS.Cluster.WorkerAgent do
           r = do_http(d, ip, Map.get(prev_simhash, d), Map.get(prev_validators, d))
           # A first 429 is requeued (throttled_once/3); the politeness cache
           # would otherwise skip it as recent when it comes back.
-          unless match?(%{http_status: 429}, r), do: Cache.http_insert(d)
+          unless throttled_result?(r), do: Cache.http_insert(d)
           {d, {r, ip}}
         end,
         # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),

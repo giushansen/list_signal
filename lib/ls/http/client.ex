@@ -13,6 +13,9 @@ defmodule LS.HTTP.Client do
   @connect_timeout 10_000
   @receive_timeout 20_000
   @max_redirects 3
+  # The longest a fetch task sleeps for a per-target wait or a pause; a
+  # longer wait is a refusal the worker requeues (2026-11-03).
+  @max_pause_sleep_ms 10_000
 
   # One honest, declared crawler identity — not rotating fake browser strings.
   #
@@ -169,6 +172,18 @@ defmodule LS.HTTP.Client do
     # (2026-10-03), so discovery can no longer queue it into its timeout.
     lane = Process.get(:ls_fetch_lane, :discovery)
 
+    # A paused key is checked before a budget slot is taken (2026-11-03,
+    # 30 minutes into the ny1 trial): a 503 with Retry-After 249 paused
+    # its key, the next task took a slot, then slept 249 s on the pause
+    # while holding a batch concurrency slot, and every refusal after a
+    # slot was taken burned that slot. A pause under @max_pause_sleep_ms
+    # is slept here, before the slot; a longer one is a refusal now.
+    case IPRateLimiter.penalty_wait(ip) do
+      0 -> :ok
+      ms when ms <= @max_pause_sleep_ms -> Process.sleep(ms)
+      _ -> throw(:paused)
+    end
+
     case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do
       {:wait, ms} ->
         # A slot is reserved for us; sleeping is the pacing, not a retry.
@@ -181,6 +196,8 @@ defmodule LS.HTTP.Client do
       :ok ->
         attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra)
     end
+  catch
+    :paused -> {:error, "rate_limited", :rate_limited}
   end
 
   defp attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra) do
@@ -188,7 +205,7 @@ defmodule LS.HTTP.Client do
       :ok ->
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
-      {:wait, wait_ms} when retries_left > 0 ->
+      {:wait, wait_ms} when retries_left > 0 and wait_ms <= @max_pause_sleep_ms ->
         Process.sleep(wait_ms)
         attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left - 1, extra)
 

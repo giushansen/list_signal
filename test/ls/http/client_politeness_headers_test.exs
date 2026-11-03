@@ -35,6 +35,16 @@ defmodule LS.HTTP.ClientPolitenessHeadersTest do
     assert src =~ "NodeBudget.count(:hop)"
   end
 
+  test "a pause is checked before a budget slot is taken, and a long one is a refusal, not a sleep" do
+    # 2026-11-03, 30 min into the ny1 trial: a 503 with Retry-After 249 paused
+    # a key and the next task slept 249 s on it after taking a slot.
+    src = File.read!("lib/ls/http/client.ex")
+    assert src =~ "@max_pause_sleep_ms 10_000"
+    [before_budget, _] = String.split(src, "case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do", parts: 2)
+    assert before_budget =~ "case IPRateLimiter.penalty_wait(ip) do"
+    assert src =~ "when retries_left > 0 and wait_ms <= @max_pause_sleep_ms"
+  end
+
   test "a 429, a 430 and a 503 pause the key" do
     src = File.read!("lib/ls/http/client.ex")
     assert src =~ "if response.status in [429, 430, 503], do: IPRateLimiter.penalize(ip, retry_after_ms(response.headers))"
