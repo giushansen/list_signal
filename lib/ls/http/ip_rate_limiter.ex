@@ -87,6 +87,75 @@ defmodule LS.HTTP.IPRateLimiter do
     end
   end
 
+  # A booking further out than this is refused instead of slept (2026-11-03).
+  @max_book_ms 10_000
+
+  @doc """
+  Book the next request to a key: `:ok` to go now, `{:wait, ms}` with the
+  key reserved for the caller that many ms from now, `{:refuse, ms}` when
+  the key is paused or its line is already booked more than #{@max_book_ms}
+  ms ahead (nothing is reserved then).
+
+  Why (2026-11-03, two hours into the ny1 trial): `check_and_update/2`
+  only answers "too soon", so the ten Shopify candidates a batch starts at
+  once all slept the same two seconds and raced again; the losers burned
+  the node budget slot they already held and came back as our own
+  refusals, 15% of the first half hour's rows and 5.7% of the first two
+  hours'. A booking spaces concurrent callers one after the other at the
+  key's spacing, so the edge sees exactly the setpoint and no slot is
+  burned. Same spacing as before: a booked caller never fires closer to
+  the previous booking than `delay_ms`.
+  """
+  @spec book(String.t(), pos_integer()) :: :ok | {:wait, pos_integer()} | {:refuse, pos_integer()}
+  def book(ip, delay_ms \\ @default_delay_ms) when is_binary(ip) do
+    key = limiter_key(ip)
+    delay_ms = max(delay_ms, Map.get(@edge_spacing_ms, key, 0))
+    now = System.monotonic_time(:millisecond)
+
+    case penalty_wait(key, now) do
+      0 -> book_spacing(key, delay_ms, now)
+      wait_ms -> record_wait(wait_ms); {:refuse, wait_ms}
+    end
+  end
+
+  # The key's last booking is moved forward by `delay_ms` atomically, so two
+  # concurrent callers get two different times. A line in the past is
+  # claimed by one caller at `now`, as `LS.HTTP.NodeBudget.take/2` does.
+  defp book_spacing(key, delay_ms, now) do
+    claimed =
+      :ets.select_replace(@ets_table, [
+        {{key, :"$1"}, [{:<, :"$1", now - delay_ms}], [{{{:const, key}, now}}]}
+      ])
+
+    cond do
+      claimed == 1 ->
+        :ok
+
+      :ets.insert_new(@ets_table, {key, now}) ->
+        :ok
+
+      true ->
+        fire_at = :ets.update_counter(@ets_table, key, {2, delay_ms})
+        wait_ms = fire_at - now
+
+        cond do
+          wait_ms <= 0 ->
+            :ok
+
+          wait_ms > @max_book_ms ->
+            :ets.update_counter(@ets_table, key, {2, -delay_ms})
+            record_wait(wait_ms)
+            {:refuse, wait_ms}
+
+          true ->
+            record_wait(wait_ms)
+            {:wait, wait_ms}
+        end
+    end
+  rescue
+    ArgumentError -> :ok
+  end
+
   @doc """
   Pause a key after the target said slow down: `retry_after_ms` from the
   response when it carried one, else the doubling schedule. Returns the

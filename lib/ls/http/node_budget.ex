@@ -216,6 +216,28 @@ defmodule LS.HTTP.NodeBudget do
     if "discovery" in lanes and "enrichment" in lanes, do: min(enrich_per_min(), max(per_min() - 1, 1)), else: 0
   end
 
+  @doc """
+  Give back a slot the caller took and will not use (2026-11-03: the
+  target's key was booked too far ahead after the node slot was taken).
+  The line moves back one interval, so the next taker fires one slot
+  earlier; the line is never moved into the past, so the worst case is the
+  next taker firing at once.
+  """
+  @spec release(pos_integer(), :discovery | :enrichment) :: :ok
+  def release(limit \\ per_min(), lane \\ :discovery) do
+    init()
+    interval = div(60_000, effective_limit(limit, lane))
+    now = System.monotonic_time(:millisecond)
+    key = line_key(lane)
+    # Only a line still ahead of now is moved back, and never behind now.
+    :ets.select_replace(@table, [
+      {{key, :"$1"}, [{:>, :"$1", now + interval}], [{{{:const, key}, {:-, :"$1", interval}}}]},
+      {{key, :"$1"}, [{:>, :"$1", now}], [{{{:const, key}, now}}]}
+    ])
+    count(:released)
+    :ok
+  end
+
   @doc "Count a paced request a stage did not plan for (a redirect hop, a 304)."
   @spec count(atom()) :: :ok
   def count(what) when is_atom(what) do

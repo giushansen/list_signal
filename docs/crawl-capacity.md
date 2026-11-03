@@ -24,6 +24,7 @@ What that means in code today:
 | Wix, Squarespace edges | one key each, one second | `IPRateLimiter.@shared_edges` |
 | Cloudflare addresses | per address, one second (Cloudflare limits per site, not per client) | same |
 | after a 429, 430 or 503 | the key pauses 5 s, then 10, 20... up to 5 min within 10 min, or Retry-After if longer | `IPRateLimiter.penalize/2` |
+| several callers on one key at once | booked one after the other at the key's spacing (`book/2`); a place more than 10 s out is a refusal that returns the node slot | `IPRateLimiter.book/2`, `NodeBudget.release/2` |
 | any one site per visit | robots.txt, the homepage, at most one secondary page, redirect hops | `LS.Cluster.WorkerAgent`, `LS.Pipeline.secondary_plan/2` |
 | robots.txt | obeyed, cached 24 h (RFC 9309), the opt-out /bot promises | `LS.HTTP.Robots` |
 | identity | one declared user agent, `ListSignalBot/1.0 (+https://listsignal.com/bot)`, never rotated | `LS.HTTP.Client` |
@@ -89,6 +90,17 @@ enrichment line read 0 on every sample of ny1, chi1, par1 and dal1
 against 270 a minute reserved on the nine duals, and ny1 sent 157
 requests a minute against a 120 budget because redirect hops took no
 slot.
+
+Measured 2026-11-03 two hours into the ny1 trial (everything counted,
+ceiling 150): 127 requests a minute on average, 141 in a window with both
+lines booked ahead, 28% of them redirect hops; the depth line booked 6 to
+9 s ahead on every sample (its reserve fully used); the discovery line
+drained to zero between batch phases about one minute in ten; 5.7% of
+rows were our own refusals from Shopify candidates racing for the
+edge's spacing after taking a node slot. The old code on ny2 and chi1
+sent 155 to 157 a minute against a 120 ceiling that counted no hop. A
+counted ceiling of 155 is therefore no more than the fleet's addresses
+have been sending for months, and the setpoint on the trial node.
 
 ---
 

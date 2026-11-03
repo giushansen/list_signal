@@ -106,6 +106,31 @@ lane was active on ny1 at the time (its line booked 2 to 10 s ahead), so
 discovery ran at its 110 share; ceiling raised to 150 for the rest of
 the trial.
 
+**Two hours in (11:13 UTC, both releases):** ny1 wrote 24.9 rows a
+minute against 30.6 to 33.2 on the eight old-code duals, with 0 429s
+against 4.2% on ny2 (11.6% of its Shopify fetches) and 6.7% on sg2
+(21.5% of Shopify), 2xx back at 80.2% (fleet 72.9 to 80.8), self-refusals
+down from 15% to 5.7%. Its request counter read 127 a minute over the 86
+minutes on the fixed release (141 in a 100 s window with both lines
+booked ahead), hops 28% of requests, against 155 to 157 a minute on
+ny2 and chi1 whose 120 ceiling counts no hop. The whole gap in rows is
+the gap in requests: 127 counted against 157 uncounted. Where the rest
+of the 150 ceiling went: the depth line on ny1 was booked 6 to 9 s ahead
+on every sample (its 30 a minute fully used, so nothing to borrow), and
+the discovery line drained to zero between batch phases about one
+minute in ten. The remaining waste was our own refusals: the Shopify
+candidates a batch starts at once all slept the edge's two seconds and
+raced again, and each loser burned the node slot it already held.
+Changed in the next commit: `IPRateLimiter.book/2` gives concurrent
+callers consecutive places on a key's line (same spacing, no race), a
+booking over 10 s out is a refusal that returns its node slot
+(`NodeBudget.release/2`). The trial node then ran at a 155 ceiling, all
+requests counted, under the 157 the old code really sent, with three
+staggered batches (`LS_WORKER_BATCHES=3`) to close the inter-phase gaps.
+The master's queue read 28,681 domains with 249 a minute coming in and
+285 going out: the market gate has the fleet close to input-bound, which
+is the case for removing nodes tomorrow.
+
 Not changed, by measurement: the DNS pre-filter the owner asked for
 already runs on the worker (`LS.HTTP.DomainFilter.verdict/5`: no fetch
 without MX plus SPF or a known mail provider, except Tranco-ranked names

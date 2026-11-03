@@ -200,16 +200,24 @@ defmodule LS.HTTP.Client do
     :paused -> {:error, "rate_limited", :rate_limited}
   end
 
+  # The target's key is booked, not polled (2026-11-03, two hours into the
+  # ny1 trial): concurrent callers on one key, the Shopify edge above all,
+  # slept the same spacing and raced again, and the losers burned the node
+  # slot they held. A booking is a place in the key's line; the sleep is
+  # the pacing. A booking too far out gives the node slot back
+  # (`NodeBudget.release/2`) and is a refusal the stage requeues once.
   defp attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra) do
-    case IPRateLimiter.check_and_update(ip, 1000) do
+    case IPRateLimiter.book(ip, 1000) do
       :ok ->
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
       {:wait, wait_ms} when retries_left > 0 and wait_ms <= @max_pause_sleep_ms ->
         Process.sleep(wait_ms)
-        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left - 1, extra)
+        fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
-      {:wait, _} ->
+      _ ->
+        lane = Process.get(:ls_fetch_lane, :discovery)
+        LS.HTTP.NodeBudget.release(LS.HTTP.NodeBudget.lane_limit(lane), lane)
         {:error, "rate_limited", :rate_limited}
     end
   end
