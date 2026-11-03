@@ -28,6 +28,22 @@ defmodule LS.HTTP.NodeBudget do
   ceiling (`LS_ENRICH_FETCH_PER_MIN`, default 30) on its own line; the
   discovery lane gets the rest. The two shares add up to the ceiling, so
   the source IP never sends more than before.
+
+  The reserve is lent out while it is idle (2026-11-03). Measured on the
+  duals that day: the enrichment line's backlog read 0 on every sample of
+  chi1, par1, dal1 and ny1 while the discovery line was booked 60 to 127 s
+  ahead, and the depth lane fetched 107 pages a minute across the whole
+  fleet against 270 a minute reserved on the nine duals. A quarter of each
+  dual's ceiling was idle by construction. Now `take/2` for discovery runs
+  at the whole ceiling while the enrichment line has been quiet for
+  `@borrow_after_ms`, and drops back to its share the moment the depth
+  lane takes a slot again; the depth lane keeps its own line and its
+  priority. In the minute the depth lane wakes, slots discovery already
+  reserved at the full rate still fire, so that minute can reach ceiling
+  plus reserve (150 at 120 and 30), inside the measured 130 to 160
+  envelope. Redirect hops count too (`LS.HTTP.Client`): until this change
+  a same-host hop took no slot and the node sent 157 requests a minute
+  against a 120 budget (ny1, PerformanceTracker, 95 h).
   """
 
   @table :http_node_budget
@@ -41,6 +57,9 @@ defmodule LS.HTTP.NodeBudget do
   # and still refuses a runaway line; the batch in-flight limit is ten.
   @max_wait_ms 420_000
   @default_enrich_per_min 30
+  # The enrichment line counts as idle, and its share as lendable, once its
+  # next free slot is this far in the past.
+  @borrow_after_ms 60_000
 
   @doc """
   Create the counter table. Idempotent. The table is owned by a process
@@ -125,7 +144,7 @@ defmodule LS.HTTP.NodeBudget do
   @spec take(pos_integer(), :discovery | :enrichment) :: :ok | {:wait, pos_integer()} | :overloaded
   def take(limit \\ per_min(), lane \\ :discovery) do
     init()
-    interval = div(60_000, limit)
+    interval = div(60_000, effective_limit(limit, lane))
     now = System.monotonic_time(:millisecond)
     key = line_key(lane)
 
@@ -163,6 +182,53 @@ defmodule LS.HTTP.NodeBudget do
           true -> {:wait, base - now}
         end
     end
+  end
+
+  @doc """
+  The rate a lane's take runs at. Discovery borrows the enrichment reserve
+  while that line is idle, never past the ceiling; enrichment always runs
+  at what it asked for.
+  """
+  @spec effective_limit(pos_integer(), :discovery | :enrichment) :: pos_integer()
+  def effective_limit(limit, :discovery) do
+    if enrichment_idle?(), do: limit |> Kernel.+(reserve_share()) |> min(per_min()) |> max(limit), else: limit
+  end
+
+  def effective_limit(limit, _lane), do: limit
+
+  @doc "Whether the enrichment line has taken no slot for #{@borrow_after_ms} ms."
+  @spec enrichment_idle?() :: boolean()
+  def enrichment_idle? do
+    now = System.monotonic_time(:millisecond)
+
+    case :ets.lookup(@table, line_key(:enrichment)) do
+      [{_, next_at}] -> next_at < now - @borrow_after_ms
+      [] -> true
+    end
+  rescue
+    ArgumentError -> true
+  end
+
+  # The reserve a dual node holds for the depth lane; nothing on a node
+  # that runs one lane, where the lane already has the whole ceiling.
+  defp reserve_share do
+    lanes = LS.Application.worker_lanes()
+    if "discovery" in lanes and "enrichment" in lanes, do: min(enrich_per_min(), max(per_min() - 1, 1)), else: 0
+  end
+
+  @doc "Count a paced request a stage did not plan for (a redirect hop, a 304)."
+  @spec count(atom()) :: :ok
+  def count(what) when is_atom(what) do
+    init()
+    :ets.update_counter(@table, {:count, what}, {2, 1}, {{:count, what}, 0})
+    :ok
+  end
+
+  @doc "The counters kept by `count/1`, as a map."
+  @spec counts() :: map()
+  def counts do
+    init()
+    for {{:count, what}, n} <- :ets.tab2list(@table), into: %{}, do: {what, n}
   end
 
   # The discovery line keeps the historical key so its stats and tests read

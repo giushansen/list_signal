@@ -73,6 +73,9 @@ defmodule LS.HTTP.Client do
     * `:path`      — request path, defaults to "/"
     * `:timeout`   — receive timeout in ms, defaults to `@receive_timeout`
     * `:max_bytes` — body cap, defaults to `@max_body_bytes` (512 KB).
+    * `:validators` — `{etag, last_modified}` from the last check, sent as
+      If-None-Match / If-Modified-Since (2026-11-03). A 304 comes back as
+      `{:ok, %{status: 304}}` with no body; the caller keeps what it has.
 
   Raise `:max_bytes` only for structured endpoints we chose deliberately
   (e.g. Shopify `/products.json`): the default guards against multi-megabyte
@@ -128,9 +131,19 @@ defmodule LS.HTTP.Client do
     recv_timeout = Keyword.get(opts, :timeout, @receive_timeout)
     max_bytes = Keyword.get(opts, :max_bytes, @max_body_bytes)
     retries = Keyword.get(opts, :politeness_retries, 1)
+    extra = conditional_headers(Keyword.get(opts, :validators))
 
-    attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries)
+    attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries, extra)
   end
+
+  @doc false
+  # Pure: the request headers that let an unchanged page answer 304.
+  def conditional_headers({etag, last_modified}) do
+    [{"if-none-match", etag}, {"if-modified-since", last_modified}]
+    |> Enum.reject(fn {_, v} -> not is_binary(v) or v == "" end)
+  end
+
+  def conditional_headers(_), do: []
 
   # We used to sleep the full politeness interval and then give up WITHOUT
   # sending the request — paying the entire latency cost for no data. Enriching
@@ -147,7 +160,7 @@ defmodule LS.HTTP.Client do
   # are so contended that a single retry lost most secondary pages — measured
   # on prod 2026-07-29: only 65 of 299 contact-page domains yielded contacts.
   # Discovery keeps the default 1; it is throughput-bound and disposable.
-  defp attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left) do
+  defp attempt_fetch(domain, ip, path, recv_timeout, max_bytes, retries_left, extra) do
     # The node's own budget first (LS.HTTP.NodeBudget, 2026-10-01): the
     # per-IP spacing protects the destination, this protects our source
     # address. Over budget means wait for the next minute, then one more
@@ -160,36 +173,36 @@ defmodule LS.HTTP.Client do
       {:wait, ms} ->
         # A slot is reserved for us; sleeping is the pacing, not a retry.
         Process.sleep(ms)
-        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left)
+        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra)
 
       :overloaded ->
         {:error, "rate_limited", :rate_limited}
 
       :ok ->
-        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left)
+        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra)
     end
   end
 
-  defp attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left) do
+  defp attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left, extra) do
     case IPRateLimiter.check_and_update(ip, 1000) do
       :ok ->
-        fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes)
+        fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
       {:wait, wait_ms} when retries_left > 0 ->
         Process.sleep(wait_ms)
-        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left - 1)
+        attempt_fetch_ip(domain, ip, path, recv_timeout, max_bytes, retries_left - 1, extra)
 
       {:wait, _} ->
         {:error, "rate_limited", :rate_limited}
     end
   end
 
-  defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout, _max_bytes)
+  defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout, _max_bytes, _extra)
        when redirect_count > @max_redirects do
     {:error, "too_many_redirects", :too_many_redirects}
   end
 
-  defp fetch_with_redirects(domain, ip, redirect_count, path, recv_timeout, max_bytes) do
+  defp fetch_with_redirects(domain, ip, redirect_count, path, recv_timeout, max_bytes, extra) do
     start_time = System.monotonic_time(:millisecond)
 
     # Mint connection options. The socket goes to the validated address;
@@ -211,7 +224,7 @@ defmodule LS.HTTP.Client do
 
     case Mint.HTTP.connect(:https, ip, 443, opts) do
       {:ok, conn} ->
-        perform_request(conn, domain, ip, start_time, redirect_count, path, recv_timeout, max_bytes)
+        perform_request(conn, domain, ip, start_time, redirect_count, path, recv_timeout, max_bytes, extra)
 
       {:error, error} ->
         reason = format_error(error)
@@ -225,12 +238,12 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp perform_request(conn, domain, ip, start_time, redirect_count, path, recv_timeout, max_bytes) do
-    headers = build_headers(domain)
+  defp perform_request(conn, domain, ip, start_time, redirect_count, path, recv_timeout, max_bytes, extra) do
+    headers = build_headers(domain) ++ extra
 
     case Mint.HTTP.request(conn, "GET", path, headers, nil) do
       {:ok, conn, request_ref} ->
-        receive_response(conn, domain, ip, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes)
+        receive_response(conn, domain, ip, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes, extra)
 
       {:error, _conn, error} ->
         reason = format_error(error)
@@ -245,7 +258,7 @@ defmodule LS.HTTP.Client do
       {:error, reason, error}
   end
 
-  defp receive_response(conn, domain, ip, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes) do
+  defp receive_response(conn, domain, ip, request_ref, start_time, redirect_count, path, recv_timeout, max_bytes, extra) do
     # Start receive timeout
     receive_deadline = System.monotonic_time(:millisecond) + recv_timeout
 
@@ -276,14 +289,22 @@ defmodule LS.HTTP.Client do
       {:ok, response} ->
         elapsed_ms = System.monotonic_time(:millisecond) - start_time
         track_success(elapsed_ms)
+        # "Slow down" pauses the key (2026-11-03): the edge for a shared
+        # host, the address otherwise, for Retry-After or the back-off
+        # schedule. 430 is Shopify's own refusal and means the same thing.
+        if response.status in [429, 430, 503], do: IPRateLimiter.penalize(ip, retry_after_ms(response.headers))
 
         # Handle redirects
         if response.status in [301, 302, 303, 307, 308] do
           case get_redirect_location(response.headers) do
             {:ok, location} when is_binary(location) ->
+              # A hop is a request from our address like any other, so it
+              # takes a budget slot (2026-11-03: hops were unbudgeted and
+              # ny1 sent 157 a minute against its 120 ceiling).
               with {:ok, new_host, new_path} <- resolve_redirect(domain, path, location),
-                   {:ok, new_ip} <- hop_address(domain, ip, new_host) do
-                fetch_with_redirects(new_host, new_ip, redirect_count + 1, new_path, recv_timeout, max_bytes)
+                   {:ok, new_ip} <- hop_address(domain, ip, new_host),
+                   :ok <- hop_slot() do
+                fetch_with_redirects(new_host, new_ip, redirect_count + 1, new_path, recv_timeout, max_bytes, extra)
               else
                 :stop -> {:ok, %{response | elapsed_ms: elapsed_ms}}
               end
@@ -399,6 +420,36 @@ defmodule LS.HTTP.Client do
       {"sec-fetch-mode", "navigate"},
       {"sec-fetch-site", "none"}
     ]
+  end
+
+  @doc false
+  # Pure: a Retry-After header in milliseconds, nil when absent or an HTTP
+  # date (RFC 9110 allows both; the schedule covers the date form).
+  def retry_after_ms(headers) when is_list(headers) do
+    case List.keyfind(headers, "retry-after", 0) do
+      {_, v} ->
+        case Integer.parse(String.trim(v)) do
+          {s, ""} when s >= 0 -> s * 1_000
+          _ -> nil
+        end
+
+      _ ->
+        nil
+    end
+  end
+
+  def retry_after_ms(_), do: nil
+
+  # The budget slot a redirect hop takes; `:stop` returns the 3xx as the
+  # response when the line is overloaded.
+  defp hop_slot do
+    lane = Process.get(:ls_fetch_lane, :discovery)
+
+    case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do
+      :ok -> LS.HTTP.NodeBudget.count(:hop)
+      {:wait, ms} -> Process.sleep(ms); LS.HTTP.NodeBudget.count(:hop)
+      :overloaded -> :stop
+    end
   end
 
   defp get_redirect_location(headers) do

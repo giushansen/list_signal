@@ -324,6 +324,9 @@ defmodule LS.Cluster.WorkerAgent do
     # The homepage simhash from the last check, for refresh items only, so
     # the HTTP stage can skip the secondary pages of an unchanged site.
     prev_simhash = for d <- domains, d[:source] == :recrawl, is_integer(d[:prev_simhash]), d[:prev_simhash] > 0, into: %{}, do: {d[:ctl_domain] || d[:domain], d[:prev_simhash]}
+    # The validators of the last full read (2026-11-03), so an unchanged
+    # page costs a 304 and not a body, a model pass and a secondary page.
+    prev_validators = for d <- domains, d[:source] == :recrawl, is_binary(d[:etag]) or is_binary(d[:last_modified]), into: %{}, do: {d[:ctl_domain] || d[:domain], {d[:etag] || "", d[:last_modified] || ""}}
     {http_cands, bgp_cands, skipped} = classify(dns_results, issuers, refresh)
     # Only as many fetches as this batch's share of the node budget can
     # finish inside the master's in-flight window (2026-10-24). The surplus
@@ -342,7 +345,7 @@ defmodule LS.Cluster.WorkerAgent do
       |> Map.put(:unresolved_refresh, unresolved_refresh(domains, dns_results, http_cands))
 
     # 3. Parallel: HTTP + BGP + RDAP
-    http_task = Task.async(fn -> enrich_http(http_cands, http_c, prev_simhash) end)
+    http_task = Task.async(fn -> enrich_http(http_cands, http_c, prev_simhash, prev_validators) end)
     bgp_task = Task.async(fn -> enrich_bgp(bgp_cands) end)
     rdap_task = Task.async(fn -> enrich_rdap(rdap_cands, rdap_c) end)
 
@@ -373,8 +376,15 @@ defmodule LS.Cluster.WorkerAgent do
     # no HTTP outcome advanced http_last_checked_at and hid the site from
     # its refresh for a whole cadence, 150K rows a day on 2026-10-23), and
     # back to the tail of the queue instead.
+    by_domain = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d} end)
     cut = unfetched(http_cands, http_res)
-    fetched = http_cands -- cut
+    # A 429 is "come back later", not a result (2026-11-03): the candidate
+    # goes back to the tail once, with no row, so its check time does not
+    # move and a store that answered "slow down" is not shelved for a
+    # cadence. A second 429 is recorded like any other status.
+    throttled = throttled_once(http_cands -- cut, http_res, by_domain)
+    http_res = Map.drop(http_res, Enum.map(throttled, &elem(&1, 0)))
+    fetched = (http_cands -- cut) -- throttled
     http_err = length(cut)
     errors = if http_err > 0 do
       [%{time: now_iso(), msg: "HTTP: #{http_err}/#{length(http_cands)} not fetched by the deadline", stage: "http"} | errors]
@@ -382,11 +392,10 @@ defmodule LS.Cluster.WorkerAgent do
       errors
     end
 
-    by_domain = Map.new(domains, fn d -> {d[:ctl_domain] || d[:domain], d} end)
     skipped =
       skipped
       |> Map.put(:returned_front, for({d, _ip} <- surplus, item = by_domain[d], do: item))
-      |> Map.put(:returned_tail, for({d, _ip} <- cut, item = by_domain[d], do: item))
+      |> Map.put(:returned_tail, for({d, _ip} <- cut, item = by_domain[d], do: item) ++ for({d, _ip} <- throttled, item = by_domain[d], do: Map.put(item, :after_429, true)))
       |> Map.put(:child_rows, child_rows(http_res))
 
     # 4. Merge (reputation + classification + scoring happen here)
@@ -397,7 +406,8 @@ defmodule LS.Cluster.WorkerAgent do
       dns: %{input: length(domains), output: map_size(dns_results), ms: div(dns_us, 1000)},
       http: %{input: length(http_cands), output: map_size(http_res), ms: div(http_us, 1000),
               filtered: length(domains) - length(http_cands) - length(surplus),
-              surplus: length(surplus), cut: length(cut), cap: cap,
+              surplus: length(surplus), cut: length(cut), cap: cap, throttled: length(throttled),
+              not_modified: Enum.count(http_res, fn {_d, r} -> is_map(r) and r[:_not_modified] == true end),
               cand_ratio: candidate_ratio(length(http_cands) + length(surplus), length(domains))},
       bgp: %{input: length(bgp_cands), output: map_size(bgp_res), ms: div(bgp_us, 1000)},
       rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
@@ -567,6 +577,18 @@ defmodule LS.Cluster.WorkerAgent do
   @spec split_candidates([term()], pos_integer()) :: {[term()], [term()]}
   def split_candidates(cands, cap) when is_list(cands) and is_integer(cap) and cap > 0, do: Enum.split(cands, cap)
 
+  @doc """
+  Pure: the candidates whose fetch came back 429 for the first time. They
+  are requeued to the tail with `after_429: true`; a candidate carrying
+  that flag keeps its 429 as a result.
+  """
+  @spec throttled_once([{String.t(), term()}], map(), map()) :: [{String.t(), term()}]
+  def throttled_once(cands, http_res, by_domain) when is_list(cands) and is_map(http_res) and is_map(by_domain) do
+    Enum.filter(cands, fn {d, _ip} ->
+      match?(%{http_status: 429}, http_res[d]) and get_in(by_domain, [d, :after_429]) != true
+    end)
+  end
+
   @doc "Pure: candidates the stage never returned a result for, success or error."
   @spec unfetched([{String.t(), term()}], map()) :: [{String.t(), term()}]
   def unfetched(cands, http_res) when is_list(cands) and is_map(http_res),
@@ -691,9 +713,9 @@ defmodule LS.Cluster.WorkerAgent do
   # HTTP
   # ==========================================================================
 
-  defp enrich_http([], _, _), do: %{}
+  defp enrich_http([], _, _, _), do: %{}
 
-  defp enrich_http(cands, conc, prev_simhash) do
+  defp enrich_http(cands, conc, prev_simhash, prev_validators) do
     n = length(cands)
     per_min = div(LS.HTTP.NodeBudget.lane_limit(:discovery), parallel_batches())
     bound = http_stage_timeout(n)
@@ -707,8 +729,10 @@ defmodule LS.Cluster.WorkerAgent do
       Task.async_stream(
         cands,
         fn {d, ip} ->
-          r = do_http(d, ip, Map.get(prev_simhash, d))
-          Cache.http_insert(d)
+          r = do_http(d, ip, Map.get(prev_simhash, d), Map.get(prev_validators, d))
+          # A first 429 is requeued (throttled_once/3); the politeness cache
+          # would otherwise skip it as recent when it comes back.
+          unless match?(%{http_status: 429}, r), do: Cache.http_insert(d)
           {d, {r, ip}}
         end,
         # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),
@@ -733,6 +757,11 @@ defmodule LS.Cluster.WorkerAgent do
           is_map(r),
           r[:http_status] == 200,
           r[:_secondary_due] != false,
+          # Only a page a customer can read earns a second request
+          # (2026-11-03): a homepage in another language or with no
+          # detectable language sells nothing, so neither would its
+          # contact page.
+          market_language?(r[:http_language]),
           LS.Pipeline.secondary_plan(r[:http_tech], r[:http_pages]) != [],
           do: {d, r, ip}
 
@@ -775,7 +804,13 @@ defmodule LS.Cluster.WorkerAgent do
     {res, max(total - n, 0)}
   end
 
-  defp do_http(domain, ip, prev_simhash), do: LS.Pipeline.http(domain, ip, prev_simhash: prev_simhash, secondary: false)
+  defp do_http(domain, ip, prev_simhash, validators),
+    do: LS.Pipeline.http(domain, ip, prev_simhash: prev_simhash, secondary: false, validators: validators)
+
+  @doc "Pure: whether a page's language is one the product sells (English or French)."
+  @spec market_language?(term()) :: boolean()
+  def market_language?(lang) when is_binary(lang), do: String.starts_with?(lang, "en") or String.starts_with?(lang, "fr")
+  def market_language?(_), do: false
 
   # ==========================================================================
   # RDAP

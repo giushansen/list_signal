@@ -129,6 +129,9 @@ defmodule LS.Clickhouse.Compact do
   """
   def observed_sql(prefix \\ ""), do: "(#{prefix}http_status BETWEEN 200 AND 399 AND #{prefix}http_observed = 1)"
 
+  @doc "SQL: a crawl that read a page, so its status and verdicts count; a 304 did not (2026-11-03)."
+  def page_status_sql(prefix \\ ""), do: "(#{prefix}http_status BETWEEN 200 AND 399 AND #{prefix}http_status != 304)"
+
   @doc """
   Rows on which the classifier reached a verdict (2026-10-07): a label, or
   `classification_source` "none" for "read the page, declined". The
@@ -390,10 +393,18 @@ defmodule LS.Clickhouse.Compact do
         if(_blk_at > last_verified_at,
            argMaxIf(s_http_blocked, s_enriched_at, s_http_blocked != ''), '') AS last_http_blocked,
         argMax(s_dns_alive, s_enriched_at) AS dns_alive,
-        argMaxIf(s_http_status, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_status,
-        argMaxIf(s_http_response_time, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_response_time,
-        argMaxIf(s_http_blocked, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_blocked,
-        argMaxIf(s_http_content_type, s_enriched_at, s_http_status BETWEEN 200 AND 399) AS http_content_type,
+        /* A 304 (conditional GET, 2026-11-03) proves the site is alive
+           (last_verified_at, crawlable above) but carries no page: the
+           status, timing, wall and content type stay those of the last
+           full read. The junk verdict below still reads the 304 row: it
+           carries '' there, and only businesses whose verdict is already
+           '' are refreshed with validators (stale_domains_sql selects
+           estimated_junk = ''), so the verdict cannot change through a
+           304 and the line keeps its 2026-09 shape. */
+        argMaxIf(s_http_status, s_enriched_at, #{page_status_sql("s_")}) AS http_status,
+        argMaxIf(s_http_response_time, s_enriched_at, #{page_status_sql("s_")}) AS http_response_time,
+        argMaxIf(s_http_blocked, s_enriched_at, #{page_status_sql("s_")}) AS http_blocked,
+        argMaxIf(s_http_content_type, s_enriched_at, #{page_status_sql("s_")}) AS http_content_type,
         /* Only crawls that observed the site (observed_sql/1): a bot wall
            served as 200 used to replace a real 40-technology list with
            "Cloudflare" (2026-09-06). */

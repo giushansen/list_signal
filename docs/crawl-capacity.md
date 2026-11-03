@@ -1,8 +1,96 @@
-# Crawl capacity and IP safety — measured envelope
+# Crawl capacity and IP safety
 
-**Read this before raising any node's outbound request rate.** The numbers
-here are measured on production traffic, not guessed. Update them when you
-re-measure; never scale past the envelope on a hunch.
+**Read this before changing anything that sends a request.** Two rules,
+in this order, decided by the owner on 2026-11-03. Everything else in this
+file is the measurement behind them.
+
+## Rule 1: politeness per target comes first
+
+Every target, whether one site, one address or one provider's shared
+edge, sees a rate under what it tolerates, with margin. The setpoint
+follows the slowest tolerance we know of, not our own convenience, and a
+refusal (429, 430, 503, Retry-After) slows us further on that target
+before anything else happens. The per-target spacing and the back-off
+are never removed or loosened to gain throughput; if a target is too slow
+for the product, the answer is more source addresses or fewer requests
+to it, never a faster clock.
+
+What that means in code today:
+
+| Target | Setpoint per node | Where |
+|---|---|---|
+| any host address | one request a second (`check_and_update(ip, 1000)`) | `LS.HTTP.IPRateLimiter`, `LS.HTTP.Client` |
+| Shopify edge (23.227.38.0/24, all stores) | one key, two seconds between requests | `IPRateLimiter.@edge_spacing_ms` |
+| Wix, Squarespace edges | one key each, one second | `IPRateLimiter.@shared_edges` |
+| Cloudflare addresses | per address, one second (Cloudflare limits per site, not per client) | same |
+| after a 429, 430 or 503 | the key pauses 5 s, then 10, 20... up to 5 min within 10 min, or Retry-After if longer | `IPRateLimiter.penalize/2` |
+| any one site per visit | robots.txt, the homepage, at most one secondary page, redirect hops | `LS.Cluster.WorkerAgent`, `LS.Pipeline.secondary_plan/2` |
+| robots.txt | obeyed, cached 24 h (RFC 9309), the opt-out /bot promises | `LS.HTTP.Robots` |
+| identity | one declared user agent, `ListSignalBot/1.0 (+https://listsignal.com/bot)`, never rotated | `LS.HTTP.Client` |
+
+What the platforms tolerate, as far as anyone publishes it (researched
+2026-11-03, sources in the engineering log entry of that day):
+
+- No CDN or host publishes a per-client-IP rate for ordinary page
+  traffic. Rate rules are per site and owner-set: Cloudflare one rule per
+  10 s window on the free plan, AWS WAF at least 10 requests per 5 min
+  window, Akamai "never above 20 a second" with typical policies at 3 a
+  second average and 5 burst, Google Cloud Armor's default policy 500 a
+  minute. We make three requests per site per visit, so no per-site rule
+  can trip on us.
+- What trips is classification, not rate: an unknown non-browser client
+  from a datacenter address is challenged or refused on its first request
+  by Cloudflare Bot Fight Mode, AWS Bot Control, Imperva, Akamai Bot
+  Manager and Vercel's bot protection. That is the 403 and the Cloudflare
+  challenge we see on 1.5 to 3% of fetches, flat across nodes, and it
+  does not move with rate.
+- Shopify is the one host that answers rate with 429 at our volumes:
+  5.05% of Shopify fetches on 2026-11-02/03 at one request a second per
+  node, 92.4% of the fleet's 429s, 15.9% on sg2. Shopify publishes no
+  number, tightened unsigned-bot limits on 2026-05-30, and crawler vendors
+  run it at 500 ms between request starts with back-off. Two seconds per
+  node plus back-off is the setpoint until the edge reads under 1%.
+- Every platform that honours a crawler identity (Cloudflare Verified
+  Bots, AWS Bot Control, Vercel, Shopify) now does so through Web Bot Auth
+  (an Ed25519 key directory at /.well-known and signed requests). That is
+  the next step for the 403 band, not a faster clock.
+
+How we read the other side's answer:
+
+| Answer | Meaning | What the code does |
+|---|---|---|
+| 429 | slow down (per site, or Shopify per client) | pause the key; the candidate goes back to the queue tail once, no row |
+| 430 | Shopify security rejection (client looks malicious) | pause the key; recorded |
+| 403 | WAF policy or bot classification, not rate | recorded, excluded from plain refresh, browser lane |
+| 503 with challenge body | Cloudflare/WAF refusing a bot | pause the key; browser lane |
+| `cf-mitigated: challenge`, "Just a moment" title | Cloudflare challenge | not observed; browser lane |
+| 520 to 526, 530 | origin down, unreachable or misconfigured, not rate | recorded as down |
+| 404 or 5xx on a Cloudflare address at first contact | a zone with no origin yet | recorded, not refreshed until re-sighted |
+| 304 | unchanged since our validators | kept as the last full read, no page, no secondary |
+
+## Rule 2: never idle inside rule 1
+
+Within rule 1, every node runs at what its source address allows, all
+the time. A reserved slot nobody uses is a slot wasted, and in Elixir a
+process waiting on nothing is a bug. Concretely: the per-node ceiling
+(`LS.HTTP.NodeBudget`, `LS_FETCH_PER_MIN`) is spaced evenly and shared
+by both lanes; the depth lane's reserve is lent to discovery while the
+depth line is idle; every request from our address, redirect hops
+included, takes a slot so the ceiling is real; the batch cap and
+deadlines are sized so the line is booked a minute or two ahead and the
+stage ends when the line, not a timer, says so. Idle is measured, not
+assumed: `NodeBudget.backlog_ms/1` reads 0 on an idle line, and the
+per-node request rate is `LS.HTTP.PerformanceTracker.stats().rate`.
+
+Measured 2026-11-03 before this rule was applied: the discovery line on
+ny1 was booked 63 to 127 s ahead on every sample (saturated), the
+enrichment line read 0 on every sample of ny1, chi1, par1 and dal1
+(idle), the depth lane fetched 107 pages a minute across the whole fleet
+against 270 a minute reserved on the nine duals, and ny1 sent 157
+requests a minute against a 120 budget because redirect hops took no
+slot.
+
+---
 
 ## The measured safe operating point (2026-08-25, 24h, ~1.68M fetches)
 

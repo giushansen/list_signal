@@ -212,6 +212,10 @@ defmodule LS.Recrawl.Scheduler do
               {taken, 0}
           end
 
+        # The validators of the last full read ride along (2026-11-03) so
+        # the worker can ask for a 304 instead of the page.
+        validators = LS.Clickhouse.validators(Enum.map(domains, &elem(&1, 0)))
+
         {added, refused} =
           Enum.reduce(domains, {0, %{}}, fn {domain, tier, simhash}, {acc, ref} ->
             # Use the same :ctl_domain key CTL items carry so the worker pipeline
@@ -219,7 +223,7 @@ defmodule LS.Recrawl.Scheduler do
             # The stored homepage simhash lets the worker skip the secondary
             # pages of an unchanged site (2026-10-23). The tier rides along
             # so the queue can put tier A first (WorkQueue.priority/1).
-            data = %{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}
+            data = Map.merge(%{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}, Map.get(validators, domain, %{}))
             # This IS the schedule: stale_domains already selected only domains
             # past their cadence, so the daily and tier rings have nothing to add.
             case LS.Cluster.WorkQueue.enqueue(data, force: true) do

@@ -153,6 +153,19 @@ request after agents rewrote test assertions to fit their own changes.
 
 ## Crawling — non-negotiable
 
+Two rules, in this order (owner, 2026-11-03; the measurements behind them
+are in `docs/crawl-capacity.md`):
+
+1. **Politeness per target first.** Every target (a site, an address, a
+   provider's shared edge such as Shopify's) sees a rate under what it
+   tolerates, with margin, set from the slowest tolerance we know of, and
+   a refusal (429, 430, 503, Retry-After) slows us further on that target
+   before anything else happens.
+2. **Never idle inside rule 1.** Every node runs at what its source
+   address allows, all the time: no reserved slot nobody uses, no process
+   waiting on nothing, every request (redirect hops included) counted
+   against the ceiling so the ceiling is real.
+
 - **The politeness cache and per-IP rate limiter stay.** They protect our IPs
   from being blacklisted, which is an existential risk for this business.
   Never remove or loosen them to gain throughput. If a cache causes a bug

@@ -614,7 +614,13 @@ shared From identity is `MAIL_FROM` (default `team@listsignal.com`). Set
 - The whole BEAM's DNS is pinned to local Unbound at boot (see
   `LS.Application`, `pin_vm_resolver`) so OS resolver breakage cannot split
   the stages again.
-- Politeness: ≥1s between requests to the same IP (`LS.HTTP.IPRateLimiter`);
+- Politeness (rule 1 of `docs/crawl-capacity.md`): at least 1 s between
+  requests to the same address per node, 2 s on the Shopify edge, one key
+  per shared commerce edge, and a 5 s to 5 min pause of the key after a
+  429, 430 or 503 or for Retry-After (`LS.HTTP.IPRateLimiter`); a first
+  429 is requeued, not recorded. The per-node ceiling (`LS.HTTP.NodeBudget`)
+  counts every request, redirect hops included, and lends the depth
+  lane's reserve to discovery while the depth line is idle (rule 2);
   RDAP is limited per registry server.
 - robots.txt is honoured (`LS.HTTP.Robots`, 2026-09-06): every fetch goes
   through `Client.fetch/3` or `Browser.render/2`, both refuse a path the

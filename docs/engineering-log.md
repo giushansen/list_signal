@@ -25,6 +25,83 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-03: two crawl rules, and what the fleet was really doing
+
+Owner: "FIRST we rate limit our calls per target, whether IP or
+provider, on best practice and slightly under. SECOND we maximise that
+limit; nodes never idle or wait." The rules are now at the top of
+`docs/crawl-capacity.md` and in CLAUDE.md. What the measurement found
+before the change:
+
+- **The node was not idle, it was mis-accounted.** ny1's discovery line
+  was booked 63 to 127 s ahead on every sample; its request counter read
+  157 a minute over 95 h against a 120 ceiling, because redirect hops
+  took no budget slot. The depth lane's reserve (30 of 120 on every dual)
+  was idle on every sample of ny1, chi1, par1 and dal1: the depth lane
+  fetched 107 pages a minute fleet-wide against 270 reserved on the nine
+  duals. A quarter of each dual's ceiling was idle by construction.
+- **92.4% of all 429s came from the Shopify edge**: 4,188 of 82,906
+  Shopify fetches in the day (5.05%; sg2 15.9%, chi2 7.2%, ny1 4.4%) at
+  one request a second per node to the edge, and Shopify fetches had
+  doubled since the market gate (2.2K to 4.6K an hour) because the tier A
+  backlog is 53% SaaS and Shopify. Cloudflare answered 429 on 0.15% of
+  fetches, Amazon 0.29%. Nothing read Retry-After; the next request to a
+  refusing edge left one spacing later. A 429 was written as the row's
+  status, moving `http_last_checked_at` and shelving the store for a
+  cadence.
+- **Platform tolerances** (research, 2026-11-03): no CDN or host
+  publishes a per-client-IP rate for page traffic; rules are per site
+  and owner-set (Cloudflare one rule per 10 s on Free, AWS WAF minimum
+  10 per 5 min, Akamai "never above 20 a second", Cloud Armor's default
+  500 a minute). What refuses an unknown datacenter client is
+  classification at the first request (Bot Fight Mode, AWS Bot Control,
+  Imperva, Akamai Bot Manager, Vercel), which is the flat 403 band.
+  Shopify tightened unsigned-bot limits on 2026-05-30 and crawler vendors
+  run it at 500 ms between request starts with back-off. Cloudflare, AWS,
+  Vercel and Shopify all honour Web Bot Auth (signed requests with a
+  published key), which is the route out of the 403 band.
+- **54% of 2xx pages carry an ETag or Last-Modified** and the client
+  never sent them back (0 of 316K responses were 304), while the stored
+  simhash matched on 2.8% of revisits, so the secondary-page skip never
+  fired on a refresh.
+
+Changes (one commit, trial on ny1 first):
+
+- `LS.HTTP.IPRateLimiter`: the Shopify edge is held to two seconds per
+  node; a 429, 430 or 503 pauses its key 5 s, doubling to 5 min within
+  10 min, or Retry-After when longer (`penalize/2`); penalties counted
+  in `stats/0`.
+- `LS.HTTP.NodeBudget`: discovery borrows the depth reserve while the
+  depth line has been idle for a minute, never past the ceiling, and
+  drops back the moment the depth lane takes a slot; the wake minute can
+  reach ceiling plus reserve. `count/1` and `counts/0` for hops and 304s.
+- `LS.HTTP.Client`: a redirect hop takes a budget slot; `:validators`
+  become If-None-Match and If-Modified-Since; a 304 returns with no body.
+- `LS.Cluster.WorkerAgent`: a first 429 is requeued to the tail with
+  `after_429: true` and no row (the politeness cache is not written for
+  it); a secondary page is read only under an English or French
+  homepage; validators ride with refresh items; stage stats carry
+  `throttled` and `not_modified`.
+- `LS.Pipeline.http`: a 304 is a row with status 304, no page, no model,
+  no secondary, junk verdict ''. `LS.Clickhouse.Compact`: status,
+  timing, wall and content type fold through `page_status_sql/1`, which
+  skips 304; the junk line keeps its pinned shape (a 304 row carries ''
+  and only never-junk rows are refreshed with validators).
+- `LS.Recrawl.Scheduler` + `LS.Clickhouse.validators/1`: the validators
+  of the last 200 ride with the refresh item; the due list keeps its
+  three-tuple shape.
+- The trial node runs `LS_FETCH_PER_MIN=140`, all requests counted, under
+  the 157 it was really sending.
+
+Not changed, by measurement: the DNS pre-filter the owner asked for
+already runs on the worker (`LS.HTTP.DomainFilter.verdict/5`: no fetch
+without MX plus SPF or a known mail provider, except Tranco-ranked names
+and the commerce edges); the 11% of new fetches without MX are those
+deliberate bypasses, mostly stores on the Shopify, Wix and Squarespace
+edges.
+
+---
+
 ## 2026-11-03: the market list, twice
 
 Owner, first pass: real businesses in any English- or French-speaking

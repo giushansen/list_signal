@@ -670,6 +670,28 @@ defmodule LS.Clickhouse do
     end
   end
 
+  @doc """
+  The validators a refresh may send (2026-11-03): `%{domain => %{etag:,
+  last_modified:}}` for the names whose last full read was a 200 that
+  carried one. Kept apart from `stale_domains/3` so the due list keeps its
+  three-tuple shape.
+  """
+  @spec validators([String.t()]) :: %{String.t() => %{etag: String.t(), last_modified: String.t()}}
+  def validators([]), do: %{}
+
+  def validators(domains) when is_list(domains) do
+    sql = """
+    SELECT domain, http_etag, http_last_modified FROM #{LS.Schema.Tables.businesses()}
+    WHERE domain IN {doms:Array(String)} AND http_status = 200 AND (http_etag != '' OR http_last_modified != '')
+    SETTINGS max_threads = 2, max_execution_time = 30
+    """
+
+    case query_raw(sql, 40_000, params: %{doms: array_param(domains)}) do
+      {:ok, rows} -> Map.new(rows, fn [d, e, l] -> {d, %{etag: to_string(e || ""), last_modified: to_string(l || "")}} end)
+      _ -> %{}
+    end
+  end
+
   defp to_simhash(s) when is_integer(s), do: s
   defp to_simhash(s) when is_binary(s), do: (case Integer.parse(s) do {n, _} -> n; :error -> 0 end)
   defp to_simhash(_), do: 0

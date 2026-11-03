@@ -34,11 +34,32 @@ defmodule LS.HTTP.IPRateLimiter do
     end)
   end
   @ets_wait_stats :http_ip_wait_stats
+  @ets_penalty :http_ip_penalty
   @default_delay_ms 3000 # Safe with 1000ms if used in residential address
+
+  # The spacing a shared edge gets whatever the caller asked for (2026-11-03).
+  # Measured on the 24 h to 11-03 08:00 UTC: 92.4% of the fleet's 429s came
+  # from the Shopify edge, 5.05% of Shopify fetches (4,188 of 82,906), with
+  # one request a second per node to the edge; 15.9% on sg2, 7.2% on chi2.
+  # Shopify publishes no number and tightened its unsigned-bot limits on
+  # 2026-05-30; crawler vendors run it at 500 ms between request starts
+  # and back off on 429. Two seconds per node is the setpoint until the
+  # 429 rate on the edge reads under 1%.
+  @edge_spacing_ms %{"edge:shopify" => 2_000}
+
+  # Back-off after a 429 or a 503 (2026-11-03). The first one pauses the
+  # key for @penalty_base_ms, each further one within @penalty_memory_ms
+  # doubles it, up to @penalty_max_ms; a Retry-After longer than that
+  # schedule wins. Until now nothing read Retry-After and the next request
+  # to the same edge left one spacing later.
+  @penalty_base_ms 5_000
+  @penalty_max_ms 300_000
+  @penalty_memory_ms 600_000
 
   def init do
     try do
       :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
+      :ets.new(@ets_penalty, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
       :ets.new(@ets_wait_stats, [:set, :public, :named_table, read_concurrency: true, write_concurrency: true])
       :ets.insert(@ets_wait_stats, {:total_waits, 0})
       :ets.insert(@ets_wait_stats, {:total_wait_time_ms, 0})
@@ -57,8 +78,57 @@ defmodule LS.HTTP.IPRateLimiter do
   """
   def check_and_update(ip, delay_ms \\ @default_delay_ms) when is_binary(ip) do
     ip = limiter_key(ip)
+    delay_ms = max(delay_ms, Map.get(@edge_spacing_ms, ip, 0))
     now = System.monotonic_time(:millisecond)
 
+    case penalty_wait(ip, now) do
+      0 -> check_spacing(ip, delay_ms, now)
+      wait_ms -> record_wait(wait_ms); {:wait, wait_ms}
+    end
+  end
+
+  @doc """
+  Pause a key after the target said slow down: `retry_after_ms` from the
+  response when it carried one, else the doubling schedule. Returns the
+  pause in ms. Keyed like `check_and_update/2`, so one Shopify store's 429
+  pauses the node's whole Shopify edge.
+  """
+  @spec penalize(String.t(), non_neg_integer() | nil) :: non_neg_integer()
+  def penalize(ip, retry_after_ms \\ nil) when is_binary(ip) do
+    key = limiter_key(ip)
+    now = System.monotonic_time(:millisecond)
+
+    level =
+      case :ets.lookup(@ets_penalty, key) do
+        [{^key, _until, level, at}] when now - at < @penalty_memory_ms -> level + 1
+        _ -> 1
+      end
+
+    schedule = min(@penalty_base_ms * Integer.pow(2, level - 1), @penalty_max_ms)
+    pause = max(schedule, min(retry_after_ms || 0, @penalty_max_ms))
+    :ets.insert(@ets_penalty, {key, now + pause, level, now})
+    :ets.update_counter(@ets_wait_stats, :penalties, {2, 1}, {:penalties, 0})
+    pause
+  rescue
+    ArgumentError -> 0
+  end
+
+  @doc "Milliseconds a key is still paused for, 0 when it is not."
+  @spec penalty_wait(String.t(), integer()) :: non_neg_integer()
+  def penalty_wait(key, now \\ System.monotonic_time(:millisecond)) do
+    case :ets.lookup(@ets_penalty, limiter_key(key)) do
+      [{_, until, _level, _at}] when until > now -> until - now
+      _ -> 0
+    end
+  rescue
+    ArgumentError -> 0
+  end
+
+  @doc "The spacing a key is held to, whatever a caller passes."
+  @spec min_spacing_ms(String.t()) :: non_neg_integer()
+  def min_spacing_ms(ip) when is_binary(ip), do: Map.get(@edge_spacing_ms, limiter_key(ip), 0)
+
+  defp check_spacing(ip, delay_ms, now) do
     case :ets.lookup(@ets_table, ip) do
       [{^ip, last_time}] ->
         elapsed = now - last_time
@@ -117,9 +187,11 @@ defmodule LS.HTTP.IPRateLimiter do
     [{:max_wait_ms, max_wait_ms}] = :ets.lookup(@ets_wait_stats, :max_wait_ms)
 
     avg_wait_ms = if total_waits > 0, do: Float.round(total_wait_ms / total_waits, 1), else: 0.0
+    penalties = case :ets.lookup(@ets_wait_stats, :penalties) do [{_, n}] -> n; _ -> 0 end
 
     %{
       unique_ips: size,
+      penalties: penalties,
       memory_mb: memory_mb,
       total_waits: total_waits,
       avg_wait_ms: avg_wait_ms,

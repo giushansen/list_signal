@@ -138,7 +138,27 @@ defmodule LS.Pipeline do
     if is_nil(ip) do
       %{http_error: "no_ip"}
     else
-      case Client.fetch(domain, ip) do
+      validators = opts[:validators]
+
+      case Client.fetch(domain, ip, validators: validators) do
+        # Not modified (2026-11-03): the page is what the last check read.
+        # No body, no parsing, no model, no secondary page; the compactor
+        # keeps every page field from the last full read and only the
+        # check time moves (LS.Clickhouse.Compact.page_status_sql/1).
+        {:ok, %{status: 304} = resp} ->
+          {etag, last_modified} = validators || {"", ""}
+          LS.HTTP.NodeBudget.count(:not_modified)
+
+          %{
+            http_status: 304,
+            http_response_time: resp[:elapsed_ms],
+            http_error: "",
+            http_etag: etag || "",
+            http_last_modified: last_modified || "",
+            _secondary_due: false,
+            _not_modified: true
+          }
+
         {:ok, resp} ->
           body = resp.body || ""
           tech_result = TechDetector.detect(resp)
@@ -502,7 +522,10 @@ defmodule LS.Pipeline do
     classify_result = BusinessClassifier.classify(classify_signals)
     # Recorded explicitly (not just as an empty classification) so parked /
     # placeholder pages can be filtered out of exports and their rate measured.
-    is_junk = BusinessClassifier.junk_reason(classify_signals)
+    # A 304 carries no page, so there is nothing to judge (2026-11-03); the
+    # compactor's junk fold reads this row, and only never-junk businesses
+    # are refreshed with validators, so '' is the truth here.
+    is_junk = if http[:_not_modified], do: "", else: BusinessClassifier.junk_reason(classify_signals)
 
     # Tier 2: ML classifier fallback when heuristic confidence is low.
     # :defer stashes the text on the row so the caller can batch-classify the
