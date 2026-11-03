@@ -33,22 +33,25 @@ defmodule LS.Crawl.Markets do
   # language of business. .xyz and .top are left out on yield
   # (LS.HTTP.DomainFilter measured .top at 21%).
   #
-  # 2026-11-03, owner: keep every English- or French-speaking market, the
-  # buyers are there. Measured on the 7 days before the gate (enrich_log):
-  # .in 75% English, 1,466 sellable rows a week from 5.6K fetches (26%,
-  # above .com's 15%); .ae 89%, .pk 80%, .my 74%, .co.ke 91%, .ma 82%.
-  # BuiltWith's customers are about half US and 7 to 8% each UK and India
-  # (idatalabs, enlyft). The large non-market suffixes stay out on yield:
-  # .nl 14% English and 2% sellable per fetch, .de 13% and 1.2%, .it, .se,
-  # .dk, .es, .no, .fi all under 3%; together they cost 240K fetches a week,
-  # most of a node, for 3K sellable rows against .com's 260K.
+  # 2026-11-03, owner: markets with buying power that also buy from the
+  # competitors, not every country where English or French is spoken.
+  # Measured on the 7 days before the gate (enrich_log): .in 75% English,
+  # 1,466 sellable rows a week from 5.6K fetches (26%, above .com's 15%),
+  # and India is 7 to 8% of BuiltWith's customers (idatalabs, enlyft), so
+  # it is in; the Gulf (.ae 89% English, .qa) and the rich small English
+  # territories (Malta, Channel Islands, Isle of Man, Gibraltar) are in.
+  # Africa, South Asia outside India, the Caribbean and South-East Asia
+  # outside Singapore stay out: no buyers there. The large non-market
+  # suffixes stay out on yield: .nl 14% English and 2% sellable per fetch,
+  # .de 13% and 1.2%, .it, .se, .dk, .es, .no, .fi all under 3%; together
+  # they cost 240K fetches a week, most of a node, for 3K sellable rows
+  # against .com's 260K.
   @tlds ~w(
     com net org io co ai app dev biz info shop store online site tech
     us uk co.uk org.uk me.uk ltd.uk plc.uk ca au com.au net.au org.au nz co.nz org.nz net.nz
     ie sg com.sg hk com.hk za co.za
-    in co.in pk com.pk ph com.ph my com.my ng com.ng ke co.ke gh com.gh lk mt com.mt
-    ae qa gg je im gi jm tt bs mu
-    fr be ch lu mc eu re nc pf ma tn dz sn ci cm ht mg
+    in co.in ae qa mt com.mt gg je im gi
+    fr be ch lu mc eu re
   )
   @set MapSet.new(@tlds)
 

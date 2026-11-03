@@ -25,22 +25,26 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
-## 2026-11-03: the market list widened to every English- or French-speaking market
+## 2026-11-03: the market list, twice
 
-Owner: real businesses in any English- or French-speaking market can buy
-ListSignal, so keep all of them. The 11-02 list (`LS.Crawl.Markets`) had
-the big anglophone and francophone countries and skipped India, the Gulf,
-Pakistan, Malaysia, the Philippines, anglophone Africa, francophone Africa
-and overseas France. Measured on the week before the gate: .in was 75%
-English and yielded 1,466 sellable rows from 5.6K fetches, a better rate
-than .com (26% against 15%); .ae 89% English, .pk 80%, .my 74%, .co.ke
-91%, .ma 82%. BuiltWith's customers are about half US with the UK and
-India at 7 to 8% each. The large non-market suffixes stay out: .nl, .de,
-.it, .se, .dk, .es, .no, .fi are 10 to 17% English and under 3% sellable
-per fetch, 240K fetches a week for 3K sellable rows. Pinned in
-`test/ls/crawl/markets_wider_test.exs`. Sightings on the added suffixes
-between 11-02 07:02 and this deploy were recorded, not queued; they come
-back on the next certificate.
+Owner, first pass: real businesses in any English- or French-speaking
+market can buy ListSignal, keep all of them. Second pass, an hour later:
+only markets with buying power that also buy from the competitors; a poor
+country where English or French is spoken is not a market. The list
+(`LS.Crawl.Markets`) gained India (.in 75% English, 1,466 sellable rows
+from 5.6K fetches in the week before the gate, a better rate than .com;
+7 to 8% of BuiltWith's customers), the Gulf (.ae 89% English, .qa) and
+the rich small English territories (Malta, Channel Islands, Isle of Man,
+Gibraltar), plus Réunion and net.nz. Pakistan, the Philippines, Malaysia,
+Nigeria, Kenya, Ghana, Sri Lanka, the Caribbean and francophone Africa
+were added in c1792bb and taken out again in the next commit. The large
+non-market suffixes stay out on yield: .nl, .de, .it, .se, .dk, .es, .no,
+.fi are 10 to 17% English and under 3% sellable per fetch, 240K fetches
+a week for 3K sellable rows. Pinned in
+`test/ls/crawl/markets_wider_test.exs`, which the second pass rewrote
+under the owner's unlock. Sightings on the added suffixes between 11-02
+07:02 and the deploy were recorded, not queued; they come back on the
+next certificate.
 
 ---
 
