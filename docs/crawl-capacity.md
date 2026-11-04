@@ -213,3 +213,14 @@ enrichment lane now holds `LS_ENRICH_FETCH_PER_MIN` (default 30) of the
 ceiling on its own line and discovery gets the rest (90 on a dual node,
 45 per batch). The shares add up to the ceiling: the source IP sends no
 more than before. An enrichment-only node (h1) keeps the whole ceiling.
+
+**2026-11-04, the edge lane.** With the booking limiter on every node, the
+30-minute tier A tick (4,467 at priority 0, Shopify-heavy) started 60 to 190
+Shopify stores per node at once; the 2 s edge line booked 16 inside the 30 s
+horizon and refused the rest, and a store refused twice in one wave was
+recorded as rate_limited and shelved for its cadence: 350 to 835 stores a
+wave, about 45% of the wave's Shopify stores, while the line sat idle between
+waves. Rule 2 inside rule 1 now means: targets behind a shared edge run in a
+lane four wide per batch (three batches per node book at most 24 s ahead on
+the 2 s line) and the tier A allowance goes out in six slices of 750 inside
+the tick.

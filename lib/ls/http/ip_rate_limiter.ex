@@ -33,6 +33,17 @@ defmodule LS.HTTP.IPRateLimiter do
       if Enum.any?(prefixes, &String.starts_with?(ip, &1)), do: "edge:" <> vendor
     end)
   end
+
+  @doc """
+  Pure: whether an address sits behind a shared edge, so every fetch to it
+  on this node waits on one line. A batch runs those targets in a narrow
+  lane of their own (LS.Cluster.WorkerAgent, 2026-11-04): started all at
+  once with the rest of the batch, only as many as the booking horizon
+  holds were served and the others were refused.
+  """
+  @spec shared_edge?(term()) :: boolean()
+  def shared_edge?(ip) when is_binary(ip), do: String.starts_with?(limiter_key(ip), "edge:")
+  def shared_edge?(_), do: false
   @ets_wait_stats :http_ip_wait_stats
   @ets_penalty :http_ip_penalty
   @default_delay_ms 3000 # Safe with 1000ms if used in residential address

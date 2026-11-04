@@ -36,8 +36,19 @@ defmodule LS.Recrawl.Scheduler do
   # 4,500 every 30 minutes is 216K a day, the 14-day plan for 3.13M tier A
   # businesses (223K), and about half of what six nodes fetch in a day,
   # leaving the other half to new names.
+  #
+  # The tick's tier A allowance goes out in slices (2026-11-04), not in
+  # one block at the tick. Tier A is Shopify-heavy, and one block at
+  # priority 0 reached every node as batches of 60 to 190 Shopify stores
+  # started at once against a 2 s line per node, so most were refused and
+  # a store refused twice in the wave was shelved for its cadence (350 to
+  # 835 a wave, measured 2026-11-03). Six slices of 750 every five
+  # minutes are consumed before the next one lands (a node does about
+  # 175 rows in five minutes) and keep the Shopify share of a batch near
+  # the steady mix.
   @batch_size 12_500
   @tier_a_per_tick 4_500
+  @tier_a_slices 6
   @queue_headroom 150_000
   @check_interval_ms 30 * 60_000
   # Wait 5 minutes after boot before first check (let CTL/workers warm up)
@@ -64,8 +75,29 @@ defmodule LS.Recrawl.Scheduler do
     runs = div(24 * 3_600_000, @check_interval_ms)
     %{batch_size: @batch_size, interval_ms: @check_interval_ms, runs_per_day: runs, per_day: runs * @batch_size,
       queue_headroom: @queue_headroom, max_passes: @max_passes,
-      tier_a_per_tick: @tier_a_per_tick, tier_a_per_day: runs * @tier_a_per_tick}
+      tier_a_per_tick: @tier_a_per_tick, tier_a_per_day: runs * @tier_a_per_tick,
+      tier_a_slices: @tier_a_slices, tier_a_per_slice: div(@tier_a_per_tick, @tier_a_slices)}
   end
+
+  @doc """
+  Pure: when inside the tick each tier A slice goes out and how many names
+  it may enqueue: `[{delay_ms, allowance}]`, the first at 0, the rest
+  evenly spaced inside the interval, allowances summing to the tick's.
+  """
+  @spec slice_plan() :: [{non_neg_integer(), pos_integer()}]
+  def slice_plan do
+    per = div(@tier_a_per_tick, @tier_a_slices)
+    rest = @tier_a_per_tick - per * @tier_a_slices
+    step = div(@check_interval_ms, @tier_a_slices)
+    for k <- 0..(@tier_a_slices - 1), do: {k * step, per + if(k == 0, do: rest, else: 0)}
+  end
+
+  @doc """
+  Pure: how many rows one slice reads, a quarter more than it may enqueue
+  (a_block/0 is the same rule for a whole tick).
+  """
+  @spec slice_block(pos_integer()) :: pos_integer()
+  def slice_block(allowance), do: min(@batch_size, allowance + div(allowance, 4))
 
   @doc """
   Pure: may this due domain be enqueued this tick? Tier A: yes, until the
@@ -109,6 +141,20 @@ defmodule LS.Recrawl.Scheduler do
     {:noreply, state}
   end
 
+  # A later tier A slice of the current tick (slice_plan/0).
+  def handle_info({:tier_a_slice, allowance}, state) do
+    {a_enqueued, a_dead, _full} = lane(["a"], allowance, slice_block(allowance))
+    Logger.info("[RECRAWL] Tier A slice: enqueued #{a_enqueued} live, #{a_dead} dead recorded on the master")
+    {:noreply, count(state, a_enqueued, a_enqueued, a_dead)}
+  end
+
+  defp count(state, enqueued, a_enqueued, dead) do
+    %{state |
+      total_enqueued: state.total_enqueued + enqueued,
+      total_enqueued_a: Map.get(state, :total_enqueued_a, 0) + a_enqueued,
+      total_dead: Map.get(state, :total_dead, 0) + dead}
+  end
+
   @impl true
   def handle_call(:stats, _from, state) do
     {:reply, Map.put(state, :uptime_seconds, System.monotonic_time(:second) - state.start_time), state}
@@ -123,26 +169,27 @@ defmodule LS.Recrawl.Scheduler do
       do: Logger.info("[RECRAWL] Queue holds #{depth}, over the #{@queue_headroom} headroom: tier A only this tick")
 
     # Two lanes, each reading only its own tiers (2026-10-24). Tier A first,
-    # up to its allowance whatever the queue holds; B and C with what is
-    # left of the tick, only under the headroom (admit?/3 is the rule).
-    {a_enqueued, a_dead, a_full} = lane(["a"], @tier_a_per_tick, a_block())
+    # up to its allowance whatever the queue holds, the first slice now and
+    # the others on their timers (slice_plan/0); B and C with what is left
+    # of the tick after the whole tier A allowance, only under the headroom
+    # (admit?/3 is the rule).
+    [{0, first} | later] = slice_plan()
+    {a_enqueued, a_dead, a_full} = lane(["a"], first, slice_block(first))
+    for {delay, allowance} <- later, do: Process.send_after(self(), {:tier_a_slice, allowance}, delay)
 
     {bc_enqueued, bc_dead} =
       if a_full or not admit?("b", 0, over),
         do: {0, 0},
-        else: lane(["b", "c"], quota_left(a_enqueued), @batch_size) |> then(fn {n, d, _} -> {n, d} end)
+        else: lane(["b", "c"], quota_left(@tier_a_per_tick), @batch_size) |> then(fn {n, d, _} -> {n, d} end)
 
     enqueued = a_enqueued + bc_enqueued
     dead = a_dead + bc_dead
-    Logger.info("[RECRAWL] Tick done: enqueued #{enqueued} live (tier A #{a_enqueued}, B/C #{bc_enqueued}), #{dead} dead recorded on the master")
+    Logger.info("[RECRAWL] Tick done: enqueued #{enqueued} live (tier A #{a_enqueued} of #{first} in the first slice, #{length(later)} slices to follow, B/C #{bc_enqueued}), #{dead} dead recorded on the master")
     # Survives a restart of this process: LS.Metrics.recrawl/0 reads it so
     # a crash loop (2026-10-23) cannot hide behind a fresh uptime.
     :persistent_term.put({__MODULE__, :last_tick}, System.system_time(:second))
 
-    %{state |
-      total_enqueued: state.total_enqueued + enqueued,
-      total_enqueued_a: Map.get(state, :total_enqueued_a, 0) + a_enqueued,
-      total_dead: Map.get(state, :total_dead, 0) + dead,
+    %{count(state, enqueued, a_enqueued, dead) |
       total_checks: state.total_checks + 1,
       last_check_at: DateTime.utc_now(),
       last_batch_size: enqueued}

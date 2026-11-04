@@ -166,7 +166,18 @@ per dual on three batches. The queue drained from 32K to 9.8K and sits
 at priority depth 0, so the fleet is input-bound, which supports
 removing ny2 and chi2.
 
-**Found in the readings, not fixed yet:** the recrawl scheduler's tier A
+**Fixed 2026-11-04 (the two changes below, shipped together):** the
+worker's HTTP stage runs shared-edge targets (Shopify, Wix, Squarespace)
+in a lane four wide per batch, both for homepages and for secondary
+pages (`WorkerAgent.fetch_split/6`), so the edge line is fed in turn
+until the stage deadline and nothing is refused for being booked too
+far out; what does not fit is cut and returns to the queue with no row.
+The recrawl scheduler's tier A allowance goes out in six slices of 750
+inside the tick instead of one block (`Scheduler.slice_plan/0`), each
+consumed before the next lands. Also on 2026-11-04: ny2 and chi2 left
+the fleet (ff9e4d3, devops e47da10), seven duals remain.
+
+**Found in the readings (2026-11-03 evening):** the recrawl scheduler's tier A
 tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
 batch that starts with more Shopify stores than the 2 s edge line can
 book inside the 30 s horizon (16) refuses the rest. The first refusal

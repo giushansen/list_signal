@@ -733,22 +733,17 @@ defmodule LS.Cluster.WorkerAgent do
     # whatever is left until the stage deadline.
     home_deadline = start + max(120_000, round(n * @home_slots * 60_000 / max(per_min, 1)) + 60_000)
 
-    stream =
-      Task.async_stream(
-        cands,
-        fn {d, ip} ->
-          r = do_http(d, ip, Map.get(prev_simhash, d), Map.get(prev_validators, d))
-          # A first 429 is requeued (throttled_once/3); the politeness cache
-          # would otherwise skip it as recent when it comes back.
-          unless throttled_result?(r), do: Cache.http_insert(d)
-          {d, {r, ip}}
-        end,
-        # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),
-        # so the per-task bound is the stage bound, not the homepage budget.
-        max_concurrency: conc, timeout: bound, on_timeout: :kill_task, ordered: false
-      )
+    fetch = fn {d, ip} ->
+      r = do_http(d, ip, Map.get(prev_simhash, d), Map.get(prev_validators, d))
+      # A first 429 is requeued (throttled_once/3); the politeness cache
+      # would otherwise skip it as recent when it comes back.
+      unless throttled_result?(r), do: Cache.http_insert(d)
+      {d, {r, ip}}
+    end
 
-    {res, cut} = collect_until(stream, min(home_deadline, deadline), n)
+    # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),
+    # so the per-task bound is the stage bound, not the homepage budget.
+    {res, cut} = fetch_split(cands, &elem(&1, 1), fetch, conc, bound, min(home_deadline, deadline))
     if cut > 0, do: Logger.warning("http stage deadline: #{cut} of #{n} candidates not fetched, #{map_size(res)} kept")
 
     homes = Map.new(res, fn {d, {r, _ip}} -> {d, r} end)
@@ -778,16 +773,59 @@ defmodule LS.Cluster.WorkerAgent do
     if due == [] or remaining < 15_000 do
       homes
     else
-      stream =
-        Task.async_stream(due, fn {d, r, ip} -> {d, LS.Pipeline.secondary(r, d, ip)} end,
-          max_concurrency: conc, timeout: remaining, on_timeout: :kill_task, ordered: false)
-
-      {enhanced, dropped} = collect_until(stream, deadline, length(due))
+      {enhanced, dropped} =
+        fetch_split(due, &elem(&1, 2), fn {d, r, ip} -> {d, LS.Pipeline.secondary(r, d, ip)} end, conc, remaining, deadline)
       if dropped > 0, do: Logger.info("secondary pages: #{dropped} of #{length(due)} not read by the deadline")
       Map.merge(homes, enhanced)
     end
   rescue
     _ -> homes
+  end
+
+  # Targets behind a shared edge (Shopify, Wix, Squarespace: one line per
+  # node, LS.HTTP.IPRateLimiter.shared_edge?/1) run in a lane this wide
+  # per batch, the rest of the batch at the stage's concurrency. Measured
+  # 2026-11-03 after the booking limiter shipped: a tier A refresh wave
+  # every 30 minutes started 60 to 190 Shopify stores per node at once,
+  # the 2 s edge line booked 16 inside the 30 s horizon and refused the
+  # rest; a store refused twice in one wave was recorded as rate_limited
+  # and shelved for its cadence, 350 to 835 stores a wave, about 45% of
+  # the wave's Shopify stores, while the line sat idle between waves.
+  # Four tasks per batch, three batches per node, book at most 24 s ahead
+  # on the 2 s line, so every store in the lane is served in turn until
+  # the stage deadline; what does not fit is cut and goes back to the
+  # queue with no row, as any deadline cut does.
+  @edge_concurrency 4
+
+  @doc false
+  @spec split_by_edge([term()], (term() -> term())) :: {[term()], [term()]}
+  def split_by_edge(items, ip_of) when is_list(items) and is_function(ip_of, 1),
+    do: Enum.split_with(items, fn item -> LS.HTTP.IPRateLimiter.shared_edge?(ip_of.(item)) end)
+
+  @doc false
+  # Run `fun` over `items` until `until`: shared-edge targets in a lane
+  # @edge_concurrency wide, the others `conc` wide, both at once. Returns
+  # {results, not_finished} like collect_until/3.
+  def fetch_split(items, ip_of, fun, conc, timeout, until) do
+    {edge, plain} = split_by_edge(items, ip_of)
+    edge_task = Task.async(fn -> run_until(edge, fun, @edge_concurrency, timeout, until) end)
+    {res, cut} = run_until(plain, fun, conc, timeout, until)
+
+    {eres, ecut} =
+      case Task.yield(edge_task, max(until - System.monotonic_time(:millisecond), 0) + 10_000) || Task.shutdown(edge_task) do
+        {:ok, result} -> result
+        _ -> {%{}, length(edge)}
+      end
+
+    {Map.merge(res, eres), cut + ecut}
+  end
+
+  defp run_until([], _fun, _conc, _timeout, _until), do: {%{}, 0}
+
+  defp run_until(items, fun, conc, timeout, until) do
+    items
+    |> Task.async_stream(fun, max_concurrency: conc, timeout: timeout, on_timeout: :kill_task, ordered: false)
+    |> collect_until(until, length(items))
   end
 
   @doc false
