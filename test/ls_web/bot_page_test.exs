@@ -10,8 +10,9 @@ defmodule LSWeb.BotPageTest do
   test "the bot page publishes every public crawl address and no private one" do
     ips = LSWeb.PageController.crawler_ips()
     # 2026-10-27: nine duals (seven nodes destroyed on 10-22 removed, chi2,
-    # dal2 and par2 re-added); the list follows devops/listsignal/fleet.conf.
-    assert length(ips) == 9
+    # dal2 and par2 re-added); 2026-11-04: ny2 and chi2 removed, seven
+    # duals. The list follows devops/listsignal/fleet.conf.
+    assert length(ips) == 7
     assert Enum.all?(ips, &match?({:ok, _}, :inet.parse_ipv4_address(String.to_charlist(&1))))
     refute Enum.any?(ips, &String.starts_with?(&1, "100.")), "the home node's CGNAT address is not ours to publish"
     refute "45.63.7.58" in ips, "the master does not crawl sites"

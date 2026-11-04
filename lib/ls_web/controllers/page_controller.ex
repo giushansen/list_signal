@@ -49,10 +49,11 @@ defmodule LSWeb.PageController do
   # in step with devops/listsignal/fleet.conf; LSWeb.BotPageTest checks the
   # shape, and the reverse DNS names live in devops/listsignal/rdns.md.
   # The fleet's public addresses, as fleet.conf lists them (2026-10-27:
-  # the seven nodes destroyed on 10-22 removed, chi2/dal2/par2 added).
+  # the seven nodes destroyed on 10-22 removed, chi2/dal2/par2 added;
+  # 2026-11-04: ny2 and chi2 removed, seven duals).
   @crawler_ips ~w(
-    108.61.94.33 207.246.126.235 95.179.216.41 64.177.122.55 45.77.42.191
-    45.76.59.43 64.177.125.20 104.238.144.112 108.61.123.237
+    108.61.94.33 95.179.216.41 64.177.122.55 45.77.42.191
+    45.76.59.43 104.238.144.112 108.61.123.237
   )
 
   @doc false
