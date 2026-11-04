@@ -875,28 +875,8 @@ defmodule LS.Cluster.WorkerAgent do
     # 0.6 s ahead. A fetch that raises is a store not finished.
     edge_task =
       Task.async(fn ->
-        edge
-        |> Task.async_stream(
-          fn item ->
-            try do
-              fun.(item)
-            rescue
-              _ -> :failed
-            catch
-              _, _ -> :failed
-            end
-          end,
-          max_concurrency: edge_width(parallel_batches()),
-          timeout: timeout,
-          on_timeout: :kill_task,
-          ordered: false
-        )
-        |> Enum.each(fn
-          {:ok, {d, r}} -> send(parent, {ref, d, r})
-          _ -> :ok
-        end)
-
-        :done
+        fun = handing_over(fun, parent, ref)
+        run_until(edge, fun, edge_width(parallel_batches()), timeout, until)
       end)
 
     {res, cut} = run_until(plain, fun, conc, timeout, until)
@@ -912,7 +892,7 @@ defmodule LS.Cluster.WorkerAgent do
       {^ref, d, r} ->
         collect_edge(ref, task, until, Map.put(acc, d, r))
 
-      {^task_ref, :done} ->
+      {^task_ref, _result} ->
         Process.demonitor(task_ref, [:flush])
         drain_edge(ref, acc)
 
@@ -922,6 +902,23 @@ defmodule LS.Cluster.WorkerAgent do
       max(until - System.monotonic_time(:millisecond), 0) ->
         Task.shutdown(task, :brutal_kill)
         drain_edge(ref, acc)
+    end
+  end
+
+  # The lane's fetch, handing each finished store to `parent` before it
+  # returns it; a fetch that raises is a store not finished.
+  defp handing_over(fun, parent, ref) do
+    fn item ->
+      try do
+        case fun.(item) do
+          {d, r} = done -> send(parent, {ref, d, r}); done
+          other -> other
+        end
+      rescue
+        _ -> :failed
+      catch
+        _, _ -> :failed
+      end
     end
   end
 
