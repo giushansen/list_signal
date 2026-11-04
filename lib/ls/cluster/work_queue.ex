@@ -718,39 +718,83 @@ defmodule LS.Cluster.WorkQueue do
   @doc "The share of a batch priority 0 may take while priority 1 items wait."
   def priority_share, do: @priority_share
 
+  # A batch holds at most this many names behind a shared edge (`edge:
+  # true`, LS.HTTP.IPRateLimiter.shared_edge?/1); the rest stay in place
+  # for later batches (2026-11-04, second hour of the edge lane). A node
+  # serves the Shopify edge at 30 requests a minute on one line shared
+  # by its three batches, about 10 a minute each, and a store costs 4 to
+  # 8 requests. The queue handed stores out in the runs they arrived in:
+  # the tier A slice enqueues its Shopify share back to back, and a cut
+  # batch returns its stores to the tail together, so the priority queue
+  # held 9,522 Shopify stores among 18,646 names in runs of up to 413.
+  # A batch that landed on a run fetched 13 of 82 stores in its whole
+  # 420 s stage on ny1 (17:14 and 17:21 UTC) and returned 69 as the next
+  # run; the duals did 17 to 22 rows a minute instead of 35. Eight
+  # stores at 6 requests are 48 requests, about 5 minutes at a batch's
+  # share, inside the stage, and three batches of eight keep the node's
+  # line at about 29 requests a minute: full, never choked.
+  @edge_per_batch 8
+
+  @doc "How many shared-edge names a batch may hold; the queue leaves the rest for later batches."
+  def edge_per_batch, do: @edge_per_batch
+
+  @doc "Pure: does this queue item sit behind a shared edge? Only the literal `edge: true` counts."
+  @spec edge?(term()) :: boolean()
+  def edge?(%{edge: true}), do: true
+  def edge?(_), do: false
+
   defp take_batch(count) do
     quota = max(round(count * @priority_share), 1)
-    first = take_from(:first, quota, [])
-    rest = take_from(:rest, count - length(first), first)
+    {first, edge_left} = take_from(:first, quota, [], @edge_per_batch)
+    {rest, edge_left} = take_from(:rest, count - length(first), first, edge_left)
     # Discovery short: tier A may fill what is left.
-    take_from(:first, count - length(rest), rest) |> Enum.reverse()
+    {all, _edge_left} = take_from(:first, count - length(rest), rest, edge_left)
+    Enum.reverse(all)
   end
 
-  # `:first` takes from the head of the table (priority 0, then 1 when 0 is
-  # empty); `:rest` takes only from priority 1 and up, skipping the whole
+  # `:first` walks from the head of the table (priority 0, then 1 when 0 is
+  # empty); `:rest` walks only priority 1 and up, skipping the whole
   # priority 0 range. ETS orders integers before atoms, so {0, :infinity}
-  # sorts after every {0, id} and before every {1, id}.
-  defp take_from(_where, remaining, acc) when remaining <= 0, do: acc
+  # sorts after every {0, id} and before every {1, id}. A shared-edge item
+  # past the batch's `edge_left` is walked over and left where it is.
+  defp take_from(_where, remaining, acc, edge_left) when remaining <= 0, do: {acc, edge_left}
 
-  defp take_from(where, remaining, acc) do
-    key =
+  defp take_from(where, remaining, acc, edge_left) do
+    start =
       case where do
         :first -> :ets.first(@queue_table)
         :rest -> :ets.next(@queue_table, {@prio_refresh_a, :infinity})
       end
 
-    case key do
-      :"$end_of_table" ->
-        acc
-
-      key ->
-        case :ets.take(@queue_table, key) do
-          [item] -> take_from(where, remaining - 1, [item | acc])
-          [] -> acc
-        end
-    end
+    walk(start, remaining, acc, edge_left)
   rescue
-    ArgumentError -> acc
+    ArgumentError -> {acc, edge_left}
+  end
+
+  defp walk(_key, remaining, acc, edge_left) when remaining <= 0, do: {acc, edge_left}
+  defp walk(:"$end_of_table", _remaining, acc, edge_left), do: {acc, edge_left}
+
+  defp walk(key, remaining, acc, edge_left) do
+    next = :ets.next(@queue_table, key)
+
+    case :ets.lookup(@queue_table, key) do
+      [{_key, data, _ts} = item] ->
+        cond do
+          not edge?(data) ->
+            :ets.delete(@queue_table, key)
+            walk(next, remaining - 1, [item | acc], edge_left)
+
+          edge_left > 0 ->
+            :ets.delete(@queue_table, key)
+            walk(next, remaining - 1, [item | acc], edge_left - 1)
+
+          true ->
+            walk(next, remaining, acc, edge_left)
+        end
+
+      [] ->
+        walk(next, remaining, acc, edge_left)
+    end
   end
 
   defp cleanup_expired(cutoff) do

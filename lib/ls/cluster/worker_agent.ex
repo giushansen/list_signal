@@ -396,7 +396,7 @@ defmodule LS.Cluster.WorkerAgent do
     skipped =
       skipped
       |> Map.put(:returned_front, for({d, _ip} <- surplus, item = by_domain[d], do: item))
-      |> Map.put(:returned_tail, for({d, _ip} <- cut, item = by_domain[d], do: item) ++ for({d, _ip} <- throttled, item = by_domain[d], do: Map.put(item, :after_429, true)))
+      |> Map.put(:returned_tail, for({d, ip} <- cut, item = by_domain[d], do: edge_tag(item, ip)) ++ for({d, ip} <- throttled, item = by_domain[d], do: item |> Map.put(:after_429, true) |> edge_tag(ip)))
       |> Map.put(:child_rows, child_rows(http_res))
 
     # 4. Merge (reputation + classification + scoring happen here)
@@ -835,6 +835,20 @@ defmodule LS.Cluster.WorkerAgent do
   @doc false
   @spec edge_width(pos_integer()) :: pos_integer()
   def edge_width(batches) when is_integer(batches) and batches >= 1, do: max(1, div(@edge_concurrency, batches))
+
+  @doc """
+  Pure: a queue item going back to the queue carries `edge: true` when
+  its address sits behind a shared edge, so the master's queue can cap
+  how many such names one batch holds (LS.Cluster.WorkQueue.edge_per_batch/0,
+  2026-11-04). Without the tag a cut batch returned its stores to the
+  tail together and the next batch to reach them choked on the run.
+  """
+  @spec edge_tag(map(), term()) :: map()
+  def edge_tag(%{} = item, ip) do
+    if LS.HTTP.IPRateLimiter.shared_edge?(ip), do: Map.put(item, :edge, true), else: item
+  end
+
+  def edge_tag(item, _ip), do: item
 
   @doc false
   @spec split_by_edge([term()], (term() -> term())) :: {[term()], [term()]}

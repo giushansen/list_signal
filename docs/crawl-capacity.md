@@ -257,6 +257,17 @@ bursts of own refusals. The capacity fact above still stands, so the next
 lever is the cost of a Shopify store on the line (four requests today) or
 more source addresses, never more rate per address.
 
+**2026-11-04, 17:30 UTC: a batch holds at most eight shared-edge stores.**
+The share alone did not bring the duals back: the queue handed stores out
+in runs (up to 413 in a row, 51% of an 18.6K priority queue), and a batch
+on a run fetched 13 of 82 in its stage. The master's queue now walks over
+shared-edge names past eight a batch and leaves them in place for later
+batches. The line stays full (three batches of eight at six requests
+each are about 29 of the 30 requests a minute a node) and no batch is
+choked. Capacity is unchanged: about 5 stores a minute a node, 2,100 an
+hour on seven duals, the 120 a slice tier A share plus what certificates
+bring. The lever is still the cost of a store or more addresses.
+
 **2026-11-04, 10:30 UTC: the refresh admits Shopify stores at the edge's
 capacity.** The lane on and the tier A tick sliced, the batches choked on
 Shopify stores anyway: 42% of the due tier A list is Shopify, those items

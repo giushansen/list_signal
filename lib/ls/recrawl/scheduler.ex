@@ -269,6 +269,9 @@ defmodule LS.Recrawl.Scheduler do
     end
   end
 
+  defp edge_tag(data, true), do: Map.put(data, :edge, true)
+  defp edge_tag(data, _), do: data
+
   defp list_name(tiers, true), do: Enum.join(tiers, "/") <> " shopify"
   defp list_name(tiers, false), do: Enum.join(tiers, "/") <> " plain"
   defp list_name(tiers, _), do: Enum.join(tiers, "/")
@@ -328,7 +331,12 @@ defmodule LS.Recrawl.Scheduler do
             # The stored homepage simhash lets the worker skip the secondary
             # pages of an unchanged site (2026-10-23). The tier rides along
             # so the queue can put tier A first (WorkQueue.priority/1).
-            data = Map.merge(%{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}, Map.get(validators, domain, %{}))
+            # The Shopify list is tagged so the queue caps how many stores a
+            # batch holds (WorkQueue.edge_per_batch/0, 2026-11-04).
+            data =
+              %{ctl_domain: domain, source: :recrawl, tier: tier, prev_simhash: simhash}
+              |> Map.merge(Map.get(validators, domain, %{}))
+              |> edge_tag(shopify)
             # This IS the schedule: stale_domains already selected only domains
             # past their cadence, so the daily and tier rings have nothing to add.
             case LS.Cluster.WorkQueue.enqueue(data, force: true) do

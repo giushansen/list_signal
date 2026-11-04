@@ -258,6 +258,26 @@ applies), a slice reads blocks of `a_block/0`, and a lane's reach is
 50,000 rows whatever its block size. One due query costs 1.7 s at any
 offset or block size (measured), so a slice is four to five queries.
 
+**A batch holds at most eight shared-edge stores (2026-11-04, 16:20 to
+17:30 UTC).** One hour after the Shopify share went live the duals still
+did 17 to 22 rows a minute. The share was right and the order was not:
+the queue hands names out in the runs they arrive in, the slice enqueues
+its 120 stores back to back, and a cut batch returns its stores to the
+tail together. The priority queue held 9,522 Shopify stores among
+18,646 names in runs of up to 413 (measured by dumping it). A batch
+that landed on a run fetched 13 of 82 stores in its whole 420 s stage
+(ny1, 17:14 and 17:21 UTC) and returned 69 as the next run; the other
+batches ran clean, 45 to 67 rows in two to seven minutes. The master's
+queue now caps a batch at `WorkQueue.edge_per_batch/0` names tagged
+`edge: true` and walks over the rest, which stay in place in order for
+the batches after it. The scheduler tags its Shopify list, the worker
+tags a store it cuts or that answered 429 (`WorkerAgent.edge_tag/2`),
+and the stores already in the queue were tagged once by hand after the
+deploy. Eight stores at six requests are about five minutes at a batch's
+share of the node's 30 requests a minute, inside the stage; three
+batches of eight keep the line at about 29. Meaning change: a batch is
+never mostly stores, so when only stores wait a batch is eight names.
+
 **Tier A Shopify stores are admitted at the edge's capacity (2026-11-04,
 09:20 to 10:30 UTC).** With the slices enqueuing 750 names every five
 minutes and the lane on, the batches choked: 42% of the due tier A list
