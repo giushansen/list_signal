@@ -1,0 +1,1 @@
+2026-11-04 07:0x UTC: the owner overruled the default. LS_EDGE_LANE=on set fleet-wide through the devops profile (devops 7c9bf3e) on ny1 par1 chi1 dal2 par2 sg2 dal1 h1; master deployed 07:37 UTC with the sliced tier A tick. Post-switch numbers appended below once measured.
