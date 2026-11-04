@@ -229,6 +229,23 @@ defmodule LS.Cluster.WorkQueue do
   end
   def tag_known(data, _), do: data
 
+  @doc """
+  Pure given the rings: would `enqueue/2` refuse this domain even with
+  `force: true`? The stable ring (2026-09-09) and the dormant ring
+  (2026-10-01) are not bypassed by the schedule, and the due list is
+  oldest first, so the names they hold sit at its head for weeks. The
+  recrawl scheduler asks here before it spends its allowance on a name
+  (2026-11-04: six slices of 750 read 3,748 rows from the top and
+  enqueued nothing for ninety minutes).
+  """
+  @spec ring_held?(term()) :: boolean()
+  def ring_held?(domain) when is_binary(domain) and domain != "" do
+    not LS.Cluster.CrawlDedup.hot?(domain) and
+      (LS.Cluster.CrawlDedup.dormant?(domain) or LS.Cluster.CrawlDedup.stable?(domain))
+  end
+
+  def ring_held?(_), do: false
+
   @doc "Pure-ish: is this domain queued or in flight right now?"
   @spec queued?(term()) :: boolean()
   def queued?(domain) when is_binary(domain) and domain != "", do: :ets.member(@index_table, domain)

@@ -69,6 +69,13 @@ defmodule LS.Recrawl.Scheduler do
   # names or has read this many blocks. Dead names cost a lookup each, no
   # fetch, so the fetch budget is unchanged.
   @max_passes 4
+  # The reach of one lane call, in rows, whatever its block size. A tier A
+  # slice reads blocks of a_block/0 and must get as far down the due list
+  # as a whole tick did (2026-11-04): the list is oldest first, and names
+  # the stable and dormant rings hold sit at its head for weeks, about
+  # 17,000 of them that day, so a slice that read four blocks of 937 rows
+  # from the top enqueued nothing for ninety minutes.
+  @read_cap @max_passes * @batch_size
 
   @doc "The refresh plan: domains per run, runs per day, and the daily ceiling they make."
   def plan do
@@ -93,8 +100,12 @@ defmodule LS.Recrawl.Scheduler do
   end
 
   @doc """
-  Pure: how many rows one slice reads, a quarter more than it may enqueue
-  (a_block/0 is the same rule for a whole tick).
+  Pure: how many rows one slice would need to read if the due list held
+  only names it can admit, a quarter more than it may enqueue (a_block/0
+  is the same rule for a whole tick). Since 2026-11-04 a slice reads
+  blocks of a_block/0 instead, because the ring-held names at the head of
+  the list (see @read_cap) are skipped before the allowance is spent, and
+  one query costs the same 1.7 s at any block size.
   """
   @spec slice_block(pos_integer()) :: pos_integer()
   def slice_block(allowance), do: min(@batch_size, allowance + div(allowance, 4))
@@ -143,7 +154,7 @@ defmodule LS.Recrawl.Scheduler do
 
   # A later tier A slice of the current tick (slice_plan/0).
   def handle_info({:tier_a_slice, allowance}, state) do
-    {a_enqueued, a_dead, _full} = lane(["a"], allowance, slice_block(allowance))
+    {a_enqueued, a_dead, _full} = lane(["a"], allowance, a_block())
     Logger.info("[RECRAWL] Tier A slice: enqueued #{a_enqueued} live, #{a_dead} dead recorded on the master")
     {:noreply, count(state, a_enqueued, a_enqueued, a_dead)}
   end
@@ -174,7 +185,7 @@ defmodule LS.Recrawl.Scheduler do
     # of the tick after the whole tier A allowance, only under the headroom
     # (admit?/3 is the rule).
     [{0, first} | later] = slice_plan()
-    {a_enqueued, a_dead, a_full} = lane(["a"], first, slice_block(first))
+    {a_enqueued, a_dead, a_full} = lane(["a"], first, a_block())
     for {delay, allowance} <- later, do: Process.send_after(self(), {:tier_a_slice, allowance}, delay)
 
     {bc_enqueued, bc_dead} =
@@ -209,7 +220,7 @@ defmodule LS.Recrawl.Scheduler do
 
   # One lane: blocks of `block` rows from the due list restricted to
   # `tiers`, at successive offsets, until `target` live names are enqueued,
-  # the list ends, or @max_passes blocks were read. Returns
+  # the list ends, or @read_cap rows were read. Returns
   # `{enqueued, dead_recorded, queue_full?}`.
   defp lane(_tiers, target, _block) when target <= 0, do: {0, 0, false}
 
@@ -221,7 +232,7 @@ defmodule LS.Recrawl.Scheduler do
     end
   end
 
-  defp passes(_tiers, target, _block, pass, enqueued, dead) when pass >= @max_passes or enqueued >= target,
+  defp passes(_tiers, target, block, pass, enqueued, dead) when pass * block >= @read_cap or enqueued >= target,
     do: {enqueued, dead, false}
 
   defp passes(tiers, target, block, pass, enqueued, dead) do
@@ -232,7 +243,7 @@ defmodule LS.Recrawl.Scheduler do
 
       {:ok, domains} ->
         count = length(domains)
-        Logger.info("[RECRAWL] Found #{count} stale #{Enum.join(tiers, "/")} domains at offset #{pass * block}, pass #{pass + 1}/#{@max_passes}")
+        Logger.info("[RECRAWL] Found #{count} stale #{Enum.join(tiers, "/")} domains at offset #{pass * block}, pass #{pass + 1} (reach #{@read_cap} rows)")
 
         # Resolve on the master first (LS.Recrawl.Liveness, 2026-10-03): a
         # dead name gets its check recorded here and never costs a worker
@@ -242,6 +253,10 @@ defmodule LS.Recrawl.Scheduler do
         # item waits hours behind discovery and its compiled row still says
         # due at the next tick.
         {queued, domains} = Enum.split_with(domains, fn {d, _tier, _simhash} -> LS.Cluster.WorkQueue.queued?(d) end)
+        # Nor anything the stable or dormant rings hold (2026-11-04): the
+        # queue refuses those even when forced, and they are the oldest
+        # rows, so counting them against the allowance spent it on nothing.
+        {held, domains} = Enum.split_with(domains, fn {d, _tier, _simhash} -> LS.Cluster.WorkQueue.ring_held?(d) end)
         taken = Enum.take(domains, target - enqueued)
 
         {domains, dead_recorded} =
@@ -287,7 +302,7 @@ defmodule LS.Recrawl.Scheduler do
         Logger.info(
           "[RECRAWL] Enqueued #{added}/#{count} stale #{Enum.join(tiers, "/")} domains " <>
             "(#{dead_recorded} dead recorded on the master; #{length(queued)} already queued or in flight, " <>
-            "#{length(taken)} taken, refused #{inspect(refused)})"
+            "#{length(held)} held by the stable or dormant rings, #{length(taken)} taken, refused #{inspect(refused)})"
         )
 
         if count < block,

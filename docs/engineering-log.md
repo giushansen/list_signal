@@ -243,6 +243,21 @@ Shopify stores cost fewer requests or more IPs join, the queue growing
 until the B/C tiers are held back by the headroom rule. The post-switch
 numbers go in the note on aa6794d.
 
+**The sliced tick enqueued nothing (2026-11-04, 07:42 to 09:00 UTC).**
+First sliced tick after the master deploy: 0, 6, 1, 0 names a slice
+against 3,600 to 4,500 a tick before, so the fleet refreshed no tier A
+business for ninety minutes and rows a node rose to 42 to 46 a minute on
+plain discovery alone. The due list is oldest first and the names the
+stable and dormant rings hold (refused even when forced) sit at its head,
+about 17,000 that morning; the old tick's four blocks of 5,625 found
+fresh names in the fourth, a slice's four blocks of 937 never left the
+prefix, and every held name counted against the allowance ("750 taken,
+refused %{recently_crawled: 750}"). Fix: a pass skips what the rings hold
+before it takes (`WorkQueue.ring_held?/1`, the same test the queue
+applies), a slice reads blocks of `a_block/0`, and a lane's reach is
+50,000 rows whatever its block size. One due query costs 1.7 s at any
+offset or block size (measured), so a slice is four to five queries.
+
 **Found in the readings (2026-11-03 evening):** the recrawl scheduler's tier A
 tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
 batch that starts with more Shopify stores than the 2 s edge line can
