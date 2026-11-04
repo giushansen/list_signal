@@ -1,0 +1,1 @@
+2026-11-04 09:20 UTC, first tick after the deploy: first slice enqueued 750 of 750 in three passes (offsets 0, 5625, 11250; 5,439 + 4,900 + 3,494 names held by the rings skipped, 186 + 566 + 1 taken, 2 dead), 8 s wall, B/C 1,449. The earlier sliced ticks had enqueued 0 to 27.
