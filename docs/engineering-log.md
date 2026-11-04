@@ -231,6 +231,18 @@ lane sheds late and takes plain candidates with it. Which shedding the
 product wants, or whether Shopify stores should cost fewer requests,
 is the owner's call; the numbers are in 067f5e4's note and here.
 
+**The owner's call (2026-11-04, 07:00 UTC): the lane is on, fleet-wide.**
+Rule 2 (never idle inside politeness) wins over rows a minute. The switch
+is set in the devops profile (`LS_EDGE_LANE=on` in the dual and home
+profiles, devops 7c9bf3e), applied to all eight workers at 07:0x UTC, so
+the choice reads from fleet.conf and the app default stays off. The
+master went to the sliced tier A tick at 07:37 UTC (first sliced tick
+08:07). What to expect and watch: the line full between waves, zero
+wave bursts of own refusals, rows a node near 24 rather than 34 until
+Shopify stores cost fewer requests or more IPs join, the queue growing
+until the B/C tiers are held back by the headroom rule. The post-switch
+numbers go in the note on aa6794d.
+
 **Found in the readings (2026-11-03 evening):** the recrawl scheduler's tier A
 tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
 batch that starts with more Shopify stores than the 2 s edge line can

@@ -248,3 +248,11 @@ node serves about 7 stores a minute and seven duals about 3,400 an hour,
 while the tier A tick asks for more than that. Refusing at the horizon sheds
 the surplus at once; the lane sheds it late and takes plain work with it.
 `LS_EDGE_LANE=on` turns the lane on for one node to trial a change.
+
+**2026-11-04, 07:00 UTC: the owner chose the lane, on everywhere.** The fleet
+profile sets `LS_EDGE_LANE=on` on every worker (devops 7c9bf3e); the app
+default stays off so a fresh node without a profile is the conservative
+one. The trade accepted: fewer rows a minute per node, a fuller line, no
+bursts of own refusals. The capacity fact above still stands, so the next
+lever is the cost of a Shopify store on the line (four requests today) or
+more source addresses, never more rate per address.
