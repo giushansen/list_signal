@@ -257,6 +257,14 @@ bursts of own refusals. The capacity fact above still stands, so the next
 lever is the cost of a Shopify store on the line (four requests today) or
 more source addresses, never more rate per address.
 
+**2026-11-04, 19:30 UTC: the lane keeps what it finished.** After the
+cap: duals 25 to 28 rows a minute, Shopify rows 11 to 59 a quarter hour
+(250 to 360 before), the Shopify line idle on ny1. The lane dropped every
+store it had fetched whenever the store in hand outran the stage
+deadline. Fixed in the worker; the open fact is that a one-wide lane
+behind the plain fetches on the node budget serves two or three stores a
+batch, under the line's five a minute a node.
+
 **2026-11-04, 17:30 UTC: a batch holds at most eight shared-edge stores.**
 The share alone did not bring the duals back: the queue handed stores out
 in runs (up to 413 in a row, 51% of an 18.6K priority queue), and a batch

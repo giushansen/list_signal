@@ -861,16 +861,76 @@ defmodule LS.Cluster.WorkerAgent do
   # {results, not_finished} like collect_until/3.
   def fetch_split(items, ip_of, fun, conc, timeout, until) do
     {edge, plain} = split_by_edge(items, ip_of)
-    edge_task = Task.async(fn -> run_until(edge, fun, edge_width(parallel_batches()), timeout, until) end)
+    parent = self()
+    ref = make_ref()
+
+    # Each finished store is handed over as it completes (2026-11-04,
+    # 19:30 UTC). The lane used to return its results in one piece when
+    # its stream ended, and a store in hand that outran the deadline took
+    # every store already fetched down with it: the yield gave up, the
+    # task was shut down, and the whole lane was counted as cut (69 of
+    # 82 on a run batch, 13 kept, all plain). With a batch capped at
+    # eight stores the fleet wrote 11 to 59 Shopify rows a quarter hour
+    # against 250 to 360 before, while the Shopify line on ny1 sat booked
+    # 0.6 s ahead. A fetch that raises is a store not finished.
+    edge_task =
+      Task.async(fn ->
+        edge
+        |> Task.async_stream(
+          fn item ->
+            try do
+              fun.(item)
+            rescue
+              _ -> :failed
+            catch
+              _, _ -> :failed
+            end
+          end,
+          max_concurrency: edge_width(parallel_batches()),
+          timeout: timeout,
+          on_timeout: :kill_task,
+          ordered: false
+        )
+        |> Enum.each(fn
+          {:ok, {d, r}} -> send(parent, {ref, d, r})
+          _ -> :ok
+        end)
+
+        :done
+      end)
+
     {res, cut} = run_until(plain, fun, conc, timeout, until)
+    eres = collect_edge(ref, edge_task, until, %{})
 
-    {eres, ecut} =
-      case Task.yield(edge_task, max(until - System.monotonic_time(:millisecond), 0) + 10_000) || Task.shutdown(edge_task) do
-        {:ok, result} -> result
-        _ -> {%{}, length(edge)}
-      end
+    {Map.merge(res, eres), cut + max(length(edge) - map_size(eres), 0)}
+  end
 
-    {Map.merge(res, eres), cut + ecut}
+  # Collect the lane's finished stores until the lane is done or the
+  # deadline passes; then the lane is shut down and what arrived is kept.
+  defp collect_edge(ref, %Task{ref: task_ref} = task, until, acc) do
+    receive do
+      {^ref, d, r} ->
+        collect_edge(ref, task, until, Map.put(acc, d, r))
+
+      {^task_ref, :done} ->
+        Process.demonitor(task_ref, [:flush])
+        drain_edge(ref, acc)
+
+      {:DOWN, ^task_ref, _, _, _} ->
+        drain_edge(ref, acc)
+    after
+      max(until - System.monotonic_time(:millisecond), 0) ->
+        Task.shutdown(task, :brutal_kill)
+        drain_edge(ref, acc)
+    end
+  end
+
+  defp drain_edge(ref, acc) do
+    receive do
+      {^ref, d, r} -> drain_edge(ref, Map.put(acc, d, r))
+    after
+      0 -> acc
+    end
   end
 
   defp run_until([], _fun, _conc, _timeout, _until), do: {%{}, 0}

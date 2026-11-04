@@ -258,6 +258,24 @@ applies), a slice reads blocks of `a_block/0`, and a lane's reach is
 50,000 rows whatever its block size. One due query costs 1.7 s at any
 offset or block size (measured), so a slice is four to five queries.
 
+**The edge lane keeps the stores it finished (2026-11-04, 19:30 UTC).**
+One hour after the cap the duals were at 25 to 28 rows a minute (from 17
+to 22), but the fleet wrote 11 to 59 Shopify rows a quarter hour against
+250 to 360 before, every batch ran to its 420 s deadline and cut 6 to 26
+candidates, and the Shopify line on ny1 sat booked 0.6 s ahead: idle. A
+store in the lane waits its turn on the node budget behind the plain
+fetches (one wide, a store is four to six requests), and when the store
+in hand outran the deadline the whole lane task was shut down and every
+store it had already fetched was dropped with it and counted as cut.
+The earlier run batches show it: 69 of 82 cut, 13 kept, all 13 plain.
+`WorkerAgent.fetch_split/6` now hands each finished store to the batch as
+it completes and the deadline cuts only what is not done. Pinned by
+`test/ls/cluster/worker_edge_lane_keeps_finished_test.exs`, which failed
+on the old code. What stays open: a one-wide lane queued behind the
+plain fetches serves two or three stores a batch, well under the line's
+five a minute a node, so the line idles inside rule 1. Next lever, with
+numbers after this deploy: the lane's place on the node budget.
+
 **A batch holds at most eight shared-edge stores (2026-11-04, 16:20 to
 17:30 UTC).** One hour after the Shopify share went live the duals still
 did 17 to 22 rows a minute. The share was right and the order was not:
