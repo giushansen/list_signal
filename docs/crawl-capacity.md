@@ -221,6 +221,18 @@ horizon and refused the rest, and a store refused twice in one wave was
 recorded as rate_limited and shelved for its cadence: 350 to 835 stores a
 wave, about 45% of the wave's Shopify stores, while the line sat idle between
 waves. Rule 2 inside rule 1 now means: targets behind a shared edge run in a
-lane four wide per batch (three batches per node book at most 24 s ahead on
-the 2 s line) and the tier A allowance goes out in six slices of 750 inside
-the tick.
+lane four wide per node, shared by the batches (one per batch on a dual, 8 s
+ahead at most on the 2 s line), and the tier A allowance goes out in six
+slices of 750 inside the tick.
+
+**2026-11-04, one hour later: the lane was first four wide per batch.** Three
+batches kept the Shopify line 23 to 24 s deep between waves on ny1 and sg2:
+inside the 30 s discovery horizon, so the lane was never refused, but over
+the 5 s a redirect hop accepted and the 10 s depth horizon. Shopify rows
+ending as a bare 301 (hop not followed) went from 3 to 6% to 17 to 25% the
+moment the booking limiter went out on 2026-11-03 15:43 UTC, about 1,000
+stores an hour. A hop now books its place within its lane's horizon like any
+first contact, same host or not, and the width is per node. The rule of
+thumb that falls out: the bookings all callers on one node can hold on a
+shared line must stay under the shortest horizon any caller has (10 s for
+the depth lane), or the shortest-horizon caller is the one always refused.

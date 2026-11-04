@@ -239,6 +239,19 @@ defmodule LS.HTTP.Client do
   # Pure: the booking horizon a lane sleeps for.
   def book_horizon_ms(lane), do: Map.get(@book_horizon_ms, lane, @max_pause_sleep_ms)
 
+  # A slow-down is logged because the row log never shows it (2026-11-04):
+  # a first 429 is requeued with no row, a hop's or a catalog page's
+  # status is not recorded, yet each one pauses the whole key. sg2's
+  # Shopify edge reached a 5-minute pause from seven unseen ones.
+  defp log_slow_down(%{status: status, headers: headers}, domain, ip, path, hop) when status in [429, 430, 503] do
+    Logger.info(
+      "[http] slow-down #{status} #{domain}#{path} ip=#{ip} hop=#{hop} lane=#{Process.get(:ls_fetch_lane, :discovery)} " <>
+        "retry_after_ms=#{inspect(retry_after_ms(headers))} pause_ms=#{IPRateLimiter.penalty_wait(ip)}"
+    )
+  end
+
+  defp log_slow_down(_response, _domain, _ip, _path, _hop), do: :ok
+
   defp fetch_with_redirects(_domain, _ip, redirect_count, _path, _recv_timeout, _max_bytes, _extra)
        when redirect_count > @max_redirects do
     {:error, "too_many_redirects", :too_many_redirects}
@@ -335,6 +348,7 @@ defmodule LS.HTTP.Client do
         # host, the address otherwise, for Retry-After or the back-off
         # schedule. 430 is Shopify's own refusal and means the same thing.
         if response.status in [429, 430, 503], do: IPRateLimiter.penalize(ip, retry_after_ms(response.headers))
+        log_slow_down(response, domain, ip, path, redirect_count)
 
         # Handle redirects
         if response.status in [301, 302, 303, 307, 308] do
@@ -345,6 +359,7 @@ defmodule LS.HTTP.Client do
               # ny1 sent 157 a minute against its 120 ceiling).
               with {:ok, new_host, new_path} <- resolve_redirect(domain, path, location),
                    {:ok, new_ip} <- hop_address(domain, ip, new_host),
+                   :ok <- pace(new_ip),
                    :ok <- hop_slot() do
                 fetch_with_redirects(new_host, new_ip, redirect_count + 1, new_path, recv_timeout, max_bytes, extra)
               else
@@ -551,18 +566,16 @@ defmodule LS.HTTP.Client do
 
   @doc false
   # The address a redirect hop connects to (2026-10-26). Same host: the
-  # address already validated. Another host: resolve it, keep only a public
-  # address, and pace it on the per-IP limiter like any first contact (a
-  # cross-host hop used to connect by name with no check and no limiter;
-  # the per-IP spacing is what keeps our source addresses off blocklists).
-  # No public address, or a limiter that is still busy after one wait: the
-  # 3xx is returned as the response, nothing is followed.
+  # address already validated. Another host: resolve it and keep only a
+  # public address (a cross-host hop used to connect by name with no
+  # check). No public address: the 3xx is returned as the response,
+  # nothing is followed. The caller then books the hop on the address's
+  # line (`pace/1`), same host or not.
   def hop_address(host, ip, host, _resolve), do: {:ok, ip}
 
   def hop_address(_host, _ip, new_host, resolve) do
     with {:ok, %{a: ips}} <- resolve.(new_host),
-         new_ip when is_binary(new_ip) <- LS.HTTP.SafeAddress.first_public(ips),
-         :ok <- pace(new_ip) do
+         new_ip when is_binary(new_ip) <- LS.HTTP.SafeAddress.first_public(ips) do
       {:ok, new_ip}
     else
       _ -> :stop
@@ -571,17 +584,29 @@ defmodule LS.HTTP.Client do
 
   defp hop_address(host, ip, new_host), do: hop_address(host, ip, new_host, &LS.DNS.Resolver.lookup/1)
 
+  # A hop books its place on the address's line like any first contact and
+  # sleeps for it. Until 2026-11-04 it asked for a slot within 5 s and gave
+  # up otherwise, which was fine while the limiter only spaced; once
+  # discovery booked the Shopify line up to 30 s ahead (8bfd7a7, deployed
+  # 2026-11-03 15:43 UTC) the apex-to-www hop of a Shopify store rarely
+  # found 5 s and the store ended as a bare 301 row: 3 to 6% of Shopify
+  # rows were 301 before, 17 to 25% after, about 1,000 stores an hour.
   defp pace(ip) do
-    case IPRateLimiter.check_and_update(ip, 1000) do
-      :ok ->
-        :ok
+    case hop_booking(ip, Process.get(:ls_fetch_lane, :discovery)) do
+      {:wait, ms} -> Process.sleep(ms); :ok
+      other -> other
+    end
+  end
 
-      {:wait, ms} when ms <= 5_000 ->
-        Process.sleep(ms)
-        if IPRateLimiter.check_and_update(ip, 1000) == :ok, do: :ok, else: :stop
-
-      _ ->
-        :stop
+  @doc false
+  # Pure but for the limiter table: the hop's place on `ip`'s line within
+  # the lane's horizon, `:stop` when there is none.
+  @spec hop_booking(String.t(), atom()) :: :ok | {:wait, pos_integer()} | :stop
+  def hop_booking(ip, lane) do
+    case IPRateLimiter.book(ip, 1000, book_horizon_ms(lane)) do
+      :ok -> :ok
+      {:wait, ms} -> {:wait, ms}
+      {:refuse, _} -> :stop
     end
   end
 

@@ -177,6 +177,33 @@ inside the tick instead of one block (`Scheduler.slice_plan/0`), each
 consumed before the next lands. Also on 2026-11-04: ny2 and chi2 left
 the fleet (ff9e4d3, devops e47da10), seven duals remain.
 
+**One hour after the lane went to the duals (2026-11-04, 01:40 UTC):**
+the lane was four wide per batch and a dual runs three batches, so
+twelve tasks kept the Shopify line 23 to 24 s deep on ny1 and sg2
+between waves. The lane itself was never refused (30 s horizon), but
+two other callers were: a redirect hop asked the limiter for a slot
+within 5 s and gave up otherwise (`pace/1`, written 2026-10-26 for a
+limiter that only spaced), and the depth lane's catalog fetch has a
+10 s horizon. The row log had the first one all along: Shopify rows
+ending as a bare 301 (apex-to-www hop not followed, no content) were
+3 to 6% before the booking limiter went out at 15:43 and 17 to 25%
+after, about 1,000 stores an hour for ten hours. Fixed: the edge width
+is four per node, shared by the batches (`WorkerAgent.edge_width/1`,
+one per batch on a dual, 8 s deep at most), and a hop books its place
+on the line like any first contact, within its lane's horizon, same
+host or not (`Client.hop_booking/2`). Each 429, 430 or 503 is now a
+log line (`[http] slow-down`), because the row log never shows them:
+a first 429 is requeued with no row, a hop's or a catalog page's
+status is not recorded, yet sg2's Shopify edge reached penalty level 7
+(a 5-minute pause) from seven unseen refusals in ten minutes and the
+whole 01:30 wave on that node was refused. Also seen the same night:
+Shopify answers a curl from a residential laptop with 429 and
+Retry-After 60 on the first request to any store, so some of the
+edge's 429s are fingerprint checks, not volume; and since 00:00 UTC
+some stores serve a "Verify your browser" 403 (259 and 307 rows in the
+first two hours, 8 to 30 an hour before). Both are facts to watch, not
+settings to change.
+
 **Found in the readings (2026-11-03 evening):** the recrawl scheduler's tier A
 tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
 batch that starts with more Shopify stores than the 2 s edge line can

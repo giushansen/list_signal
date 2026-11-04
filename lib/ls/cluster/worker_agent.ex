@@ -791,11 +791,22 @@ defmodule LS.Cluster.WorkerAgent do
   # rest; a store refused twice in one wave was recorded as rate_limited
   # and shelved for its cadence, 350 to 835 stores a wave, about 45% of
   # the wave's Shopify stores, while the line sat idle between waves.
-  # Four tasks per batch, three batches per node, book at most 24 s ahead
-  # on the 2 s line, so every store in the lane is served in turn until
-  # the stage deadline; what does not fit is cut and goes back to the
-  # queue with no row, as any deadline cut does.
+  # The lane books ahead on the 2 s line so every store in it is served
+  # in turn until the stage deadline; what does not fit is cut and goes
+  # back to the queue with no row, as any deadline cut does.
+  #
+  # The width is per node, shared by the batches (2026-11-04, first hour
+  # of the lane): four per batch times three batches kept the line 23 to
+  # 24 s deep on ny1 and sg2 between waves, under the 30 s discovery
+  # horizon but over the 5 s a redirect hop tolerated and the 10 s depth
+  # horizon, so hops and catalog fetches were the ones refused. Four per
+  # node is 8 s deep: the line never idles (a store answers in about a
+  # second) and every other caller still finds a place.
   @edge_concurrency 4
+
+  @doc false
+  @spec edge_width(pos_integer()) :: pos_integer()
+  def edge_width(batches) when is_integer(batches) and batches >= 1, do: max(1, div(@edge_concurrency, batches))
 
   @doc false
   @spec split_by_edge([term()], (term() -> term())) :: {[term()], [term()]}
@@ -804,11 +815,11 @@ defmodule LS.Cluster.WorkerAgent do
 
   @doc false
   # Run `fun` over `items` until `until`: shared-edge targets in a lane
-  # @edge_concurrency wide, the others `conc` wide, both at once. Returns
+  # edge_width/1 wide, the others `conc` wide, both at once. Returns
   # {results, not_finished} like collect_until/3.
   def fetch_split(items, ip_of, fun, conc, timeout, until) do
     {edge, plain} = split_by_edge(items, ip_of)
-    edge_task = Task.async(fn -> run_until(edge, fun, @edge_concurrency, timeout, until) end)
+    edge_task = Task.async(fn -> run_until(edge, fun, edge_width(parallel_batches()), timeout, until) end)
     {res, cut} = run_until(plain, fun, conc, timeout, until)
 
     {eres, ecut} =
