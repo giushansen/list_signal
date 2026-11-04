@@ -49,6 +49,22 @@ defmodule LS.Recrawl.Scheduler do
   @batch_size 12_500
   @tier_a_per_tick 4_500
   @tier_a_slices 6
+  # Shopify stores in a slice (2026-11-04). 42% of the due tier A list is
+  # Shopify (250,923 of 594,488 that afternoon) and every store on the
+  # fleet goes through one 2 s line per node at Shopify's edge (30
+  # requests a minute a node, a store costs four to eight: robots.txt,
+  # homepage, hop, contact, products.json). Tier A items are dequeued
+  # first, so with no cap each batch filled with stores the line could
+  # not serve in its 420 s window, the deadline cut 21 to 60 of 74 to 86
+  # candidates a batch, the cut stores went back to the head of the queue
+  # and refilled the next batch, and plain names waited behind them: sg2
+  # 14 to 61 rows a batch, fleet 2,000 rows a quarter hour (3,100 before
+  # the tier A items arrived). 120 a slice is 24 stores a minute on the
+  # fleet, 3.4 a node, 14 to 27 edge requests a minute of the 30, leaving
+  # the rest for the stores certificates bring. Raise it when the
+  # priority queue sits at zero between slices; lower it when batches cut
+  # stores again. Stores past the cap stay due and come oldest first.
+  @tier_a_shopify_per_slice 120
   @queue_headroom 150_000
   @check_interval_ms 30 * 60_000
   # Wait 5 minutes after boot before first check (let CTL/workers warm up)
@@ -83,7 +99,8 @@ defmodule LS.Recrawl.Scheduler do
     %{batch_size: @batch_size, interval_ms: @check_interval_ms, runs_per_day: runs, per_day: runs * @batch_size,
       queue_headroom: @queue_headroom, max_passes: @max_passes,
       tier_a_per_tick: @tier_a_per_tick, tier_a_per_day: runs * @tier_a_per_tick,
-      tier_a_slices: @tier_a_slices, tier_a_per_slice: div(@tier_a_per_tick, @tier_a_slices)}
+      tier_a_slices: @tier_a_slices, tier_a_per_slice: div(@tier_a_per_tick, @tier_a_slices),
+      tier_a_shopify_per_slice: @tier_a_shopify_per_slice}
   end
 
   @doc """
@@ -118,6 +135,10 @@ defmodule LS.Recrawl.Scheduler do
   @spec admit?(String.t(), non_neg_integer(), boolean()) :: boolean()
   def admit?("a", a_enqueued, _over_headroom), do: a_enqueued < @tier_a_per_tick
   def admit?(_tier, _a_enqueued, over_headroom), do: not over_headroom
+
+  @doc "Pure: of a slice's allowance, how many may be Shopify stores (@tier_a_shopify_per_slice)."
+  @spec shopify_share(non_neg_integer()) :: non_neg_integer()
+  def shopify_share(allowance) when is_integer(allowance) and allowance >= 0, do: min(allowance, @tier_a_shopify_per_slice)
 
   @doc "Manually trigger a recrawl check."
   def check_now do
@@ -222,28 +243,50 @@ defmodule LS.Recrawl.Scheduler do
   # `tiers`, at successive offsets, until `target` live names are enqueued,
   # the list ends, or @read_cap rows were read. Returns
   # `{enqueued, dead_recorded, queue_full?}`.
-  defp lane(_tiers, target, _block) when target <= 0, do: {0, 0, false}
+  defp lane(tiers, target, block), do: lane(tiers, target, block, nil)
 
-  defp lane(tiers, target, block) do
+  defp lane(_tiers, target, _block, _shopify) when target <= 0, do: {0, 0, false}
+
+  # Tier A is two lists (2026-11-04, @tier_a_shopify_per_slice): the plain
+  # names first, up to the allowance less the Shopify share, then the
+  # Shopify stores up to that share. Neither takes the other's leftover:
+  # the share is the edge's capacity, not a preference.
+  defp lane(["a"], target, block, nil) do
+    shop = shopify_share(target)
+    {plain_n, plain_dead, full} = lane(["a"], target - shop, block, false)
+
+    {shop_n, shop_dead, full} =
+      if full, do: {0, 0, true}, else: lane(["a"], shop, block, true)
+
+    {plain_n + shop_n, plain_dead + shop_dead, full}
+  end
+
+  defp lane(tiers, target, block, shopify) do
     try do
-      passes(tiers, target, block, 0, 0, 0)
+      passes(tiers, target, block, shopify, 0, 0, 0)
     catch
       {:queue_full, enqueued, dead} -> {enqueued, dead, true}
     end
   end
 
-  defp passes(_tiers, target, block, pass, enqueued, dead) when pass * block >= @read_cap or enqueued >= target,
+  defp list_name(tiers, true), do: Enum.join(tiers, "/") <> " shopify"
+  defp list_name(tiers, false), do: Enum.join(tiers, "/") <> " plain"
+  defp list_name(tiers, _), do: Enum.join(tiers, "/")
+
+  defp passes(_tiers, target, block, _shopify, pass, enqueued, dead) when pass * block >= @read_cap or enqueued >= target,
     do: {enqueued, dead, false}
 
-  defp passes(tiers, target, block, pass, enqueued, dead) do
-    case LS.Clickhouse.stale_domains(block, pass * block, tiers) do
+  defp passes(tiers, target, block, shopify, pass, enqueued, dead) do
+    name = list_name(tiers, shopify)
+
+    case LS.Clickhouse.stale_domains(block, pass * block, tiers, shopify) do
       {:ok, []} ->
-        Logger.info("[RECRAWL] No stale #{Enum.join(tiers, "/")} domains found at offset #{pass * block}")
+        Logger.info("[RECRAWL] No stale #{name} domains found at offset #{pass * block}")
         {enqueued, dead, false}
 
       {:ok, domains} ->
         count = length(domains)
-        Logger.info("[RECRAWL] Found #{count} stale #{Enum.join(tiers, "/")} domains at offset #{pass * block}, pass #{pass + 1} (reach #{@read_cap} rows)")
+        Logger.info("[RECRAWL] Found #{count} stale #{name} domains at offset #{pass * block}, pass #{pass + 1} (reach #{@read_cap} rows)")
 
         # Resolve on the master first (LS.Recrawl.Liveness, 2026-10-03): a
         # dead name gets its check recorded here and never costs a worker
@@ -300,14 +343,14 @@ defmodule LS.Recrawl.Scheduler do
         # Every name read is accounted for (2026-10-26): still queued or in
         # flight, taken this pass, dead, admitted, or refused by a ring.
         Logger.info(
-          "[RECRAWL] Enqueued #{added}/#{count} stale #{Enum.join(tiers, "/")} domains " <>
+          "[RECRAWL] Enqueued #{added}/#{count} stale #{name} domains " <>
             "(#{dead_recorded} dead recorded on the master; #{length(queued)} already queued or in flight, " <>
             "#{length(held)} held by the stable or dormant rings, #{length(taken)} taken, refused #{inspect(refused)})"
         )
 
         if count < block,
           do: {enqueued + added, dead + dead_recorded, false},
-          else: passes(tiers, target, block, pass + 1, enqueued + added, dead + dead_recorded)
+          else: passes(tiers, target, block, shopify, pass + 1, enqueued + added, dead + dead_recorded)
 
       {:error, reason} ->
         Logger.error("[RECRAWL] ClickHouse query failed: #{inspect(reason)}")

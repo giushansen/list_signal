@@ -258,6 +258,28 @@ applies), a slice reads blocks of `a_block/0`, and a lane's reach is
 50,000 rows whatever its block size. One due query costs 1.7 s at any
 offset or block size (measured), so a slice is four to five queries.
 
+**Tier A Shopify stores are admitted at the edge's capacity (2026-11-04,
+09:20 to 10:30 UTC).** With the slices enqueuing 750 names every five
+minutes and the lane on, the batches choked: 42% of the due tier A list
+is Shopify (250,923 of 594,488), tier A items are dequeued first, and a
+node's stores all go through one 2 s edge line (30 requests a minute, a
+store costs four to eight). The deadline cut 21 to 60 of 74 to 86
+candidates a batch, the cut stores went back to the head of the queue
+and refilled the next batch, plain names waited behind them: sg2 14 to
+61 rows a batch, the fleet 2,000 rows a quarter hour against 3,100
+before the tier A items arrived, the priority queue 2,614 deep and
+growing. The scheduler now reads tier A as two lists (`is_shopify` in
+the due query, `LS.Clickhouse.stale_domains/4`): plain names up to the
+allowance less a Shopify share, Shopify stores up to the share (120 a
+slice: 24 stores a minute on the fleet, 3.4 a node, 14 to 27 of the 30
+edge requests a minute). Stores past the share stay due, oldest first.
+What this means: tier A Shopify stores refresh at the fleet's edge
+capacity, which is slower than 14 days while the backlog stands; the
+honest cadence shows up in the due list's age over the coming days.
+Raise the share when the priority queue sits at zero between slices;
+lower it when batches cut stores again. More source addresses raise it
+for real.
+
 **Found in the readings (2026-11-03 evening):** the recrawl scheduler's tier A
 tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
 batch that starts with more Shopify stores than the 2 s edge line can

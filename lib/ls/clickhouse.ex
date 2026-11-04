@@ -611,7 +611,7 @@ defmodule LS.Clickhouse do
   # robots.txt opt-out is a promise on /bot; 429 is kept on purpose, one
   # polite request after two months is what "come back later" asks for
   # (2026-08-02: excluding it would silently lose 388K domains).
-  def stale_domains_sql(limit, offset \\ 0, tiers \\ nil)
+  def stale_domains_sql(limit, offset \\ 0, tiers \\ nil, shopify \\ nil)
       when is_integer(limit) and limit > 0 and is_integer(offset) and offset >= 0 and (is_nil(tiers) or is_list(tiers)) do
     a = LS.Crawl.Tiers.cadence_days(:a)
     b = LS.Crawl.Tiers.cadence_days(:b)
@@ -632,16 +632,27 @@ defmodule LS.Clickhouse do
         valid -> "\n      AND tier IN (#{Enum.map_join(valid, ", ", &"'#{&1}'")})"
       end
 
+    # Shopify stores are one list of their own (2026-11-04): they share one
+    # 2 s line per node at the edge, so the scheduler admits them at the
+    # fleet's edge capacity and fills the rest of a slice from the other
+    # list. `true`, `false`, or nil for both; anything else is both.
+    shop =
+      case shopify do
+        true -> "\n      AND is_shopify = 1"
+        false -> "\n      AND is_shopify = 0"
+        _ -> ""
+      end
+
     """
     SELECT domain, tier, http_body_simhash FROM (
-      SELECT domain, #{LS.Crawl.Tiers.tier_sql()} AS tier, http_last_checked_at, http_body_simhash
+      SELECT domain, #{LS.Crawl.Tiers.tier_sql()} AS tier, http_last_checked_at, http_body_simhash, is_shopify
       FROM #{LS.Schema.Tables.businesses()}
       WHERE estimated_junk = '' AND http_error != 'robots_disallow' AND http_blocked = ''
         AND (http_status IS NULL OR http_status NOT IN (403, 503))
         AND http_last_checked_at < now() - INTERVAL #{a} DAY
         AND #{LS.Crawl.Markets.refresh_language_sql()}
     )
-    WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY#{lane}
+    WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY#{lane}#{shop}
       AND domain NOT IN (SELECT domain FROM #{LS.Schema.Tables.enrich_log()} WHERE enriched_at >= now() - INTERVAL 1 DAY)
     ORDER BY tier ASC, http_last_checked_at ASC, domain
     LIMIT #{limit} OFFSET #{offset}
@@ -662,9 +673,10 @@ defmodule LS.Clickhouse do
   query (2026-10-23, `LS.Pipeline.refetch_secondary?/2`). Until 2026-10-03 this read the 57 GB `domains` table
   FINAL for 5,000 rows every six hours with a 7/30-day rule.
   """
-  @spec stale_domains(pos_integer(), non_neg_integer()) :: {:ok, [{String.t(), String.t(), non_neg_integer()}]} | {:error, term()}
-  def stale_domains(limit, offset \\ 0, tiers \\ nil) do
-    case query_raw(stale_domains_sql(limit, offset, tiers), 120_000) do
+  @spec stale_domains(pos_integer(), non_neg_integer(), [String.t()] | nil, boolean() | nil) ::
+          {:ok, [{String.t(), String.t(), non_neg_integer()}]} | {:error, term()}
+  def stale_domains(limit, offset \\ 0, tiers \\ nil, shopify \\ nil) do
+    case query_raw(stale_domains_sql(limit, offset, tiers, shopify), 120_000) do
       {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t, s] -> {d, t, to_simhash(s)} end)}
       err -> err
     end

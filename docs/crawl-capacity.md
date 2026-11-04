@@ -256,3 +256,13 @@ one. The trade accepted: fewer rows a minute per node, a fuller line, no
 bursts of own refusals. The capacity fact above still stands, so the next
 lever is the cost of a Shopify store on the line (four requests today) or
 more source addresses, never more rate per address.
+
+**2026-11-04, 10:30 UTC: the refresh admits Shopify stores at the edge's
+capacity.** The lane on and the tier A tick sliced, the batches choked on
+Shopify stores anyway: 42% of the due tier A list is Shopify, those items
+are dequeued first, and the cut stores returned to the head of the queue.
+The scheduler now takes at most 120 Shopify stores a slice (24 a minute
+on seven duals, about 3.4 a node, 14 to 27 of the 30 edge requests a
+minute a node) and fills the rest of the 750 from the plain list. The
+number is the fleet's edge capacity with room for the stores certificates
+bring; it moves with the number of source addresses, not with demand.
