@@ -905,10 +905,28 @@ defmodule LS.Cluster.WorkerAgent do
     end
   end
 
+  # The lane draws on the depth lane's reserved line of the node budget
+  # (2026-11-04, 20:30 UTC). On a dual the discovery line is booked 60
+  # to 127 s ahead by 300 fetch tasks (three batches, 100 each) at 125 a
+  # minute, so each of a store's four to six requests waited its turn
+  # there: 92 s ahead on ny1 when read, one store a batch, 7 to 11 cut
+  # of every batch, 30 to 80 Shopify rows a quarter hour on the fleet
+  # while the Shopify line sat idle. The depth lane's 30 a minute is the
+  # Shopify line's own rate and its line read 0 backlog on every sample
+  # of the duals (2026-11-03); discovery borrowed it while idle, so the
+  # ceiling is unchanged and no slot is reserved for nobody. Its 10 s
+  # booking horizon holds three one-wide lanes at 2 s spacing (6 s).
+  @edge_budget_lane :enrichment
+
+  @doc false
+  def edge_budget_lane, do: @edge_budget_lane
+
   # The lane's fetch, handing each finished store to `parent` before it
   # returns it; a fetch that raises is a store not finished.
   defp handing_over(fun, parent, ref) do
     fn item ->
+      Process.put(:ls_fetch_lane, @edge_budget_lane)
+
       try do
         case fun.(item) do
           {d, r} = done -> send(parent, {ref, d, r}); done

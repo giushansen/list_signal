@@ -257,6 +257,13 @@ bursts of own refusals. The capacity fact above still stands, so the next
 lever is the cost of a Shopify store on the line (four requests today) or
 more source addresses, never more rate per address.
 
+**2026-11-04, 20:30 UTC: the lane draws on the depth lane's reserve.** A
+store's requests waited on the discovery line booked 92 s ahead; now they
+take the depth lane's 30 a minute, idle on the duals, which is the
+Shopify line's rate. Ceiling unchanged; discovery gives back the 30 it
+borrowed while stores are served, so expect the plain side about 20%
+slower and the Shopify line full.
+
 **2026-11-04, 19:30 UTC: the lane keeps what it finished.** After the
 cap: duals 25 to 28 rows a minute, Shopify rows 11 to 59 a quarter hour
 (250 to 360 before), the Shopify line idle on ny1. The lane dropped every

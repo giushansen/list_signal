@@ -258,6 +258,22 @@ applies), a slice reads blocks of `a_block/0`, and a lane's reach is
 50,000 rows whatever its block size. One due query costs 1.7 s at any
 offset or block size (measured), so a slice is four to five queries.
 
+**The edge lane draws on the depth lane's budget line (2026-11-04, 20:30
+UTC).** With the lane keeping what it finished, ny1 still cut 7 to 11 of
+every batch, one store a batch, 30 to 80 Shopify rows a quarter hour on
+the fleet, the Shopify line idle. Read by rpc on ny1: the discovery line
+of the node budget was booked 92 s ahead (300 fetch tasks, three batches
+of 100, at 125 a minute), the depth lane's line 0. The lane's one task
+waited its turn there for each of a store's four to six requests, so a
+store took longer than the stage. The lane's fetches now tag themselves
+with the depth lane (`WorkerAgent.edge_budget_lane/0`) and draw on its
+reserved 30 a minute, which is the Shopify line's own rate and sat idle
+on every dual sample since 2026-11-03. The ceiling is unchanged: the
+reserve was always counted, discovery borrowed it only while idle and
+drops back to 125 while stores are being served. Expected: about five
+stores a minute a node, the plain side about 20% slower while the lane
+is busy. Pinned by `test/ls/cluster/worker_edge_lane_budget_line_test.exs`.
+
 **The edge lane keeps the stores it finished (2026-11-04, 19:30 UTC).**
 One hour after the cap the duals were at 25 to 28 rows a minute (from 17
 to 22), but the fleet wrote 11 to 59 Shopify rows a quarter hour against
