@@ -1,0 +1,11 @@
+One hour after the last dual took this release (21:29 UTC), window 21:45 to 22:45 UTC, from enrich_log on the master.
+
+Shopify rows per 15 min: 231, 282, 333, 265 (ok 189, 257, 290, 230). Before the cap, with the lane dropping its finished stores, the same buckets read 11 to 59. The pre-cap level was 257 to 359, so the lane is back to that level and the 22:15 bucket is near the best bucket seen.
+
+Fleet rows per 15 min: 3038, 3346, 3231, 3114, about 212 rows/min, against 2100 to 2900 per 15 min in the hour before. Per node: chi1 28.6, dal1 28.9, dal2 31.5, ny1 32.1, par1 27.6, par2 32.1, sg2 31.4 rows/min. The predicted 20 percent plain-row cost did not appear: plain rows rose, because the batch no longer carries a cut tail of unfinished stores through the deadline.
+
+Cuts per node over the hour: 5 to 92 candidates cut (sg2 5, dal2 37, chi1 42, dal1 70, par1 75, par2 78, ny1 92) against 245 to 444 per node in the hour after the cap alone. self_limited 0 to 26 per 15 min, 429s 0 to 4.
+
+What now binds Shopify rows is the per-batch cap of 8 (3c5b03a): 8 stores x 3 batches x about 1.5 batches per 15 min x 7 duals is about 250 to 350 per 15 min, which is the measured range. The lane itself has room: the edge key spacing (2 s) and the 30/min depth line allow about 30 stores/min per node. Raising the cap is the next lever toward the 2100 stores/hour target, and it is a separate change.
+
+Queue depth 305,654 at 22:45 (enq 1167/min, drain 489/min), prio 19,690, B/C still paused.
