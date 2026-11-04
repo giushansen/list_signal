@@ -236,3 +236,15 @@ first contact, same host or not, and the width is per node. The rule of
 thumb that falls out: the bookings all callers on one node can hold on a
 shared line must stay under the shortest horizon any caller has (10 s for
 the depth lane), or the shortest-horizon caller is the one always refused.
+
+**2026-11-04, four hours later: the lane is off by default.** It kept every
+batch's HTTP stage running to its deadline, so the three batches no longer
+took turns on the node's slots and each stage cut a third to two thirds of
+its candidates after spending slots on them: sg2 34 rows a minute to 24,
+fleet 2xx rows about 180 a minute to 56 to 130, master queue 40K to 74K in
+three hours. The capacity fact underneath: a Shopify store costs about four
+requests on the 2 s line (robots.txt, homepage, hop, contact page), so a
+node serves about 7 stores a minute and seven duals about 3,400 an hour,
+while the tier A tick asks for more than that. Refusing at the horizon sheds
+the surplus at once; the lane sheds it late and takes plain work with it.
+`LS_EDGE_LANE=on` turns the lane on for one node to trial a change.

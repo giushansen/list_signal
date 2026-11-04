@@ -204,6 +204,33 @@ some stores serve a "Verify your browser" 403 (259 and 307 rows in the
 first two hours, 8 to 30 an hour before). Both are facts to watch, not
 settings to change.
 
+**Four hours of the lane on the seven duals (2026-11-04, 05:45 UTC): the
+lane is now off by default (`LS_EDGE_LANE=on` turns it on per node).**
+What it fixed held: bare Shopify 301 rows 0% from 03:00 on, 0 to 2 own
+refusals a node in the 03:00 and 03:30 waves. What it cost: a batch's
+HTTP stage ran to its deadline whenever it held more Shopify stores
+than the line serves, so all three batches sat in their HTTP stage at
+once, each got a third of the node's slots, and the stage cut a third
+to two thirds of its candidates after spending slots on them (1 to 68
+cut an hour per node before the lane, 436 at four per batch, about
+1,000 at one per batch). sg2 fell from 34 rows a minute to 24, the
+fleet's 2xx rows from about 180 a minute (seven duals) to 56 to 130,
+and the master queue grew 40K to 74K in three hours. Then from 04:00
+the slow-down log showed what the row log never could: Shopify 429s
+arrive in clusters of five to eight in five minutes on one node
+(robots.txt, homepages, products.json, different stores and edge
+addresses), the pause doubles 5 s to 5 min, and the lane then records
+every store it reaches during the pause as our own refusal: 464 such
+rows in the 04:00 hour, 1,539 in the 05:00 hour, more than the wave
+shelving the lane was built to stop. Underneath both: the tier A tick
+asks for more Shopify stores than seven nodes serve at the edge's 2 s
+per request (about 3,400 stores an hour at four requests each:
+robots.txt, homepage, hop, contact page), so something sheds. Refusing
+at the horizon sheds at once and keeps every batch at its share; the
+lane sheds late and takes plain candidates with it. Which shedding the
+product wants, or whether Shopify stores should cost fewer requests,
+is the owner's call; the numbers are in 067f5e4's note and here.
+
 **Found in the readings (2026-11-03 evening):** the recrawl scheduler's tier A
 tick (4,467 at priority 0 every 30 minutes) is Shopify-heavy, and a
 batch that starts with more Shopify stores than the 2 s edge line can

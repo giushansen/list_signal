@@ -743,7 +743,11 @@ defmodule LS.Cluster.WorkerAgent do
 
     # Each task may sleep until its reserved budget slot (LS.HTTP.NodeBudget),
     # so the per-task bound is the stage bound, not the homepage budget.
-    {res, cut} = fetch_split(cands, &elem(&1, 1), fetch, conc, bound, min(home_deadline, deadline))
+    {res, cut} =
+      if edge_lane?(),
+        do: fetch_split(cands, &elem(&1, 1), fetch, conc, bound, min(home_deadline, deadline)),
+        else: run_until(cands, fetch, conc, bound, min(home_deadline, deadline))
+
     if cut > 0, do: Logger.warning("http stage deadline: #{cut} of #{n} candidates not fetched, #{map_size(res)} kept")
 
     homes = Map.new(res, fn {d, {r, _ip}} -> {d, r} end)
@@ -774,7 +778,10 @@ defmodule LS.Cluster.WorkerAgent do
       homes
     else
       {enhanced, dropped} =
-        fetch_split(due, &elem(&1, 2), fn {d, r, ip} -> {d, LS.Pipeline.secondary(r, d, ip)} end, conc, remaining, deadline)
+        if edge_lane?(),
+          do: fetch_split(due, &elem(&1, 2), fn {d, r, ip} -> {d, LS.Pipeline.secondary(r, d, ip)} end, conc, remaining, deadline),
+          else: run_until(due, fn {d, r, ip} -> {d, LS.Pipeline.secondary(r, d, ip)} end, conc, remaining, deadline)
+
       if dropped > 0, do: Logger.info("secondary pages: #{dropped} of #{length(due)} not read by the deadline")
       Map.merge(homes, enhanced)
     end
@@ -803,6 +810,27 @@ defmodule LS.Cluster.WorkerAgent do
   # node is 8 s deep: the line never idles (a store answers in about a
   # second) and every other caller still finds a place.
   @edge_concurrency 4
+
+  # Off unless LS_EDGE_LANE=on (2026-11-04, after four hours on the seven
+  # duals). With the lane, a batch's HTTP stage ran to its deadline
+  # whenever it held more shared-edge stores than the line serves, so all
+  # three batches sat in their HTTP stage at once, each got a third of the
+  # node's slots, and the stage cut a third to two thirds of its
+  # candidates after spending slots on them: 1 to 68 candidates cut an
+  # hour per node before the lane, 436 with it four wide, about 1,000 at
+  # one per batch; sg2 fell from 34 rows a minute to 24, the fleet's 2xx
+  # rows from about 180 a minute (seven duals) to 56 to 130, and the
+  # master queue grew 40K to 74K in three hours. Without the lane a store
+  # the line cannot book inside the horizon is refused at once and
+  # requeued, which sheds the tier A wave's surplus (350 to 835 stores a
+  # wave shelved for their cadence) but keeps every batch at its share.
+  # The tier A wave asks for more Shopify stores than seven nodes serve
+  # at the edge's 2 s per request (about 3,400 stores an hour at four
+  # requests each): something sheds either way, and which is the
+  # owner's call. Turn it on per node to trial it.
+  @doc false
+  @spec edge_lane?(String.t() | nil) :: boolean()
+  def edge_lane?(env \\ System.get_env("LS_EDGE_LANE")), do: env in ["on", "1", "true"]
 
   @doc false
   @spec edge_width(pos_integer()) :: pos_integer()
