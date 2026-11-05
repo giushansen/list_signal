@@ -23,6 +23,14 @@ config :ls, :verification_dir, System.get_env("LS_VERIFICATION_DIR", "/home/ls/v
 # revisit follows the 7-day cadence again, no deploy needed.
 config :ls, :stable_revisit, System.get_env("LS_STABLE_REVISIT", "true") != "false"
 
+# Shared-edge stores a batch may hold (LS.Cluster.WorkQueue.edge_per_batch/0).
+# Master only. Unset or junk keeps the compiled default of eight.
+config :ls, :edge_per_batch,
+  (case Integer.parse(System.get_env("LS_EDGE_PER_BATCH", "")) do
+     {n, ""} -> n
+     _ -> nil
+   end)
+
 # Durable node state (cache snapshots, crawl-gate blooms). See LS.State.
 if config_env() == :prod do
   config :ls, :state_dir, System.get_env("LS_STATE_DIR", "/var/lib/listsignal")

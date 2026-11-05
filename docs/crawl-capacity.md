@@ -292,3 +292,13 @@ on seven duals, about 3.4 a node, 14 to 27 of the 30 edge requests a
 minute a node) and fills the rest of the 750 from the plain list. The
 number is the fleet's edge capacity with room for the stores certificates
 bring; it moves with the number of source addresses, not with demand.
+
+**2026-11-05, 03:30 UTC: the per-batch cap moves to 16.** One hour on the
+lane's budget line (21:45 to 22:45 UTC on 2026-11-04): Shopify rows 231,
+282, 333 and 265 per 15 minutes, cuts per node down from 245 to 444 an
+hour to 5 to 92, fleet rows up to about 212 a minute. The lane finished
+every store it took, so the cap of eight stores a batch (3c5b03a) was the
+limit: 8 x 3 batches x about 1.5 batches per 15 minutes x 7 duals is 250
+to 350. The cap is now `LS_EDGE_PER_BATCH` on the master, set to 16; the
+lane itself can carry about 30 stores a minute a node on the 2 s edge
+spacing. Measured an hour after the deploy, in the git note on the commit.

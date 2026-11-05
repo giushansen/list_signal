@@ -25,6 +25,46 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-05: ClickHouse's log storm, third time, and the end of file logging
+
+The master ran at load 3.2 on 4 cores with ClickHouse at 111% CPU and
+journald at 49%. Cause: ClickHouse had not written its log files since
+2026-10-28 18:33. The disk was at 97% that day (the OPTIMIZE FINAL on
+`domains`; `NOT_ENOUGH_SPACE` 606 times, last at 20:41), one log write
+failed, and Poco's file channel never recovers from that: every later
+line became a "Cannot log message in OwnAsyncSplitChannel ... File access
+error" stack trace on stderr, 170K lines an hour into journald, for seven
+days. The journal's 2G cap then held eleven hours, which is why the
+context of the morning's restarts was already gone. Same failure as
+2026-08-22 and 2026-09-23, found the same way each time: by reading the
+journal by hand.
+
+Two changes. ClickHouse now logs to the console only
+(`config.d/logging.xml`, `<console>1</console>`, `<log remove>`): the
+console channel cannot get stuck and journald rotates and caps the
+volume itself; read it with `journalctl -u clickhouse-server`. And a
+root cron on the master (`/root/ch_log_check.sh`, devops repo, every 5
+minutes) counts "Cannot log message" lines, clickhouse-server journal
+lines and journald's live CPU, and leaves one line in
+`/var/log/listsignal_ch_log_status` that `LS.Metrics.clickhouse_log_status/0`
+reads and `LS.Alerts` turns into `clickhouse_log_storm` (critical),
+`clickhouse_log_volume` and `clickhouse_log_check_stale` (warnings).
+After the restart: 0 storm lines, ClickHouse at 11% CPU, journald at 0%,
+load 0.47, journal 735M. Tests: `test/ls/alerts_clickhouse_log_test.exs`.
+
+## 2026-11-05: the Shopify cap is an env var, raised from 8 to 16
+
+One hour on 1b13634 (21:45 to 22:45 UTC, note on that commit): the lane
+finished every store it took, and the per-batch cap of eight (3c5b03a)
+was what held Shopify at 265 to 333 stores per 15 minutes fleet-wide,
+half the 525 target (8 x 3 batches x ~1.5 batches per 15 min x 7 duals).
+The right cap follows how fast the lane finishes, so it is now
+`LS_EDGE_PER_BATCH` on the master (config `:edge_per_batch`,
+`WorkQueue.edge_per_batch/0`), compiled default still eight, junk falls
+back to eight. The master runs 16 (devops `.env.master`); the hour's
+measurement goes in a git note on the commit. Tests:
+`test/ls/cluster/work_queue_edge_cap_env_test.exs`.
+
 ## 2026-11-03: two crawl rules, and what the fleet was really doing
 
 Owner: "FIRST we rate limit our calls per target, whether IP or

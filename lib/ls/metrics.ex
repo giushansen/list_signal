@@ -489,6 +489,72 @@ defmodule LS.Metrics do
     end
   end
 
+  @ch_log_status "/var/log/listsignal_ch_log_status"
+
+  @doc """
+  How the master's ClickHouse log looks right now, as left by
+  `/root/ch_log_check.sh` (cron every 5 minutes, devops repo).
+
+  ClickHouse logs through a Poco file channel that, once one write fails,
+  never writes again: every later line becomes a "Cannot log message"
+  stack trace on stderr. It happened three times (2026-08-22, 2026-09-23,
+  2026-10-28, each after the disk filled) and the third ran seven days
+  unseen at 170K lines an hour, a CPU core in journald and the journal's
+  retention down to eleven hours. Nothing in the app could see it: the
+  failure sits between ClickHouse and journald. Since 2026-11-05 ClickHouse
+  logs to the console (journald) only, which cannot get stuck, and the cron
+  counts from the journal what the app then reads here, like the watchdog
+  log.
+
+  nil when there is no status file (laptop, workers) or the line does not
+  parse, so a broken script reads as "no data" and the stale-file alert
+  covers a dead cron. Otherwise `%{at, age_s, storm_5m, lines_5m,
+  journald_cpu_pct}`: storm_5m counts "Cannot log message" lines in the
+  last five minutes, lines_5m every clickhouse-server journal line.
+  """
+  def clickhouse_log_status(now \\ DateTime.utc_now()) do
+    case File.read(@ch_log_status) do
+      {:ok, text} -> parse_ch_log_status(text, now)
+      _ -> nil
+    end
+  end
+
+  @doc false
+  def parse_ch_log_status(text, now \\ DateTime.utc_now())
+
+  def parse_ch_log_status(text, now) when is_binary(text) do
+    last = text |> String.split("\n", trim: true) |> List.last("")
+
+    with [stamp | rest] <- String.split(last, " ", trim: true),
+         {:ok, at, _} <- DateTime.from_iso8601(stamp),
+         kv = Map.new(rest, &status_field/1),
+         {:ok, storm} <- status_int(kv["storm_5m"]),
+         {:ok, lines} <- status_int(kv["lines_5m"]),
+         {:ok, cpu} <- status_int(kv["journald_cpu_pct"]) do
+      %{at: at, age_s: max(DateTime.diff(now, at, :second), 0), storm_5m: storm, lines_5m: lines, journald_cpu_pct: cpu}
+    else
+      _ -> nil
+    end
+  end
+
+  def parse_ch_log_status(_, _), do: nil
+
+  defp status_field(token) do
+    case String.split(token, "=", parts: 2) do
+      [k, v] -> {k, v}
+      [k] -> {k, nil}
+    end
+  end
+
+  defp status_int(s) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, ""} when n >= 0 -> {:ok, n}
+      _ -> :error
+    end
+  end
+
+  defp status_int(_), do: :error
+
   @doc """
   Nodes that are connected but report NO resources — they answer Erlang
   distribution yet `LS.Ops.NodeResources` is `:undef` (stale release) or the

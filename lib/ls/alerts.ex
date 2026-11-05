@@ -141,6 +141,7 @@ defmodule LS.Alerts do
       node_resources: Metrics.node_resources(),
       unmonitored_nodes: Metrics.unmonitored_nodes(),
       watchdog_restarts: Metrics.watchdog_restarts(24),
+      clickhouse_log: Metrics.clickhouse_log_status(),
       data_check: LS.DataCheck.snapshot(),
       reputation_ages: Metrics.reputation_ages(),
       backups: Metrics.backup_status(),
@@ -184,6 +185,7 @@ defmodule LS.Alerts do
     |> ctl_sources(m)
     |> unmonitored(m)
     |> watchdog(m)
+    |> clickhouse_log(m)
     |> data_check(m)
     |> crawl_hygiene(m)
     |> recrawl_silent(m)
@@ -369,6 +371,64 @@ defmodule LS.Alerts do
   end
 
   defp watchdog(acc, _), do: acc
+
+  # ── ClickHouse log (2026-11-05) ──
+  # The master's ClickHouse logged through a file channel that, once a write
+  # failed (disk at 97% on 2026-10-28), never recovered: 170K "Cannot log
+  # message" stack traces an hour into journald for seven days, a CPU core
+  # in journald, the journal's retention down to eleven hours, and nothing
+  # here could see it. Third time (2026-08-22, 2026-09-23). The cron
+  # /root/ch_log_check.sh counts it from the journal every five minutes
+  # (LS.Metrics.clickhouse_log_status/0); these are the first alerts for it.
+  @ch_log_stale_s 20 * 60
+  @ch_log_lines_5m_ceiling 2_000
+  @journald_cpu_pct_ceiling 25
+
+  defp clickhouse_log(acc, %{clickhouse_log: %{age_s: age}}) when is_integer(age) and age > @ch_log_stale_s do
+    [
+      al(
+        :warning,
+        "clickhouse_log_check_stale",
+        "ClickHouse log check is not running",
+        "/var/log/listsignal_ch_log_status is #{div(age, 60)} minutes old (ceiling #{div(@ch_log_stale_s, 60)}): " <>
+          "the cron /root/ch_log_check.sh on the master stopped writing, so a log storm would go unseen again. " <>
+          "Check crontab -l and run the script by hand."
+      )
+      | acc
+    ]
+  end
+
+  defp clickhouse_log(acc, %{clickhouse_log: %{storm_5m: n}}) when is_integer(n) and n > 0 do
+    [
+      al(
+        :critical,
+        "clickhouse_log_storm",
+        "ClickHouse cannot write its log",
+        "#{n} 'Cannot log message' lines from clickhouse-server in the last 5 minutes on the master: " <>
+          "the log channel is stuck (it never recovers on its own) and journald is eating the stack traces. " <>
+          "Restart clickhouse-server, then journalctl --vacuum-size=800M. " <>
+          "Seen 2026-08-22, 2026-09-23 and 2026-10-28, each after the disk filled."
+      )
+      | acc
+    ]
+  end
+
+  defp clickhouse_log(acc, %{clickhouse_log: %{lines_5m: n, journald_cpu_pct: cpu}})
+       when (is_integer(n) and n > @ch_log_lines_5m_ceiling) or (is_integer(cpu) and cpu > @journald_cpu_pct_ceiling) do
+    [
+      al(
+        :warning,
+        "clickhouse_log_volume",
+        "ClickHouse is flooding the journal",
+        "#{n} journal lines from clickhouse-server in 5 minutes and journald at #{cpu}% CPU on the master " <>
+          "(ceilings #{@ch_log_lines_5m_ceiling} lines and #{@journald_cpu_pct_ceiling}%). " <>
+          "journalctl -u clickhouse-server -n 200 shows what it is complaining about."
+      )
+      | acc
+    ]
+  end
+
+  defp clickhouse_log(acc, _), do: acc
 
   # A node the resource alerts cannot see is worse than a node with a problem:
   # its silence is indistinguishable from health. See Metrics.unmonitored_nodes/0.

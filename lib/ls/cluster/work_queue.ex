@@ -735,8 +735,22 @@ defmodule LS.Cluster.WorkQueue do
   # line at about 29 requests a minute: full, never choked.
   @edge_per_batch 8
 
-  @doc "How many shared-edge names a batch may hold; the queue leaves the rest for later batches."
-  def edge_per_batch, do: @edge_per_batch
+  @doc """
+  How many shared-edge names a batch may hold; the queue leaves the rest
+  for later batches.
+
+  Eight is the compiled default. The master's `LS_EDGE_PER_BATCH` (config
+  `:edge_per_batch`) moves it without a release, because the right number
+  follows how fast the lane finishes its stores: with the lane finishing
+  all eight (1b13634), this cap and not the lane held Shopify at 265 to
+  333 stores per 15 minutes fleet-wide on 2026-11-04, half the target.
+  Anything that is not an integer of at least 1 means the default.
+  """
+  def edge_per_batch, do: cap_or_default(Application.get_env(:ls, :edge_per_batch))
+
+  @doc false
+  def cap_or_default(n) when is_integer(n) and n >= 1, do: n
+  def cap_or_default(_), do: @edge_per_batch
 
   @doc "Pure: does this queue item sit behind a shared edge? Only the literal `edge: true` counts."
   @spec edge?(term()) :: boolean()
@@ -745,7 +759,7 @@ defmodule LS.Cluster.WorkQueue do
 
   defp take_batch(count) do
     quota = max(round(count * @priority_share), 1)
-    {first, edge_left} = take_from(:first, quota, [], @edge_per_batch)
+    {first, edge_left} = take_from(:first, quota, [], edge_per_batch())
     {rest, edge_left} = take_from(:rest, count - length(first), first, edge_left)
     # Discovery short: tier A may fill what is left.
     {all, _edge_left} = take_from(:first, count - length(rest), rest, edge_left)
