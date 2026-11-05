@@ -302,3 +302,23 @@ limit: 8 x 3 batches x about 1.5 batches per 15 minutes x 7 duals is 250
 to 350. The cap is now `LS_EDGE_PER_BATCH` on the master, set to 16; the
 lane itself can carry about 30 stores a minute a node on the 2 s edge
 spacing. Measured an hour after the deploy, in the git note on the commit.
+
+**2026-11-05, 04:50 UTC: the cap at 16 changed nothing, and cost cuts.**
+One hour at 16 (03:50 to 04:50 UTC) against the 2 h 44 at 8 before the
+deploy (00:45 to 03:29 UTC), fleet without h1: Shopify rows 18.7 a minute
+against 17.7, within noise; 2.7 stores a minute a node either way. The
+queue was not short of stores: 23,119 tagged stores waited, 18,116 of them
+at priority 0. The "30 stores a minute a node" above was wrong: 30 is the
+number of requests the 2 s spacing allows, and a store costs 7 to 8 of
+them (robots.txt, the homepage, a hop on half of them, 3.5 secondary
+pages on average, products.json), so one node's line serves 3.8 to 4.3
+stores a minute at best, and the measured 2.7 is that line less the
+penalties, the slow-downs and the cuts. The cap at 8 already gave the
+line more than it could serve. At 16 the batch holds stores the line
+cannot finish before the deadline: cuts went from 59 to 158 candidates a
+node an hour to 124 to 301, our own refusals from 2.0% to 4.8% of Shopify
+rows, and rows a node from about 30 a minute to 27 with the same 24
+batches an hour. The per-batch cap is not a lever; the per-node line is,
+and rule 1 fixes it. Shopify capacity comes from more source addresses
+(a line per node) or from fewer requests a store, not from a wider
+batch. Numbers in the git note on 2d2326b.
