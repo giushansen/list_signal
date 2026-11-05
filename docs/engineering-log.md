@@ -25,6 +25,24 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-05: the master deploy never started the app; the watchdog did
+
+The site was down from 03:29 to 03:47 UTC, 18 minutes, after a master
+deploy run with the web watchdog's maintenance flag set. The flag was set
+on the belief that the watchdog "raced" every deploy: each "web dead after
+3 probes" restart of 11-02 to 11-04 came 5 to 7 minutes after a deploy.
+Wrong reading. The deploy's remote block is `ssh ... bash <<DEPLOY`; bash
+reads its script from stdin, and `mix ecto.migrate` (an Erlang VM)
+swallowed the rest of it, so bash hit end-of-file after the migration and
+exited 0 with the service still stopped. No master deploy since at least
+11-02 ran its own start; the watchdog started the app three minutes later
+every time, and the "Site auto-restarted" emails were that. With the
+watchdog muted, nothing started it. Reproduced on the box with a
+`bash -x <<EOF` of the same block. Fixed in devops 836c697: the mix calls
+read /dev/null, the block traps EXIT to start the service, and the local
+script reports the block's exit code. Never mute the watchdog around a
+deploy.
+
 ## 2026-11-05: ClickHouse's log storm, third time, and the end of file logging
 
 The master ran at load 3.2 on 4 cores with ClickHouse at 111% CPU and
