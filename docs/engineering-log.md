@@ -25,6 +25,30 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-06: fourth abuse report, a one-day-old "Sign in" site, 24 hours to answer
+
+Vultr forwarded a report from skieselite.com dated 2026-10-29 06:29 UTC
+and on 2026-11-06 01:26 UTC gave 24 hours to show progress before the
+instance (sg2, 45.77.42.191) is powered down. The report names four
+requests to /api/internal/session-meta at 22:08 UTC on 10-28 from a
+browser-like user agent and a TLS fingerprint, and calls it a threat
+actor seen at other providers. Our record: one discovery visit from sg2
+at 22:06:04 UTC, robots.txt and the homepage, HTTP 200 in 107 ms, with
+the declared ListSignalBot user agent (the only string LS.HTTP.Client
+sends since d4fc311). The homepage was a "Sign in" page with the text
+"Loading security check..." and one link, to that /api path; the page
+reader records a link under /api but `secondary_plan/2` never fetches
+one, the depth lane never took the domain (no row in
+http_deep_fetch_log or http_deep_state, and that lane logs every attempt),
+and the browser sidecar is camoufox, a Firefox build, not the WebKit
+string in the report. The domain's certificate first appeared in the CT
+logs on 10-28 itself, the same day it reported. Response: skieselite.com
+is in `LS.HTTP.NeverContact` (test
+`never_contact_skieselite_test.exs`), deployed to every node, and the
+reply to Vultr states the two requests with their evidence. Same pattern
+as the three before: identity, not volume, and nothing in the report
+matches a request we made beyond the homepage visit.
+
 ## 2026-11-05: the master deploy never started the app; the watchdog did
 
 The site was down from 03:29 to 03:47 UTC, 18 minutes, after a master

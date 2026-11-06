@@ -25,6 +25,12 @@ defmodule LS.HTTP.NeverContact do
   """
 
   @reported MapSet.new([
+              # 2026-10-29 via Vultr (seen 11-06): a site first seen in CT logs
+              # that same day, homepage "Sign in / Loading security check",
+              # reported four requests to an internal path we never asked for.
+              # Our record: robots.txt and the homepage, once, from sg2 on
+              # 10-28 at 22:06 UTC, declared UA.
+              "skieselite.com",
               # 2026-08: Vultr report, expoBMS WAF (dal2 + par1, 31 min apart)
               "morbihan-genealogie.bzh",
               # 2026-09-04: Vultr report, Xayann WAF (ny1 + dal2, 6h apart)
