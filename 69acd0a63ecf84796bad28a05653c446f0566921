@@ -13,3 +13,15 @@ Rollout 2026-11-07: master 04:15-04:20 (ask range live, cap 8, 8 nodes), slow-ri
 - Cuts: 190 of 13,195 candidates (1.4%) across the duals in ~53 min.
 - Queue 156,376 (was 139,690); Shopify waiting 82,860 (was 86,521, falling).
 - Master errors in the hour: 2 Bandit HTTP/2 client header errors, nothing else.
+
+2026-11-07 +6 h (05:50-11:50 UTC) against the 03:14-04:14 baseline:
+- Rows 239.8/min (177, +35%); last hour 255.8. Per dual 33.8-34.7.
+- Real 192.8/min (125.2, +54%); last hour 181.3. Email rows 54.9/min (43.6, +26%); last hour 60.4.
+- Shopify rows 22.6/min (18.1, +25%); last hour 27.7. Shopify rows per hour 1,164/1,053/1,185/1,411/1,823/1,337 (06h-11h). Prediction 30-45: still missed, closing. Asks settled at 2-6. Shopify waiting 82,860 -> 75,697; TTL expiries still 1,450-1,620/h, mostly Shopify.
+- 429s 68 in 6 h (11/h vs 13/h), Shopify 0, sg2 16 of 68. Self rate_limited 62 (10/h vs 7/h). Cuts 1,696 of 88,770 candidates (1.9%).
+- 60 s probes: 148-161 req/min per dual (sg2 161): the line enforces per booking, the probe counts completions, one minute can read 4% over.
+- Depth line p50 3.8-12.4 s (par1 lowest). Prediction under 6 s: missed on 6 of 7.
+- ny1 RSS 512 MB vs 988-1,144 on peers, 2,630 MB available vs 1,871-1,978; ML 2.65 s per batch vs 2.6-35.4 s on local models (par1 35.4 s at load 4.94). 0 restarts.
+- Queue 121,292 (156,376 at 06:47); non-Shopify items all under 4 h old.
+- Slow rings: unsold (junk + other language) 6.4-7.0% of rows 06h-08h, then 9.1/13.0/12.4% at 09h-11h; 6 h average 9.0% vs ~15% before (about 21K fetches/day saved).
+- The rise is NOT a gate failure. 40 sampled leaked other-language sites: in tier C window 0 only (marked after today's fetch), against a control of 200 untouched ones sitting in windows 2-3 (backfill). The queue held 1 known other-language site in a 3,000 sample; the scheduler's due list had 0 of 4,000. Cause: those sites had no businesses row, so the backfill could not see them. Coverage of businesses for 200 EN/FR sites by the date of their last fetch: 55% for 09-20 and 09-28, 91% for 10-08, 96% for 10-20. Sites last fetched before the data model v2 cutover (10-01) without a row come back on renewal, get compiled, then sit in the ring. Self-healing over one renewal cycle (~early Dec); a one-off backfill from enrich_log is the faster option (owner decision).
