@@ -319,7 +319,18 @@ defmodule LS.Cluster.CrawlDedup do
   insert is idempotent.
   """
   @spec backfill_tiers() :: %{tier_b: non_neg_integer(), tier_c: non_neg_integer()}
-  def backfill_tiers do
+  def backfill_tiers, do: backfill_rings(&LS.Crawl.Tiers.backfill_sql/5)
+
+  @doc """
+  Mark every junk or other-language business (LS.Crawl.Tiers.slow_ring_sql/0)
+  into the tier B or C ring window its last check belongs to, once, the
+  way `backfill_tiers/0` does for the tiers (2026-11-07). Safe to run
+  again.
+  """
+  @spec backfill_slow() :: %{tier_b: non_neg_integer(), tier_c: non_neg_integer()}
+  def backfill_slow, do: backfill_rings(&LS.Crawl.Tiers.slow_backfill_sql/5)
+
+  defp backfill_rings(sql_for) do
     for {name, tier} <- [tier_b: "b", tier_c: "c"], into: %{} do
       %{windows: windows, period_s: period} = @rings[name]
       %{rotated_at: at} = :persistent_term.get(@rings[name].key)
@@ -330,7 +341,7 @@ defmodule LS.Cluster.CrawlDedup do
             {from, to} = window_bounds(at, period, i)
             # 8 shards: one tier C window held 4.1M businesses on prod, so a
             # shard is about 500K names, a few tens of MB through the client.
-            sql = LS.Crawl.Tiers.backfill_sql(tier, from, to, shard, 8)
+            sql = sql_for.(tier, from, to, shard, 8)
 
             case LS.Clickhouse.query_raw(sql, 180_000) do
               {:ok, rows} ->

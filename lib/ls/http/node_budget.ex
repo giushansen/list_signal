@@ -209,6 +209,39 @@ defmodule LS.HTTP.NodeBudget do
     ArgumentError -> true
   end
 
+  @doc """
+  Pure: the line a request of the batch's Shopify lane books
+  (`LS.Cluster.WorkerAgent.fetch_split/6`): the shorter of the node's two
+  lines, the depth line on a tie, the discovery line on a node that runs
+  one lane.
+
+  Measured on par1, 2026-11-07 03:47 UTC, one sample a second for two
+  minutes: the depth line was booked 13.5 s ahead at the median, 15.5 s
+  at p90 and never free, held by the three batches' Shopify lanes and
+  about four depth-lane tasks at 2 s a slot, while the discovery line
+  was free in 47 of 120 samples and Shopify's own 2 s line was idle in
+  all 120. A store of three requests waited about 40 s for budget slots,
+  so a lane one store wide finished about eight stores in its window and
+  85,000 Shopify stores waited in the master's queue. Each line still
+  fires at its own rate, so the node never sends more than its ceiling;
+  a Shopify request just stops queueing for a slot behind depth pages
+  while a discovery slot goes unused. The depth lane itself keeps its own
+  line.
+
+  On a node that runs one lane `lane_limit/1` gives every line the whole
+  ceiling, so a request there must stay on the discovery line or the
+  node would run two full lines at once.
+  """
+  @spec edge_line(boolean(), non_neg_integer(), non_neg_integer()) :: :discovery | :enrichment
+  def edge_line(both_lanes?, enrichment_ms, discovery_ms)
+  def edge_line(false, _enrichment_ms, _discovery_ms), do: :discovery
+  def edge_line(true, enrichment_ms, discovery_ms) when is_integer(discovery_ms) and is_integer(enrichment_ms) and discovery_ms < enrichment_ms, do: :discovery
+  def edge_line(true, _enrichment_ms, _discovery_ms), do: :enrichment
+
+  @doc "The line the batch's Shopify lane books now (`edge_line/3` on this node's lines)."
+  @spec edge_line() :: :discovery | :enrichment
+  def edge_line, do: edge_line(reserve_share() > 0, backlog_ms(:enrichment), backlog_ms(:discovery))
+
   # The reserve a dual node holds for the depth lane; nothing on a node
   # that runs one lane, where the lane already has the whole ceiling.
   defp reserve_share do

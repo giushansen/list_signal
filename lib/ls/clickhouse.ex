@@ -598,6 +598,14 @@ defmodule LS.Clickhouse do
 
   @doc "Domain and tier ('a', 'b', 'c') of every non-junk business compiled in the window (LS.Crawl.Tiers)."
   @spec compiled_tiers(integer(), integer()) :: {:ok, [{String.t(), String.t()}]} | {:error, term()}
+  def compiled_slow(since_unix, until_unix) do
+    case query_raw(LS.Crawl.Tiers.compiled_slow_sql(since_unix, until_unix), 70_000) do
+      {:ok, rows} -> {:ok, Enum.map(rows, fn [d, r] -> {d, r} end)}
+      err -> err
+    end
+  end
+
+  @doc false
   def compiled_tiers(since_unix, until_unix) do
     case query_raw(LS.Crawl.Tiers.compiled_tiers_sql(since_unix, until_unix), 70_000) do
       {:ok, rows} -> {:ok, Enum.map(rows, fn [d, t] -> {d, t} end)}
@@ -653,6 +661,7 @@ defmodule LS.Clickhouse do
         AND #{LS.Crawl.Markets.refresh_language_sql()}
     )
     WHERE http_last_checked_at < now() - INTERVAL multiIf(tier = 'a', #{a}, tier = 'b', #{b}, #{c}) DAY#{lane}#{shop}
+      AND NOT (is_shopify AND tier = 'a' AND http_last_checked_at >= now() - INTERVAL #{LS.Crawl.Tiers.shopify_a_days()} DAY)
       AND domain NOT IN (SELECT domain FROM #{LS.Schema.Tables.enrich_log()} WHERE enriched_at >= now() - INTERVAL 1 DAY)
     ORDER BY tier ASC, http_last_checked_at ASC, domain
     LIMIT #{limit} OFFSET #{offset}

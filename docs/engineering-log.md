@@ -25,6 +25,46 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-07: the Shopify lane waited on a full budget line while two other lines sat idle
+
+The 11-05 explanation of the Shopify ceiling was wrong twice (see
+docs/crawl-capacity.md, 11-07 entries). Sampled on par1 at 03:47 UTC, one
+read a second for two minutes: the node budget's depth line, which every
+Shopify request books since 1b13634, was 13.5 s deep at the median and
+never free, shared by the three batches' Shopify lanes and about four
+depth-lane tasks. The discovery line was free in 47 of 120 reads and
+Shopify's own 2 s line in all 120. A store of three requests waited
+about 40 s for budget slots, a lane finished about eight a window, and
+85,419 Shopify stores waited in the master's queue (45,506 of them all
+of priority 0), expiring at 24 h.
+
+What changed, and what did not:
+
+- A Shopify-lane request books the shorter of the two budget lines
+  (`NodeBudget.edge_line/0`). Each line still fires at its own rate, so
+  the node's 155 a minute and Shopify's 2 s spacing are unchanged. The
+  depth lane keeps its own line.
+- The cap is pulled, not pushed: each worker asks for as many stores as
+  its lane served last batch, a quarter more when it served everything,
+  less when it was cut (`WorkerAgent.next_edge_ask/2`, 2..48). The master
+  holds the ask to 1..48; a worker that does not ask gets
+  `LS_EDGE_PER_BATCH` (back to 8 at 03:37 UTC, the 16 trial was a loss).
+- Tier A Shopify stores are due after 28 days, other tier A after 14.
+  Same-code visit pairs: Shopify tech changed 3.5% under 14 days and 6.9%
+  at 14-30, SaaS 5% and 13.4%. Due Shopify stores: 208,824 to 131,581.
+- Junk pages go into the 90-100 day ring and pages in another language
+  into the 180-200 day ring on certificate renewals. On 11-06 they were
+  17,264 fetches for 44 newly sellable businesses. No-language pages are
+  never placed: they are the best yield of the day.
+- The classifier can run on other nodes (`LS_ML_NODES`, `LS_ML_LOCAL`).
+  30 texts from par1: 8.6 s on its own model, 2.0 s through h1, 3.1 s
+  through the master. Trial on ny1 only.
+
+Predictions, to check at +1 h and +6 h in git notes: Shopify rows from
+about 17 a minute fleet-wide to 30-45; Shopify 429s under 1%; no node over
+155 requests a minute; the depth line under 6 s at the median; rows per
+dual from 24-27 to 28-34 a minute; ny1's worker RSS down 400-600 MB.
+
 ## 2026-11-06: fourth abuse report, a one-day-old "Sign in" site, 24 hours to answer
 
 Vultr forwarded a report from skieselite.com dated 2026-10-29 06:29 UTC

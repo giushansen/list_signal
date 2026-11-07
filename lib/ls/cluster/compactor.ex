@@ -149,6 +149,7 @@ defmodule LS.Cluster.Compactor do
             Logger.info("[COMPACT] refreshed #{count} businesses in #{System.monotonic_time(:millisecond) - t0}ms#{lag}")
             mark_hot(s.since - @lookback_slack_s, until)
             mark_tiers(s.since - @lookback_slack_s, until)
+            mark_slow(s.since - @lookback_slack_s, until)
           end
 
           %{s |
@@ -188,6 +189,26 @@ defmodule LS.Cluster.Compactor do
       {:error, reason} ->
         Logger.warning("[COMPACT] hot check failed: #{inspect(reason) |> String.slice(0, 200)}")
         0
+    end
+  end
+
+  @doc false
+  # Junk pages and pages in a language the product does not sell go into
+  # the slow rings whatever their tier (LS.Crawl.Tiers.slow_ring_sql/0,
+  # 2026-11-07), so a certificate renewal does not fetch them again
+  # every 45 to 64 days. Not marked known: they are not in the product.
+  def mark_slow(since, until) do
+    case Clickhouse.compiled_slow(since, until) do
+      {:ok, rows} ->
+        by = Enum.group_by(rows, &elem(&1, 1), &elem(&1, 0))
+        b = LS.Cluster.CrawlDedup.mark_tier_b(Map.get(by, "b", []))
+        c = LS.Cluster.CrawlDedup.mark_tier_c(Map.get(by, "c", []))
+        if b + c > 0, do: Logger.info("[COMPACT] slow rings: #{b} junk (B ring), #{c} other language (C ring)")
+        {b, c}
+
+      {:error, reason} ->
+        Logger.warning("[COMPACT] slow ring check failed (compaction continues): #{inspect(reason) |> String.slice(0, 200)}")
+        {0, 0}
     end
   end
 

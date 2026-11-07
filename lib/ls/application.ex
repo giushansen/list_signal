@@ -227,9 +227,8 @@ defmodule LS.Application do
       # master backfills it in LS.Reputation.fill/1. That is 101 MB of ETS
       # (plus a daily reload spike) returned to every worker.
       LS.Reputation.Blocklist,
-      LS.ML.Classifier,
       LS.HTTP.PerformanceTracker
-    ]
+    ] ++ if(LS.ML.Classifier.local?(), do: [LS.ML.Classifier], else: [])
 
     lanes = worker_lanes()
     Logger.info("🛣️  Worker lanes: #{Enum.join(lanes, ", ")}")

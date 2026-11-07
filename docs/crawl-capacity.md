@@ -341,3 +341,23 @@ adds stores the deadline cuts. Raising Shopify throughput means a wider
 lane with the cap raised to match, at the same 2 s spacing; the width is
 pinned by `worker_edge_width_test.exs`, `worker_edge_lane_test.exs` and
 `worker_edge_lane_keeps_finished_test.exs`, so it is the owner's call.
+
+**2026-11-07, 03:47 UTC: second correction, the width was not it either;
+the depth line was full.** One read a second for two minutes on par1: the
+node budget's depth line (30 a minute, the line every Shopify request
+books since 1b13634) was 13.5 s ahead at the median, 15.5 s at p90, free
+in 0 of 120 reads. It carried the three batches' Shopify lanes and about
+four depth-lane tasks (LS_ENRICH_CONCURRENCY 6, which do run on the
+duals), at 2 s a slot. The discovery line was free in 47 of 120 reads,
+Shopify's 2 s line in 120 of 120. So one store a lane was slow because
+each of its 2 to 4 requests waited about 14 s for a budget slot, not
+because the lane was narrow: four wide would have waited in the same
+line. Widening is also capped by rule 1's own invariant: four stores at
+2 s is 8 s, inside the depth lane's 10 s booking horizon, five is not
+(`worker_edge_width_test.exs`). The fix keeps both rules whole: a
+Shopify request books the shorter of the two lines (rule 2: a free
+discovery slot is no longer wasted while a store waits), each line keeps
+its rate (the node's 155 and Shopify's 30 a minute are unchanged, rule
+1), and each worker asks for as many stores a batch as its lane served
+(`WorkerAgent.next_edge_ask/2`). Queue at the time: 85,419 Shopify stores
+waiting, 45,506 of them all of priority 0.

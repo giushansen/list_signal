@@ -385,9 +385,14 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   @impl true
-  def handle_call({:dequeue, count}, _from, state) do
+  def handle_call({:dequeue, count}, from, state), do: handle_call({:dequeue, count, edge_per_batch()}, from, state)
+
+  # The worker says how many shared-edge names its lane can serve
+  # (LS.Cluster.WorkerAgent.next_edge_ask/2, 2026-11-07); bounded here so
+  # no worker can ask a batch full of stores.
+  def handle_call({:dequeue, count, edge_ask}, _from, state) do
     now = System.system_time(:millisecond)
-    batch = take_batch(count)
+    batch = take_batch(count, bounded_ask(edge_ask))
 
     case batch do
       [] ->
@@ -757,9 +762,20 @@ defmodule LS.Cluster.WorkQueue do
   def edge?(%{edge: true}), do: true
   def edge?(_), do: false
 
-  defp take_batch(count) do
+  # The Shopify stores a worker may ask for in one batch.
+  @edge_ask_range 1..48
+
+  @doc "The range a worker's Shopify ask is held to; its presence tells a worker the master reads the ask."
+  def edge_ask_range, do: @edge_ask_range
+
+  @doc "Pure: a worker's Shopify ask held to `edge_ask_range/0`; anything that is not an integer is the default cap."
+  @spec bounded_ask(term()) :: pos_integer()
+  def bounded_ask(n) when is_integer(n), do: n |> max(@edge_ask_range.first) |> min(@edge_ask_range.last)
+  def bounded_ask(_), do: edge_per_batch()
+
+  defp take_batch(count, edge_cap) do
     quota = max(round(count * @priority_share), 1)
-    {first, edge_left} = take_from(:first, quota, [], edge_per_batch())
+    {first, edge_left} = take_from(:first, quota, [], edge_cap)
     {rest, edge_left} = take_from(:rest, count - length(first), first, edge_left)
     # Discovery short: tier A may fill what is left.
     {all, _edge_left} = take_from(:first, count - length(rest), rest, edge_left)

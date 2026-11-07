@@ -330,7 +330,8 @@ row volume.
 `LS.Crawl.Tiers` decides how often a known business is refreshed, by what
 a customer buys. Since 2026-10-23: A, an online business with money
 (Ecommerce, SaaS, Tool or Marketplace with revenue over $1M, jobs or a
-catalogue), every 14 days; B, the other online businesses and the
+catalogue), every 14 days (a Shopify store every 28 since 2026-11-07:
+its tech changes half as often as a SaaS site's); B, the other online businesses and the
 unclassified ones, every 90; C, the classes that sell in person or by hand
 (local business, agency, consulting, manufacturer, media, education...)
 and the top 100K sites, every 180. Before that it was ICP-or-contact at
@@ -341,7 +342,11 @@ business into two more rings in `LS.Cluster.CrawlDedup` (10 windows of 10
 and 20 days since 2026-10-24, so 90-100 and 180-200 days; a one-off
 `CrawlDedup.backfill_tiers/0` places every existing B and C business by its
 last check), so a certificate re-sighting of a known business waits its
-cadence. A sighting of any compiled business carries `known: true` (the
+cadence. Since 2026-11-07 the same two rings also hold what the product
+does not sell, whatever its tier (`Tiers.slow_ring_sql/0`, marked by
+`Compactor.mark_slow/2`, backfilled once by `CrawlDedup.backfill_slow/0`):
+a junk page waits 90-100 days and a page read in another language
+180-200; a page with no language is never placed. A sighting of any compiled business carries `known: true` (the
 `known` ring, 400 days) and the worker treats it as a refresh: no
 first-contact name gate, since 2026-10-26. The sighting is still logged, and a sighting that names a host the
 business does not have yet recompiles it in the next compaction pass
@@ -620,8 +625,16 @@ shared From identity is `MAIL_FROM` (default `team@listsignal.com`). Set
   429, 430 or 503 or for Retry-After (`LS.HTTP.IPRateLimiter`); a first
   429 is requeued, not recorded. The per-node ceiling (`LS.HTTP.NodeBudget`)
   counts every request, redirect hops included, and lends the depth
-  lane's reserve to discovery while the depth line is idle (rule 2);
-  RDAP is limited per registry server.
+  lane's reserve to discovery while the depth line is idle (rule 2); a
+  request of the batch's Shopify lane books whichever of the two lines is
+  shorter (`NodeBudget.edge_line/0`, 2026-11-07), and each worker asks the
+  master for as many Shopify stores per batch as its lane served last
+  time (`WorkerAgent.next_edge_ask/2`, 2 to 48; `LS_EDGE_PER_BATCH` is
+  only the starting value). RDAP is limited per registry server.
+- The model (`LS.ML.Classifier`) can run on other nodes (2026-11-07): a
+  node with `LS_ML_NODES` asks them in turn (h1, then the master), skips
+  one that is not connected and, for five minutes, one that failed, and
+  falls back to its own model; `LS_ML_LOCAL=off` starts no model at all.
 - robots.txt is honoured (`LS.HTTP.Robots`, 2026-09-06): every fetch goes
   through `Client.fetch/3` or `Browser.render/2`, both refuse a path the
   domain's robots.txt disallows for `ListSignalBot` (or `*`). Refusals are

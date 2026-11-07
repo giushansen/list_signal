@@ -179,6 +179,8 @@ defmodule LS.ML.Classifier do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   end
 
+  @empty %{business_model: "", industry: "", ml_confidence: 0.0}
+
   @doc """
   Classify text into business model and industry.
 
@@ -186,18 +188,86 @@ defmodule LS.ML.Classifier do
   Returns: %{business_model: String, industry: String, ml_confidence: float}
   """
   def classify(text) when is_binary(text) and byte_size(text) > 0 do
-    GenServer.call(__MODULE__, {:classify, text}, 15_000)
-  catch
-    :exit, _ -> %{business_model: "", industry: "", ml_confidence: 0.0}
+    case route({:classify, text}, 15_000, &unready?([&1])) do
+      {:ok, result} -> result
+      :none -> @empty
+    end
   end
-  def classify(_), do: %{business_model: "", industry: "", ml_confidence: 0.0}
+  def classify(_), do: @empty
 
   @doc "Classify a batch of texts. Returns a list of classification results."
+  def classify_batch([]), do: []
+
   def classify_batch(texts) when is_list(texts) do
-    GenServer.call(__MODULE__, {:classify_batch, texts}, 120_000)
-  catch
-    :exit, _ -> Enum.map(texts, fn _ -> %{business_model: "", industry: "", ml_confidence: 0.0} end)
+    case route({:classify_batch, texts}, 120_000, &unready?/1) do
+      {:ok, results} -> results
+      :none -> Enum.map(texts, fn _ -> @empty end)
+    end
   end
+
+  # Where the model runs (2026-11-07). A node may hand its texts to the
+  # classifier of other nodes (`LS_ML_NODES`, e.g. the NUC then the
+  # master), so it need not hold the model itself (`LS_ML_LOCAL=off`):
+  # e5-small and its runtime are about 500 MB of a dual's 0.8 to 1.2 GB.
+  # Measured that day over WireGuard, a dual is 235 to 480 ms from h1 and
+  # 1 to 246 ms from the master, against 8 to 14 s of model time per batch
+  # on a dual's two cores. Each node in the list is asked in turn: one
+  # that is not connected is skipped at once, one that fails or answers
+  # unready is skipped for #{div(300_000, 60_000)} minutes, so h1 going dark
+  # at home costs one timeout, not one per batch. The local model, when
+  # the node has one, is the last resort; with none, the rows keep the
+  # rule-based labels and the fold keeps the last ML label on file.
+  @skip_ms 300_000
+
+  @doc false
+  # Try each remote node, then the local process. `unready` says whether a
+  # reply is the "model not loaded yet" answer, which is a miss.
+  def route(msg, timeout, unready, nodes \\ remote_nodes()) do
+    Enum.find_value(nodes, :none, fn node -> ask(node, msg, timeout, unready) end)
+    |> case do
+      :none -> local(msg, timeout)
+      hit -> hit
+    end
+  end
+
+  defp ask(node, msg, timeout, unready) do
+    reply = GenServer.call({__MODULE__, node}, msg, min(timeout, 30_000))
+
+    if unready.(reply), do: skip(node), else: {:ok, reply}
+  catch
+    :exit, _ -> skip(node)
+  end
+
+  defp skip(node) do
+    :persistent_term.put({__MODULE__, :skip, node}, System.monotonic_time(:millisecond) + @skip_ms)
+    nil
+  end
+
+  defp local(msg, timeout) do
+    if Process.whereis(__MODULE__), do: {:ok, GenServer.call(__MODULE__, msg, timeout)}, else: :none
+  catch
+    :exit, _ -> :none
+  end
+
+  @doc "The nodes this one asks first, in order, from `LS_ML_NODES`, skipping itself, the unconnected and the recently failed."
+  @spec remote_nodes(String.t() | nil, [node()], integer()) :: [node()]
+  def remote_nodes(env \\ System.get_env("LS_ML_NODES"), connected \\ Node.list(), now \\ System.monotonic_time(:millisecond)) do
+    for name <- String.split(env || "", ",", trim: true),
+        node = String.to_atom(String.trim(name)),
+        node != Node.self(),
+        node in connected,
+        :persistent_term.get({__MODULE__, :skip, node}, 0) <= now,
+        do: node
+  end
+
+  @doc "Pure: whether a node runs its own model (`LS_ML_LOCAL`, on unless `off`)."
+  @spec local?(String.t() | nil) :: boolean()
+  def local?(env \\ System.get_env("LS_ML_LOCAL")), do: env != "off"
+
+  # Every result empty is what a classifier that has not loaded its model
+  # yet answers (handle_call with ready: false).
+  defp unready?(results) when is_list(results) and results != [], do: Enum.all?(results, &(&1 == @empty))
+  defp unready?(_), do: true
 
   @doc "Check if the ML classifier is loaded and ready."
   def ready? do

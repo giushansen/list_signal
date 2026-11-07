@@ -45,6 +45,22 @@ defmodule LS.Crawl.Tiers do
   @spec icp_models() :: [String.t()]
   def icp_models, do: @icp
 
+  # Tier A Shopify stores wait twice as long (2026-11-07). Measured on
+  # pairs of visits made by the same code version, so our own releases are
+  # not counted as changes: a Shopify store's detected tech changed 3.5% of
+  # the time under 14 days and 6.9% at 14 to 30, against 5% and 13.4% for
+  # a SaaS site, and installed apps barely moved. What customers filter
+  # Shopify stores on (country, revenue, employees, catalogue size) moves
+  # slower still. Stores are also the scarcest fetch: they go through one
+  # 2 s line per node at Shopify's edge, and 85,000 of them waited in the
+  # master's queue that morning. SaaS and every other tier A business
+  # keep 14 days.
+  @shopify_a_days 28
+
+  @doc "Refresh cadence of a tier A Shopify store, in days (the tier's own cadence for everything else)."
+  @spec shopify_a_days() :: pos_integer()
+  def shopify_a_days, do: @shopify_a_days
+
   @doc "Refresh cadence of a tier, in days."
   @spec cadence_days(:a | :b | :c) :: pos_integer()
   def cadence_days(tier), do: Map.fetch!(@cadence_days, tier)
@@ -114,6 +130,56 @@ defmodule LS.Crawl.Tiers do
     """
     SELECT domain FROM #{Tables.businesses()}
     WHERE estimated_junk = '' AND cityHash64(domain) % #{total} = #{shard}
+    SETTINGS max_threads = 2, max_execution_time = 170
+    """
+  end
+
+  @doc """
+  A ClickHouse expression giving the slow ring a business's last visit
+  puts it in, whatever its tier (2026-11-07): 'b' (90 to 100 days) for a
+  junk page, 'c' (180 to 200 days) for a page read in a language the
+  product does not sell, '' for everything else.
+
+  Measured over one day of fetches (2026-11-06, 241,566 rows) by what the
+  previous visit found: 11,868 domains last read in another language
+  gave 15 newly sellable businesses (1 in 1,000), 5,396 junk pages gave
+  29 (5 in 1,000), against 129 to 163 in 1,000 for an ICP business. They
+  came back on certificate renewals, every 45 to 64 days, because only
+  tier B and C businesses sat in a slow ring and the scheduler already
+  skips both. A page with no language on file is left out on purpose:
+  those are mostly the DNS-only rows of August and September, the best
+  yielding fetches of the day (46 in 1,000).
+  """
+  @spec slow_ring_sql() :: String.t()
+  def slow_ring_sql do
+    "multiIf(estimated_junk != '', 'b', http_language != '' AND NOT #{LS.Crawl.Markets.refresh_language_sql()}, 'c', '')"
+  end
+
+  @doc "Domain and slow ring (`slow_ring_sql/0`) of every junk or other-language business compiled in the window."
+  @spec compiled_slow_sql(integer(), integer()) :: String.t()
+  def compiled_slow_sql(since_unix, until_unix) when is_integer(since_unix) and is_integer(until_unix) do
+    """
+    SELECT domain, ring FROM (
+      SELECT domain, #{slow_ring_sql()} AS ring
+      FROM #{Tables.businesses()}
+      WHERE compiled_at >= toDateTime(#{since_unix}) AND compiled_at < toDateTime(#{until_unix})
+    )
+    WHERE ring != ''
+    SETTINGS max_threads = 2, max_execution_time = 60
+    """
+  end
+
+  @doc "Junk or other-language businesses of one slow ring last checked in the window, one hash shard; feeds `LS.Cluster.CrawlDedup.backfill_slow/0`."
+  @spec slow_backfill_sql(String.t(), integer(), integer() | nil, non_neg_integer(), pos_integer()) :: String.t()
+  def slow_backfill_sql(ring, from_unix, to_unix, shard, total)
+      when ring in ["b", "c"] and is_integer(from_unix) and is_integer(shard) and is_integer(total) and shard >= 0 and shard < total do
+    upper = if is_integer(to_unix), do: " AND http_last_checked_at < toDateTime(#{to_unix})", else: ""
+
+    """
+    SELECT domain FROM #{Tables.businesses()}
+    WHERE #{slow_ring_sql()} = '#{ring}'
+      AND http_last_checked_at >= toDateTime(#{from_unix})#{upper}
+      AND cityHash64(domain) % #{total} = #{shard}
     SETTINGS max_threads = 2, max_execution_time = 170
     """
   end

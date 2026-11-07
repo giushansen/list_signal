@@ -72,6 +72,11 @@ defmodule LS.Cluster.WorkerAgent do
       # each batch; sizes the next dequeue (dequeue_size/3). 0.4 is the
       # 2026-10-24 fleet average (290-620 of 1,000).
       cand_ratio: 0.4,
+      # Shopify stores to ask the master for in the next batch, learned
+      # from what the lane served (next_edge_ask/2, 2026-11-07); sent only
+      # to a master that reads it (edge_asks?).
+      edge_ask: LS.Cluster.WorkQueue.edge_per_batch(),
+      edge_asks?: false,
       start_time: System.monotonic_time(:second),
       last_stages: nil, last_samples: %{}, errors: []
     }
@@ -140,7 +145,7 @@ defmodule LS.Cluster.WorkerAgent do
       :pong ->
         Logger.info("Connected to master #{s.master_node}")
         send(self(), :pull_work)
-        {:noreply, %{s | connected: true}}
+        {:noreply, %{s | connected: true, edge_asks?: master_reads_edge_ask?(s.master_node)}}
       :pang ->
         Logger.warning("Cannot reach master #{s.master_node}, retry #{div(@reconnect_interval_ms, 1000)}s")
         Process.send_after(self(), :connect_and_work, @reconnect_interval_ms)
@@ -183,7 +188,7 @@ defmodule LS.Cluster.WorkerAgent do
     queue = {LS.Cluster.WorkQueue, s.master_node}
     cyc = Map.get(stages, :cycle_ms, 0)
     known = stages.dns.ms + max(stages.http.ms, max(stages.bgp.ms, stages.rdap.ms)) + get_in(stages, [:merge, :ms])
-    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms | cands #{stages.http.input} cap #{stages.http[:cap]} surplus #{stages.http[:surplus]} cut #{stages.http[:cut]})")
+    Logger.info("Batch #{bid}: #{length(results)} rows (DNS:#{stages.dns.ms}ms HTTP:#{stages.http.ms}ms BGP:#{stages.bgp.ms}ms RDAP:#{stages.rdap.ms}ms MERGE:#{get_in(stages, [:merge, :ms])}ms (ML:#{:persistent_term.get({__MODULE__, :last_ml_ms}, 0)}ms) | cycle #{cyc}ms, unaccounted #{max(cyc - known, 0)}ms | cands #{stages.http.input} cap #{stages.http[:cap]} surplus #{stages.http[:surplus]} cut #{stages.http[:cut]} | shopify #{get_in(stages, [:http, :edge, :served])}/#{get_in(stages, [:http, :edge, :offered])} served, asked #{s.edge_ask})")
     # The verdicts travel with the rows so the gate can remember them
     # (LS.Cluster.WorkQueue.complete/3): what was filtered writes no row.
     GenServer.cast(queue, {:complete, bid, results, Map.take(skipped, [:dormant, :soft, :recent, :unresolved, :unresolved_refresh])})
@@ -201,6 +206,7 @@ defmodule LS.Cluster.WorkerAgent do
       last_stages: stages,
       last_samples: samples,
       cand_ratio: Map.get(stages.http, :cand_ratio, s.cand_ratio),
+      edge_ask: next_edge_ask(s.edge_ask, Map.get(stages.http, :edge, %{})),
       errors: errors
     })
     unless new_s.draining, do: send(self(), :pull_work)
@@ -236,7 +242,7 @@ defmodule LS.Cluster.WorkerAgent do
     want = dequeue_size(http_candidate_cap(), s.cand_ratio, bs)
     spawn_link(fn ->
       try do
-        case GenServer.call(queue, {:dequeue, want}, 15_000) do
+        case GenServer.call(queue, dequeue_msg(want, s), 15_000) do
           {:ok, bid, domains} ->
             Logger.info("Batch #{bid}: #{length(domains)} domains (asked #{want})")
             # apply_interval dies with this process, so a crashed batch
@@ -256,6 +262,72 @@ defmodule LS.Cluster.WorkerAgent do
     end)
     %{s | current_batch: :working, inflight: s.inflight + 1}
   end
+
+  # The dequeue message: with the worker's Shopify ask for a master that
+  # reads it, the two-element form (the master's LS_EDGE_PER_BATCH) for
+  # one that does not, so a worker deployed before its master cannot
+  # crash the master's queue with a message it has no clause for.
+  defp dequeue_msg(want, %{edge_asks?: true, edge_ask: ask}), do: {:dequeue, want, ask}
+  defp dequeue_msg(want, _s), do: {:dequeue, want}
+
+  defp master_reads_edge_ask?(master) do
+    :rpc.call(master, :erlang, :function_exported, [LS.Cluster.WorkQueue, :edge_ask_range, 0], 5_000) == true
+  end
+
+  @edge_ask_min 2
+  @edge_ask_max 48
+
+  @doc """
+  Pure: the Shopify stores (shared-edge candidates) of a batch's HTTP
+  stage: `offered` in the lane, `tagged` of them sent by the master as
+  `edge: true` (the rest were found behind the edge by DNS), `served` the
+  ones that came back with a result that is not a refusal.
+  """
+  @spec edge_stats([{String.t(), term()}], map(), map()) :: %{offered: non_neg_integer(), tagged: non_neg_integer(), served: non_neg_integer()}
+  def edge_stats(cands, http_res, by_domain) when is_list(cands) and is_map(http_res) and is_map(by_domain) do
+    {edge, _plain} = split_by_edge(cands, &elem(&1, 1))
+
+    %{
+      offered: length(edge),
+      tagged: Enum.count(edge, fn {d, _ip} -> LS.Cluster.WorkQueue.edge?(by_domain[d]) end),
+      served: Enum.count(edge, fn {d, _ip} -> Map.has_key?(http_res, d) and not throttled_result?(http_res[d]) end)
+    }
+  end
+
+  @doc """
+  Pure: how many Shopify stores to ask the master for in the next batch,
+  from what the last batch's lane served (2026-11-07).
+
+  The cap used to be one number for every node and every hour
+  (`LS_EDGE_PER_BATCH`, 8, then 16 for a trial that changed nothing).
+  What a lane can serve moves with the node's budget lines and the depth
+  lane's load, so the worker now pulls what it can finish: a lane that
+  served everything it was given, and was given all it asked for, asks
+  for a quarter more next time; a lane that was cut or refused asks for
+  what it served less the stores DNS added on its own, halfway from the
+  old ask and never above it; a batch with no store teaches nothing.
+  Bounded to #{@edge_ask_min}..#{@edge_ask_max}.
+  """
+  @spec next_edge_ask(integer(), map()) :: pos_integer()
+  def next_edge_ask(prev, %{offered: offered, tagged: tagged, served: served})
+      when is_integer(prev) and is_integer(offered) and is_integer(tagged) and is_integer(served) and offered > 0 do
+    cond do
+      served < offered ->
+        target = served - (offered - tagged)
+        clamp_ask(min(prev - 1, div(prev + target, 2)))
+
+      tagged >= prev ->
+        clamp_ask(prev + max(2, div(prev, 4)))
+
+      true ->
+        clamp_ask(prev)
+    end
+  end
+
+  def next_edge_ask(prev, _stats) when is_integer(prev), do: clamp_ask(prev)
+  def next_edge_ask(_prev, _stats), do: LS.Cluster.WorkQueue.edge_per_batch()
+
+  defp clamp_ask(n), do: n |> max(@edge_ask_min) |> min(@edge_ask_max)
 
   @doc false
   # Pure. How many batches this node runs at once.
@@ -383,6 +455,7 @@ defmodule LS.Cluster.WorkerAgent do
     # candidate goes back to the tail once, with no row, so its check
     # time does not move and a store that answered "slow down" is not
     # shelved for a cadence. The second time it is recorded as it came.
+    edge = edge_stats(http_cands, http_res, by_domain)
     throttled = throttled_once(http_cands -- cut, http_res, by_domain)
     http_res = Map.drop(http_res, Enum.map(throttled, &elem(&1, 0)))
     fetched = (http_cands -- cut) -- throttled
@@ -409,7 +482,8 @@ defmodule LS.Cluster.WorkerAgent do
               filtered: length(domains) - length(http_cands) - length(surplus),
               surplus: length(surplus), cut: length(cut), cap: cap, throttled: length(throttled),
               not_modified: Enum.count(http_res, fn {_d, r} -> is_map(r) and r[:_not_modified] == true end),
-              cand_ratio: candidate_ratio(length(http_cands) + length(surplus), length(domains))},
+              cand_ratio: candidate_ratio(length(http_cands) + length(surplus), length(domains)),
+              edge: edge},
       bgp: %{input: length(bgp_cands), output: map_size(bgp_res), ms: div(bgp_us, 1000)},
       rdap: %{input: length(rdap_cands), output: map_size(rdap_res), ms: div(rdap_us, 1000),
               rate_limited: length(rdap_cands) - map_size(rdap_res)},
@@ -926,6 +1000,9 @@ defmodule LS.Cluster.WorkerAgent do
   defp handing_over(fun, parent, ref) do
     fn item ->
       Process.put(:ls_fetch_lane, @edge_budget_lane)
+      # Each request books the shorter of the node's two budget lines
+      # (LS.HTTP.NodeBudget.edge_line/0, 2026-11-07).
+      Process.put(:ls_edge_lane, true)
 
       try do
         case fun.(item) do

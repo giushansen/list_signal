@@ -195,6 +195,11 @@ defmodule LS.HTTP.Client do
       _ -> throw(:paused)
     end
 
+    # From here `lane` is the budget line booked: the lane's own, or for
+    # the batch's Shopify lane the shorter of the two (budget_line/1).
+    lane = budget_line(lane)
+    Process.put(:ls_budget_line, lane)
+
     case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do
       {:wait, ms} ->
         # A slot is reserved for us; sleeping is the pacing, not a retry.
@@ -230,6 +235,8 @@ defmodule LS.HTTP.Client do
         fetch_with_redirects(domain, ip, 0, path, recv_timeout, max_bytes, extra)
 
       _ ->
+        # The slot goes back to the line it was taken from.
+        lane = Process.get(:ls_budget_line, lane)
         LS.HTTP.NodeBudget.release(LS.HTTP.NodeBudget.lane_limit(lane), lane)
         {:error, "rate_limited", :rate_limited}
     end
@@ -497,12 +504,30 @@ defmodule LS.HTTP.Client do
 
   def retry_after_ms(_), do: nil
 
+  @doc """
+  The node budget line a request books: its lane's own, except in the
+  batch's Shopify lane (`:ls_edge_lane`, set by
+  `LS.Cluster.WorkerAgent.fetch_split/6`), which books the shorter of the
+  two lines (`LS.HTTP.NodeBudget.edge_line/0`, 2026-11-07). The lane tag
+  and its booking horizon on the target's line are unchanged.
+  """
+  @spec budget_line(atom()) :: atom()
+  def budget_line(lane) do
+    if Process.get(:ls_edge_lane) == true do
+      line = LS.HTTP.NodeBudget.edge_line()
+      LS.HTTP.NodeBudget.count(if line == :discovery, do: :edge_on_discovery, else: :edge_on_enrichment)
+      line
+    else
+      lane
+    end
+  end
+
   # The budget slot a redirect hop takes; `:stop` returns the 3xx as the
   # response when the line is overloaded.
   defp hop_slot do
-    lane = Process.get(:ls_fetch_lane, :discovery)
+    line = budget_line(Process.get(:ls_fetch_lane, :discovery))
 
-    case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(lane), lane) do
+    case LS.HTTP.NodeBudget.take(LS.HTTP.NodeBudget.lane_limit(line), line) do
       :ok -> LS.HTTP.NodeBudget.count(:hop)
       {:wait, ms} -> Process.sleep(ms); LS.HTTP.NodeBudget.count(:hop)
       :overloaded -> :stop
