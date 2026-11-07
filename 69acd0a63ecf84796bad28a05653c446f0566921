@@ -1,1 +1,15 @@
 Rollout 2026-11-07: master 04:15-04:20 (ask range live, cap 8, 8 nodes), slow-ring backfill done 04:23 (tier C ring +7,883,896 other-language, tier B +395,526 junk), duals sg2 04:21 .. chi1 05:16, ny1 05:25 with dual_remote_ml, h1 05:31, done 05:34. ny1 got no ML labels from about 05:33 to 05:48 (negative monotonic clock vs a 0 default, fixed in 5e6cb06, ny1 redeployed alone). First signal, 30 min to 05:20, nodes on the new code longest: sg2 34.3 rows/min and 4.2 Shopify/min, par1 34.9 and 4.5 (baseline 03:14-04:14: fleet 177 rows/min = 25.3 a dual, 18.1 Shopify/min = 2.6 a dual), Shopify 429s 0. sg2 lanes served 13 to 27 stores a batch (about 8 before), most of them untagged stores DNS found behind Shopify, so the asks fell to 3 to 5.
+
+2026-11-07 +1 h (05:50-06:50 UTC, all nodes on 69acd0a + 5e6cb06), against the 03:14-04:14 baseline on the old code:
+- Fleet rows 241.9/min (was 177, +37%). Per dual 32.8-36.8 (was 25.3 avg). Prediction 28-34: met, slightly above.
+- Real (2xx, not junk) 211.2/min (was 125.2, +69%). Rows with an email 53.6/min (was 43.6, +23%).
+- Shopify rows 18.9/min (was 18.1). Prediction 30-45: MISSED. Shopify 429s 0.
+- All 429s 2 in the hour (was 13). self rate_limited 1 (was 7).
+- req/min per dual from a 60 s probe: 152-157 on all seven (baseline par2 28, sg2 29, par1 87). Every dual now sits at its ceiling.
+- Lines: discovery full on every dual (p50 20-99 s, free 0/60); depth full (p50 11.5-14 s); Shopify 2 s line still free 44-58/60. edge_line picked the depth line for ~99% of edge requests because the discovery line is now the longer one. Prediction 'depth p50 under 6 s': MISSED. With both lines full, the binding limit is the node's 155/min ceiling, and Shopify gets ~12-17 req/min of it (~2.5 stores/min/node).
+- Why rows rose but Shopify did not: the pull ask keeps batches to 4-9 Shopify stores, batches finish, and the discovery line that sat idle on par1/par2/sg2 now fills. Shopify volume is a share-of-ceiling question, not a waiting question any more.
+- Slow rings: junk + non EN/FR fetches fell from 14-16% of rows per hour (22:00-04:00) to 6.8% in 06:00-06:47 (other-language 900-1,100/h -> 386/h; junk ~520/h -> 325/h).
+- ny1 (no local model, ML via h1 then master): RSS 586 MB vs peers 1,014-1,327 MB; ML 3.1 s per batch vs 3.4-15.0 s on peers with a local model. ny1 restarted 0 times.
+- Cuts: 190 of 13,195 candidates (1.4%) across the duals in ~53 min.
+- Queue 156,376 (was 139,690); Shopify waiting 82,860 (was 86,521, falling).
+- Master errors in the hour: 2 Bandit HTTP/2 client header errors, nothing else.
