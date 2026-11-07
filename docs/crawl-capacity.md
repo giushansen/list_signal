@@ -322,3 +322,22 @@ batches an hour. The per-batch cap is not a lever; the per-node line is,
 and rule 1 fixes it. Shopify capacity comes from more source addresses
 (a line per node) or from fewer requests a store, not from a wider
 batch. Numbers in the git note on 2d2326b.
+
+**2026-11-07, 01:30 UTC: correction, the line was idle; the lane's width
+binds.** The entry above is right that 16 bought nothing and wrong about
+why. Two mistakes. The 3.5 "secondary pages" was the number of links a
+homepage records (`http_pages`), not pages fetched: the discovery lane
+fetches robots.txt, the homepage, a redirect on some, and at most one
+more page (`LS.Pipeline.secondary_plan/2`), 2 to 4 requests a store; the
+catalogue reads (products.json, collections.json) belong to the depth
+lane. And the 2 s line is not full: sampling the `edge:shopify` booking
+every 250 to 500 ms for a minute gave 5 bookings on par1, 7 on ny1, 23 on
+dal1, 7 on sg2, of the 30 the spacing allows, booked ahead in 2 to 13% of
+samples. What binds is the lane's width: `edge_width(3)` is 1, so each of
+a node's three batches fetches its stores one at a time, about 8 in the
+420 s stage, which is why 8 a batch fills it (8 x 3 batches per 7.7 to
+8.6 min cycle is 2.8 to 3.1 stores a minute, measured 2.7) and 16 only
+adds stores the deadline cuts. Raising Shopify throughput means a wider
+lane with the cap raised to match, at the same 2 s spacing; the width is
+pinned by `worker_edge_width_test.exs`, `worker_edge_lane_test.exs` and
+`worker_edge_lane_keeps_finished_test.exs`, so it is the owner's call.
