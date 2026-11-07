@@ -256,8 +256,19 @@ defmodule LS.ML.Classifier do
         node = String.to_atom(String.trim(name)),
         node != Node.self(),
         node in connected,
-        :persistent_term.get({__MODULE__, :skip, node}, 0) <= now,
+        not skipped?(node, now),
         do: node
+  end
+
+  # The BEAM's monotonic clock is negative (about -5.8e11 ms on the duals),
+  # so "never skipped" must be its own value and not 0, which reads as a
+  # time far in the future: with 0 as the default every node was skipped
+  # and ny1's first minutes on 2026-11-07 got no ML labels at all.
+  defp skipped?(node, now) do
+    case :persistent_term.get({__MODULE__, :skip, node}, nil) do
+      until when is_integer(until) -> until > now
+      _ -> false
+    end
   end
 
   @doc "Pure: whether a node runs its own model (`LS_ML_LOCAL`, on unless `off`)."
