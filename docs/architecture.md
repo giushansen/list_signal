@@ -124,9 +124,11 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    owner's decision 2026-11-02: 22.5% of fetches returned another
    language), and enqueues `%{ctl_domain: d, source: :ctl}` items.
 2. **Queueing** — `LS.Cluster.WorkQueue` is a bounded in-memory queue
-   (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). Tier A
-   refreshes are priority 0 and dequeue before everything else; the rest is
-   FIFO (2026-10-24). A side table keyed by domain holds every domain that
+   (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). Shopify
+   stores a worker found by DNS from a sighting and handed back unfetched
+   (`edge: true`, not a refresh) are priority -1 (2026-11-09: they expired
+   while refreshes took every Shopify slot); tier A refreshes are priority
+   0; the rest is 1, each FIFO (2026-10-24). A side table keyed by domain holds every domain that
    is queued or in flight, and `enqueue/2` refuses a second copy whoever
    asks, `force` included (`:already_queued`), so one domain is in one place
    across the fleet. When full, `enqueue/1` returns `:queue_full` and the

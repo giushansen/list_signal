@@ -25,6 +25,22 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-09: Shopify stores found by DNS expired while refreshes took every slot
+
+sg2 was destroyed on 11-08 at about 09:35 UTC. Non-Shopify output hardly
+moved (rows -3%), but each node is one Shopify line at one request every
+2 s, so Shopify stores fell 22% (2,780 to 2,180 an hour), rows with an
+email 11%, and the Shopify backlog grew from 40.3K to 52.0K in 16 hours.
+The queue gave every batch's Shopify slots to tier A refreshes first
+(priority 0). Sighted stores, the ones a worker found behind Shopify by DNS
+and handed back unfetched, sat at priority 1: 20,518 of them, 15,442
+never fetched once since July, while 300 to 430 items an hour expired at
+the TTL. A refresh that expires is due again the next day; a sighting
+waits for its next certificate renewal. Sighted stores now dequeue first
+(priority -1). Six nodes serve about 49K stores a day, first visits need
+about 22K and steady-state refreshes about 4.7K, so no node is needed back.
+Test: `test/ls/cluster/shopify_sightings_before_refreshes_test.exs`.
+
 ## 2026-11-07: the Shopify lane waited on a full budget line while two other lines sat idle
 
 The 11-05 explanation of the Shopify ceiling was wrong twice (see

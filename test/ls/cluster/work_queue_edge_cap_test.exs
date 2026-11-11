@@ -78,11 +78,13 @@ defmodule LS.Cluster.WorkQueueEdgeCapTest do
     for i <- 11..20, do: :ok = WorkQueue.enqueue(new(i))
 
     got = names(GenServer.call(WorkQueue, {:dequeue, 20}))
-    assert Enum.count(got, &(prefix(&1) == "s")) == 8
-    assert Enum.count(got, &(prefix(&1) == "n")) == 10
+    assert Enum.count(got, &(prefix(&1) == "s")) == 0
+    assert Enum.count(got, &(prefix(&1) == "n")) == 18
     assert length(got) == 18
-    # Stores from the queue's priority share come first, then the untagged discovery names.
-    assert Enum.take(got, 8) |> Enum.all?(&(prefix(&1) == "s"))
+    # Sighted stores take the eight Shopify slots before tier A refreshes
+    # (priority -1, 2026-11-09: sightings expired while refreshes took every
+    # slot), then the untagged discovery names fill the batch.
+    assert Enum.take(got, 8) |> Enum.all?(&String.match?(&1, ~r/^n([1-9]|10)-/))
   end
 
   test "only the literal edge: true counts; hostile tags leave a name untouched by the cap" do

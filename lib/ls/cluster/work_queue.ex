@@ -20,10 +20,14 @@ defmodule LS.Cluster.WorkQueue do
 
   ## Order (2026-10-24)
 
-  The table is an ordered_set keyed by `{priority, id}`. Priority 0 is the
-  refresh of a tier A business (`LS.Crawl.Tiers`: an online business with
-  revenue, jobs or a catalogue), the rows customers pay to see change;
-  everything else is 1. Within a priority the id is monotonic, so it is
+  The table is an ordered_set keyed by `{priority, id}`. Priority -1 is a
+  Shopify store a worker found by DNS from a certificate sighting and
+  handed back unfetched (`edge: true`, not a scheduled refresh): most of
+  them we have never read, and one that expires waits for its next
+  renewal, about two months. Priority 0 is the refresh of a tier A
+  business (`LS.Crawl.Tiers`: an online business with revenue, jobs or a
+  catalogue), which the scheduler puts back the next day if it expires.
+  Everything else is 1. Within a priority the id is monotonic, so it is
   FIFO. A worker that dequeued more than its fetch budget can finish hands
   the surplus back with `requeue/2` to the FRONT of its priority (a negative
   monotonic id), so nothing it never touched waits a second time behind
@@ -108,7 +112,20 @@ defmodule LS.Cluster.WorkQueue do
   @doc "The in-flight timeout: a batch with no heartbeat for this long is requeued."
   def batch_timeout_ms, do: @batch_timeout_ms
 
-  # Queue key priorities. 0 dequeues before 1.
+  # Queue key priorities. -1 dequeues before 0, 0 before 1.
+  #
+  # -1: a store behind a shared edge (Shopify) that came from a sighting,
+  # not from the scheduler (2026-11-09). With refreshes at 0 they took
+  # every Shopify slot of every batch: the queue held 35,698 tier A store
+  # refreshes and 20,518 sighted stores, 15,442 of which had never been
+  # fetched once (DNS-only rows since July, seen 3.3 times each), and 300
+  # to 430 sightings an hour expired at the TTL while one refresh did. A
+  # refresh that expires is due again the next day; a sighting that
+  # expires comes back at its next certificate renewal. Six nodes serve
+  # about 49K stores a day; first visits need about 22K and steady-state
+  # refreshes about 4.7K (131.6K stores every 28 days), so both fit with
+  # sightings first.
+  @prio_edge_sighting -1
   @prio_refresh_a 0
   @prio_default 1
 
@@ -269,22 +286,27 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   @doc """
-  Pure: where an item sorts. A tier A refresh (`source: :recrawl`, `tier:
-  "a"`) is 0 and dequeues before everything else; the rest is 1. The
-  scheduler marks tier A on the item, so the queue never has to look a
-  domain up to know what it is.
+  Pure: where an item sorts. A Shopify store from a sighting (`edge:
+  true` and not `source: :recrawl`) is -1 and dequeues first; a tier A
+  refresh (`source: :recrawl`, `tier: "a"`) is 0; the rest is 1. The
+  worker tags `edge: true` when DNS puts a name behind a shared edge and
+  the scheduler marks tier A, so the queue never has to look a domain up
+  to know what it is. Only the literal `true` counts as a tag.
   """
-  @spec priority(map()) :: 0 | 1
+  @spec priority(map()) :: -1 | 0 | 1
   def priority(%{source: :recrawl, tier: "a"}), do: @prio_refresh_a
   def priority(%{"source" => :recrawl, "tier" => "a"}), do: @prio_refresh_a
+  def priority(%{source: :recrawl}), do: @prio_default
+  def priority(%{"source" => :recrawl}), do: @prio_default
+  def priority(%{edge: true}), do: @prio_edge_sighting
   def priority(_), do: @prio_default
 
   @doc "Pure: a key that sorts after every item of the same priority already queued."
-  @spec tail_key(map()) :: {0 | 1, integer()}
+  @spec tail_key(map()) :: {-1 | 0 | 1, integer()}
   def tail_key(data), do: {priority(data), :erlang.unique_integer([:monotonic, :positive])}
 
   @doc "Pure: a key that sorts before every item of the same priority already queued."
-  @spec front_key(map()) :: {0 | 1, integer()}
+  @spec front_key(map()) :: {-1 | 0 | 1, integer()}
   def front_key(data), do: {priority(data), -:erlang.unique_integer([:monotonic, :positive])}
 
   @doc """
@@ -441,6 +463,8 @@ defmodule LS.Cluster.WorkQueue do
       # Tier A refreshes waiting (priority 0). An ordered_set bounds the scan
       # to the matching key range.
       queue_depth_priority: :ets.select_count(@queue_table, [{{{@prio_refresh_a, :_}, :_, :_}, [], [true]}]),
+      # Shopify stores from sightings waiting (priority -1).
+      queue_depth_edge_sightings: :ets.select_count(@queue_table, [{{{@prio_edge_sighting, :_}, :_, :_}, [], [true]}]),
       queue_pct: if(max_queue_size() > 0, do: Float.round(queue_size / max_queue_size() * 100, 1), else: 0.0),
       queue_max: max_queue_size(),
       queue_memory_mb: queue_mem_mb,
@@ -710,6 +734,9 @@ defmodule LS.Cluster.WorkQueue do
     :persistent_term.get(@counter_table)
   end
 
+  # Priorities -1 and 0 (sighted stores, tier A refreshes) take at most
+  # this share of a batch while ordinary items wait; -1 holds only
+  # shared-edge names, which the batch's edge cap bounds anyway.
   # Priority 0 (tier A refreshes) takes at most this share of a batch while
   # ordinary items are waiting (2026-10-27). With strict priority and a
   # fleet of 157 fetches a minute, the 150-a-minute tier A plan took every
@@ -782,9 +809,9 @@ defmodule LS.Cluster.WorkQueue do
     Enum.reverse(all)
   end
 
-  # `:first` walks from the head of the table (priority 0, then 1 when 0 is
-  # empty); `:rest` walks only priority 1 and up, skipping the whole
-  # priority 0 range. ETS orders integers before atoms, so {0, :infinity}
+  # `:first` walks from the head of the table (priority -1, then 0, then 1
+  # as each runs out); `:rest` walks only priority 1 and up, skipping the
+  # whole -1 and 0 ranges. ETS orders integers before atoms, so {0, :infinity}
   # sorts after every {0, id} and before every {1, id}. A shared-edge item
   # past the batch's `edge_left` is walked over and left where it is.
   defp take_from(_where, remaining, acc, edge_left) when remaining <= 0, do: {acc, edge_left}
