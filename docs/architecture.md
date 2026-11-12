@@ -124,11 +124,19 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    owner's decision 2026-11-02: 22.5% of fetches returned another
    language), and enqueues `%{ctl_domain: d, source: :ctl}` items.
 2. **Queueing** — `LS.Cluster.WorkQueue` is a bounded in-memory queue
-   (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). Shopify
-   stores a worker found by DNS from a sighting and handed back unfetched
-   (`edge: true`, not a refresh) are priority -1 (2026-11-09: they expired
-   while refreshes took every Shopify slot); tier A refreshes are priority
-   0; the rest is 1, each FIFO (2026-10-24). A side table keyed by domain holds every domain that
+   (ETS ordered_set keyed `{priority, id}`, 3M cap, 24h TTL). First
+   visits behind Shopify's edge (a store a worker found by DNS from a
+   sighting and handed back unfetched, never compiled: `first_visit?/1`)
+   are priority -1 (2026-11-09: they expired while refreshes took every
+   Shopify slot); tier A refreshes are priority 0; the rest is 1, which
+   includes re-sightings of compiled stores (2026-11-12) and the
+   never-fetched backlog `LS.Recrawl.EdgeBackfill` feeds into spare room,
+   each FIFO (2026-10-24). The owner's order is first visits, then
+   refreshes: `first_visit_health/0` measures each lane every five
+   minutes, and when its oldest first visit has waited 12 h the
+   scheduler holds that lane's refreshes (tier B and C too); at 20 h or
+   100 expired in an hourly sweep an alert fires, and on the plain lane
+   re-sightings of compiled businesses are not queued. A side table keyed by domain holds every domain that
    is queued or in flight, and `enqueue/2` refuses a second copy whoever
    asks, `force` included (`:already_queued`), so one domain is in one place
    across the fleet. When full, `enqueue/1` returns `:queue_full` and the

@@ -18,20 +18,30 @@ defmodule LS.Cluster.WorkQueue do
   - In-flight tracking: timed-out batches get requeued after 10min, unless
     the worker is still heartbeating for them (see below)
 
-  ## Order (2026-10-24)
+  ## Order (2026-10-24, owner's priorities 2026-11-12)
 
   The table is an ordered_set keyed by `{priority, id}`. Priority -1 is a
-  Shopify store a worker found by DNS from a certificate sighting and
-  handed back unfetched (`edge: true`, not a scheduled refresh): most of
-  them we have never read, and one that expires waits for its next
+  first visit behind a shared edge: a Shopify store a worker found by DNS
+  from a certificate sighting and handed back unfetched, that we have
+  never compiled (`first_visit?/1`). One that expires waits for its next
   renewal, about two months. Priority 0 is the refresh of a tier A
   business (`LS.Crawl.Tiers`: an online business with revenue, jobs or a
   catalogue), which the scheduler puts back the next day if it expires.
-  Everything else is 1. Within a priority the id is monotonic, so it is
+  Everything else is 1, including a re-sighting of a compiled store and
+  the never-fetched backlog (`LS.Recrawl.EdgeBackfill`). Within a priority the id is monotonic, so it is
   FIFO. A worker that dequeued more than its fetch budget can finish hands
   the surplus back with `requeue/2` to the FRONT of its priority (a negative
   monotonic id), so nothing it never touched waits a second time behind
   400K newer names.
+
+  ## First-visit health (2026-11-12)
+
+  First visits are priority #1, refreshes #2. `first_visit_health/0`
+  measures each lane every five minutes: behind (oldest first visit 12 h)
+  makes the scheduler hold that lane's refreshes; losing (20 h, or 100
+  first visits expired in an hourly sweep) raises an alert, and on the
+  plain lane also stops queueing certificate re-sightings of compiled
+  businesses, which wait in the same FIFO as plain first visits.
 
   ## One domain, one place (2026-10-24)
 
@@ -129,6 +139,29 @@ defmodule LS.Cluster.WorkQueue do
   @prio_refresh_a 0
   @prio_default 1
 
+  # First-visit health (2026-11-12, owner's rule: first visits of real
+  # businesses are priority #1, refreshes #2, and when #1 starts failing,
+  # refreshes wait and the less useful revisits are dropped). Measured on
+  # each lane separately, because the Shopify line and the plain budget
+  # fill independently: on 2026-11-11 the oldest Shopify first visit had
+  # waited 15-16 h while the plain lane had 36 items and nothing older
+  # than minutes. Behind at 12 h: the scheduler holds that lane's
+  # refreshes. Losing at 20 h (4 h before the 24 h TTL drops an item) or
+  # once 100 first visits expired in the last hourly sweep: the owner
+  # gets an alert, and on the plain lane certificate re-sightings of
+  # compiled businesses are not queued at all. The 11-09/10 expiries ran at 300 to 1,733 an
+  # hour; overnight 11-11/12 they were 1 to 12, so 100 is a real loss, not
+  # noise.
+  @behind_age_ms :timer.hours(12)
+  @losing_age_ms :timer.hours(20)
+  @losing_expired 100
+  @health_ms 300_000
+  @health_key {__MODULE__, :first_visit_health}
+  # How far the plain-lane probe walks priority 1 past shared-edge items
+  # to find the oldest plain item; the walk is bounded so a long run of
+  # held stores cannot turn a stats call into a full scan.
+  @plain_probe_max 5_000
+
   # Counter indices
   @rate_window_ms 20_000
   @idx_enqueued 1
@@ -138,6 +171,7 @@ defmodule LS.Cluster.WorkQueue do
   @idx_deduped_dormant 5
   @idx_deduped_tier 6
   @idx_already_queued 7
+  @idx_held_revisit 8
 
   # ==========================================================================
   # CLIENT API
@@ -176,6 +210,20 @@ defmodule LS.Cluster.WorkQueue do
       current_size >= max_queue_size() ->
         :counters.add(counter_ref(), @idx_dropped, 1)
         :queue_full
+
+      # Plain first visits are being lost (2026-11-12, first_visit_health/0):
+      # a certificate re-sighting of a business we already compiled is a
+      # revisit that waits in the same FIFO as they do, and the scheduler
+      # refreshes tier A on its own clock. It is recorded and not queued
+      # until they recover. Behind the Shopify edge nothing more is needed:
+      # a known store sorts behind first visits and refreshes and gets no
+      # edge slot while either waits. Hot businesses still pass: a change
+      # just seen is the product.
+      not hot and not Keyword.get(opts, :force, false) and plain_losing?() and
+          domain_data[:source] != :recrawl and LS.Cluster.CrawlDedup.known?(domain) ->
+        LS.Cluster.CrawlDedup.record_sighting(domain_data)
+        :counters.add(counter_ref(), @idx_held_revisit, 1)
+        :recently_crawled
 
       # Dormant ring (2026-10-01): twice unchanged, or filtered on a verdict
       # the name settles. 60-90 days, not bypassed by force either.
@@ -286,20 +334,40 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   @doc """
-  Pure: where an item sorts. A Shopify store from a sighting (`edge:
-  true` and not `source: :recrawl`) is -1 and dequeues first; a tier A
-  refresh (`source: :recrawl`, `tier: "a"`) is 0; the rest is 1. The
-  worker tags `edge: true` when DNS puts a name behind a shared edge and
-  the scheduler marks tier A, so the queue never has to look a domain up
-  to know what it is. Only the literal `true` counts as a tag.
+  Pure: where an item sorts. A first visit behind a shared edge (`edge:
+  true`, `first_visit?/1`) is -1 and dequeues first; a tier A refresh
+  (`source: :recrawl`, `tier: "a"`) is 0; the rest is 1, which includes a
+  certificate re-sighting of a business we already compiled (`known:
+  true`) and the never-fetched backlog (`source: :backfill`). The worker
+  tags `edge: true` when DNS puts a name behind a shared edge, the master
+  tags `known: true` at enqueue and the scheduler marks tier A, so the
+  queue never has to look a domain up to know what it is. Only the
+  literal `true` counts as a tag.
   """
   @spec priority(map()) :: -1 | 0 | 1
   def priority(%{source: :recrawl, tier: "a"}), do: @prio_refresh_a
   def priority(%{"source" => :recrawl, "tier" => "a"}), do: @prio_refresh_a
-  def priority(%{source: :recrawl}), do: @prio_default
-  def priority(%{"source" => :recrawl}), do: @prio_default
-  def priority(%{edge: true}), do: @prio_edge_sighting
+  def priority(%{edge: true} = data), do: if(first_visit?(data), do: @prio_edge_sighting, else: @prio_default)
   def priority(_), do: @prio_default
+
+  @doc """
+  Pure: is this item a first visit, the owner's priority #1 (2026-11-12)?
+  A name a certificate brought just now that we have never compiled: not
+  a scheduled refresh (`source: :recrawl`), not the never-fetched backlog
+  (`source: :backfill`, which waits behind refreshes so it cannot starve
+  them), not a re-sighting of a compiled business (`known: true`). On
+  2026-11-11, 5,464 of the 38,295 Shopify stores fetched in a day had
+  been fetched under 29 days before, all at -1 with the first visits,
+  while 16,061 never-read stores waited up to 15 hours.
+  """
+  @spec first_visit?(term()) :: boolean()
+  def first_visit?(%{} = data) do
+    source = Map.get(data, :source, Map.get(data, "source"))
+    known = Map.get(data, :known, Map.get(data, "known"))
+    source not in [:recrawl, :backfill] and known != true
+  end
+
+  def first_visit?(_), do: false
 
   @doc "Pure: a key that sorts after every item of the same priority already queued."
   @spec tail_key(map()) :: {-1 | 0 | 1, integer()}
@@ -361,6 +429,56 @@ defmodule LS.Cluster.WorkQueue do
     GenServer.call(__MODULE__, :stats)
   end
 
+  @doc """
+  How first visits are doing on each lane, as last measured (every five
+  minutes and at each hourly sweep): `%{edge: health, plain: health,
+  edge_oldest_h: hours | nil, plain_oldest_h: hours | nil, edge_expired:
+  n, plain_expired: n}`, health being `:ok`, `:behind` or `:losing`
+  (`lane_health/2`). Every lane reads `:ok` before the first measurement
+  and on a node without a queue, so a caller never holds refreshes on a
+  guess.
+  """
+  @spec first_visit_health() :: map()
+  def first_visit_health, do: :persistent_term.get(@health_key, healthy())
+
+  defp healthy, do: %{edge: :ok, plain: :ok, edge_oldest_h: nil, plain_oldest_h: nil, edge_expired: 0, plain_expired: 0}
+
+  defp plain_losing?, do: match?(%{plain: :losing}, first_visit_health())
+
+  @doc """
+  Pure: one lane's first-visit health from the age of its oldest waiting
+  first visit (ms, nil when none waits) and how many of its first visits
+  the last hourly sweep expired.
+  """
+  @spec lane_health(non_neg_integer() | nil, non_neg_integer()) :: :ok | :behind | :losing
+  def lane_health(oldest_age_ms, expired) when is_integer(expired) do
+    cond do
+      expired >= @losing_expired -> :losing
+      is_integer(oldest_age_ms) and oldest_age_ms >= @losing_age_ms -> :losing
+      is_integer(oldest_age_ms) and oldest_age_ms >= @behind_age_ms -> :behind
+      true -> :ok
+    end
+  end
+
+  @doc "The thresholds `lane_health/2` applies, for logs, alerts and tests."
+  def health_thresholds, do: %{behind_age_ms: @behind_age_ms, losing_age_ms: @losing_age_ms, losing_expired: @losing_expired}
+
+  @doc "Pure: of the items a sweep expired, how many were first visits on each lane."
+  @spec expired_first_visits([tuple()]) :: %{edge: non_neg_integer(), plain: non_neg_integer()}
+  def expired_first_visits(items) when is_list(items) do
+    Enum.reduce(items, %{edge: 0, plain: 0}, fn
+      {_key, data, _ts}, acc ->
+        cond do
+          not first_visit?(data) -> acc
+          edge?(data) -> %{acc | edge: acc.edge + 1}
+          true -> %{acc | plain: acc.plain + 1}
+        end
+
+      _, acc ->
+        acc
+    end)
+  end
+
   # ==========================================================================
   # GENSERVER
   # ==========================================================================
@@ -376,11 +494,12 @@ defmodule LS.Cluster.WorkQueue do
     Process.send_after(self(), :save_queue, @queue_save_ms)
 
     # Atomic counters for enqueue/dropped (called outside GenServer)
-    ref = :counters.new(7, [:write_concurrency])
+    ref = :counters.new(8, [:write_concurrency])
     :persistent_term.put(@counter_table, ref)
 
     schedule_cleanup()
     schedule_inflight_check()
+    Process.send_after(self(), :measure_health, 60_000)
     Process.send_after(self(), :sample_rates, @rate_window_ms)
 
     max = case Integer.parse(System.get_env("LS_QUEUE_MAX", "")) do
@@ -402,7 +521,9 @@ defmodule LS.Cluster.WorkQueue do
       # restart. rate_sample = {mono_seconds, enqueued_then, completed_then}.
       rate_sample: {System.monotonic_time(:second), 0, 0},
       enqueue_rate_win: 0.0,
-      drain_rate_win: 0.0
+      drain_rate_win: 0.0,
+      # First visits the last hourly sweep expired, per lane.
+      last_expired: %{edge: 0, plain: 0}
     }}
   end
 
@@ -451,6 +572,7 @@ defmodule LS.Cluster.WorkQueue do
     total_deduped_dormant = :counters.get(ref, @idx_deduped_dormant)
     total_deduped_tier = :counters.get(ref, @idx_deduped_tier)
     total_already_queued = :counters.get(ref, @idx_already_queued)
+    total_held_revisits = :counters.get(ref, @idx_held_revisit)
 
     # Lifetime averages kept for reference; the dashboard uses the windowed rates
     # below (total/uptime lied for hours after every restart — cold dedup cache
@@ -465,6 +587,9 @@ defmodule LS.Cluster.WorkQueue do
       queue_depth_priority: :ets.select_count(@queue_table, [{{{@prio_refresh_a, :_}, :_, :_}, [], [true]}]),
       # Shopify stores from sightings waiting (priority -1).
       queue_depth_edge_sightings: :ets.select_count(@queue_table, [{{{@prio_edge_sighting, :_}, :_, :_}, [], [true]}]),
+      # The never-fetched backlog waiting (LS.Recrawl.EdgeBackfill), behind refreshes.
+      queue_depth_backfill: :ets.select_count(@queue_table, [{{{@prio_default, :_}, %{source: :backfill}, :_}, [], [true]}]),
+      first_visits: first_visit_health(),
       queue_pct: if(max_queue_size() > 0, do: Float.round(queue_size / max_queue_size() * 100, 1), else: 0.0),
       queue_max: max_queue_size(),
       queue_memory_mb: queue_mem_mb,
@@ -474,6 +599,8 @@ defmodule LS.Cluster.WorkQueue do
       total_completed: state.total_completed,
       total_requeued: state.total_requeued,
       total_already_queued: total_already_queued,
+      # Re-sightings of compiled businesses not queued while plain first visits were losing.
+      total_held_revisits: total_held_revisits,
       queue_index_size: :ets.info(@index_table, :size),
       total_returned_front: state.total_returned_front,
       total_returned_tail: state.total_returned_tail,
@@ -618,14 +745,22 @@ defmodule LS.Cluster.WorkQueue do
   end
 
   @impl true
+  def handle_info(:measure_health, state) do
+    Process.send_after(self(), :measure_health, @health_ms)
+    {:noreply, measure_health(state)}
+  end
+
+  @impl true
   def handle_info(:cleanup_ttl, state) do
     sweep_recently_crawled()
     cutoff = System.system_time(:millisecond) - @ttl_ms
-    dropped = cleanup_expired(cutoff)
+    {dropped, lost} = cleanup_expired(cutoff)
 
     if dropped > 0 do
-      Logger.info("🧹 WorkQueue TTL cleanup: dropped #{dropped} stale domains")
+      Logger.info("🧹 WorkQueue TTL cleanup: dropped #{dropped} stale domains (first visits: #{lost.edge} behind the edge, #{lost.plain} plain)")
     end
+
+    state = measure_health(%{state | last_expired: lost})
 
     orphans = reconcile_index()
     if orphans > 0, do: Logger.warning("🧹 WorkQueue index: #{orphans} rows had no queued or in-flight item")
@@ -858,11 +993,76 @@ defmodule LS.Cluster.WorkQueue do
     expired = :ets.select(@queue_table, [{{:"$1", :"$2", :"$3"}, [{:<, :"$3", cutoff}], [:"$_"]}])
     index_release(expired)
 
-    :ets.select_delete(@queue_table, [
-      {{:"$1", :"$2", :"$3"}, [{:<, :"$3", cutoff}], [true]}
-    ])
+    dropped =
+      :ets.select_delete(@queue_table, [
+        {{:"$1", :"$2", :"$3"}, [{:<, :"$3", cutoff}], [true]}
+      ])
+
+    {dropped, expired_first_visits(expired)}
   rescue
-    _ -> 0
+    _ -> {0, %{edge: 0, plain: 0}}
+  end
+
+  # Measure both lanes and publish the result where the scheduler, the
+  # enqueue path and the alerts read it. Logged when a lane is not :ok.
+  defp measure_health(state) do
+    now = System.system_time(:millisecond)
+    edge_age = age(oldest_edge_first_visit(), now)
+    plain_age = age(oldest_plain(), now)
+
+    health = %{
+      edge: lane_health(edge_age, state.last_expired.edge),
+      plain: lane_health(plain_age, state.last_expired.plain),
+      edge_oldest_h: hours(edge_age),
+      plain_oldest_h: hours(plain_age),
+      edge_expired: state.last_expired.edge,
+      plain_expired: state.last_expired.plain
+    }
+
+    if health != :persistent_term.get(@health_key, nil), do: :persistent_term.put(@health_key, health)
+
+    if health.edge != :ok or health.plain != :ok,
+      do: Logger.info("[QUEUE] first visits: edge #{health.edge} (oldest #{inspect(health.edge_oldest_h)} h, #{health.edge_expired} expired), plain #{health.plain} (oldest #{inspect(health.plain_oldest_h)} h, #{health.plain_expired} expired)")
+
+    state
+  end
+
+  defp age(nil, _now), do: nil
+  defp age(ts, now), do: max(now - ts, 0)
+
+  defp hours(nil), do: nil
+  defp hours(ms), do: Float.round(ms / 3_600_000, 1)
+
+  # Every first visit behind the edge sits at priority -1, so the oldest
+  # timestamp of that range is the answer (tens of thousands of integers
+  # at most, read every five minutes).
+  defp oldest_edge_first_visit do
+    case :ets.select(@queue_table, [{{{@prio_edge_sighting, :_}, :_, :"$1"}, [], [:"$1"]}]) do
+      [] -> nil
+      ts -> Enum.min(ts)
+    end
+  rescue
+    ArgumentError -> nil
+  end
+
+  # Priority 1 is FIFO and every plain item in it is served in that
+  # order, so the first plain item's age is how long a plain first visit
+  # waits. Shared-edge items there (known stores, the backlog) are walked
+  # over: they wait for edge slots, not for the plain budget.
+  defp oldest_plain do
+    probe(:ets.next(@queue_table, {@prio_refresh_a, :infinity}), @plain_probe_max)
+  rescue
+    ArgumentError -> nil
+  end
+
+  defp probe(:"$end_of_table", _left), do: nil
+  defp probe(_key, 0), do: nil
+
+  defp probe(key, left) do
+    case :ets.lookup(@queue_table, key) do
+      [{_k, data, ts}] -> if edge?(data), do: probe(:ets.next(@queue_table, key), left - 1), else: ts
+      [] -> probe(:ets.next(@queue_table, key), left - 1)
+    end
   end
 
   # A batch is done: forget it and free its domains for the next request.

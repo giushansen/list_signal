@@ -140,6 +140,36 @@ defmodule LS.Recrawl.Scheduler do
   @spec shopify_share(non_neg_integer()) :: non_neg_integer()
   def shopify_share(allowance) when is_integer(allowance) and allowance >= 0, do: min(allowance, @tier_a_shopify_per_slice)
 
+  @doc """
+  Pure: a tier A slice's `{plain, shopify}` allowances under the queue's
+  first-visit health (`LS.Cluster.WorkQueue.first_visit_health/0`,
+  2026-11-12). First visits are the owner's priority #1 and refreshes #2:
+  a lane whose first visits are behind or losing gets no refreshes this
+  slice, so the cadence stretches on that lane alone until it catches
+  up. Neither lane takes the other's held allowance, the same rule as
+  `shopify_share/1`: the Shopify share is the edge's capacity.
+  """
+  @spec a_split(non_neg_integer(), map()) :: {non_neg_integer(), non_neg_integer()}
+  def a_split(allowance, health) when is_integer(allowance) and allowance >= 0 do
+    shop = shopify_share(allowance)
+    {if(lane_ok?(health, :plain), do: allowance - shop, else: 0), if(lane_ok?(health, :edge), do: shop, else: 0)}
+  end
+
+  @doc "Pure: are first visits on time on both lanes? Tier B and C refreshes wait otherwise."
+  @spec first_visits_ok?(map()) :: boolean()
+  def first_visits_ok?(health), do: lane_ok?(health, :edge) and lane_ok?(health, :plain)
+
+  # Anything but an explicit :behind or :losing reads as on time: a
+  # missing or malformed health must never stop the schedule.
+  defp lane_ok?(%{} = health, lane), do: Map.get(health, lane, :ok) not in [:behind, :losing]
+  defp lane_ok?(_, _), do: true
+
+  defp health do
+    LS.Cluster.WorkQueue.first_visit_health()
+  rescue
+    _ -> %{}
+  end
+
   @doc "Manually trigger a recrawl check."
   def check_now do
     send(__MODULE__, :check_stale)
@@ -196,6 +226,7 @@ defmodule LS.Recrawl.Scheduler do
     depth = LS.Cluster.WorkQueue.stats()[:queue_depth] || 0
     Logger.info("[RECRAWL] Checking for due businesses (tiers #{LS.Crawl.Tiers.cadence_days(:a)}/#{LS.Crawl.Tiers.cadence_days(:b)}/#{LS.Crawl.Tiers.cadence_days(:c)} days, queue depth #{depth})")
     over = depth > @queue_headroom
+    health = health()
 
     if over,
       do: Logger.info("[RECRAWL] Queue holds #{depth}, over the #{@queue_headroom} headroom: tier A only this tick")
@@ -210,7 +241,7 @@ defmodule LS.Recrawl.Scheduler do
     for {delay, allowance} <- later, do: Process.send_after(self(), {:tier_a_slice, allowance}, delay)
 
     {bc_enqueued, bc_dead} =
-      if a_full or not admit?("b", 0, over),
+      if a_full or not admit?("b", 0, over or not first_visits_ok?(health)),
         do: {0, 0},
         else: lane(["b", "c"], quota_left(@tier_a_per_tick), @batch_size) |> then(fn {n, d, _} -> {n, d} end)
 
@@ -250,13 +281,22 @@ defmodule LS.Recrawl.Scheduler do
   # Tier A is two lists (2026-11-04, @tier_a_shopify_per_slice): the plain
   # names first, up to the allowance less the Shopify share, then the
   # Shopify stores up to that share. Neither takes the other's leftover:
-  # the share is the edge's capacity, not a preference.
+  # the share is the edge's capacity, not a preference. A list whose
+  # lane's first visits are behind is skipped this slice (a_split/2,
+  # 2026-11-12): first visits are priority #1, refreshes #2.
   defp lane(["a"], target, block, nil) do
     shop = shopify_share(target)
-    {plain_n, plain_dead, full} = lane(["a"], target - shop, block, false)
+    health = health()
+    {plain_ok, shop_ok} = a_split(target, health)
+
+    if (plain_ok == 0 and target - shop > 0) or (shop_ok == 0 and shop > 0),
+      do: Logger.info("[RECRAWL] First visits behind (#{inspect(Map.take(health, [:edge, :edge_oldest_h, :plain, :plain_oldest_h]))}): tier A this slice #{plain_ok} plain, #{shop_ok} Shopify")
+
+    {plain_n, plain_dead, full} =
+      if plain_ok > 0, do: lane(["a"], target - shop, block, false), else: {0, 0, false}
 
     {shop_n, shop_dead, full} =
-      if full, do: {0, 0, true}, else: lane(["a"], shop, block, true)
+      if full or shop_ok == 0, do: {0, 0, full}, else: lane(["a"], shop, block, true)
 
     {plain_n + shop_n, plain_dead + shop_dead, full}
   end

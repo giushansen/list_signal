@@ -25,6 +25,36 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-12: first visits first, refreshes when there is room, and the queue says when it is losing
+
+Owner's rule: good business sites must be discovered and read first,
+refreshed after a while second, and when the first starts failing the
+refreshes wait and the less useful revisits go. The 11-09 fix put
+Shopify sightings first but counted any sighting as new: on 11-11, 5,464
+of 38,295 Shopify stores fetched in 24 h had been fetched under 29 days
+before (certificate re-sightings of compiled stores, priority -1),
+while 16,061 never-read stores waited up to 15 h and 14,637 tier A
+refreshes waited behind them. Those never-read stores are worth it:
+94.7% answer 200, 81.8% are live English or French stores, 20.2% have
+an email. Now only a name we never compiled is a first visit (-1); a
+re-sighting of a known store and the never-fetched backlog sort behind
+refreshes (1). Each lane's first-visit health is measured every five
+minutes: behind at 12 h holds that lane's refreshes, losing at 20 h or
+100 expired an hour emails the owner (and on the plain lane stops
+queueing re-sightings of compiled businesses, which share the plain
+FIFO), because past that point the only lever left is another node (one
+Shopify line, about 8,000 stores a day).
+
+Two backlogs walk sorted domain ranges, since `enrich_log` (501M rows)
+is sorted by domain and a range read costs 2 s where a hash shard reads
+87 GB. `LS.Recrawl.EdgeBackfill` queues the 2.72M never-fetched Shopify
+stores only into room nothing else uses. `LS.Backfill.Membership` (run
+by hand) compiles the about 3.7M English or French sites with an email
+that never got a `businesses` row: 127,616 missing against 305,614
+present in the `be` range alone. Tests:
+`test/ls/cluster/first_visits_before_revisits_test.exs`,
+`test/ls/backfill/backlog_walk_test.exs`.
+
 ## 2026-11-09: Shopify stores found by DNS expired while refreshes took every slot
 
 sg2 was destroyed on 11-08 at about 09:35 UTC. Non-Shopify output hardly

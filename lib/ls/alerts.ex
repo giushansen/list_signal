@@ -173,6 +173,7 @@ defmodule LS.Alerts do
     |> compaction(m)
     |> resources(m)
     |> queue(m)
+    |> first_visits(m)
     |> reputation(m)
     |> backups(m)
     |> backup_offsite(m)
@@ -672,6 +673,41 @@ defmodule LS.Alerts do
     ]
 
   defp queue(acc, _), do: acc
+
+  # 2026-11-12, owner's rule: first visits of real businesses are
+  # priority #1. Found by hand twice (11-07 and 11-09): Shopify first
+  # visits expired at the queue's 24 h TTL, 300 to 1,733 an hour, while
+  # nothing fired. When a lane is losing them the scheduler already holds
+  # that lane's refreshes and known businesses wait behind first visits
+  # (or, on the plain lane, are not queued); what is left is capacity,
+  # which is the owner's call.
+  defp first_visits(acc, %{queue: %{first_visits: %{} = fv}}) do
+    for lane <- [:edge, :plain], Map.get(fv, lane) == :losing, reduce: acc do
+      acc ->
+        [
+          al(
+            :critical,
+            "first_visits_losing_#{lane}",
+            if(lane == :edge, do: "Shopify first visits are being lost", else: "First visits are being lost"),
+            first_visits_line(lane, fv)
+          )
+          | acc
+        ]
+    end
+  end
+
+  defp first_visits(acc, _), do: acc
+
+  @doc false
+  def first_visits_line(:edge, fv),
+    do:
+      "#{fv[:edge_expired] || 0} never-read Shopify stores expired in the last hourly sweep, the oldest waiting #{inspect(fv[:edge_oldest_h])} h; " <>
+        "Shopify refreshes are held and known stores already wait behind first visits. Each node adds one Shopify line, about 8,000 stores a day"
+
+  def first_visits_line(:plain, fv),
+    do:
+      "#{fv[:plain_expired] || 0} first visits expired in the last hourly sweep, the oldest waiting #{inspect(fv[:plain_oldest_h])} h; " <>
+        "refreshes are held and re-sightings of known businesses are not queued. Each node adds about 155 fetches a minute"
 
   # ── crawl hygiene (2026-10-24) ──
   #

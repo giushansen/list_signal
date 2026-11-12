@@ -175,6 +175,9 @@ defmodule LS.Application do
       LS.SimilarPool,
       LS.Cluster.Monitor,
       LS.Recrawl.Scheduler,
+      # The never-fetched Shopify backlog, fed only into room the line has
+      # left after first visits and refreshes (2026-11-12).
+      LS.Recrawl.EdgeBackfill,
       # Pipeline 2 (depth): its own queue, plus the compactor that folds
       # discovery + enrichment into the `businesses` product table every 5 min.
       LS.Cluster.EnrichmentQueue,
