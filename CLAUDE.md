@@ -89,26 +89,31 @@ product start reading like a model again. The rest of the list is on you.
   Commits end with the `Co-Authored-By` trailer.
 - Run `mix test` (and `mix compile --warnings-as-errors`) before presenting work.
 
-## Tests are protected
+## Tests: change them if you must, and say so in one line each
 
-Existing tests are read-only for any AI agent, in any session, with no
-exceptions. Never edit, weaken, rename, move or delete a test that already
-exists. If a test fails because of your change, the change is wrong or the
-owner must decide: stop and ask. Adding a NEW test file is always allowed
-and expected.
+An agent may change an existing test, and every such change is declared.
+The commit message carries a `Tests changed:` section, one line per
+changed test file, saying what changed and why, TLDR style:
 
-Consent is explicit and belongs to the owner alone: the owner runs
-`touch .claude/tests-unlock` in the project root for the duration of the
-change and removes it afterwards. An agent must never create that file,
-set `TESTS_CHANGE_OK`, or work around the guard through another tool.
+```
+Tests changed:
+- scheduler_shopify_share_test.exs: slice is 120 not 100, after 785f6c8
+- work_queue_test.exs: dropped the known-sighting priority case, -1 is
+  first visits only since 0da0a42
+```
 
-This is enforced twice, not just written down: `.claude/hooks/protect-tests.sh`
-(a Claude Code PreToolUse hook registered in `.claude/settings.json`) denies
-file-tool edits of existing test files and shell commands that could rewrite
-or delete them, and `.githooks/pre-commit` refuses to commit a modified,
-renamed or deleted test. Activate the git side once per clone with
-`git config core.hooksPath .githooks`. Added 2026-09-15 at the owner's
-request after agents rewrote test assertions to fit their own changes.
+`.githooks/commit-msg` refuses a commit that modifies, renames or deletes
+a test file without such a line (`git config core.hooksPath .githooks`
+once per clone). New test files need no line. Weakening an assertion so a
+wrong change passes is still wrong: if a test fails because of your
+change, first ask whether the change is right, then state in the line why
+the test moved.
+
+History: tests were read-only for agents from 2026-09-15 (owner's rule
+after agents rewrote assertions to fit their own changes), unlocked only by
+an owner-created `.claude/tests-unlock` file. The owner replaced that on
+2026-11-13 with this declaration rule: the unlock file was asked for too
+often, and the record of what moved is what matters.
 
 ## Tests — every bug and every feature, no exceptions
 

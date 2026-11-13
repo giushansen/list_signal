@@ -404,8 +404,8 @@ Additive first, rename last, nothing big-bang.
 7. Regenerate clickhouse/schema.sql, update architecture.md, log entry.
 
 Open items before step 1: 22 committed test files reference old column
-names and are locked; the owner has to create `.claude/tests-unlock` for
-the renaming window. Disk is 361 GB with 123 GB free; pages need 27 to 35
+names; each renamed test gets its line under `Tests changed:` in the
+commit (the read-only guard was replaced on 2026-11-13). Disk is 361 GB with 123 GB free; pages need 27 to 35
 GB and the backup grows with them. The about-page fetch (About.analyze
 reading html_of(visited, :about)) and the re-score of estimates when the
 deep pass lands are part of step 2.

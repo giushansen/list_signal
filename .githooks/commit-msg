@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Changed tests are listed in the commit message (CLAUDE.md, "Tests").
+#
+# Owner's rule (2026-11-13), replacing the read-only guard of 2026-09-15:
+# an agent may change an existing test, and the commit message must carry
+# a "Tests changed:" section with one line per changed test file saying
+# what changed and why. This hook refuses the commit when a modified,
+# renamed or deleted test file is not named in that section. New test
+# files need no line. Activated per clone with:
+#   git config core.hooksPath .githooks
+set -u
+msg_file="$1"
+changed=$(git diff --cached --name-status -M | awk '
+  $1 ~ /^(M|D|T)/ && ($2 ~ /(^|\/)test\// || $2 ~ /_test\.exs$/) { print $2 }
+  $1 ~ /^R/ && ($2 ~ /(^|\/)test\// || $2 ~ /_test\.exs$/) { print $2 }
+')
+[ -z "$changed" ] && exit 0
+
+section=$(awk 'BEGIN{p=0} /^Tests changed:/{p=1; next} p && /^[A-Za-z-]+:/{p=0} p' "$msg_file")
+missing=""
+for f in $changed; do
+  base=$(basename "$f")
+  printf '%s\n' "$section" | grep -Fq "$base" || missing="$missing  $f"$'\n'
+done
+if [ -n "$missing" ]; then
+  echo "commit-msg: these existing tests changed and have no line under 'Tests changed:':" >&2
+  printf '%s' "$missing" >&2
+  echo "Add to the message, one line per file, what changed and why:" >&2
+  echo "  Tests changed:" >&2
+  echo "  - some_test.exs: <what changed, why>" >&2
+  exit 1
+fi
+exit 0

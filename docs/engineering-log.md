@@ -25,6 +25,23 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-13: tests may change again, one declared line per test
+
+**The read-only test guard is gone; a changed test is declared in the
+commit instead.** From 2026-09-15 existing tests were read-only for agents
+(PreToolUse hook plus pre-commit), unlocked by an owner-created
+`.claude/tests-unlock`. In practice the owner was asked to create and
+remove that file in most sessions that touched load-bearing code, and the
+guard also refused agents' own new test files whenever a shell command
+named a test path next to a write. Owner's decision: drop the unlock and
+require instead a `Tests changed:` section in the commit message, one
+TLDR line per changed test file saying what changed and why.
+`.githooks/commit-msg` refuses a commit that modifies, renames or deletes
+a test file without its line; new files need none. The intent of 09-15
+stands: a test moved to fit a wrong change is still a wrong change, and the
+line is where that reasoning is read later. Rule text in CLAUDE.md,
+"Tests".
+
 ## 2026-11-12: first visits first, refreshes when there is room, and the queue says when it is losing
 
 Owner's rule: good business sites must be discovered and read first,
