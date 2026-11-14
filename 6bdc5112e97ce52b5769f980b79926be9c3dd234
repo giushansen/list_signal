@@ -1,0 +1,6 @@
+3 h later (2026-11-14 08:38 UTC, three workers ny1 par1 dal1):
+Gate held 8,836, passed 41,770, failed 0 (17% held; the plan assumed about half). Master errors 0.
+Workers 25.9 to 27.0 rows/min, one 429 in 14,235 rows, Shopify rows 1,064 to 1,094 each per 3 h.
+Plain first visits (never fetched or DNS-only before) 2,638/h against 2,498/h the night before on 7 workers: no loss. Plain re-reads of sites read 21 to 120 d ago 572/h against 2,712/h: the cut landed there. No plain first visit waits, none expired.
+Shopify: first visits read at 990 to 1,100/h (24K to 26K a day) against 2,254/h before (of which the backlog feeder queued 31,740 on 11-13, so about 22K a day came by certificate, not the 16K the plan used). First visits waiting: 19 at 05:37, 1,939 at 07:48, 2,600 at 08:38, 2,608 at 08:41, oldest 2.6 h, 0 expired, lane ok. The margin on Shopify is 10 to 15% at best and the first hours ran above it. The feeder has not read a page since the cut (no room) and 6,467 backlog stores queued at 04:43 sit behind the first visits and will expire at 24 h.
+Open: whether the Shopify lane flattens or reaches 'behind' (12 h).
