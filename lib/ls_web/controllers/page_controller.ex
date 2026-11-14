@@ -53,8 +53,7 @@ defmodule LSWeb.PageController do
   # 2026-11-04: ny2 and chi2 removed, seven duals; 2026-11-08: sg2
   # 45.77.42.191 destroyed, six duals).
   @crawler_ips ~w(
-    108.61.94.33 95.179.216.41 64.177.122.55
-    45.76.59.43 104.238.144.112 108.61.123.237
+    108.61.94.33 95.179.216.41 45.76.59.43
   )
 
   @doc false
