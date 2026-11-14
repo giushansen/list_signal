@@ -25,6 +25,26 @@ Add one with `git notes add -m "..." <sha>` and push with
 
 ---
 
+## 2026-11-14: lean mode, the crawl on three workers
+
+**A name filter could not pay for the cut; holding certificate re-reads
+does.** Owner asked to halve the workers and to filter CT domains hard
+before the fetch. Measured first: 259K first visits of 30 days with every
+feature known before the fetch (name shape, TLD, issuer, MX provider, TXT
+records, hosting network, nameservers, domain age), logistic and boosted
+models, time split. The best-scored half held 65% of the sellable first
+visits (AUC 0.67, 0.61 behind Shopify): the existing gates already leave
+80% real English or French sites. The waste was elsewhere: half of 200K
+rows a day were sites read successfully 40 to 75 days earlier, fetched
+again on a certificate renewal, 39K of them sites with no `businesses`
+row (read 09-07 to 10-03) that no ring knows. `LS_CRAWL_MODE=lean` on the
+master (`LS.Crawl.Lean`): `LS.Recrawl.LeanGate` looks each sighting up in
+`enrich_log` and holds it if the site was read with a 200 in the last 120
+days; tier A Shopify stores refresh every 90 days, not 28. First visits
+are untouched. Unset the variable and both rules stop; nothing is stored.
+Three workers do about 82K fetches a day (23K behind Shopify). Numbers
+and the stream table are in the moduledoc and the commit.
+
 ## 2026-11-13: tests may change again, one declared line per test
 
 **The read-only test guard is gone; a changed test is declared in the

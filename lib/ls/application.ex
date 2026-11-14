@@ -174,6 +174,9 @@ defmodule LS.Application do
       # businesses (2026-10-28).
       LS.SimilarPool,
       LS.Cluster.Monitor,
+      # Lean mode's lookup before the queue; idle unless LS_CRAWL_MODE=lean
+      # (2026-11-14). After WorkQueue, which it enqueues into.
+      LS.Recrawl.LeanGate,
       LS.Recrawl.Scheduler,
       # The never-fetched Shopify backlog, fed only into room the line has
       # left after first visits and refreshes (2026-11-12).

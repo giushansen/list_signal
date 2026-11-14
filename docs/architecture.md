@@ -136,7 +136,12 @@ plain `GenServer.call/cast` across nodes — there is no HTTP API between nodes.
    minutes, and when its oldest first visit has waited 12 h the
    scheduler holds that lane's refreshes (tier B and C too); at 20 h or
    100 expired in an hourly sweep an alert fires, and on the plain lane
-   re-sightings of compiled businesses are not queued. A side table keyed by domain holds every domain that
+   re-sightings of compiled businesses are not queued. In lean mode
+   (`LS_CRAWL_MODE=lean`, `LS.Crawl.Lean`, 2026-11-14, three workers) a
+   certificate sighting first waits a few seconds in
+   `LS.Recrawl.LeanGate`, which holds it if `enrich_log` shows the site
+   read with a 200 in the last 120 days, and tier A Shopify stores
+   refresh every 90 days. A side table keyed by domain holds every domain that
    is queued or in flight, and `enqueue/2` refuses a second copy whoever
    asks, `force` included (`:already_queued`), so one domain is in one place
    across the fleet. When full, `enqueue/1` returns `:queue_full` and the

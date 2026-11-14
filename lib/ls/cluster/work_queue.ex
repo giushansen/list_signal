@@ -249,6 +249,15 @@ defmodule LS.Cluster.WorkQueue do
         :counters.add(counter_ref(), @idx_deduped_tier, 1)
         :recently_crawled
 
+      # Lean mode (2026-11-14, LS.Crawl.Lean): the sighting waits a few
+      # seconds in LS.Recrawl.LeanGate, which asks enrich_log whether the
+      # site was read in the last 120 days and comes back here with
+      # `lean_checked: true` if it was not. Before the daily ring on
+      # purpose: a held sighting must not mark the site as crawled.
+      LS.Recrawl.LeanGate.divert?(domain_data, opts, hot, LS.Crawl.Lean.on?()) and LS.Recrawl.LeanGate.running?() ->
+        LS.Recrawl.LeanGate.hold(domain_data)
+        :ok
+
       # 27.6% of all fetches were repeat visits inside a week (2026-09-04:
       # 62.3M crawls, 45.1M distinct domains) because the CTL cache holds
       # ~1h of inflow and every cert renewal re-emits from many CT logs.

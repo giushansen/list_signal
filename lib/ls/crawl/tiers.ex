@@ -57,9 +57,14 @@ defmodule LS.Crawl.Tiers do
   # keep 14 days.
   @shopify_a_days 28
 
-  @doc "Refresh cadence of a tier A Shopify store, in days (the tier's own cadence for everything else)."
-  @spec shopify_a_days() :: pos_integer()
-  def shopify_a_days, do: @shopify_a_days
+  @doc """
+  Refresh cadence of a tier A Shopify store, in days (the tier's own
+  cadence for everything else). In lean mode (`LS.Crawl.Lean`, 2026-11-14)
+  it is 90: three workers have three lines into Shopify's edge, about 23K
+  stores a day, and first visits alone asked for 16K.
+  """
+  @spec shopify_a_days(boolean()) :: pos_integer()
+  def shopify_a_days(lean \\ LS.Crawl.Lean.on?()), do: if(lean, do: LS.Crawl.Lean.shopify_days(), else: @shopify_a_days)
 
   @doc "Refresh cadence of a tier, in days."
   @spec cadence_days(:a | :b | :c) :: pos_integer()
